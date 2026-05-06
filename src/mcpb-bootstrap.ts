@@ -133,8 +133,7 @@ boot(`env.ELECTRON_RUN_AS_NODE=${process.env.ELECTRON_RUN_AS_NODE ?? '(unset)'}`
     boot(
       `Static-analysis tools (mc_find_refs, callgraph init) will fail with ` +
       `a clear error when invoked. Runtime tools (mc_connect, mc_execute, ` +
-      `mc_snapshot, mc_screenshot, mc_run_command, mc_logger) will work ` +
-      `normally.`
+      `mc_snapshot, mc_screenshot, mc_run_command) will work normally.`
     );
   }
 

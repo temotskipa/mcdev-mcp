@@ -1,6 +1,6 @@
 export interface BridgeRequest {
     id: string;
-    type: "execute" | "search" | "snapshot" | "screenshot" | "runCommand" | "status" | "injectLogger" | "cancelLogger" | "listLoggers";
+    type: "execute" | "search" | "snapshot" | "screenshot" | "runCommand" | "status";
     payload: Record<string, unknown>;
 }
 

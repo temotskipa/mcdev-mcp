@@ -5,7 +5,7 @@
   "display_name": "Minecraft Dev MCP",
   "version": "1.1.0",
   "description": "MCP server for Minecraft mod development - decompiled code access, symbol search, and runtime interaction via DebugBridge",
-  "long_description": "An MCP server for AI-assisted Minecraft mod development. Static tools provide access to decompiled Minecraft source code: browse classes and methods, search symbols, explore package hierarchies, find subclasses/implementors, and trace callers/callees across multiple Minecraft versions. Runtime tools interact with a running Minecraft instance through the DebugBridge mod: execute Lua inside the JVM, capture game state snapshots and screenshots, run slash commands, and inject runtime method loggers.",
+  "long_description": "An MCP server for AI-assisted Minecraft mod development. Static tools provide access to decompiled Minecraft source code: browse classes and methods, search symbols, explore package hierarchies, find subclasses/implementors, and trace callers/callees across multiple Minecraft versions. Runtime tools interact with a running Minecraft instance through the DebugBridge mod: execute Lua inside the JVM, capture game state snapshots and screenshots, and run slash commands.",
   "author": {
     "name": "weikengchen",
     "url": "https://github.com/weikengchen"
@@ -63,8 +63,7 @@
     { "name": "mc_execute", "description": "Execute Lua code inside the running Minecraft JVM" },
     { "name": "mc_snapshot", "description": "Get a structured snapshot of current game state" },
     { "name": "mc_screenshot", "description": "Capture the Minecraft client framebuffer as a JPEG file" },
-    { "name": "mc_run_command", "description": "Execute a Minecraft slash command" },
-    { "name": "mc_logger", "description": "Inject, cancel, or list runtime method loggers" }
+    { "name": "mc_run_command", "description": "Execute a Minecraft slash command" }
   ],
   "compatibility": {
     "platforms": ["darwin", "win32", "linux"],

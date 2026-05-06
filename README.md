@@ -21,8 +21,6 @@ An **MCP (Model Context Protocol) server** that empowers AI coding agents to wor
 - **Game State Snapshots** — Get player position, health, dimension, time, weather (`mc_snapshot`)
 - **Screenshots** — Capture the game window as JPEG (`mc_screenshot`)
 - **Slash Commands** — Execute in-game commands (`mc_run_command`)
-- **Runtime Method Tracing** — Inject loggers into methods to trace calls (`mc_logger`)
-
 ## Quick Start
 
 > **Security note — `init` is intentionally terminal-only.** The MCP server only exposes read/query tools. Downloading and decompiling Minecraft sources must be triggered by you in the terminal; an AI agent connected to the server has no tool surface to trigger `init`, `rebuild`, `clean`, or `callgraph`.
@@ -271,38 +269,6 @@ Execute a Minecraft slash command.
 }
 ```
 
-### `mc_logger`
-Manage runtime method loggers for tracing Minecraft method calls. Uses Java Agent instrumentation to capture method entry/exit, arguments, return values, and timing.
-
-Inject a logger (writes to a file on the machine running the mod):
-
-```json
-{
-  "action": "inject",
-  "method": "net.minecraft.client.Minecraft.tick",
-  "duration_seconds": 60
-}
-```
-
-Cancel an active logger:
-
-```json
-{
-  "action": "cancel",
-  "id": 1
-}
-```
-
-List active loggers:
-
-```json
-{
-  "action": "list"
-}
-```
-
-> **Note:** This modifies bytecode at runtime. Avoid targeting hot-path methods. Optional filters (`throttle`, `arg_contains`, `arg_instanceof`, `sample`) can reduce log volume.
-
 ## Requirements
 
 | Dependency | Version | Purpose |
@@ -371,7 +337,6 @@ mcdev-mcp/
 │  │ mc_get_class/method    │ │    │  │ mc_snapshot            │ │
 │  │ mc_find_refs           │ │    │  │ mc_screenshot          │ │
 │  │ mc_find_hierarchy      │ │    │  │ mc_run_command         │ │
-│  │ mc_list_classes/pkgs   │ │    │  │ mc_logger              │ │
 │  └───────────┬────────────┘ │    │  └───────────┬────────────┘ │
 │              │              │    │              │              │
 │       ┌──────┴──────┐       │    │      ┌───────┴───────┐      │

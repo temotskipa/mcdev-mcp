@@ -3,7 +3,6 @@ export { mcExecuteTool } from './execute.js';
 export { mcSnapshotTool } from './snapshot.js';
 export { mcScreenshotTool } from './screenshot.js';
 export { mcRunCommandTool } from './command.js';
-export { mcLoggerTool } from './logger.js';
 export { mcScriptLogsTool } from './script-logs.js';
 export { mcNearbyEntitiesTool } from './nearby-entities.js';
 export { mcEntityDetailsTool } from './entity-details.js';
@@ -24,7 +23,6 @@ import { mcExecuteTool } from './execute.js';
 import { mcSnapshotTool } from './snapshot.js';
 import { mcScreenshotTool } from './screenshot.js';
 import { mcRunCommandTool } from './command.js';
-import { mcLoggerTool } from './logger.js';
 import { mcScriptLogsTool } from './script-logs.js';
 import { mcNearbyEntitiesTool } from './nearby-entities.js';
 import { mcEntityDetailsTool } from './entity-details.js';
@@ -43,10 +41,9 @@ import { mcScreenInspectTool } from './screen-inspect.js';
 const isOn = (v: string | undefined) => /^(1|true)$/i.test(v ?? '');
 
 // Dev-only tools (default off). The bridge mirrors these gates with its own
-// BridgeConfig flags (loggerInjectionEnabled / runCommandEnabled), so even if
+// BridgeConfig flags (runCommandEnabled), so even if
 // these envs are flipped on, calls only succeed when both sides agree.
 const scriptLogsEnabled = isOn(process.env.MCDEV_SCRIPT_LOGS);
-const loggerInjectionEnabled = isOn(process.env.MCDEV_LOGGER_INJECTION);
 const runCommandEnabled = isOn(process.env.MCDEV_RUN_COMMAND);
 
 export const runtimeTools = [
@@ -69,6 +66,5 @@ export const runtimeTools = [
     mcScreenInspectTool,
     // Dev-only tools — default off; flip env on both sides to enable.
     ...(scriptLogsEnabled ? [mcScriptLogsTool] : []),
-    ...(loggerInjectionEnabled ? [mcLoggerTool] : []),
     ...(runCommandEnabled ? [mcRunCommandTool] : []),
 ];
