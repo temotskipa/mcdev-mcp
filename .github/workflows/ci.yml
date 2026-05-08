@@ -14,8 +14,9 @@ jobs:
     strategy:
       matrix:
         # sql.js (WASM) works on Node 14+, so we cover the active LTS line.
-        # The lower bound matches package.json engines (>=18.0.0).
-        node-version: [18.x, 20.x, 22.x, 24.x]
+        # The lower bound matches package.json engines (>=20.0.0) — bumped
+        # because commander@14 and other modern deps require Node >=20.
+        node-version: [20.x, 22.x, 24.x]
 
     steps:
       - name: Checkout repository
