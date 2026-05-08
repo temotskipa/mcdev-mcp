@@ -44,24 +44,24 @@
   "homepage": "https://github.com/weikengchen/mcdev-mcp#readme",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0",
-    "axios": "^1.6.0",
-    "commander": "^12.0.0",
+    "axios": "^1.16.0",
+    "commander": "^14.0.3",
     "env-paths": "^4.0.0",
-    "glob": "^10.0.0",
+    "glob": "^13.0.6",
     "sql.js": "^1.14.1",
     "unzipper": "^0.12.3",
     "ws": "^8.16.0"
   },
   "devDependencies": {
     "@anthropic-ai/mcpb": "^2.1.2",
-    "@types/jest": "^29.5.0",
-    "@types/node": "^22.0.0",
+    "@types/jest": "^30.0.0",
+    "@types/node": "^25.6.2",
     "@types/sql.js": "^1.4.11",
     "@types/unzipper": "^0.10.10",
     "@types/ws": "^8.5.0",
-    "jest": "^29.7.0",
+    "jest": "^30.4.0",
     "ts-jest": "^29.1.0",
-    "typescript": "^5.3.0"
+    "typescript": "^6.0.3"
   },
   "engines": {
     "node": ">=18.0.0"
