@@ -27,6 +27,14 @@ const _require = createRequire(import.meta.url);
 // Cache the singleton SQL module — one WASM instantiation per process. The
 // promise itself is cached so concurrent first-callers all wait on the same
 // init rather than spawning multiple WASM instances.
+//
+// Retry semantic, in case anyone re-reads this and worries about a race:
+// the `.catch` below intentionally resets `_sqlJsPromise = null` BEFORE
+// re-throwing. That means a *subsequent* call after a failed init starts a
+// fresh attempt instead of inheriting the same rejection forever. Two callers
+// already in flight at the moment of the failure share the original rejected
+// promise (no duplicate init); only a caller that arrives after the failure
+// gets a new attempt. That is the desired retry behaviour, not a race.
 let _sqlJsPromise: Promise<SqlJsStatic> | null = null;
 
 export function loadSqlJs(): Promise<SqlJsStatic> {

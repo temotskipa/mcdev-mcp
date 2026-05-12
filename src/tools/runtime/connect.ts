@@ -63,7 +63,18 @@ Use reset=true to disconnect and clear state before reconnecting.`,
             };
         } catch (e: unknown) {
             const msg = e instanceof Error ? e.message : String(e);
-            const refused = /ECONNREFUSED|Could not connect/i.test(msg);
+            // Classify any "the mod isn't accepting connections" shape as
+            // refused → suggest the user start Minecraft. We match:
+            //   * `ECONNREFUSED` — kernel says "no listener" (the common case
+            //     on localhost when the mod isn't running).
+            //   * `Could not connect` — BridgeSession's own scan-failure
+            //     message in `connectWithScan`.
+            //   * `timed out connecting` — BridgeSession's per-port 2s
+            //     timeout from `connectToPort`; ETIMEDOUT-style failures are
+            //     rare on localhost but show up under firewalls.
+            // Anything else stays "investigate" so we don't tell users to
+            // "start Minecraft" for, say, an EHOSTUNREACH route issue.
+            const refused = /ECONNREFUSED|Could not connect|timed out connecting/i.test(msg);
             const portsTried = args.port !== undefined
                 ? [args.port]
                 : Array.from({ length: 10 }, (_, i) => DEFAULT_PORT + i);
