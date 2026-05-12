@@ -40,22 +40,34 @@ export function hasUnobfuscatedJar(version: string): boolean {
   return version in UNOBFUSCATED_JARS;
 }
 
-async function fetchJson<T>(url: string): Promise<T> {
-  return new Promise((resolve, reject) => {
+const MAX_REDIRECTS = 5;
+
+async function fetchJson<T>(url: string, redirectsLeft: number = MAX_REDIRECTS): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
     https.get(url, { timeout: 30000 }, (response) => {
-      if (response.statusCode === 301 || response.statusCode === 302) {
+      if (response.statusCode === 301 || response.statusCode === 302 || response.statusCode === 307 || response.statusCode === 308) {
         const redirectUrl = response.headers.location;
-        if (redirectUrl) {
-          fetchJson<T>(redirectUrl).then(resolve).catch(reject);
+        if (redirectsLeft <= 0) {
+          reject(new Error(`Too many redirects fetching ${url}`));
           return;
         }
+        if (redirectUrl) {
+          // Drain the redirect response so the socket can be reused / closed cleanly,
+          // then chain the recursive call's result onto our outer Promise.
+          response.resume();
+          fetchJson<T>(redirectUrl, redirectsLeft - 1).then(resolve, reject);
+          return;
+        }
+        reject(new Error(`HTTP ${response.statusCode} with no Location header: ${url}`));
+        return;
       }
-      
+
       if (response.statusCode !== 200) {
+        response.resume();
         reject(new Error(`HTTP ${response.statusCode}: ${url}`));
         return;
       }
-      
+
       let data = '';
       response.setEncoding('utf8');
       response.on('data', (chunk) => { data += chunk; });
@@ -63,10 +75,12 @@ async function fetchJson<T>(url: string): Promise<T> {
         try {
           resolve(JSON.parse(data));
         } catch (e) {
-          reject(new Error(`Failed to parse JSON: ${e}`));
+          reject(new Error(`Failed to parse JSON from ${url}: ${e instanceof Error ? e.message : String(e)}`));
         }
       });
-    }).on('error', reject);
+    }).on('error', reject).on('timeout', function (this: import('http').ClientRequest) {
+      this.destroy(new Error(`Request timeout fetching ${url}`));
+    });
   });
 }
 
@@ -92,34 +106,62 @@ export async function downloadFile(
   stage: string = 'download'
 ): Promise<void> {
   ensureDir(path.dirname(dest));
-  
-  return new Promise((resolve, reject) => {
-    const file = fs.createWriteStream(dest);
-    let downloaded = 0;
-    let total = 0;
-    
-    const request = (url: string) => {
-      https.get(url, { timeout: 60000 }, (response) => {
-        if (response.statusCode === 301 || response.statusCode === 302) {
+
+  return new Promise<void>((resolve, reject) => {
+    const cleanupDest = () => {
+      try { if (fs.existsSync(dest)) fs.unlinkSync(dest); } catch {}
+    };
+
+    const request = (currentUrl: string, redirectsLeft: number) => {
+      // Create a fresh write stream for each request. The previous design
+      // hoisted this outside the closure and reused it across redirects, which
+      // hung the outer Promise: after `file.close()` on the redirect, the
+      // recursive call piped into the closed stream and `file.on('finish')`
+      // never fired. See .dream/review.md HIGH "Async/Promise correctness".
+      const file = fs.createWriteStream(dest);
+      let downloaded = 0;
+      let total = 0;
+      let settled = false;
+      const settleReject = (err: Error) => {
+        if (settled) return;
+        settled = true;
+        try { file.close(); } catch {}
+        cleanupDest();
+        reject(err);
+      };
+      const settleResolve = () => {
+        if (settled) return;
+        settled = true;
+        resolve();
+      };
+
+      const req = https.get(currentUrl, { timeout: 60000 }, (response) => {
+        if (response.statusCode === 301 || response.statusCode === 302 || response.statusCode === 307 || response.statusCode === 308) {
           const redirectUrl = response.headers.location;
-          if (redirectUrl) {
-            file.close();
-            fs.unlinkSync(dest);
-            request(redirectUrl);
+          response.resume();          // drain the redirect response
+          try { file.close(); } catch {}
+          cleanupDest();
+          if (redirectsLeft <= 0) {
+            settleReject(new Error(`Too many redirects downloading ${url}`));
             return;
           }
-        }
-        
-        if (response.statusCode !== 200) {
-          file.close();
-          if (fs.existsSync(dest)) fs.unlinkSync(dest);
-          reject(new Error(`HTTP ${response.statusCode}: ${url}`));
+          if (!redirectUrl) {
+            settleReject(new Error(`HTTP ${response.statusCode} with no Location header: ${currentUrl}`));
+            return;
+          }
+          request(redirectUrl, redirectsLeft - 1);
           return;
         }
-        
+
+        if (response.statusCode !== 200) {
+          response.resume();
+          settleReject(new Error(`HTTP ${response.statusCode}: ${currentUrl}`));
+          return;
+        }
+
         total = parseInt(response.headers['content-length'] || '0', 10);
         downloaded = 0;
-        
+
         let lastPercent = 0;
         response.on('data', (chunk) => {
           downloaded += chunk.length;
@@ -133,25 +175,30 @@ export async function downloadFile(
             }
           }
         });
-        
+
+        response.on('error', settleReject);
+        file.on('error', settleReject);
+
         response.pipe(file);
-        
+
         file.on('finish', () => {
-          file.close();
-          resolve();
+          file.close((closeErr) => {
+            if (closeErr) {
+              settleReject(closeErr);
+              return;
+            }
+            settleResolve();
+          });
         });
-      }).on('error', (err) => {
-        file.close();
-        if (fs.existsSync(dest)) fs.unlinkSync(dest);
-        reject(err);
-      }).on('timeout', () => {
-        file.close();
-        if (fs.existsSync(dest)) fs.unlinkSync(dest);
-        reject(new Error('Download timeout'));
+      });
+
+      req.on('error', settleReject);
+      req.on('timeout', () => {
+        req.destroy(new Error(`Download timeout fetching ${currentUrl}`));
       });
     };
-    
-    request(url);
+
+    request(url, MAX_REDIRECTS);
   });
 }
 

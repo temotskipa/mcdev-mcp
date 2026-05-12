@@ -1,4 +1,5 @@
 import { bridgeSession } from "./session.js";
+import { requireResult, safeStringify } from "./validate-resp.js";
 
 export const mcSnapshotTool = {
     name: "mc_snapshot",
@@ -17,7 +18,11 @@ No Lua needed - quick overview of current state.`,
             if (!resp.success) {
                 return { content: [{ type: "text" as const, text: `Error: ${resp.error}` }], isError: true };
             }
-            return { content: [{ type: "text" as const, text: JSON.stringify(resp.result, null, 2) }] };
+            // requireResult catches the buggy "success but no result" case;
+            // safeStringify replaces the cycle-throwing JSON.stringify (rare
+            // but real if the bridge ever ships a self-referential payload).
+            const result = requireResult(resp, "snapshot");
+            return { content: [{ type: "text" as const, text: safeStringify(result) }] };
         } catch (e: unknown) {
             const msg = e instanceof Error ? e.message : String(e);
             return { content: [{ type: "text" as const, text: msg }], isError: true };

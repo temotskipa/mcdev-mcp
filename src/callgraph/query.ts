@@ -111,19 +111,30 @@ export async function findCallees(version: string, className: string, methodName
   }));
 }
 
+/**
+ * Escape SQL LIKE wildcard metacharacters (`%`, `_`, and the escape char
+ * itself). Without this, a query containing `%` or `_` would silently widen
+ * the match — e.g. searching for `set_x` would also match any 5-character
+ * sequence starting with `set`. The companion `ESCAPE '\\'` clause in the
+ * SQL is what tells SQLite to honour these.
+ */
+function escapeLikePattern(input: string): string {
+  return input.replace(/[\\%_]/g, (c) => `\\${c}`);
+}
+
 export async function searchMethods(version: string, query: string, limit: number = 50): Promise<MethodRef[]> {
   const database = await openDb(version);
 
-  const pattern = `%${query}%`;
+  const pattern = `%${escapeLikePattern(query)}%`;
 
   const stmt = database.prepare(`
     SELECT DISTINCT callee_class as class_name, callee_method as method_name, callee_desc as descriptor
     FROM calls
-    WHERE callee_class LIKE ? OR callee_method LIKE ?
+    WHERE callee_class LIKE ? ESCAPE '\\' OR callee_method LIKE ? ESCAPE '\\'
     UNION
     SELECT DISTINCT caller_class as class_name, caller_method as method_name, caller_desc as descriptor
     FROM calls
-    WHERE caller_class LIKE ? OR caller_method LIKE ?
+    WHERE caller_class LIKE ? ESCAPE '\\' OR caller_method LIKE ? ESCAPE '\\'
     LIMIT ?
   `);
   stmt.bind([pattern, pattern, pattern, pattern, limit]);
@@ -142,6 +153,17 @@ export async function searchMethods(version: string, query: string, limit: numbe
   }));
 }
 
+/**
+ * Pull a single COUNT(*) value out of a sql.js exec result. Returns 0 when
+ * the query produced no rows or the cell isn't numeric — which only happens
+ * if the schema diverged from what we wrote, and 0 is a safer "I don't know"
+ * for stats than throwing inside `status`.
+ */
+function singleCount(result: ReturnType<import('sql.js').Database['exec']>): number {
+  const cell = result[0]?.values[0]?.[0];
+  return typeof cell === 'number' && Number.isFinite(cell) ? cell : 0;
+}
+
 export async function getCallgraphStats(version: string): Promise<{ totalCalls: number; uniqueCallers: number; uniqueCallees: number } | null> {
   const dbPath = path.join(getCallgraphDir(version), 'callgraph.db');
 
@@ -154,9 +176,9 @@ export async function getCallgraphStats(version: string): Promise<{ totalCalls: 
   // real error worth surfacing.
   const database = await openDb(version);
 
-  const totalCalls = (database.exec('SELECT COUNT(*) as count FROM calls')[0]?.values[0]?.[0] as number) ?? 0;
-  const uniqueCallers = (database.exec('SELECT COUNT(DISTINCT caller_class || caller_method) as count FROM calls')[0]?.values[0]?.[0] as number) ?? 0;
-  const uniqueCallees = (database.exec('SELECT COUNT(DISTINCT callee_class || callee_method) as count FROM calls')[0]?.values[0]?.[0] as number) ?? 0;
+  const totalCalls    = singleCount(database.exec('SELECT COUNT(*) FROM calls'));
+  const uniqueCallers = singleCount(database.exec('SELECT COUNT(DISTINCT caller_class || caller_method) FROM calls'));
+  const uniqueCallees = singleCount(database.exec('SELECT COUNT(DISTINCT callee_class || callee_method) FROM calls'));
 
   // status loops over every cached version — close after stats so we don't
   // hold N copies of the DB in memory at once.

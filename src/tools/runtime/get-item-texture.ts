@@ -1,4 +1,12 @@
 import { bridgeSession } from "./session.js";
+import { expectShape, checkBase64Bound } from "./validate-resp.js";
+
+interface TextureResult {
+    base64Png: string;
+    width: number;
+    height: number;
+    spriteName: string;
+}
 
 export const mcGetItemTextureTool = {
     name: "mc_get_item_texture",
@@ -20,7 +28,11 @@ plus a one-line text caption with dimensions + sprite name.`,
             if (!resp.success) {
                 return { content: [{ type: "text" as const, text: `Error: ${resp.error}` }], isError: true };
             }
-            const r = resp.result as { base64Png: string; width: number; height: number; spriteName: string };
+            const r = expectShape<TextureResult>(resp, "getItemTexture", {
+                string: ["base64Png", "spriteName"],
+                number: ["width", "height"],
+            });
+            checkBase64Bound(r.base64Png, "getItemTexture");
             return {
                 content: [
                     { type: "image" as const, data: r.base64Png, mimeType: "image/png" },

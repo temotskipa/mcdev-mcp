@@ -1,12 +1,14 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { 
-  getMinecraftSourceDir, 
+import {
+  getMinecraftSourceDir,
   getFabricApiCacheDir,
   getVersionedIndexManifestPath,
   getVersionedPackageIndexPath,
   isVersionIndexed
 } from '../utils/paths.js';
+import { readJsonFileOrNull } from '../utils/json-file.js';
+import { getParserBackend } from '../indexer/parser.js';
 import { SearchResult, PackageIndex, ClassInfo, MethodInfo, IndexManifest } from '../utils/types.js';
 
 export class SourceStore {
@@ -33,18 +35,40 @@ export class SourceStore {
   
   private getManifest(): IndexManifest | null {
     if (!this.version) return null;
-    
+
     if (!this.manifest) {
       const manifestPath = getVersionedIndexManifestPath(this.version);
-      if (!fs.existsSync(manifestPath)) return null;
-      
-      try {
-        this.manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf-8'));
-      } catch {
-        return null;
-      }
+      // readJsonFileOrNull logs corruption to stderr with the path + parse
+      // error; missing-file is silent. Either way the legacy null return
+      // shape is preserved so callers don't change.
+      this.manifest = readJsonFileOrNull<IndexManifest>(manifestPath, `source-store/manifest:${this.version}`);
+      if (this.manifest) this.warnIfStaleIndexer(this.manifest);
     }
     return this.manifest;
+  }
+
+  // One-shot per version load. Tells a user who flipped `MCDEV_AST_PARSER=1`
+  // but never re-ran init that they're still reading the regex-parser-era
+  // index (which works, just doesn't reflect the new parser's better field /
+  // method extraction). We log instead of refusing because the data is still
+  // usable; suppressed via MCDEV_SUPPRESS_INDEXER_HINT=1.
+  private indexerHintShown: Set<string> = new Set();
+  private warnIfStaleIndexer(manifest: IndexManifest): void {
+    if (process.env.MCDEV_SUPPRESS_INDEXER_HINT === '1') return;
+    if (!this.version || this.indexerHintShown.has(this.version)) return;
+    const wrote = manifest.indexerVersion ?? 'regex';
+    const running = getParserBackend();
+    if (wrote !== running) {
+      this.indexerHintShown.add(this.version);
+      console.error(
+        `[source-store/manifest:${this.version}] Index was built with the '${wrote}' parser, ` +
+        `but the server is now running the '${running}' parser.\n` +
+        `  This is fine — existing indices still work — but the new parser ` +
+        `would produce a better index. Run \`mcdev-mcp rebuild -v ${this.version}\` ` +
+        `(or \`init -v ${this.version}\` for a full re-fetch) to refresh.\n` +
+        `  Set MCDEV_SUPPRESS_INDEXER_HINT=1 to silence this message.`
+      );
+    }
   }
   
   getMinecraftVersion(): string | null {
@@ -55,35 +79,48 @@ export class SourceStore {
     return this.getManifest()?.fabricApiVersion || null;
   }
   
-  listClasses(packagePath: string): { className: string; simpleName: string; sourcePath: string }[] {
+  /**
+   * List classes under a package. If `limit` is supplied, the search early-exits
+   * once that many matches have been collected and the second component of the
+   * tuple is `true` to indicate the caller should treat the count as a lower
+   * bound. With no limit, every match is returned and `truncated` is `false`.
+   */
+  listClasses(
+    packagePath: string,
+    limit?: number,
+  ): { results: { className: string; simpleName: string; sourcePath: string }[]; truncated: boolean } {
     const manifest = this.getManifest();
-    if (!manifest) return [];
-    
+    if (!manifest) return { results: [], truncated: false };
+
     const results: { className: string; simpleName: string; sourcePath: string }[] = [];
     const packageLower = packagePath.toLowerCase();
-    
+    const cap = limit && limit > 0 ? limit : Infinity;
+
     const namespaces: Array<'minecraft' | 'fabric'> = ['minecraft', 'fabric'];
-    
+
     for (const namespace of namespaces) {
       const packages = namespace === 'minecraft' ? manifest.packages.minecraft : manifest.packages.fabric;
-      
+
       for (const packageName of packages) {
         if (packageName.toLowerCase() === packageLower || packageName.toLowerCase().startsWith(packageLower + '.')) {
           const pkgIndex = this.getPackage(namespace, packageName);
           if (!pkgIndex) continue;
-          
+
           for (const [simpleName, classInfo] of Object.entries(pkgIndex.classes)) {
             results.push({
               className: `${packageName}.${simpleName}`,
               simpleName,
               sourcePath: this.resolveSourcePath(classInfo.sourcePath, namespace),
             });
+            if (results.length >= cap) {
+              return { results, truncated: true };
+            }
           }
         }
       }
     }
-    
-    return results;
+
+    return { results, truncated: false };
   }
   
   listPackages(namespace?: 'minecraft' | 'fabric'): string[] {
@@ -97,81 +134,102 @@ export class SourceStore {
     return [...manifest.packages.minecraft, ...manifest.packages.fabric];
   }
   
+  /**
+   * Find subclasses or implementors of `className`. Optional `limit` enables
+   * early-exit once enough matches have been collected; the second component
+   * of the return tuple is `true` when the search exited early.
+   */
   findHierarchy(
     className: string,
-    direction: 'subclasses' | 'implementors'
-  ): { className: string; sourcePath: string }[] {
+    direction: 'subclasses' | 'implementors',
+    limit?: number,
+  ): { results: { className: string; sourcePath: string }[]; truncated: boolean } {
     const manifest = this.getManifest();
-    if (!manifest) return [];
-    
+    if (!manifest) return { results: [], truncated: false };
+
     const results: { className: string; sourcePath: string }[] = [];
-    
+    const cap = limit && limit > 0 ? limit : Infinity;
+
     const namespaces: Array<'minecraft' | 'fabric'> = ['minecraft', 'fabric'];
-    
+
     for (const namespace of namespaces) {
       const packages = namespace === 'minecraft' ? manifest.packages.minecraft : manifest.packages.fabric;
-      
+
       for (const packageName of packages) {
         const pkgIndex = this.getPackage(namespace, packageName);
         if (!pkgIndex) continue;
-        
+
         for (const [simpleName, classInfo] of Object.entries(pkgIndex.classes)) {
           const fullName = `${packageName}.${simpleName}`;
-          
+          let matched = false;
+
           if (direction === 'subclasses') {
-            if (classInfo.super === className) {
-              results.push({
-                className: fullName,
-                sourcePath: this.resolveSourcePath(classInfo.sourcePath, namespace),
-              });
-            }
+            if (classInfo.super === className) matched = true;
           } else if (direction === 'implementors') {
-            if (classInfo.interfaces && classInfo.interfaces.includes(className)) {
-              results.push({
-                className: fullName,
-                sourcePath: this.resolveSourcePath(classInfo.sourcePath, namespace),
-              });
+            if (classInfo.interfaces && classInfo.interfaces.includes(className)) matched = true;
+          }
+
+          if (matched) {
+            results.push({
+              className: fullName,
+              sourcePath: this.resolveSourcePath(classInfo.sourcePath, namespace),
+            });
+            if (results.length >= cap) {
+              return { results, truncated: true };
             }
           }
         }
       }
     }
-    
-    return results;
+
+    return { results, truncated: false };
   }
-  
-  search(query: string, type?: 'class' | 'method' | 'field'): SearchResult[] {
+
+  /**
+   * Search across the index for class/method/field hits. `limit` defaults to
+   * 50 when unset (preserves the previous hard-coded slice). Early-exits as
+   * soon as `limit` results have been collected — this avoids reading every
+   * package index from disk just to slice the first 50 off the end, which
+   * was the original behaviour.
+   */
+  search(
+    query: string,
+    type?: 'class' | 'method' | 'field',
+    limit?: number,
+  ): { results: SearchResult[]; truncated: boolean } {
     const manifest = this.getManifest();
-    if (!manifest) return [];
-    
+    if (!manifest) return { results: [], truncated: false };
+
     const results: SearchResult[] = [];
     const queryLower = query.toLowerCase();
-    
-    for (const packageName of manifest.packages.minecraft) {
-      const pkgIndex = this.getPackage('minecraft', packageName);
-      if (!pkgIndex) continue;
-      
-      this.searchInPackage(pkgIndex, packageName, queryLower, type, 'minecraft', results);
-    }
-    
-    for (const packageName of manifest.packages.fabric) {
-      const pkgIndex = this.getPackage('fabric', packageName);
-      if (!pkgIndex) continue;
-      
-      this.searchInPackage(pkgIndex, packageName, queryLower, type, 'fabric', results);
-    }
-    
-    return results.slice(0, 50);
+    const cap = limit && limit > 0 ? limit : 50;
+
+    const scan = (namespace: 'minecraft' | 'fabric'): boolean => {
+      const packages = namespace === 'minecraft' ? manifest.packages.minecraft : manifest.packages.fabric;
+      for (const packageName of packages) {
+        const pkgIndex = this.getPackage(namespace, packageName);
+        if (!pkgIndex) continue;
+        const filled = this.searchInPackage(pkgIndex, packageName, queryLower, type, namespace, results, cap);
+        if (filled) return true;
+      }
+      return false;
+    };
+
+    if (scan('minecraft')) return { results, truncated: true };
+    if (scan('fabric'))    return { results, truncated: true };
+
+    return { results, truncated: false };
   }
-  
+
   private searchInPackage(
     pkgIndex: PackageIndex,
     packageName: string,
     queryLower: string,
     type: 'class' | 'method' | 'field' | undefined,
     namespace: 'minecraft' | 'fabric',
-    results: SearchResult[]
-  ): void {
+    results: SearchResult[],
+    cap: number,
+  ): boolean {
     for (const [className, classInfo] of Object.entries(pkgIndex.classes)) {
       const fullName = `${packageName}.${className}`;
 
@@ -188,6 +246,7 @@ export class SourceStore {
             fieldCount: classInfo.fields.length,
             methodCount: classInfo.methods.length,
           });
+          if (results.length >= cap) return true;
         }
       }
 
@@ -202,6 +261,7 @@ export class SourceStore {
               sourcePath: this.resolveSourcePath(classInfo.sourcePath, namespace),
               modifiers: field.modifiers,
             });
+            if (results.length >= cap) return true;
           }
         }
       }
@@ -218,10 +278,12 @@ export class SourceStore {
               lineStart: method.lineStart,
               modifiers: method.modifiers,
             });
+            if (results.length >= cap) return true;
           }
         }
       }
     }
+    return false;
   }
   
   getClass(className: string): { info: ClassInfo; source: string; sourcePath: string } | null {
@@ -296,21 +358,18 @@ export class SourceStore {
   
   private getPackage(namespace: 'minecraft' | 'fabric', packageName: string): PackageIndex | null {
     if (!this.version) return null;
-    
+
     const cacheKey = `${namespace}:${packageName}`;
-    
+
     if (!this.packageCache.has(cacheKey)) {
       const indexPath = getVersionedPackageIndexPath(namespace, packageName, this.version);
-      if (fs.existsSync(indexPath)) {
-        try {
-          const pkg = JSON.parse(fs.readFileSync(indexPath, 'utf-8'));
-          this.packageCache.set(cacheKey, pkg);
-        } catch {
-          return null;
-        }
-      }
+      const pkg = readJsonFileOrNull<PackageIndex>(
+        indexPath,
+        `source-store/package:${this.version}/${namespace}/${packageName}`
+      );
+      if (pkg) this.packageCache.set(cacheKey, pkg);
     }
-    
+
     return this.packageCache.get(cacheKey) || null;
   }
   

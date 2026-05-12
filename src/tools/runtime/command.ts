@@ -1,4 +1,5 @@
 import { bridgeSession } from "./session.js";
+import { requireResult, safeStringify } from "./validate-resp.js";
 
 export const mcRunCommandTool = {
     name: "mc_run_command",
@@ -22,7 +23,8 @@ The leading "/" is optional.`,
             if (!resp.success) {
                 return { content: [{ type: "text" as const, text: `Error: ${resp.error}` }], isError: true };
             }
-            return { content: [{ type: "text" as const, text: JSON.stringify(resp.result, null, 2) }] };
+            const result = requireResult(resp, "runCommand");
+            return { content: [{ type: "text" as const, text: safeStringify(result) }] };
         } catch (e: unknown) {
             const msg = e instanceof Error ? e.message : String(e);
             return { content: [{ type: "text" as const, text: msg }], isError: true };

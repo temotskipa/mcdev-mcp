@@ -1,4 +1,5 @@
 import { bridgeSession } from "./session.js";
+import { requireResult, safeStringify } from "./validate-resp.js";
 
 export const mcScreenInspectTool = {
     name: "mc_screen_inspect",
@@ -33,7 +34,8 @@ only renders two icons. Adds a few KB to the response per unique item.`,
             if (!resp.success) {
                 return { content: [{ type: "text" as const, text: `Error: ${resp.error}` }], isError: true };
             }
-            return { content: [{ type: "text" as const, text: JSON.stringify(resp.result, null, 2) }] };
+            const result = requireResult(resp, "screenInspect");
+            return { content: [{ type: "text" as const, text: safeStringify(result) }] };
         } catch (e: unknown) {
             const msg = e instanceof Error ? e.message : String(e);
             return { content: [{ type: "text" as const, text: msg }], isError: true };

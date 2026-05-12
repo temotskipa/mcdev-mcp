@@ -18,6 +18,13 @@ class ScriptLogger {
     private logDir: string;
     private allLogPath: string;
     private errorsLogPath: string;
+    // Re-entry guard for rotateIfNeeded(). All ops inside it are synchronous
+    // (statSync / renameSync / unlinkSync), so within a single Node process
+    // there can't be a race in the JS sense — but this guard makes the intent
+    // explicit and protects against future async refactors. Multi-process
+    // rotation is not handled (would require an OS-level file lock); the
+    // caught ENOENT in the cleanup path is the mitigation there.
+    private rotating: boolean = false;
 
     constructor() {
         this.logDir = path.join(paths.data, 'script-logs');
@@ -142,24 +149,36 @@ class ScriptLogger {
     }
 
     /**
-     * Rotate logs if they get too large (>10MB)
+     * Rotate logs if they get too large (>10MB).
+     *
+     * Uses a re-entry guard so a future async refactor can't accidentally
+     * interleave two rotations. Multi-process rotation can still race
+     * (process A renames before process B's stat); we rely on the catch
+     * blocks here and in `cleanOldRotations` to swallow the resulting
+     * ENOENT rather than crashing.
      */
     rotateIfNeeded(): void {
-        const maxSize = 10 * 1024 * 1024; // 10MB
+        if (this.rotating) return;
+        this.rotating = true;
+        try {
+            const maxSize = 10 * 1024 * 1024; // 10MB
 
-        for (const logPath of [this.allLogPath, this.errorsLogPath]) {
-            try {
-                if (!fs.existsSync(logPath)) continue;
-                const stats = fs.statSync(logPath);
-                if (stats.size > maxSize) {
-                    const rotatedPath = logPath.replace('.jsonl', `.${Date.now()}.jsonl`);
-                    fs.renameSync(logPath, rotatedPath);
-                    // Keep only the rotated file, delete older rotations
-                    this.cleanOldRotations(logPath);
+            for (const logPath of [this.allLogPath, this.errorsLogPath]) {
+                try {
+                    if (!fs.existsSync(logPath)) continue;
+                    const stats = fs.statSync(logPath);
+                    if (stats.size > maxSize) {
+                        const rotatedPath = logPath.replace('.jsonl', `.${Date.now()}.jsonl`);
+                        fs.renameSync(logPath, rotatedPath);
+                        // Keep only the rotated file, delete older rotations
+                        this.cleanOldRotations(logPath);
+                    }
+                } catch {
+                    // Ignore rotation errors (e.g. competing rename from another process)
                 }
-            } catch {
-                // Ignore rotation errors
             }
+        } finally {
+            this.rotating = false;
         }
     }
 

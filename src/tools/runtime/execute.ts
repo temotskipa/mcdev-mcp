@@ -1,7 +1,8 @@
 import { bridgeSession } from "./session.js";
 import { scriptLogger } from "./script-logger.js";
+import { isEnvOn } from "../../utils/env.js";
 
-const scriptLogsEnabled = /^(1|true)$/i.test(process.env.MCDEV_SCRIPT_LOGS ?? '');
+const scriptLogsEnabled = isEnvOn('MCDEV_SCRIPT_LOGS');
 
 export const mcExecuteTool = {
     name: "mc_execute",
@@ -70,6 +71,16 @@ Use "return <value>" to get a value back. Use print() for debug output.`,
     handler: async (args: { code: string; timeoutMs?: number }) => {
         const startTime = Date.now();
         try {
+            // `timeoutMs` is intentionally passed to two different layers:
+            //   * payload `{ code, timeoutMs }` — bounds the script's own
+            //     execution inside the Minecraft JVM (the bridge mod uses
+            //     this to interrupt runaway Lua).
+            //   * 3rd-arg `timeoutMs` — bounds the WebSocket request from
+            //     this side (BridgeSession adds a +5s grace and then a
+            //     5-minute ceiling, see session.ts).
+            // Both are needed: dropping the payload one would let runaway
+            // scripts pin the game thread; dropping the 3rd-arg one would
+            // let the wait pile up here even after the bridge gave up.
             const resp = await bridgeSession.send("execute", { code: args.code, timeoutMs: args.timeoutMs }, args.timeoutMs);
             const duration_ms = Date.now() - startTime;
 

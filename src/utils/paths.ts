@@ -1,7 +1,6 @@
 import * as path from 'path';
 import * as fs from 'fs';
 import envPaths from 'env-paths';
-import { Config, DEFAULT_CONFIG } from './config.js';
 
 // Platform-idiomatic cache location. env-paths gives us:
 //   macOS:   ~/Library/Caches/mcdev-mcp
@@ -77,15 +76,6 @@ export function getPackageIndexPath(namespace: 'minecraft' | 'fabric', packageNa
   return path.join(baseDir, `${packageName}.json`);
 }
 
-export function getConfig(): Config {
-  return {
-    ...DEFAULT_CONFIG,
-    cacheDir: getCacheDir(),
-    indexDir: getIndexDir(),
-    toolsDir: getToolsDir(),
-  };
-}
-
 export function ensureDir(dir: string): void {
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true });
@@ -97,6 +87,11 @@ export function ensureHomeDirs(): void {
   ensureDir(getCacheDir());
   ensureDir(getIndexDir());
   ensureDir(getToolsDir());
+  // Top-level `tmp/` dir for per-version scratch space (see `getTmpDir`).
+  // Per-version subdirectories are still created lazily by callers via
+  // `ensureDir(getTmpDir(version))`, but the parent always exists so a caller
+  // that forgets the per-version `ensureDir` no longer ENOENTs.
+  ensureDir(path.join(getHomeDir(), 'tmp'));
   ensureDir(getMinecraftIndexPath());
   ensureDir(getFabricIndexPath());
 }

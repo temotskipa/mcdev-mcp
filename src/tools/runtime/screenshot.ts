@@ -1,4 +1,13 @@
 import { bridgeSession } from "./session.js";
+import { expectShape } from "./validate-resp.js";
+
+interface ScreenshotResult {
+    path: string;
+    width: number;
+    height: number;
+    sizeBytes: number;
+    mimeType: string;
+}
 
 export const mcScreenshotTool = {
     name: "mc_screenshot",
@@ -39,12 +48,12 @@ path to be readable here.`,
             if (!resp.success) {
                 return { content: [{ type: "text" as const, text: `Error: ${resp.error}` }], isError: true };
             }
-            const result = resp.result as
-                | { path: string; width: number; height: number; sizeBytes: number; mimeType: string }
-                | undefined;
-            if (!result || typeof result.path !== "string") {
-                return { content: [{ type: "text" as const, text: "Screenshot returned no path." }], isError: true };
-            }
+            // expectShape guarantees every read below is type-correct; a
+            // missing `sizeBytes` no longer silently produces 'NaN KB'.
+            const result = expectShape<ScreenshotResult>(resp, "screenshot", {
+                string: ["path", "mimeType"],
+                number: ["width", "height", "sizeBytes"],
+            });
             const kb = (result.sizeBytes / 1024).toFixed(1);
             return {
                 content: [

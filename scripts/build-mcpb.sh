@@ -127,16 +127,22 @@ if [[ "${MCDEV_MCP_SKIP_SMOKE:-0}" == "1" ]]; then
 else
   echo ">> Smoke test: booting dist/mcpb-bootstrap.js serve with host Node..."
   SMOKE_LOG="$(mktemp -t mcdev-mcp-smoke.XXXXXX)"
+  SMOKE_STDERR="$(mktemp -t mcdev-mcp-smoke-stderr.XXXXXX)"
   SMOKE_PID=""
   SMOKE_OK=0
 
   # Start the bootstrap in the background. stdin=/dev/null means it gets EOF
   # immediately on the JSON-RPC stream, but `server.connect()` resolves before
   # any message is read, so we'll still see the success breadcrumb.
+  #
+  # We tee stderr into SMOKE_STDERR (still drop stdout — JSON-RPC chatter on
+  # the success path is just noise) so a top-level import crash that fires
+  # before the bootstrap's debug-log infrastructure spins up still has a
+  # diagnostic to surface in the failure branch below.
   (
     cd "$STAGE"
     MCDEV_MCP_DEBUG_LOG="$SMOKE_LOG" \
-      node dist/mcpb-bootstrap.js serve < /dev/null > /dev/null 2>&1 &
+      node dist/mcpb-bootstrap.js serve < /dev/null > /dev/null 2> "$SMOKE_STDERR" &
     echo $! > "$SMOKE_LOG.pid"
     wait $! 2>/dev/null || true
   ) &
@@ -166,18 +172,25 @@ else
   if [[ "$SMOKE_OK" != "1" ]]; then
     echo "!! FATAL: smoke test failed — bootstrap did not reach"
     echo "!!        'startServer: connected, ready for requests' within 5s."
-    echo "!! Smoke log ($SMOKE_LOG):"
+    echo "!! Debug log ($SMOKE_LOG):"
     if [[ -s "$SMOKE_LOG" ]]; then
       sed 's/^/!!   /' "$SMOKE_LOG"
     else
-      echo "!!   (empty — the bootstrap died before any breadcrumb landed;"
-      echo "!!    try re-running with MCDEV_MCP_DEBUG_LOG=/tmp/mcdev-debug.log"
-      echo "!!    and running node dist/mcpb-bootstrap.js serve by hand.)"
+      echo "!!   (empty — the bootstrap died before any breadcrumb landed.)"
     fi
-    rm -f "$SMOKE_LOG"
+    echo "!! Process stderr ($SMOKE_STDERR):"
+    if [[ -s "$SMOKE_STDERR" ]]; then
+      sed 's/^/!!   /' "$SMOKE_STDERR"
+    else
+      echo "!!   (empty — process exited cleanly without writing stderr.)"
+    fi
+    echo "!! To reproduce by hand:"
+    echo "!!   cd $STAGE"
+    echo "!!   MCDEV_MCP_DEBUG_LOG=/tmp/mcdev-debug.log node dist/mcpb-bootstrap.js serve"
+    rm -f "$SMOKE_LOG" "$SMOKE_STDERR"
     exit 1
   fi
-  rm -f "$SMOKE_LOG"
+  rm -f "$SMOKE_LOG" "$SMOKE_STDERR"
   echo ">> Smoke test passed: bootstrap reached 'connected, ready for requests'"
 fi
 

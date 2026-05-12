@@ -18,9 +18,15 @@ An **MCP (Model Context Protocol) server** that empowers AI coding agents to wor
 
 ### Runtime Interaction (requires [DebugBridge](https://github.com/weikengchen/debugbridge) mod)
 - **Live Lua Execution** — Execute Lua scripts inside the running Minecraft JVM (`mc_execute`)
-- **Game State Snapshots** — Get player position, health, dimension, time, weather (`mc_snapshot`)
-- **Screenshots** — Capture the game window as JPEG (`mc_screenshot`)
-- **Slash Commands** — Execute in-game commands (`mc_run_command`)
+- **Game State Snapshots** — Player position, health, dimension, time, weather (`mc_snapshot`)
+- **Screenshots & Screen Inspection** — Game-window JPEG and current-GUI structure (`mc_screenshot`, `mc_screen_inspect`)
+- **World Introspection** — Nearby entities and block-entities, plus per-id details (`mc_nearby_entities`, `mc_entity_details`, `mc_nearby_blocks`, `mc_block_details`, `mc_looked_at_entity`)
+- **Visual Markers** — Outline entities or blocks for the user to spot (`mc_set_entity_glow`, `mc_set_block_glow`, `mc_clear_block_glow`)
+- **Item Texture Rendering** — Render an inventory slot, an item id, or a slot on another entity as PNG (`mc_get_item_texture`, `mc_get_item_texture_by_id`, `mc_get_entity_item_texture`)
+- **Chat History** — Recent client-side chat messages (`mc_chat_history`)
+- **Slash Commands** — Execute in-game commands (`mc_run_command`, opt-in dev tool)
+- **Script Execution Logs** — Review past `mc_execute` runs and error patterns (`mc_script_logs`, opt-in via Claude Desktop user setting)
+
 ## Quick Start
 
 > **Security note — `init` is intentionally terminal-only.** The MCP server only exposes read/query tools. Downloading and decompiling Minecraft sources must be triggered by you in the terminal; an AI agent connected to the server has no tool surface to trigger `init`, `rebuild`, `clean`, or `callgraph`.
@@ -59,11 +65,11 @@ The `serve` subcommand starts the MCP server over stdio. Your MCP client (Claude
 
 | Version Type | Example | Notes |
 |--------------|---------|-------|
-| Dev snapshots | `26.1-snapshot-10` | Already unobfuscated, no mappings needed |
-| Release (>= 1.21.11) | `1.21.11` | Uses pre-unobfuscated JAR when available |
-| Old versions | `< 1.21.11` | Not supported |
+| New scheme (`26.x` and later) | `26.1`, `26.1-snapshot-10` | Recommended. Ships pre-unobfuscated; no ProGuard mapping step. |
+| Releases `1.14` – `1.21.x` | `1.21.11`, `1.20.4`, `1.19.4` | Supported. Mojang's official ProGuard mappings are required (downloaded automatically). |
+| Older releases (`< 1.14`) | `1.13`, `1.12.2` | **Not supported** — no official mappings published. |
 
-> **Note:** Minecraft is now using a new versioning scheme (26.x). Versions before 1.21.11 are not supported.
+The validator lives in [`src/cli.ts`](src/cli.ts) (`isValidVersion`). For 1.x.x releases it requires `1.14` or later; the new `26.x+` scheme is accepted unconditionally.
 
 ### (Optional) Skip Call Graph
 
@@ -260,13 +266,207 @@ Capture the game window as a JPEG file and return its path.
 }
 ```
 
-### `mc_run_command`
+### `mc_screen_inspect`
+Snapshot the screen the player currently has open (chest UI, inventory, advancement screen, etc.) and return its structure.
+
+```json
+{
+  "includeIcons": false
+}
+```
+
+Set `includeIcons: true` to render each unique item in the screen as a small PNG and attach an icons map keyed by registry id.
+
+### `mc_chat_history`
+Get the most recent client-side chat messages — what the user has seen in chat.
+
+```json
+{
+  "limit": 50,
+  "includeJson": false
+}
+```
+
+Set `includeJson: true` to include each message's full Minecraft `Component` JSON (useful when chat-message styling matters).
+
+### `mc_nearby_entities`
+List entities (mobs, items, projectiles, players) within a radius of the player.
+
+```json
+{
+  "range": 64,
+  "limit": 100,
+  "includeIcons": false
+}
+```
+
+Returns each entity's id, type, position, and primary equipment summary. Pass the `id` to `mc_entity_details`, `mc_set_entity_glow`, or `mc_get_entity_item_texture` to drill in.
+
+### `mc_entity_details`
+Get full details for one entity by id (the `id` field returned by `mc_nearby_entities` or `mc_looked_at_entity`).
+
+```json
+{
+  "entityId": 12345
+}
+```
+
+### `mc_looked_at_entity`
+Returns the entity id the player is currently aiming at (raycast), or `null` if nothing is in the line of sight.
+
+```json
+{
+  "range": 64
+}
+```
+
+### `mc_nearby_blocks`
+List nearby block-entities (signs, chests, banners, beacons, hoppers, …). Plain world blocks aren't included — use `mc_block_details` for any specific position.
+
+```json
+{
+  "range": 16,
+  "limit": 100
+}
+```
+
+### `mc_block_details`
+Get details for the block-entity at `(x, y, z)`: sign lines, chest contents, banner patterns, etc.
+
+```json
+{
+  "x": 100,
+  "y": 64,
+  "z": 200
+}
+```
+
+### `mc_set_entity_glow`
+Outline an entity with the team-colour glow so the user can spot it. Pass `glow: false` to remove.
+
+```json
+{
+  "entityId": 12345,
+  "glow": true
+}
+```
+
+### `mc_set_block_glow`
+Highlight a block in the world (yellow outline on 1.19, vanilla glow on newer versions). Pass `glow: false` to remove just this position.
+
+```json
+{
+  "x": 100,
+  "y": 64,
+  "z": 200,
+  "glow": true
+}
+```
+
+### `mc_clear_block_glow`
+Clear all block highlights set via `mc_set_block_glow` in one call.
+
+```json
+{}
+```
+
+### `mc_get_item_texture`
+Render the item in the player's inventory slot N as a PNG attached as MCP image content.
+
+```json
+{
+  "slot": 0
+}
+```
+
+| Slot range | Meaning |
+|---|---|
+| 0–35 | Main inventory (0–8 are the hotbar) |
+| 36–39 | Armor (boots, leggings, chestplate, helmet) |
+| 40 | Off-hand |
+
+### `mc_get_item_texture_by_id`
+Render the default texture for a registry id (e.g. `minecraft:diamond`) without needing the item to be in any inventory.
+
+```json
+{
+  "itemId": "minecraft:diamond"
+}
+```
+
+### `mc_get_entity_item_texture`
+Render an item carried by another entity. `slot` is `"mainhand"`, `"offhand"`, or one of the armor slot names.
+
+```json
+{
+  "entityId": 12345,
+  "slot": "mainhand"
+}
+```
+
+### `mc_run_command` *(opt-in dev tool)*
 Execute a Minecraft slash command.
 
 ```json
 {
   "command": "/give @s minecraft:diamond 64"
 }
+```
+
+> **Disabled by default.** Both this server (`MCDEV_RUN_COMMAND=1`) and the DebugBridge mod (`runCommandEnabled` in `BridgeConfig`) must opt-in. See [Opt-in / dev tools](#opt-in--dev-tools) below.
+
+### `mc_script_logs` *(opt-in dev tool)*
+Review the file-backed log of past `mc_execute` runs (timestamp, code, result, error, duration), summarise common error patterns, or print the log paths.
+
+```json
+{
+  "mode": "errors",
+  "limit": 20
+}
+```
+
+| Mode | Returns |
+|---|---|
+| `"errors"` | The most recent failed `mc_execute` calls |
+| `"stats"` | Aggregate error patterns (which messages recur) |
+| `"paths"` | Where the log files live on disk |
+
+> **Disabled by default.** Enabled by `MCDEV_SCRIPT_LOGS=1`. The Claude Desktop MCPB exposes this as a user-facing toggle ("Log script executions") — see [Opt-in / dev tools](#opt-in--dev-tools).
+
+## Opt-in / dev tools
+
+Two runtime tools are gated behind environment variables so the default server only exposes the read-only and "safe" wrappers. The bridge mod has its own matching flags, so flipping just the server-side env on does nothing if the mod hasn't also opted in.
+
+| Tool | Env var | Bridge-side flag | Surface in Claude Desktop |
+|---|---|---|---|
+| `mc_run_command` | `MCDEV_RUN_COMMAND=1` (or `true`) | `runCommandEnabled` | Not exposed via the MCPB user_config — set the env explicitly when launching the server. |
+| `mc_script_logs` | `MCDEV_SCRIPT_LOGS=1` (or `true`) | (server-side only) | "Log script executions" toggle in the MCPB extension settings (also enables file logging of every `mc_execute`). |
+
+When the env var is unset (or set to `0`/`false`), the tool simply isn't registered and won't appear in the MCP client's tool list.
+
+### AST-based Java indexer (preview)
+
+Set `MCDEV_AST_PARSER=1` before `init` or `rebuild` to use the new [java-parser](https://www.npmjs.com/package/java-parser)-backed indexer. Compared to the default regex parser it:
+
+- Correctly handles multi-line annotations, nested generics, records, sealed types, pattern matching, and lambda-initialised fields (the regex parser silently miscounts on each of these).
+- Picks up interface constants and `default`/`static` interface methods that the regex parser misses.
+- Does not fold nested-class members into the outer type's lists.
+
+In a head-to-head on Minecraft 1.21.11 source (500-file sample), the AST parser found **~2× more fields** and **~33% fewer (correctly attributed) methods** than the regex parser. It is ~4.5× slower per file, so a full re-index runs in roughly **75 seconds** instead of 17 — acceptable inside an `init` that already takes 2–5 minutes for download + decompile.
+
+```bash
+MCDEV_AST_PARSER=1 npx mcdev-mcp init -v 1.21.11
+# or, to re-index an already-decompiled version:
+MCDEV_AST_PARSER=1 npx mcdev-mcp rebuild -v 1.21.11 --with-callgraph
+```
+
+The MCP server stamps `manifest.indexerVersion` so it can tell which parser produced the existing index. When you flip the flag but haven't rebuilt yet, the server prints a one-time hint per version on the next tool call:
+
+```
+[source-store/manifest:1.21.11] Index was built with the 'regex' parser, but the server is now running the 'ast' parser.
+  This is fine — existing indices still work — but the new parser would produce a better index.
+  Run `mcdev-mcp rebuild -v 1.21.11` (or `init -v 1.21.11` for a full re-fetch) to refresh.
+  Set MCDEV_SUPPRESS_INDEXER_HINT=1 to silence this message.
 ```
 
 ## Requirements
@@ -287,10 +487,13 @@ Invoke via `npx mcdev-mcp <command>` (or `node dist/cli.js <command>` from a sou
 |---------|-------------|
 | `serve` | Start the MCP server over stdio (launched by MCP clients — not run by humans) |
 | `init -v <version>` | Download, decompile, index Minecraft sources, and generate callgraph |
+| `init -v <version> --skip-callgraph` | Same as above but skip callgraph generation |
 | `callgraph -v <version>` | Generate call graph for `mc_find_refs` |
-| `status` | Show all initialized versions |
-| `rebuild -v <version>` | Rebuild the symbol index from cached sources |
-| `clean --all` | Clean all cached data |
+| `status` | Show all initialized versions and what stage each one is at |
+| `rebuild -v <version>` | Rebuild the symbol index from already-cached sources |
+| `rebuild -v <version> --with-callgraph` | Also regenerate the callgraph in the same run |
+| `clean -v <version> --all` | Remove cached data for one version |
+| `clean --all` | Remove all cached data across versions |
 
 ### Re-indexing
 
@@ -330,28 +533,36 @@ mcdev-mcp/
                               │
          ┌────────────────────┴────────────────────┐
          ▼                                          ▼
-┌─────────────────────────────┐    ┌─────────────────────────────┐
-│      Static Tools           │    │       Runtime Tools          │
-│  ┌────────────────────────┐ │    │  ┌────────────────────────┐ │
-│  │ mc_search              │ │    │  │ mc_execute             │ │
-│  │ mc_get_class/method    │ │    │  │ mc_snapshot            │ │
-│  │ mc_find_refs           │ │    │  │ mc_screenshot          │ │
-│  │ mc_find_hierarchy      │ │    │  │ mc_run_command         │ │
-│  └───────────┬────────────┘ │    │  └───────────┬────────────┘ │
-│              │              │    │              │              │
-│       ┌──────┴──────┐       │    │      ┌───────┴───────┐      │
-│       ▼             ▼       │    │      ▼               │      │
-│  ┌─────────┐  ┌──────────┐  │    │  ┌─────────────┐     │      │
-│  │  Index  │  │Callgraph │  │    │  │  WebSocket  │     │      │
-│  │ (JSON)  │  │ (SQLite) │  │    │  │ to Minecraft│     │      │
-│  └────┬────┘  └────┬─────┘  │    │  └──────┬──────┘     │      │
-└───────┼────────────┼────────┘    └─────────┼────────────┘
-        ▼            ▼                       ▼
-┌───────────────────────────┐      ┌─────────────────────────────┐
-│ Decompiled Src (local)    │      │ DebugBridge Mod (in game)   │
-│ (Vineflower)              │      │ github.com/weikengchen/     │
-└───────────────────────────┘      │ debugbridge                 │
-                                   └─────────────────────────────┘
+┌─────────────────────────────┐    ┌──────────────────────────────────┐
+│   Static Tools (8)          │    │   Runtime Tools (17 + 2 opt-in)  │
+│  ┌────────────────────────┐ │    │  ┌────────────────────────────┐  │
+│  │ mc_version             │ │    │  │ mc_connect / mc_execute    │  │
+│  │ mc_search              │ │    │  │ mc_snapshot / mc_screenshot│  │
+│  │ mc_get_class / method  │ │    │  │ mc_screen_inspect          │  │
+│  │ mc_list_classes / pkgs │ │    │  │ mc_chat_history            │  │
+│  │ mc_find_hierarchy      │ │    │  │ mc_nearby_entities + det.  │  │
+│  │ mc_find_refs           │ │    │  │ mc_nearby_blocks   + det.  │  │
+│  └───────────┬────────────┘ │    │  │ mc_looked_at_entity        │  │
+│              │              │    │  │ mc_set_*_glow / mc_clear_* │  │
+│       ┌──────┴──────┐       │    │  │ mc_get_item_texture (×3)   │  │
+│       ▼             ▼       │    │  │ ─── opt-in (env-gated) ─── │  │
+│  ┌─────────┐  ┌──────────┐  │    │  │ mc_run_command             │  │
+│  │  Index  │  │Callgraph │  │    │  │ mc_script_logs             │  │
+│  │ (JSON)  │  │ (SQLite) │  │    │  └─────────────┬──────────────┘  │
+│  └────┬────┘  └────┬─────┘  │    │                │                 │
+└───────┼────────────┼────────┘    │         ┌──────┴──────┐          │
+        ▼            ▼              │         ▼             │          │
+┌────────────────────────────┐      │   ┌──────────────┐    │          │
+│ Decompiled Src (local)     │      │   │  WebSocket   │    │          │
+│ (Vineflower)               │      │   │ to Minecraft │    │          │
+└────────────────────────────┘      │   └──────┬───────┘    │          │
+                                    └──────────┼────────────┘
+                                               ▼
+                                    ┌──────────────────────────┐
+                                    │ DebugBridge Mod (in game)│
+                                    │ github.com/weikengchen/  │
+                                    │ debugbridge              │
+                                    └──────────────────────────┘
 ```
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for detailed design documentation.

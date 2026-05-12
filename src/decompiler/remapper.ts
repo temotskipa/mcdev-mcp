@@ -44,7 +44,19 @@ export async function ensureTinyRemapper(progressCb?: ProgressCallback): Promise
 export function convertProguardToTiny(proguardPath: string, tinyPath: string): void {
   if (fs.existsSync(tinyPath)) return;
 
-  const proguardContent = fs.readFileSync(proguardPath, 'utf-8');
+  let proguardContent: string;
+  try {
+    proguardContent = fs.readFileSync(proguardPath, 'utf-8');
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    throw new Error(
+      `Failed to read ProGuard mappings from ${proguardPath}: ${msg}\n` +
+      `  This file is downloaded by the init step. If it's missing, re-run\n` +
+      `  'mcdev-mcp init -v <version>' or check that the version actually has\n` +
+      `  client_mappings published in Mojang's manifest.`
+    );
+  }
+
   const lines = proguardContent.split('\n');
 
   // Maps: obfuscated class name -> { obf, named }
@@ -122,7 +134,12 @@ export function convertProguardToTiny(proguardPath: string, tinyPath: string): v
   }
 
   ensureDir(path.dirname(tinyPath));
-  fs.writeFileSync(tinyPath, tinyLines.join('\n'));
+  try {
+    fs.writeFileSync(tinyPath, tinyLines.join('\n'));
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    throw new Error(`Failed to write Tiny mappings to ${tinyPath}: ${msg}`);
+  }
 }
 
 function convertTypeToDesc(type: string): string {
@@ -145,6 +162,31 @@ function convertTypeToDesc(type: string): string {
   return `L${type.replace(/\./g, '/')};`;
 }
 
+// Bound the captured stdout/stderr to the last N bytes so a verbose Tiny
+// Remapper run on a large jar can't OOM Node by accumulating into a string.
+const REMAPPER_TAIL_BYTES = 256 * 1024;
+
+function appendTail(buf: string, chunk: string, max: number): string {
+  const next = buf + chunk;
+  return next.length > max ? next.slice(next.length - max) : next;
+}
+
+/**
+ * JVM heap size for Tiny Remapper. Defaults to `-Xmx4g`, which fits in most
+ * modern dev machines but is too aggressive for <4 GB systems and too small
+ * for some snapshots. Override with `MCDEV_MCP_REMAPPER_HEAP=8g` (or `2g`,
+ * `512m`, etc.).
+ */
+function remapperHeapFlag(): string {
+  const raw = (process.env.MCDEV_MCP_REMAPPER_HEAP ?? '').trim();
+  if (!raw) return '-Xmx4g';
+  // Loose validation: accept `<digits>[kKmMgG]?`, anything else falls back
+  // to the default rather than passing garbage to the JVM.
+  if (/^\d+[kKmMgG]?$/.test(raw)) return `-Xmx${raw}`;
+  console.error(`[mcdev-mcp] Ignoring invalid MCDEV_MCP_REMAPPER_HEAP=${raw}; using default -Xmx4g.`);
+  return '-Xmx4g';
+}
+
 export async function remapJar(
   inputJar: string,
   tinyMappings: string,
@@ -163,7 +205,7 @@ export async function remapJar(
 
   return new Promise((resolve, reject) => {
     const args = [
-      '-Xmx4g',
+      remapperHeapFlag(),
       '-jar', trPath,
       inputJar,
       outputJar,
@@ -179,15 +221,16 @@ export async function remapJar(
 
     let stderr = '';
     let stdout = '';
-    proc.stdout.on('data', (data: Buffer) => { stdout += data.toString(); });
-    proc.stderr.on('data', (data: Buffer) => { stderr += data.toString(); });
+    proc.stdout.on('data', (data: Buffer) => { stdout = appendTail(stdout, data.toString(), REMAPPER_TAIL_BYTES); });
+    proc.stderr.on('data', (data: Buffer) => { stderr = appendTail(stderr, data.toString(), REMAPPER_TAIL_BYTES); });
 
     proc.on('close', (code) => {
       if (code === 0) {
         if (progressCb) progressCb('remap', 100, 'Jar remapped successfully.');
         resolve(outputJar);
       } else {
-        reject(new Error(`Tiny Remapper failed with code ${code}: ${stderr || stdout}`));
+        const tail = (stderr.trim() || stdout.trim() || '(no output captured)');
+        reject(new Error(`Tiny Remapper failed with code ${code}. Last output:\n${tail}`));
       }
     });
 

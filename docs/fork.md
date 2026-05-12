@@ -1,79 +1,33 @@
-# DecompilerMC Fork Plan
+# DecompilerMC Fork Plan — ABANDONED
 
-## Overview
+> **Status:** Not implemented. This document is retained as design history; the actual decompiler in mcdev-mcp is **Vineflower** (no Python, no DecompilerMC fork). Read [VF.md](VF.md) for the shipped flow.
 
-We maintain a modified version of DecompilerMC's `main.py` in `lib/DecompilerMC-main.py` that supports:
-1. **Dev snapshots** — Versions without Proguard mappings (e.g., `26.1-snapshot-10`)
-2. **Version-aware paths** — Output to versioned directories
+## What this plan proposed
 
-We still use the original DecompilerMC repo for:
-- `lib/cfr-0.152.jar` — CFR decompiler
-- `lib/fernflower.jar` — FernFlower decompiler  
-- `lib/SpecialSource-1.11.4.jar` — Jar remapper
+An earlier design considered forking [DecompilerMC](https://github.com/hube12/DecompilerMC) and maintaining a modified `lib/DecompilerMC-main.py` that:
 
-## Target Flow
+1. Could decompile dev snapshots without Proguard mappings.
+2. Took a `--lib-dir` argument so the CFR / FernFlower / SpecialSource jars could live outside the repo.
 
-```
-src/decompiler/index.ts
-  └── cloneDecompilerMC()     → clones repo (libs only, skip if exists)
-  └── runDecompilerMC()       → python3 <our-main.py> --mcversion <version> --side client -q
-                                └── our main.py lives in mcdev-mcp/lib/DecompilerMC-main.py
-                                └── uses --lib-dir to find jars in <cache-dir>/DecompilerMC/lib/
-                                └── outputs to <cache-dir>/DecompilerMC/src/<version>/client/
-```
+The plan called for `cloneDecompilerMC()`, `runDecompilerMC()`, and `hasDecompilerMCLibs()` helpers in `src/decompiler/index.ts`, plus an in-tree `lib/DecompilerMC-main.py`.
 
-## ✅ Phase 1: Modify lib/DecompilerMC-main.py (DONE)
+## Why it was abandoned
 
-Changes made:
-- Added `--lib-dir` argument for specifying jar library location
-- Added `--no-remap` flag to explicitly skip remapping
-- Modified `get_mappings()` to return `bool` instead of raising error
-- Modified `remap()`, `decompile_cfr()`, `decompile_fern_flower()` to accept `lib_dir` parameter
-- Updated auto-mode flow to handle both mapped and unmapped versions
+- **No Python dependency.** Vineflower is a single self-contained Java jar; mcdev-mcp can drive it directly via `java -jar` in `src/decompiler/vineflower.ts`.
+- **Fewer moving parts.** Dropping DecompilerMC removed a clone step, a Python subprocess, and three bundled jars (CFR, FernFlower, SpecialSource).
+- **Mappings handled separately.** Proguard remap is done in `src/decompiler/remapper.ts` using Tiny Remapper + the version's official Proguard mappings; dev snapshots without mappings can be decompiled directly from the unobfuscated jar.
 
-## ✅ Phase 2: Modify src/decompiler/index.ts (DONE)
+None of `cloneDecompilerMC()`, `runDecompilerMC()`, `hasDecompilerMCLibs()`, or `lib/DecompilerMC-main.py` were ever committed. `lib/` is not part of the repository (the `.gitignore` entries that mention `lib/` are leftover and tracked separately for cleanup).
 
-Changes made:
-- Added `getProjectRoot()` helper using `fileURLToPath(import.meta.url)`
-- Updated `runDecompilerMC()` to use `lib/DecompilerMC-main.py` with `--lib-dir` argument
+## Where the actual flow lives
 
-## ✅ Phase 3: Update cloneDecompilerMC() (DONE)
+| Concern | File |
+|---|---|
+| Top-level orchestration (`ensureDecompiled`, `getStatus`) | `src/decompiler/index.ts` |
+| Vineflower driver | `src/decompiler/vineflower.ts` |
+| Proguard → Tiny mapping conversion + remapping | `src/decompiler/remapper.ts` |
+| Mojang manifest + jar download (with redirect handling) | `src/decompiler/download.ts` |
+| Vineflower jar download | `src/decompiler/tools.ts` |
+| Cache layout (versioned paths) | `src/utils/paths.ts` |
 
-Changed `checkDecompilerMC()` to `hasDecompilerMCLibs()` that checks for required jar files:
-- `cfr-0.152.jar`
-- `fernflower.jar`
-- `SpecialSource-1.11.4.jar`
-
-This avoids re-cloning the repo if libs already exist.
-
-## Phase 4: Testing
-
-### 4.1 Test with regular version (has mappings)
-
-```bash
-node dist/cli.js init -v 1.21.1
-```
-
-Expected:
-- Downloads mappings
-- Remaps jar
-- Decompiles
-
-### 4.2 Test with dev snapshot (no mappings)
-
-```bash
-node dist/cli.js init -v 26.1-snapshot-10
-```
-
-Expected:
-- Skips mappings (detects none available)
-- Skips remapping
-- Decompiles unobfuscated jar directly
-
-## Files to Modify
-
-| File | Status |
-|------|--------|
-| `lib/DecompilerMC-main.py` | ✅ Done |
-| `src/decompiler/index.ts` | ✅ Done |
-| `src/utils/paths.ts` | ✅ N/A (used `getProjectRoot()` in index.ts instead) |
+For the current end-to-end design, see [VF.md](VF.md).

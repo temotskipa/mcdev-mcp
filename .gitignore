@@ -23,19 +23,14 @@ npm-debug.log*
 # Test
 coverage/
 
-# Cache (user-specific, legacy location — now lives in the OS cache dir via env-paths)
-.mcdev-mcp/
+# Ruff (Python linter cache; matches the entry in .mcpbignore)
+.ruff_cache/
 
-# Decompiler artifacts (should live in the OS cache dir, see src/utils/paths.ts)
-lib/__pycache__/
-lib/mappings/
-lib/src/
-lib/tmp/
-lib/versions/
+# Dream audit workspace (intermediate state from .claude/skills/dream)
+# Findings + filtered + manifest are intermediate; review.md / log.md are the
+# user-facing audit trail and stay outside git too — easier than splitting.
+.dream/
 
 # MCPB build output (produced by scripts/build-mcpb.sh and CI release workflow)
 dist-mcpb/
-*.mcpb
-
-# MCPB bundles
 *.mcpb

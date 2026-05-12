@@ -1,6 +1,7 @@
 import { versionManager } from '../../version-manager.js';
 import { sourceStore } from '../../storage/index.js';
 import { hasCallgraphDb } from '../../callgraph/index.js';
+import { isDecompiled } from '../../decompiler/index.js';
 import {
   getAvailableMinecraftVersions,
   getIndexedVersions,
@@ -105,9 +106,15 @@ Example:
         };
       }
 
+      // `decompiled` was previously hardcoded to `true` because the version
+      // appeared in `getAvailableMinecraftVersions()` (which only checks that
+      // the source directory exists). That misled the agent when an init was
+      // interrupted between download and decompile — the dir existed but had
+      // no `.java` files. `isDecompiled()` checks for a non-trivial source
+      // tree (>100 .java files), which is what callers actually care about.
       const versions = cachedVersions.map(v => ({
         version: v,
-        decompiled: true,
+        decompiled: isDecompiled(v),
         indexed: indexedVersions.includes(v),
         callgraph: hasCallgraphDb(v),
       }));

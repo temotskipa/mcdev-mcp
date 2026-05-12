@@ -38,13 +38,12 @@ import { mcGetItemTextureByIdTool } from './get-item-texture-by-id.js';
 import { mcChatHistoryTool } from './chat-history.js';
 import { mcScreenInspectTool } from './screen-inspect.js';
 
-const isOn = (v: string | undefined) => /^(1|true)$/i.test(v ?? '');
-
 // Dev-only tools (default off). The bridge mirrors these gates with its own
 // BridgeConfig flags (runCommandEnabled), so even if
 // these envs are flipped on, calls only succeed when both sides agree.
-const scriptLogsEnabled = isOn(process.env.MCDEV_SCRIPT_LOGS);
-const runCommandEnabled = isOn(process.env.MCDEV_RUN_COMMAND);
+import { isEnvOn } from '../../utils/env.js';
+const scriptLogsEnabled = isEnvOn('MCDEV_SCRIPT_LOGS');
+const runCommandEnabled = isEnvOn('MCDEV_RUN_COMMAND');
 
 export const runtimeTools = [
     mcConnectTool,

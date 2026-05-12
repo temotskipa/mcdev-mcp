@@ -63,7 +63,21 @@
     { "name": "mc_execute", "description": "Execute Lua code inside the running Minecraft JVM" },
     { "name": "mc_snapshot", "description": "Get a structured snapshot of current game state" },
     { "name": "mc_screenshot", "description": "Capture the Minecraft client framebuffer as a JPEG file" },
-    { "name": "mc_run_command", "description": "Execute a Minecraft slash command" }
+    { "name": "mc_screen_inspect", "description": "Snapshot the current GUI screen (chest, inventory, etc.) and its structure" },
+    { "name": "mc_chat_history", "description": "Get recent client-side chat messages" },
+    { "name": "mc_nearby_entities", "description": "List entities (mobs, items, projectiles, players) within range of the player" },
+    { "name": "mc_entity_details", "description": "Get full details for one entity by id" },
+    { "name": "mc_looked_at_entity", "description": "Returns the entity id the player is currently aiming at, or null" },
+    { "name": "mc_nearby_blocks", "description": "List nearby block-entities (signs, chests, banners, beacons, hoppers, ...)" },
+    { "name": "mc_block_details", "description": "Get details for the block-entity at (x, y, z)" },
+    { "name": "mc_set_entity_glow", "description": "Outline an entity with the team-colour glow so the user can spot it" },
+    { "name": "mc_set_block_glow", "description": "Highlight a block in the world (yellow/glow outline)" },
+    { "name": "mc_clear_block_glow", "description": "Clear all block highlights set via mc_set_block_glow" },
+    { "name": "mc_get_item_texture", "description": "Render the item in inventory slot N as a PNG" },
+    { "name": "mc_get_item_texture_by_id", "description": "Render the default texture for a registry id (e.g. minecraft:diamond) as a PNG" },
+    { "name": "mc_get_entity_item_texture", "description": "Render an item carried by another entity (mainhand, offhand, armor slot) as a PNG" },
+    { "name": "mc_run_command", "description": "Execute a Minecraft slash command (opt-in dev tool, requires MCDEV_RUN_COMMAND=1 and bridge-side opt-in)" },
+    { "name": "mc_script_logs", "description": "Review past mc_execute runs and error patterns (opt-in via the 'Log script executions' user setting)" }
   ],
   "compatibility": {
     "platforms": ["darwin", "win32", "linux"],

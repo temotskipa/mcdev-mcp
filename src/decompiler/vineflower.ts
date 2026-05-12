@@ -2,6 +2,15 @@ import { spawn } from 'child_process';
 import type { ProgressCallback } from './tools.js';
 import { ensureDir } from '../utils/paths.js';
 
+// Tail size for Vineflower stdout/stderr. The decompiler can chatter on huge
+// jars; keep enough text to debug a failure without unbounded memory growth.
+const TAIL_BYTES = 64 * 1024;
+
+function appendTail(buf: string, chunk: string): string {
+  const next = buf + chunk;
+  return next.length > TAIL_BYTES ? next.slice(next.length - TAIL_BYTES) : next;
+}
+
 export async function decompile(
   vineflowerJar: string,
   inputJar: string,
@@ -26,16 +35,25 @@ export async function decompile(
       outputDir
     ];
 
+    // Capture stdout / stderr instead of discarding them. Previously this used
+    // `'ignore'` for both, which made Vineflower failures undebuggable from
+    // logs — `Vineflower failed (exit code 1)` was the only signal.
     const proc = spawn('java', args, {
-      stdio: ['inherit', 'ignore', 'ignore'],
+      stdio: ['inherit', 'pipe', 'pipe'],
     });
+
+    let stdout = '';
+    let stderr = '';
+    proc.stdout?.on('data', (data: Buffer) => { stdout = appendTail(stdout, data.toString()); });
+    proc.stderr?.on('data', (data: Buffer) => { stderr = appendTail(stderr, data.toString()); });
 
     proc.on('close', (code) => {
       if (code === 0) {
         if (progressCb) progressCb('decompile', 100, 'Decompilation complete.');
         resolve();
       } else {
-        reject(new Error(`Vineflower failed (exit code ${code})`));
+        const tail = (stderr.trim() || stdout.trim() || '(no output captured)').slice(-TAIL_BYTES);
+        reject(new Error(`Vineflower failed (exit code ${code}). Last output:\n${tail}`));
       }
     });
 

@@ -1,6 +1,8 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { ClassInfo, FieldInfo, MethodInfo, ClassKind } from '../utils/types.js';
+import { isEnvOn } from '../utils/env.js';
+import { parseJavaFileAst, parseJavaContentAst } from './parser-ast.js';
 
 export interface ParsedClass {
   packageName: string;
@@ -10,9 +12,27 @@ export interface ParsedClass {
   rawContent: string;
 }
 
+/**
+ * Choice of parser backend. The regex parser (`'regex'`) is the legacy
+ * default and is brittle around modern Java (multi-line annotations, nested
+ * generics, records, lambda-initialised fields, `}`-bearing string literals
+ * — see .dream/review.md). The AST parser (`'ast'`) is `java-parser`-backed
+ * (Chevrotain CST) and handles all of those.
+ *
+ * Toggle with `MCDEV_AST_PARSER=1` (or `true`). One release of mutual
+ * coexistence is intentional: it lets users compare index quality against
+ * the regex baseline before we flip the default.
+ */
+export type ParserBackend = 'regex' | 'ast';
+
+export function getParserBackend(): ParserBackend {
+  return isEnvOn('MCDEV_AST_PARSER') ? 'ast' : 'regex';
+}
+
 export function parseJavaFile(filePath: string): ParsedClass | null {
+  if (getParserBackend() === 'ast') return parseJavaFileAst(filePath);
   const content = fs.readFileSync(filePath, 'utf-8');
-  return parseJavaContent(content, filePath);
+  return parseJavaContentRegex(content, filePath);
 }
 
 function extractDeclarationBlock(content: string): string | null {
@@ -60,6 +80,11 @@ function parseDeclaration(block: string): {
 }
 
 export function parseJavaContent(content: string, filePath: string): ParsedClass | null {
+  if (getParserBackend() === 'ast') return parseJavaContentAst(content, filePath);
+  return parseJavaContentRegex(content, filePath);
+}
+
+function parseJavaContentRegex(content: string, filePath: string): ParsedClass | null {
   const lines = content.split('\n');
 
   const packageName = extractPackage(content);

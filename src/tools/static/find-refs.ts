@@ -1,10 +1,18 @@
 import { findCallers, findCallees } from '../../callgraph/query.js';
 import { hasCallgraphDb } from '../../callgraph/index.js';
-import { getEffectiveVersion } from './helpers.js';
+import {
+  getEffectiveVersion,
+  normalizeLimit,
+  formatTruncationNote,
+  limitSchema,
+  LIMIT_DEFAULTS,
+} from './helpers.js';
 
 export const mcFindRefsTool = {
   name: 'mc_find_refs',
-  description: 'Find callers (who calls this method) or callees (what this method calls) using the callgraph database. Useful for understanding code dependencies.',
+  description: `Find callers (who calls this method) or callees (what this method calls) using the callgraph database. Useful for understanding code dependencies.
+
+Results are capped (default ${LIMIT_DEFAULTS.find_refs.default}, max ${LIMIT_DEFAULTS.find_refs.max}). Pass \`limit\` to widen.`,
   inputSchema: {
     type: 'object' as const,
     properties: {
@@ -21,6 +29,7 @@ export const mcFindRefsTool = {
         enum: ['callers', 'callees'],
         description: 'callers = who calls this method, callees = what this method calls',
       },
+      limit: limitSchema('find_refs'),
       version: {
         type: 'string',
         description: 'Optional: Minecraft version to use (e.g., "1.21.1"). If not provided, uses the active version set by mc_version.',
@@ -29,7 +38,7 @@ export const mcFindRefsTool = {
     required: ['className', 'methodName', 'direction'],
   },
 
-  handler: async (args: { className: string; methodName: string; direction: 'callers' | 'callees'; version?: string }) => {
+  handler: async (args: { className: string; methodName: string; direction: 'callers' | 'callees'; limit?: number; version?: string }) => {
     const { version, error } = getEffectiveVersion(args.version);
     if (error) {
       return { content: [{ type: 'text' as const, text: error }] };
@@ -50,9 +59,22 @@ Or for full reinitialization:
       };
     }
 
-    const results = args.direction === 'callers'
-      ? await findCallers(version, args.className, args.methodName)
-      : await findCallees(version, args.className, args.methodName);
+    const { limit, capped } = normalizeLimit(args.limit, 'find_refs');
+
+    let results;
+    try {
+      results = args.direction === 'callers'
+        ? await findCallers(version, args.className, args.methodName)
+        : await findCallees(version, args.className, args.methodName);
+    } catch (e) {
+      return {
+        content: [{
+          type: 'text' as const,
+          text: `Failed to query callgraph for ${args.className}#${args.methodName} (${args.direction}): ${e instanceof Error ? e.message : String(e)}`,
+        }],
+        isError: true,
+      };
+    }
 
     if (results.length === 0) {
       return {
@@ -63,19 +85,26 @@ Or for full reinitialization:
       };
     }
 
-    const output = results
-      .slice(0, 100)
+    const truncated = results.length > limit;
+    const shown = truncated ? results.slice(0, limit) : results;
+
+    const output = shown
       .map(r => `${r.fullName}${r.lineNumber ? ` (line ${r.lineNumber})` : ''}`)
       .join('\n');
 
-    const summary = results.length > 100
-      ? `\n... and ${results.length - 100} more`
-      : '';
+    const note = formatTruncationNote({
+      shown: shown.length,
+      total: results.length,
+      truncated,
+      limit,
+      capped,
+      noun: args.direction,
+    });
 
     return {
       content: [{
         type: 'text' as const,
-        text: `Found ${results.length} ${args.direction}:\n${output}${summary}`,
+        text: `Found ${results.length} ${args.direction}:\n${output}${note}`,
       }],
     };
   },

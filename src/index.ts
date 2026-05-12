@@ -8,6 +8,7 @@ import {
   ListToolsRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
 import { allTools } from './tools/index.js';
+import { getPackageVersion } from './utils/pkg-version.js';
 
 import * as fsForDbg from 'fs';
 
@@ -35,7 +36,7 @@ export async function startServer(): Promise<void> {
   const server = new Server(
     {
       name: 'mcdev-mcp',
-      version: '1.0.0',
+      version: getPackageVersion(),
     },
     {
       capabilities: {

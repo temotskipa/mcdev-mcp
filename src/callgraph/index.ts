@@ -115,7 +115,18 @@ export async function ensureRemappedJar(version: string, progressCb?: ProgressCa
   return new Promise((resolve, reject) => {
     const proc = spawn('java', ['-Xmx2g', '-jar', specialSource, '--in-jar', clientJar, '--out-jar', remappedJar, '--srg-in', tsrgMappings, '--kill-lvt'], { stdio: 'inherit' });
     proc.on('error', (err) => reject(new Error(`SpecialSource failed: ${err.message}`)));
-    proc.on('close', (code) => code === 0 && fs.existsSync(remappedJar) ? (progressCb?.('remap', 100, 'Remapped jar created.'), resolve(remappedJar)) : reject(new Error(`SpecialSource failed: ${code}`)));
+    proc.on('close', (code) => {
+      // Treat `fs.existsSync(remappedJar)` as the source of truth: SpecialSource
+      // occasionally exits non-zero after writing a usable jar, and a zero exit
+      // with no jar on disk would be silently broken. We accept either mismatch
+      // and only fail when the jar actually didn't land.
+      if (fs.existsSync(remappedJar)) {
+        progressCb?.('remap', 100, 'Remapped jar created.');
+        resolve(remappedJar);
+      } else {
+        reject(new Error(`SpecialSource failed (exit code ${code}): no output jar at ${remappedJar}`));
+      }
+    });
   });
 }
 
@@ -189,39 +200,45 @@ export async function parseCallgraphAndCreateDb(version: string, callgraphFile: 
   let count = 0;
   const batch: any[][] = [];
 
-  // Format: seq	num	caller	callee	line	return_type	...
-  // caller format: class:method(args)
-  // callee format: (TYPE)class:method(args) where TYPE is VIR/STA/SPE
-  for (const line of lines) {
-    if (!line.trim() || line.startsWith('#')) continue;
-    const parts = line.split('\t');
-    if (parts.length < 5) continue;
+  // Wrap parsing + bulk insert in try/finally so the prepared statement is
+  // freed even if a malformed line aborts the run partway through. Otherwise
+  // sql.js leaks the statement and any partial in-memory DB on retry.
+  try {
+    // Format: seq	num	caller	callee	line	return_type	...
+    // caller format: class:method(args)
+    // callee format: (TYPE)class:method(args) where TYPE is VIR/STA/SPE
+    for (const line of lines) {
+      if (!line.trim() || line.startsWith('#')) continue;
+      const parts = line.split('\t');
+      if (parts.length < 5) continue;
 
-    const callerRaw = parts[2] || '';
-    const calleeRaw = parts[3] || '';
-    const lineNumber = parts[4] ? parseInt(parts[4], 10) : null;
+      const callerRaw = parts[2] || '';
+      const calleeRaw = parts[3] || '';
+      const lineNumber = parts[4] ? parseInt(parts[4], 10) : null;
 
-    // Parse caller: class:method(args)
-    const callerMatch = callerRaw.match(/^(.+):(.+)(\([^)]*\))$/);
-    // Parse callee: (TYPE)class:method(args)
-    const calleeMatch = calleeRaw.match(/^\([A-Z]+\)(.+):(.+)(\([^)]*\))$/);
+      // Parse caller: class:method(args)
+      const callerMatch = callerRaw.match(/^(.+):(.+)(\([^)]*\))$/);
+      // Parse callee: (TYPE)class:method(args)
+      const calleeMatch = calleeRaw.match(/^\([A-Z]+\)(.+):(.+)(\([^)]*\))$/);
 
-    if (callerMatch && calleeMatch) {
-      batch.push([
-        callerMatch[1], callerMatch[2], callerMatch[3],
-        calleeMatch[1], calleeMatch[2], calleeMatch[3],
-        lineNumber
-      ]);
-      if (batch.length >= 10000) {
-        insertMany(batch);
-        count += batch.length;
-        batch.length = 0;
-        if (progressCb && count % 100000 === 0) progressCb('index', 50, `Indexed ${count}...`);
+      if (callerMatch && calleeMatch) {
+        batch.push([
+          callerMatch[1], callerMatch[2], callerMatch[3],
+          calleeMatch[1], calleeMatch[2], calleeMatch[3],
+          lineNumber
+        ]);
+        if (batch.length >= 10000) {
+          insertMany(batch);
+          count += batch.length;
+          batch.length = 0;
+          if (progressCb && count % 100000 === 0) progressCb('index', 50, `Indexed ${count}...`);
+        }
       }
     }
+    if (batch.length > 0) { insertMany(batch); count += batch.length; }
+  } finally {
+    insert.free();
   }
-  if (batch.length > 0) { insertMany(batch); count += batch.length; }
-  insert.free();
   db.exec('PRAGMA optimize');
 
   // Serialize in-memory DB to disk. db.export() returns a Uint8Array; wrap

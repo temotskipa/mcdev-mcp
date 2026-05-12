@@ -2,12 +2,13 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { glob } from 'glob';
 import { PackageIndex, IndexManifest, ClassInfo } from '../utils/types.js';
-import { parseJavaFile, ParsedClass } from './parser.js';
-import { 
+import { parseJavaFile, ParsedClass, getParserBackend } from './parser.js';
+import {
   getVersionedIndexManifestPath,
   getVersionedPackageIndexPath,
   ensureVersionedIndexDirs
 } from '../utils/paths.js';
+import { readJsonFileOrNull } from '../utils/json-file.js';
 
 export interface BuildIndexOptions {
   minecraftSourceDir: string;
@@ -78,6 +79,7 @@ export async function buildIndex(options: BuildIndexOptions): Promise<IndexBuild
     minecraftVersion,
     fabricApiVersion: fabricApiVersion || null,
     generated: new Date().toISOString(),
+    indexerVersion: getParserBackend(),
     packages: {
       minecraft: Array.from(minecraftPackages.keys()).sort(),
       fabric: Array.from(fabricPackages.keys()).sort(),
@@ -154,14 +156,9 @@ async function writePackageIndices(
 }
 
 export function loadIndexManifest(version?: string): IndexManifest | null {
-  const manifestPath = getVersionedIndexManifestPath(version || '');
-  if (!version || !fs.existsSync(manifestPath)) return null;
-  
-  try {
-    return JSON.parse(fs.readFileSync(manifestPath, 'utf-8'));
-  } catch {
-    return null;
-  }
+  if (!version) return null;
+  const manifestPath = getVersionedIndexManifestPath(version);
+  return readJsonFileOrNull<IndexManifest>(manifestPath, `indexer/manifest:${version}`);
 }
 
 export function loadPackageIndex(
@@ -170,13 +167,9 @@ export function loadPackageIndex(
   version?: string
 ): PackageIndex | null {
   if (!version) return null;
-  
   const indexPath = getVersionedPackageIndexPath(namespace, packageName, version);
-  if (!fs.existsSync(indexPath)) return null;
-  
-  try {
-    return JSON.parse(fs.readFileSync(indexPath, 'utf-8'));
-  } catch {
-    return null;
-  }
+  return readJsonFileOrNull<PackageIndex>(
+    indexPath,
+    `indexer/package:${version}/${namespace}/${packageName}`
+  );
 }

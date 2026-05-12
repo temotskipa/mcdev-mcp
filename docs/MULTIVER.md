@@ -1,8 +1,10 @@
 # Multi-Version Minecraft Support Implementation Plan
 
+> **Status:** Implemented. Phases 1–9 are landed and in production. Phase 10 (auto-migration) was reviewed and **abandoned** — see that section for rationale. This document is retained as design history; the API Reference at the bottom reflects the **current** shipped surface.
+
 ## Overview
 
-This document outlines the implementation plan for supporting multiple Minecraft versions in mcdev-mcp. The system will allow users to work with different Minecraft versions by explicitly setting a version before using other API tools.
+This document outlines the implementation plan for supporting multiple Minecraft versions in mcdev-mcp. The system allows users to work with different Minecraft versions by explicitly setting a version before using other API tools.
 
 ## Design Decisions
 
@@ -14,7 +16,9 @@ This document outlines the implementation plan for supporting multiple Minecraft
 
 ## Architecture Changes
 
-### Current State
+> The two diagrams below capture the pre-implementation **starting** layout and the post-implementation **shipping** layout. The "shipping" layout is what the code produces today.
+
+### Before (pre-Phase 1)
 
 ```
 <cache-dir>/
@@ -29,7 +33,7 @@ This document outlines the implementation plan for supporting multiple Minecraft
         └── ...
 ```
 
-### Target State
+### After (shipped)
 
 ```
 <cache-dir>/
@@ -99,7 +103,7 @@ This document outlines the implementation plan for supporting multiple Minecraft
 - [x] Update `getManifest()` to use versioned path based on `this.version`
 - [x] Update `getPackage()` to use versioned path (reads directly from path, not via indexer)
 - [x] Update `resolveSourcePath()` to use `this.version` instead of manifest version
-- [x] Keep singleton export for now (Phase 7 will update tools to call setVersion)
+- [x] Keep singleton export — `src/storage/index.ts` exports both the `SourceStore` class and the `sourceStore` singleton. Tools call `sourceStore.setVersion(...)` after `versionManager.setVersion(...)`.
 
 ### Phase 4: Update Indexer ✅ COMPLETE
 
@@ -126,32 +130,33 @@ This document outlines the implementation plan for supporting multiple Minecraft
 - [x] Remove `DEFAULT_MC_VERSION` constant (require explicit version)
 - [x] Update `clean` command with `-v <version>` option for version-specific cleaning
 
-### Phase 6: New MCP Tools ✅ COMPLETE
+### Phase 6: New MCP Tools ✅ COMPLETE (unified into `mc_version`)
 
-**File: `src/tools/index.ts`**
+**File: `src/tools/static/version.ts`**
 
-- [x] Create `mc_set_version` tool:
-  - Checks if version is decompiled and indexed
-  - Returns error with CLI instructions if not initialized
-  - Sets version in versionManager and sourceStore
-  - Returns success with version info
+The original plan called for two separate tools (`mc_set_version`, `mc_list_versions`). During implementation these were unified into a single `mc_version` tool with an `action: 'set' | 'list'` parameter to keep the surface compact. Both behaviours are preserved:
 
-- [x] Create `mc_list_versions` tool:
-  - Scans cache directory for versions
-  - Checks decompiled, indexed, and callgraph status
-  - Returns list with all status info
-  - Shows active version if set
+- [x] `mc_version` with `action: 'set'`:
+  - Checks if version is decompiled (via `getMinecraftSourceDir(...)` existence) and indexed (via `isVersionIndexed(...)`)
+  - Returns "STOP and ask the USER to run …" instructions when not initialized
+  - Calls `versionManager.setVersion(...)` and `sourceStore.setVersion(...)`
+  - Returns success line including callgraph status (`hasCallgraphDb(...)`)
+
+- [x] `mc_version` with `action: 'list'`:
+  - Lists versions found by `getAvailableMinecraftVersions()`
+  - Cross-references against `getIndexedVersions()` and `hasCallgraphDb(version)`
+  - Reports decompiled/indexed/callgraph state per version and shows the active version when set
 
 ### Phase 7: Update Existing Tools ✅ COMPLETE
 
-**File: `src/tools/index.ts`**
+**Files: `src/tools/static/*.ts`**
 
 For each existing tool, updated handler pattern:
 
 - [x] Update `mc_search` tool:
   - Added optional `version` parameter to inputSchema
   - Uses `getEffectiveVersion()` helper for version resolution
-  
+
 - [x] Update `mc_get_class` tool (same pattern)
 - [x] Update `mc_get_method` tool (same pattern)
 - [x] Update `mc_list_classes` tool (same pattern)
@@ -162,42 +167,17 @@ For each existing tool, updated handler pattern:
 **Helper function added:**
 
 ```typescript
-function getEffectiveVersion(explicitVersion?: string): { version: string; error?: string }
+// src/tools/static/helpers.ts
+export function getEffectiveVersion(explicitVersion?: string): { version: string; error?: string };
 ```
 
 - Removed `DEFAULT_MC_VERSION` constant
 - Removed old `ensureInitialized()` function
-- All tools now require version via `mc_set_version` or explicit `version` parameter
-    if (!isVersionDecompiled(explicitVersion)) {
-      return { 
-        version: '', 
-        error: `Version ${explicitVersion} not initialized. STOP and ask the USER to run: node dist/cli.js init -v ${explicitVersion}` 
-      };
-    }
-    if (!isVersionIndexed(explicitVersion)) {
-      return { 
-        version: '', 
-        error: `Version ${explicitVersion} not indexed. STOP and ask the USER to run: node dist/cli.js init -v ${explicitVersion}` 
-      };
-    }
-    return { version: explicitVersion };
-  }
-  
-  const activeVersion = versionManager.getVersion();
-  if (!activeVersion) {
-    return { 
-      version: '', 
-      error: 'No version set. Use mc_set_version first, or provide a version parameter. STOP and ask the USER which version they want to use.' 
-    };
-  }
-  
-  return { version: activeVersion };
-}
-```
+- All tools now resolve a version via `mc_version({action:"set"})` or an explicit `version` parameter; otherwise the helper returns a "STOP and ask the USER" error.
 
 ### Phase 8: Update Initialization Logic ✅ COMPLETE
 
-**File: `src/tools/index.ts`**
+**Files: `src/tools/static/*.ts`, `src/tools/static/helpers.ts`**
 
 - [x] Remove `DEFAULT_MC_VERSION` constant
 - [x] Remove old `ensureInitialized()` function entirely
@@ -215,64 +195,55 @@ function getEffectiveVersion(explicitVersion?: string): { version: string; error
 
 - [x] `hasCallgraphDb(version)` - already has version param ✅
 
-### Phase 10: Migration Support (Optional) - NOT STARTED
+### Phase 10: Migration Support — ABANDONED
 
-**File: `src/utils/migration.ts` (NEW)**
+This phase was scoped before Phases 1–9 shipped and is no longer needed:
 
-- [ ] Add migration function to move old global index to versioned:
-  ```typescript
-  export function migrateGlobalIndex(): void{
-    // 1. Check if global manifest.json exists
-    // 2. Read version from manifest
-    // 3. Create versioned directory
-    // 4. Move minecraft/, fabric/, manifest.json to versioned path
-    // 5. Log migration happened
-  }
-  ```
+- The old global index format only ever existed on developer machines that pre-dated Phase 1; there are no end-user installs to migrate.
+- Users on a fresh install run `mcdev-mcp init -v <version>` per version, which writes directly to the versioned layout.
+- Anyone who somehow has a stale global index can simply delete `<cache-dir>/index/manifest.json` (and the sibling `minecraft/`, `fabric/` dirs) and re-run `init`.
 
-- [ ] Call migration in `src/index.ts` on server startup (before tools are used)
-
-**Note:** This is optional - users can simply run `init -v <version>` for new versions.
+`src/utils/migration.ts` is intentionally **not** present in the repository. The `src/index.ts` startup path does not call any migration routine. If a future schema change requires migration, this section should be re-opened with a fresh design.
 
 ---
 
-## API Reference (Post-Implementation)
+## API Reference (Current Shipped Surface)
 
-### New Tools
+### `mc_version`
 
-#### `mc_set_version`
-Set the active Minecraft version for subsequent operations.
+A single tool with an `action` parameter handles both setting the active version and listing available versions. Implemented in `src/tools/static/version.ts`.
 
 **Parameters:**
+
 | Name | Type | Required | Description |
 |------|------|----------|-------------|
-| version | string | Yes | Minecraft version (e.g., "1.21.1") |
+| `action` | `"set" \| "list"` | Yes | Operation to perform |
+| `version` | string | When `action="set"` | Minecraft version (e.g., `"1.21.1"`) |
 
-**Returns:**
-- Success: `{ version, indexed: true }`
-- Error: Message telling AI to STOP and ask USER to run CLI init
+**`action: "set"`**
 
-**Example:**
+Sets the active version on both `versionManager` and `sourceStore`. Verifies the version is decompiled (`getMinecraftSourceDir(...)` exists) and indexed (`isVersionIndexed(...)`). On failure, returns a "STOP and ask the USER to run …" message with the exact CLI command.
+
 ```
 User: Set version to 1.21.1
-→ mc_set_version({ version: "1.21.1" })
-← { version: "1.21.1", indexed: true }
+→ mc_version({ action: "set", version: "1.21.1" })
+← Active version set to 1.21.1.
+  Indexed: yes
+  Callgraph: yes
 ```
 
-#### `mc_list_versions`
-List all available Minecraft versions and their status.
+**`action: "list"`**
 
-**Parameters:** None
+Returns one line per cached version with decompiled/indexed/callgraph status, and shows the active version (or a hint that none is set).
 
-**Returns:**
-```json
-{
-  "versions": [
-    { "version": "1.21.1", "decompiled": true, "indexed": true, "callgraph": true },
-    { "version": "1.20.4", "decompiled": true, "indexed": true, "callgraph": false },
-    { "version": "1.19.4", "decompiled": false, "indexed": false, "callgraph": false }
-  ]
-}
+```
+→ mc_version({ action: "list" })
+← Available Minecraft versions:
+  1.21.1: decompiled, indexed, callgraph
+  1.20.4: decompiled, indexed, no callgraph
+  1.19.4: decompiled, not indexed, no callgraph
+
+  Active version: 1.21.1
 ```
 
 ### Updated Tools (All Now Support Optional `version` Parameter)
@@ -291,28 +262,28 @@ All existing tools now accept an optional `version` parameter:
 
 **Behavior:**
 - If `version` provided → use that version (must be initialized)
-- If `version` not provided → use active version from `mc_set_version`
+- If `version` not provided → use the active version set via `mc_version({action:"set"})`
 - If neither available → return error telling AI to STOP
 
 ---
 
 ## Testing Checklist
 
-After implementation:
+The behaviours below were validated during the original implementation and are still the contract today:
 
-- [ ] `mc_list_versions` returns correct list of cached versions with callgraph status
-- [ ] `mc_set_version` succeeds for fully initialized version
-- [ ] `mc_set_version` fails with helpful error for non-initialized version
-- [ ] All tools fail with error when no version set
-- [ ] All tools work after `mc_set_version`
-- [ ] All tools accept optional `version` parameter to override
-- [ ] Switching between versions works correctly
-- [ ] Old global index is migrated on first run
-- [ ] CLI `init` command includes callgraph generation
-- [ ] CLI `init --skip-callgraph` skips callgraph generation
-- [ ] CLI `callgraph` command still works for regeneration
-- [ ] CLI `status` shows callgraph status per-version
-- [ ] CLI `rebuild` optionally rebuilds callgraph
+- [x] `mc_version` with `action: "list"` returns the cached versions with callgraph status
+- [x] `mc_version` with `action: "set"` succeeds for a fully initialized version
+- [x] `mc_version` with `action: "set"` fails with a helpful error for a non-initialized version
+- [x] All tools fail with an error when no version is set and no `version` parameter is passed
+- [x] All tools work after `mc_version({action:"set"})`
+- [x] All tools accept an optional `version` parameter to override the active version
+- [x] Switching between versions works correctly
+- [x] CLI `init` command includes callgraph generation by default
+- [x] CLI `init --skip-callgraph` skips callgraph generation
+- [x] CLI `callgraph` command still works for regeneration
+- [x] CLI `status` shows callgraph status per-version
+- [x] CLI `rebuild` optionally rebuilds callgraph (`--with-callgraph`)
+- [N/A] Old global index migration — see Phase 10 above; deliberately not implemented
 
 ---
 
@@ -322,14 +293,16 @@ After implementation:
 |------|--------|---------|
 | `src/utils/paths.ts` | Modify | Add versioned index path functions |
 | `src/version-manager.ts` | **Create** | Version state management |
-| `src/storage/source-store.ts` | Modify | Make version-aware, remove singleton |
-| `src/tools/index.ts` | Modify | Add new tools, update all handlers |
+| `src/storage/source-store.ts` | Modify | Make version-aware (still exposed via `sourceStore` singleton) |
+| `src/storage/index.ts` | Minor | Export both the `SourceStore` class and the `sourceStore` singleton |
+| `src/tools/static/version.ts` | **Create** | Unified `mc_version` tool (action: set / list) |
+| `src/tools/static/helpers.ts` | **Create** | `getEffectiveVersion()` helper used by every static tool |
+| `src/tools/static/*.ts` | Modify | All static tools accept optional `version` parameter |
 | `src/indexer/index.ts` | Modify | Use versioned paths |
 | `src/callgraph/query.ts` | Minor | Ensure version param passed correctly |
-| `src/utils/migration.ts` | **Create** | Index migration utility |
-| `src/index.ts` | Minor | Call migration on startup |
-| `src/storage/index.ts` | Minor | Export SourceStore class, not singleton |
-| `src/cli.ts` | Modify | Merge callgraph into init, add --skip-callgraph |
+| `src/cli.ts` | Modify | Merge callgraph into init, add --skip-callgraph and --with-callgraph |
+
+> Phase 10 originally proposed `src/utils/migration.ts` and a startup migration call in `src/index.ts`; both were dropped (see Phase 10 above).
 
 ---
 
@@ -338,24 +311,24 @@ After implementation:
 Standard error format for uninitialized versions:
 
 ```
-Version {version} not initialized. 
+Version {version} not initialized.
 
 STOP and ask the USER to run this command in their terminal:
-  node dist/cli.js init -v {version}
+  npx mcdev-mcp init -v {version}
 
-This will download, decompile, and index Minecraft {version} sources (including callgraph).
+This will download, decompile, and index Minecraft {version} sources.
 ```
 
-Standard error for version without callgraph (when using mc_find_refs):
+Standard error for version without callgraph (when using `mc_find_refs`):
 
 ```
 Version {version} does not have callgraph data.
 
 STOP and ask the USER to run this command in their terminal:
-  node dist/cli.js callgraph -v {version}
+  npx mcdev-mcp callgraph -v {version}
 
 Or for full reinitialization:
-  node dist/cli.js init -v {version}
+  npx mcdev-mcp init -v {version}
 ```
 
 Standard error for no version set:
@@ -363,8 +336,8 @@ Standard error for no version set:
 ```
 No Minecraft version is currently set.
 
-STOP and ask the USER which version they want to use, then call mc_set_version.
+STOP and ask the USER which version they want to use, then call mc_version with action="set".
 Or, provide a 'version' parameter in your tool call.
 
-To see available versions, use mc_list_versions.
+To see available versions, use mc_version with action="list".
 ```

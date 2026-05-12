@@ -1,6 +1,6 @@
 # Architecture Overview
 
-mcdev-mcp is an MCP (Model Context Protocol) server that provides AI coding agents with access to decompiled Minecraft source code and static analysis capabilities.
+mcdev-mcp is an MCP (Model Context Protocol) server that gives AI coding agents two complementary surfaces: **static analysis** of decompiled Minecraft source code, and **runtime interaction** with a live Minecraft client through the [DebugBridge](https://github.com/weikengchen/debugbridge) mod.
 
 ## System Architecture
 
@@ -10,49 +10,57 @@ mcdev-mcp is an MCP (Model Context Protocol) server that provides AI coding agen
 │                  Any MCP-compatible AI coding tool                   │
 └─────────────────────────────────────────────────────────────────────┘
                                    │
-                                   │ MCP Protocol (JSON-RPC)
+                                   │ MCP Protocol (JSON-RPC over stdio)
                                    ▼
 ┌─────────────────────────────────────────────────────────────────────┐
 │                         mcdev-mcp Server                             │
 │                                                                      │
-│   ┌──────────────────────────────────────────────────────────────┐  │
-│   │                      MCP Tool Layer                           │  │
-│   │  ┌───────────┐ ┌───────────┐ ┌───────────┐ ┌──────────────┐ │  │
-│   │  │ mc_search │ │mc_get_    │ │mc_get_    │ │ mc_find_refs │ │  │
-│   │  │           │ │  class    │ │  method   │ │              │ │  │
-│   │  └─────┬─────┘ └─────┬─────┘ └─────┬─────┘ └──────┬───────┘ │  │
-│   └────────┼─────────────┼─────────────┼──────────────┼─────────┘  │
-│            │             │             │              │            │
-│   ┌────────▼─────────────▼─────────────▼──────────────▼─────────┐  │
-│   │                     Storage Layer                            │  │
-│   │  ┌─────────────────┐         ┌──────────────────────────┐   │  │
-│   │  │   SourceStore   │         │   CallgraphQueries       │   │  │
-│   │  │  (source-store) │         │      (query.ts)          │   │  │
-│   │  └────────┬────────┘         └────────────┬─────────────┘   │  │
-│   └───────────┼───────────────────────────────┼─────────────────┘  │
-│               │                               │                    │
-│   ┌───────────▼───────────────────────────────▼─────────────────┐  │
-│   │                     Data Layer                               │  │
-│   │  ┌─────────────────┐         ┌──────────────────────────┐   │  │
-│   │  │  Symbol Index   │         │   Callgraph Database     │   │  │
-│   │  │    (JSON)       │         │      (SQLite)            │   │  │
-│   │  └─────────────────┘         └──────────────────────────┘   │  │
-│   └─────────────────────────────────────────────────────────────┘  │
-└─────────────────────────────────────────────────────────────────────┘
-                                   │
-                                   ▼
-┌─────────────────────────────────────────────────────────────────────┐
-│                      External Tools                                  │
-│                                                                      │
-│   ┌─────────────────────┐        ┌─────────────────────────────┐   │
-│   │    DecompilerMC     │        │     java-callgraph2         │   │
-│   │  ┌───────────────┐  │        │  ┌───────────────────────┐  │   │
-│   │  │ Download jar  │  │        │  │  Parse bytecode       │  │   │
-│   │  │ Get mappings  │──┼────────┼──│  Build call graph     │  │   │
-│   │  │ Remap & decomp│  │        │  │  Output to TXT        │  │   │
-│   │  └───────────────┘  │        │  └───────────────────────┘  │   │
-│   └─────────────────────┘        └─────────────────────────────┘   │
-└─────────────────────────────────────────────────────────────────────┘
+│   ┌──────────────────────────┐    ┌────────────────────────────┐   │
+│   │  Static Tools (8)         │    │ Runtime Tools (17 + 2 dev) │   │
+│   │  src/tools/static/        │    │ src/tools/runtime/         │   │
+│   │  ┌─────────────────────┐  │    │  ┌──────────────────────┐  │   │
+│   │  │ mc_version          │  │    │  │ mc_connect           │  │   │
+│   │  │ mc_search           │  │    │  │ mc_execute (Lua)     │  │   │
+│   │  │ mc_get_class/method │  │    │  │ mc_snapshot          │  │   │
+│   │  │ mc_list_classes/pkg │  │    │  │ mc_screenshot        │  │   │
+│   │  │ mc_find_hierarchy   │  │    │  │ mc_screen_inspect    │  │   │
+│   │  │ mc_find_refs        │  │    │  │ mc_chat_history      │  │   │
+│   │  └──────────┬──────────┘  │    │  │ mc_nearby_*  / *_det │  │   │
+│   │             │              │   │  │ mc_looked_at_entity  │  │   │
+│   │             ▼              │   │  │ mc_*_glow / clear    │  │   │
+│   │   ┌─────────────────┐      │   │  │ mc_get_item_texture* │  │   │
+│   │   │  SourceStore    │      │   │  │ ── opt-in (env) ───  │  │   │
+│   │   │ (source-store)  │      │   │  │ mc_run_command       │  │   │
+│   │   └────────┬────────┘      │   │  │ mc_script_logs       │  │   │
+│   │            │                │   │  └──────────┬───────────┘  │   │
+│   │   ┌────────▼────────┐       │   │             │              │   │
+│   │   │ CallgraphQuery  │       │   │  ┌──────────▼───────────┐  │   │
+│   │   │    (query.ts)   │       │   │  │   BridgeSession      │  │   │
+│   │   └────────┬────────┘       │   │  │   (session.ts)       │  │   │
+│   └────────────┼────────────────┘   │  └──────────┬───────────┘  │   │
+│                │                    └─────────────┼──────────────┘   │
+│   ┌────────────▼────────────┐                     │                  │
+│   │       Data Layer         │                     │                  │
+│   │  ┌──────────┐ ┌────────┐ │                     │                  │
+│   │  │ Versioned│ │Versioned│ │                    │                  │
+│   │  │ Symbol   │ │Callgraph│ │                    │                  │
+│   │  │ Index    │ │  DB     │ │                    │                  │
+│   │  │ (JSON)   │ │(SQLite/ │ │                    │                  │
+│   │  │          │ │ sql.js) │ │                    │                  │
+│   │  └──────────┘ └─────────┘ │                    │                  │
+│   └──────────────────────────┘                     │                  │
+└────────────────────────────────────────────────────┼──────────────────┘
+                                                     │
+                            ▼ Vineflower jar         ▼ ws://127.0.0.1:9876-9885
+                            ▼ java-callgraph2     ┌─────────────────────────┐
+┌──────────────────────────────────────────────┐  │ DebugBridge Mod         │
+│ External Java tools (downloaded into cache)  │  │ (running Minecraft JVM) │
+│  ┌─────────────────┐  ┌────────────────────┐ │  │ github.com/weikengchen/ │
+│  │   Vineflower    │  │  java-callgraph2   │ │  │ debugbridge             │
+│  │ Decompiler jar  │  │  + Tiny Remapper   │ │  └─────────────────────────┘
+│  │ (single jar)    │  │  (cloned, gradle)  │ │
+│  └─────────────────┘  └────────────────────┘ │
+└──────────────────────────────────────────────┘
 ```
 
 ## Components
@@ -64,29 +72,54 @@ Entry point that implements the MCP protocol. Handles:
 - Request routing to appropriate handlers
 - Auto-initialization on first tool call
 
-### 2. Tool Layer (`src/tools/index.ts`)
+### 2. Tool Layer (`src/tools/`)
 
-Implements the four MCP tools:
+Tools are split into two registries that both feed into `src/tools/index.ts`:
+
+**Static tools** (`src/tools/static/`) — analyse the decompiled sources offline:
 
 | Tool | Purpose | Data Source |
 |------|---------|-------------|
-| `mc_search` | Fuzzy search for symbols | Symbol Index (JSON) |
+| `mc_version` | Set or list the active Minecraft version | Filesystem (cache + index dirs) |
+| `mc_search` | Search classes, methods, and fields by name | Symbol Index (JSON) |
 | `mc_get_class` | Retrieve full class source | Source Files |
 | `mc_get_method` | Retrieve method with context | Source Files |
-| `mc_find_refs` | Find callers/callees | Callgraph DB (SQLite) |
+| `mc_list_classes` | List classes under a package path | Symbol Index |
+| `mc_list_packages` | List indexed packages | Symbol Index |
+| `mc_find_hierarchy` | Subclasses or interface implementors | Symbol Index |
+| `mc_find_refs` | Callers/callees via the callgraph | Callgraph DB (sql.js / SQLite) |
 
-### 3. Decompiler Integration (`src/decompiler/index.ts`)
+**Runtime tools** (`src/tools/runtime/`) — interact with a running Minecraft client over a WebSocket bridge:
 
-Manages DecompilerMC:
-- Clones repository on first run
-- Executes decompilation pipeline
-- Caches results in `<cache-dir>/cache/`
+| Group | Tools |
+|---|---|
+| Connection / execution | `mc_connect`, `mc_execute` |
+| World inspection | `mc_snapshot`, `mc_screenshot`, `mc_screen_inspect`, `mc_chat_history` |
+| Entity introspection | `mc_nearby_entities`, `mc_entity_details`, `mc_looked_at_entity` |
+| Block introspection | `mc_nearby_blocks`, `mc_block_details` |
+| Visual markers | `mc_set_entity_glow`, `mc_set_block_glow`, `mc_clear_block_glow` |
+| Item textures | `mc_get_item_texture`, `mc_get_item_texture_by_id`, `mc_get_entity_item_texture` |
+| Opt-in dev tools (env-gated) | `mc_run_command` (`MCDEV_RUN_COMMAND=1`), `mc_script_logs` (`MCDEV_SCRIPT_LOGS=1`) |
+
+The opt-in tools are skipped from the registry unless the env flag is on; the bridge mod has matching flags so flipping just one side does nothing.
+
+### 3. Decompiler Integration (`src/decompiler/`)
+
+The decompiler stack is **Vineflower** (single self-contained Java jar) plus a Tiny-Remapper-based mapping step. There is no DecompilerMC clone, no Python, and no CFR/Fernflower path.
+
+| File | Responsibility |
+|---|---|
+| `src/decompiler/index.ts` | `ensureDecompiled()` orchestration + status reporting |
+| `src/decompiler/download.ts` | Mojang manifest + jar download (with redirect handling) |
+| `src/decompiler/tools.ts` | Vineflower jar download into `<cache-dir>/tools/vineflower.jar` |
+| `src/decompiler/vineflower.ts` | `java -jar vineflower.jar` driver |
+| `src/decompiler/remapper.ts` | Proguard → Tiny mapping conversion + Tiny-Remapper run |
 
 **Pipeline:**
-1. Download official Minecraft JAR
-2. Download Mojang ProGuard mappings
-3. Remap JAR with proper names
-4. Decompile with CFR/Fernflower
+1. Download the official Minecraft client JAR (versioned, into `<cache-dir>/cache/<version>/jars/`).
+2. For 1.x.y versions: download Mojang's ProGuard mappings and remap the jar via Tiny Remapper.
+3. For 26.x+ versions: skip the mapping step — the jar is already unobfuscated.
+4. Decompile with Vineflower, output into `<cache-dir>/cache/<version>/client/`.
 
 ### 4. Symbol Indexer (`src/indexer/index.ts`)
 
@@ -95,14 +128,15 @@ Parses decompiled Java sources and builds a searchable index:
 - Records line numbers for source lookup
 - Stores per-package for efficient loading
 
-**Index Structure:**
+**Index Structure (versioned — see [MULTIVER.md](MULTIVER.md)):**
 ```
 <cache-dir>/index/
-├── manifest.json              # Metadata
-└── minecraft/
-    ├── net.minecraft.client.json
-    ├── net.minecraft.world.json
-    └── ... (423 packages)
+└── <version>/
+    ├── manifest.json              # Per-version metadata
+    └── minecraft/
+        ├── net.minecraft.client.json
+        ├── net.minecraft.world.json
+        └── ...                    # one JSON per package
 ```
 
 ### 5. Callgraph System (`src/callgraph/`)
@@ -150,14 +184,19 @@ Provides unified access to:
 init command
     │
     ├─► ensureDecompiled()
-    │       ├─► Clone DecompilerMC (if needed)
-    │       ├─► Run decompilation
+    │       ├─► Download Minecraft client jar (download.ts)
+    │       ├─► Remap with Tiny Remapper if needed (remapper.ts; 1.x.y only)
+    │       ├─► Download Vineflower jar (tools.ts; once per cache)
+    │       ├─► Run Vineflower (vineflower.ts)
     │       └─► Return source directory
     │
-    └─► buildIndex()
-            ├─► Scan all .java files
-            ├─► Parse declarations
-            └─► Write per-package JSON
+    ├─► buildIndex()
+    │       ├─► Scan all .java files
+    │       ├─► Parse declarations
+    │       └─► Write per-package JSON under index/<version>/
+    │
+    └─► ensureCallgraph()  (unless --skip-callgraph)
+            └─► see "Callgraph Generation Flow"
 ```
 
 ### Callgraph Generation Flow
@@ -223,11 +262,11 @@ mc_find_refs(className, methodName, direction)
 
 **Solution:** Patch java-callgraph2's build.gradle at runtime to use Gradle 9.3.1 and remove deprecated properties.
 
-### 5. SpecialSource for Remapping
+### 5. SpecialSource for Callgraph Remapping
 
-**Problem:** DecompilerMC deletes remapped JAR after decompilation.
+**Problem:** java-callgraph2 needs an unobfuscated jar, but for 1.x releases the only jar that survives Vineflower's pipeline is the source tree, not a remapped jar.
 
-**Solution:** Run SpecialSource directly to create persistent remapped JAR for callgraph analysis.
+**Solution:** When generating the callgraph for a 1.x release, run SpecialSource directly to produce a persistent remapped jar in the cache. The callgraph step then feeds that jar to java-callgraph2.
 
 ## Limitations
 
@@ -254,8 +293,10 @@ GLFW.glfwSetCursorPosCallback(window, (win, x, y) -> {
 
 ## Future Improvements
 
-1. **Multiple Minecraft Versions** — Support version selection
-2. **Server-Side Classes** — Include dedicated server classes
-3. **Fabric API Integration** — Index Fabric API alongside vanilla
-4. **Incremental Updates** — Only re-index changed classes
-5. **Web Interface** — Local web UI for browsing sources
+1. **Server-Side Classes** — Include dedicated server classes
+2. **Fabric API Integration** — Index Fabric API alongside vanilla
+3. **Incremental Updates** — Only re-index changed classes
+4. **AST-based Java parser** — Replace the current regex parser in `src/indexer/parser.ts` (see the project improvement plan)
+5. **Pagination on static tools** — Several static tools currently use hard-coded result limits with no `limit` parameter
+
+> Multi-version support shipped in 2026 — see [MULTIVER.md](MULTIVER.md) for the design and current state.
