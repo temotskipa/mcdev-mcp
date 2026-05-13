@@ -137,7 +137,11 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: '22.x'
+          # Trusted publishing requires npm CLI >= 11.5.1 for the OIDC
+          # handshake. Node 22 ships npm 10 and fails with a misleading
+          # 404 ("'<pkg>@<version>' is not in this registry"); Node 24
+          # ships npm 11.x.
+          node-version: '24.x'
           registry-url: 'https://registry.npmjs.org'
 
       - name: Install dependencies
