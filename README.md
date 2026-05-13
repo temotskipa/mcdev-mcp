@@ -1,6 +1,6 @@
 # mcdev-mcp
 
-[![CI](https://github.com/weikengchen/mcdev-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/weikengchen/mcdev-mcp/actions/workflows/ci.yml)
+[![CI](https://github.com/use-ai-for-mc/mcdev-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/use-ai-for-mc/mcdev-mcp/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 An **MCP (Model Context Protocol) server** that empowers AI coding agents to work effectively with Minecraft mod development. Provides both **static analysis** of decompiled source code and **runtime interaction** with a running Minecraft instance.
@@ -99,7 +99,7 @@ npx mcdev-mcp status
 ### Install from source (development)
 
 ```bash
-git clone https://github.com/weikengchen/mcdev-mcp.git
+git clone https://github.com/use-ai-for-mc/mcdev-mcp.git
 cd mcdev-mcp
 npm install
 npm run build
@@ -641,7 +641,7 @@ git tag -f "v$(node -p 'require(\"./package.json\").version')"
 git push --follow-tags
 ```
 
-That's it — the workflow at `.github/workflows/ci.yml` handles the rest. Required repository secret: **`NPM_TOKEN`** (an npm automation token with publish permission for this package; set under Settings → Secrets and variables → Actions).
+That's it — the workflow at `.github/workflows/ci.yml` handles the rest. No `NPM_TOKEN` secret is needed; the workflow publishes to npm via [**Trusted Publishing**](https://docs.npmjs.com/trusted-publishers) (OIDC). A trusted publisher must be configured on the npm side, under the package's publishing-access settings: owner `use-ai-for-mc`, repo `mcdev-mcp`, workflow `ci.yml`. Releases also ship npm provenance attestations via `npm publish --provenance`.
 
 The MCPB build is also runnable locally:
 
@@ -654,7 +654,7 @@ The bundle is universal — pure JavaScript plus [`sql.js`](https://github.com/s
 
 ### Installing the MCPB in Claude Desktop
 
-Download the bundle from the [Releases page](https://github.com/weikengchen/mcdev-mcp/releases) and double-click the `.mcpb` file. Claude Desktop will validate the manifest and offer to install it. After install, run `mcdev-mcp init -v <version>` in a terminal once to populate the cache (the extension cannot trigger `init` itself — it's deliberately terminal-only, see [Quick Start](#quick-start)).
+Download the bundle from the [Releases page](https://github.com/use-ai-for-mc/mcdev-mcp/releases) and double-click the `.mcpb` file. Claude Desktop will validate the manifest and offer to install it. After install, run `mcdev-mcp init -v <version>` in a terminal once to populate the cache (the extension cannot trigger `init` itself — it's deliberately terminal-only, see [Quick Start](#quick-start)).
 
 ## Limitations
 

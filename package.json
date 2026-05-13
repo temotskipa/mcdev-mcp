@@ -37,12 +37,12 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/weikengchen/mcdev-mcp.git"
+    "url": "git+https://github.com/use-ai-for-mc/mcdev-mcp.git"
   },
   "bugs": {
-    "url": "https://github.com/weikengchen/mcdev-mcp/issues"
+    "url": "https://github.com/use-ai-for-mc/mcdev-mcp/issues"
   },
-  "homepage": "https://github.com/weikengchen/mcdev-mcp#readme",
+  "homepage": "https://github.com/use-ai-for-mc/mcdev-mcp#readme",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0",
     "axios": "^1.16.0",

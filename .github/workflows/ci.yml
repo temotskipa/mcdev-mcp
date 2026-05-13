@@ -118,15 +118,17 @@ jobs:
           path: dist-mcpb/*.mcpb
           retention-days: 7
 
-  # Tag-driven release: publishes to npm and creates a GitHub Release
-  # with the universal MCPB bundle attached. Triggered by `git push --tags`
-  # of a `v*` tag. Requires the NPM_TOKEN secret to be set in repo settings.
+  # Tag-driven release: publishes to npm via OIDC (npm Trusted Publishing —
+  # no long-lived token, configured on npmjs.com under the package's
+  # publishing access) and creates a GitHub Release with the universal MCPB
+  # bundle attached. Triggered by `git push --tags` of a `v*` tag.
   release:
     needs: [build, lint, verify-version, mcpb]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v')
     permissions:
       contents: write   # needed by softprops/action-gh-release
+      id-token: write   # OIDC for npm Trusted Publishing + provenance
 
     steps:
       - name: Checkout repository
@@ -145,9 +147,11 @@ jobs:
         run: npm run build
 
       - name: Publish to npm
-        run: npm publish
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        # Trusted Publishing: the OIDC token minted via `id-token: write` is
+        # exchanged for a short-lived npm publish credential, scoped to this
+        # repo+workflow. No NPM_TOKEN secret needed. `--provenance` records a
+        # signed attestation that this version was built from this workflow.
+        run: npm publish --provenance
 
       - name: Download MCPB artifact
         uses: actions/download-artifact@v8

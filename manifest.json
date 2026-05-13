@@ -10,12 +10,12 @@
     "name": "weikengchen",
     "url": "https://github.com/weikengchen"
   },
-  "homepage": "https://github.com/weikengchen/mcdev-mcp",
-  "documentation": "https://github.com/weikengchen/mcdev-mcp#readme",
-  "support": "https://github.com/weikengchen/mcdev-mcp/issues",
+  "homepage": "https://github.com/use-ai-for-mc/mcdev-mcp",
+  "documentation": "https://github.com/use-ai-for-mc/mcdev-mcp#readme",
+  "support": "https://github.com/use-ai-for-mc/mcdev-mcp/issues",
   "repository": {
     "type": "git",
-    "url": "https://github.com/weikengchen/mcdev-mcp.git"
+    "url": "https://github.com/use-ai-for-mc/mcdev-mcp.git"
   },
   "license": "MIT",
   "keywords": [
