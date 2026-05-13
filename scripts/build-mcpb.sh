@@ -1,12 +1,16 @@
 #!/usr/bin/env bash
 #
-# Build the MCPB (Model Context Protocol Bundle) for the current platform.
+# Build the MCPB (Model Context Protocol Bundle). The bundle is universal:
+# the runtime is pure JavaScript plus sql.js (SQLite-as-WebAssembly), so the
+# same .mcpb works on macOS (arm64 and x86_64), Linux (x64/arm64), and
+# Windows. Earlier releases shipped one bundle per platform; consolidating
+# was always listed as a follow-up and is now realised.
 #
 # Usage:
 #   scripts/build-mcpb.sh                       # default output path
 #   scripts/build-mcpb.sh path/to/output.mcpb   # custom output path
 #
-# Output: dist-mcpb/mcdev-mcp-<version>-<platform>-<arch>.mcpb
+# Output: dist-mcpb/mcdev-mcp-<version>.mcpb
 #
 # Requires: node >= 18, npm. The @anthropic-ai/mcpb CLI is a devDependency,
 # so a fresh `npm install` in the repo root is enough to make this script work.
@@ -19,7 +23,8 @@
 # Note: we use sql.js (SQLite-as-WebAssembly), so there are no native
 # dependencies to ship. Earlier iterations pinned better-sqlite3 prebuilds to
 # a specific Electron ABI, then briefly relied on node:sqlite (Node >=22.5
-# only); both classes of failure are gone now.
+# only); both classes of failure are gone now, which is what makes the
+# universal bundle safe.
 
 set -euo pipefail
 
@@ -27,20 +32,9 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
 
-# Pull version + platform info from Node so it matches what the runtime sees.
 VERSION="$(node -p 'require("./package.json").version')"
-RAW_PLATFORM="$(node -p 'process.platform')"
-ARCH="$(node -p 'process.arch')"
 
-# Friendlier platform names than node's process.platform values.
-case "$RAW_PLATFORM" in
-  darwin) PLATFORM=macos ;;
-  win32)  PLATFORM=windows ;;
-  linux)  PLATFORM=linux ;;
-  *)      PLATFORM="$RAW_PLATFORM" ;;
-esac
-
-OUTPUT="${1:-dist-mcpb/mcdev-mcp-${VERSION}-${PLATFORM}-${ARCH}.mcpb}"
+OUTPUT="${1:-dist-mcpb/mcdev-mcp-${VERSION}.mcpb}"
 mkdir -p "$(dirname "$OUTPUT")"
 
 STAGE="$(mktemp -d)"
@@ -65,6 +59,11 @@ cp manifest.json package.json "$STAGE/"
 [[ -f LICENSE ]]     && cp LICENSE     "$STAGE/"
 [[ -f .mcpbignore ]] && cp .mcpbignore "$STAGE/"
 cp -R dist "$STAGE/dist"
+# resources/ holds markdown surfaced through the MCP resources API
+# (e.g. mcdev://guides/python-scripting). The runtime reads these files
+# from disk via src/resources/index.ts, so they have to ship with the
+# bundle alongside dist/.
+[[ -d resources ]] && cp -R resources "$STAGE/resources"
 
 echo ">> Installing production dependencies into staging dir..."
 # No native deps remain — sql.js is pure JS+WASM. This is now a

@@ -5,9 +5,12 @@ import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import {
   CallToolRequestSchema,
+  ListResourcesRequestSchema,
   ListToolsRequestSchema,
+  ReadResourceRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
 import { allTools } from './tools/index.js';
+import { readResource, resources, SERVER_INSTRUCTIONS } from './resources/index.js';
 import { getPackageVersion } from './utils/pkg-version.js';
 
 import * as fsForDbg from 'fs';
@@ -41,7 +44,9 @@ export async function startServer(): Promise<void> {
     {
       capabilities: {
         tools: {},
+        resources: {},
       },
+      instructions: SERVER_INSTRUCTIONS,
     }
   );
 
@@ -55,6 +60,34 @@ export async function startServer(): Promise<void> {
         inputSchema: tool.inputSchema,
       })),
     };
+  });
+
+  dbg('startServer: registering ListResources handler');
+  server.setRequestHandler(ListResourcesRequestSchema, async () => {
+    dbg('ListResources request received');
+    return {
+      resources: resources.map(r => ({
+        uri: r.uri,
+        name: r.name,
+        title: r.title,
+        description: r.description,
+        mimeType: r.mimeType,
+      })),
+    };
+  });
+
+  dbg('startServer: registering ReadResource handler');
+  server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
+    const { uri } = request.params;
+    dbg(`ReadResource request: ${uri}`);
+    try {
+      const { text, mimeType } = readResource(uri);
+      return { contents: [{ uri, mimeType, text }] };
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      dbg(`ReadResource ${uri} threw: ${errorMessage}`);
+      throw error;
+    }
   });
 
   dbg('startServer: registering CallTool handler');

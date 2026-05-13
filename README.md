@@ -27,6 +27,9 @@ An **MCP (Model Context Protocol) server** that empowers AI coding agents to wor
 - **Slash Commands** — Execute in-game commands (`mc_run_command`, opt-in dev tool)
 - **Script Execution Logs** — Review past `mc_execute` runs and error patterns (`mc_script_logs`, opt-in via Claude Desktop user setting)
 
+### MCP Resources
+- **`mcdev://guides/python-scripting`** — Wire-protocol reference for AI agents that want to drive DebugBridge from Python directly (bypassing the MCP tools): WebSocket framing, a minimal asyncio client, and the Lua surface you send through it. Surfaced via the standard MCP `resources/list` + `resources/read`, with a pointer in the server's `instructions` so agents know to look.
+
 ## Quick Start
 
 > **Security note — `init` is intentionally terminal-only.** The MCP server only exposes read/query tools. Downloading and decompiling Minecraft sources must be triggered by you in the terminal; an AI agent connected to the server has no tool surface to trigger `init`, `rebuild`, `clean`, or `callgraph`.
@@ -60,6 +63,10 @@ Data is stored in your OS cache directory (see [Storage location](#storage-locat
 ```
 
 The `serve` subcommand starts the MCP server over stdio. Your MCP client (Claude Desktop, Cursor, etc.) launches it automatically — you never run `serve` directly.
+
+### 3. (Optional) Install DebugBridge for live-game tools
+
+The static analysis tools (`mc_search`, `mc_get_class`, `mc_find_refs`, …) work as soon as `init` finishes. The runtime tools (`mc_execute`, `mc_snapshot`, screenshots, world introspection, item textures, glow markers, etc.) additionally require the [DebugBridge mod](https://github.com/weikengchen/debugbridge) installed in the Minecraft instance you want to drive. Without DebugBridge, those tools will just report a connection error — the static half keeps working unaffected.
 
 ### Supported Versions
 
@@ -613,17 +620,24 @@ npm run mcpb     # Build a Claude Desktop MCPB bundle for the current platform
 Releases are tag-driven. Pushing a `v*` tag triggers GitHub Actions to:
 
 1. Run the full test matrix and TypeScript checks
-2. Build platform-specific MCPB bundles on macOS, Linux, and Windows runners
+2. Build a single universal MCPB bundle on `ubuntu-latest`
 3. Publish the package to npm
-4. Create a GitHub Release with all `.mcpb` bundles attached
+4. Create a GitHub Release with the `.mcpb` attached
 
 To cut a release:
 
 ```bash
-# 1. Bump the version (creates a commit + a v<version> tag)
+# 1. Bump the version. npm version only touches package.json; mirror the same
+#    value into manifest.json by hand — the verify-version CI job hard-fails
+#    if the two disagree with the tag.
 npm version patch          # or: minor, major, 1.2.3, etc.
+$EDITOR manifest.json      # set "version" to match package.json
 
-# 2. Push the commit and the new tag
+# 2. Commit the manifest bump (npm version already committed package.json)
+git commit -am "Sync manifest.json version"
+git tag -f "v$(node -p 'require(\"./package.json\").version')"
+
+# 3. Push the commit and the tag
 git push --follow-tags
 ```
 
@@ -633,14 +647,14 @@ The MCPB build is also runnable locally:
 
 ```bash
 npm run mcpb
-# → dist-mcpb/mcdev-mcp-<version>-<platform>-<arch>.mcpb
+# → dist-mcpb/mcdev-mcp-<version>.mcpb
 ```
 
-The bundle is pure JavaScript + WebAssembly (it uses [`sql.js`](https://github.com/sql-js/sql.js), SQLite compiled to WASM, so there is no native binary to ship and no Node-version requirement beyond ≥18). Builds still run per-platform to exercise the smoke test on each OS and to stamp the platform/arch into the filename; macOS users get an arm64 build, Intel Mac support would require adding `macos-13` to the matrix.
+The bundle is universal — pure JavaScript plus [`sql.js`](https://github.com/sql-js/sql.js) (SQLite compiled to WebAssembly), no native binaries. The same `.mcpb` works on macOS (arm64 and x86_64), Linux (x64/arm64), and Windows. Node ≥ 20 is required at runtime (from `package.json` `engines`).
 
 ### Installing the MCPB in Claude Desktop
 
-Download the bundle for your platform from the [Releases page](https://github.com/weikengchen/mcdev-mcp/releases) and double-click the `.mcpb` file. Claude Desktop will validate the manifest and offer to install it. After install, run `mcdev-mcp init -v <version>` in a terminal once to populate the cache (the extension cannot trigger `init` itself — it's deliberately terminal-only, see [Quick Start](#quick-start)).
+Download the bundle from the [Releases page](https://github.com/weikengchen/mcdev-mcp/releases) and double-click the `.mcpb` file. Claude Desktop will validate the manifest and offer to install it. After install, run `mcdev-mcp init -v <version>` in a terminal once to populate the cache (the extension cannot trigger `init` itself — it's deliberately terminal-only, see [Quick Start](#quick-start)).
 
 ## Limitations
 

@@ -87,22 +87,14 @@ jobs:
   # Build the MCPB (Claude Desktop extension) bundle. Runs on tag pushes
   # only — wasted CI minutes otherwise.
   #
-  # We still build per-platform even though sql.js (WASM) has no native
-  # binary, because the bundle's filename and smoke test still encode
-  # platform/arch via process.platform/process.arch. Consolidating to a
-  # single cross-platform bundle is a follow-up; leaving it alone here
-  # keeps the release format identical to previous versions.
+  # The bundle is universal: sql.js (WASM) replaced the old native sqlite
+  # bindings, so there's no per-platform binary in the output. One run on
+  # ubuntu-latest produces a .mcpb that works on macOS (arm64/x86_64),
+  # Linux, and Windows. See scripts/build-mcpb.sh for the rationale.
   mcpb:
     needs: [build, lint, verify-version]
     if: startsWith(github.ref, 'refs/tags/v')
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: macos-latest      # darwin-arm64 (Apple Silicon)
-          - os: ubuntu-latest     # linux-x64
-          - os: windows-latest    # win32-x64
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-latest
 
     steps:
       - name: Checkout repository
@@ -115,21 +107,19 @@ jobs:
 
       - name: Install dependencies
         run: npm install --no-fund --no-audit
-        shell: bash
 
       - name: Build MCPB bundle
         run: bash scripts/build-mcpb.sh
-        shell: bash
 
       - name: Upload MCPB artifact
         uses: actions/upload-artifact@v7
         with:
-          name: mcpb-${{ matrix.os }}
+          name: mcpb
           path: dist-mcpb/*.mcpb
           retention-days: 7
 
   # Tag-driven release: publishes to npm and creates a GitHub Release
-  # with all platform MCPB bundles attached. Triggered by `git push --tags`
+  # with the universal MCPB bundle attached. Triggered by `git push --tags`
   # of a `v*` tag. Requires the NPM_TOKEN secret to be set in repo settings.
   release:
     needs: [build, lint, verify-version, mcpb]
@@ -159,12 +149,11 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
-      - name: Download MCPB artifacts
+      - name: Download MCPB artifact
         uses: actions/download-artifact@v8
         with:
+          name: mcpb
           path: dist-mcpb
-          pattern: mcpb-*
-          merge-multiple: true
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v3
