@@ -40,8 +40,7 @@ import {
   getIndexDir,
   getMinecraftCacheDir,
   getIndexedVersions,
-  isVersionIndexed,
-  getTmpDir
+  isVersionIndexed
 } from './utils/paths.js';
 import { ensureCallgraph, hasCallgraphDb, getCallgraphStats } from './callgraph/index.js';
 import { startServer } from './index.js';

@@ -53,7 +53,8 @@ export function convertProguardToTiny(proguardPath: string, tinyPath: string): v
       `Failed to read ProGuard mappings from ${proguardPath}: ${msg}\n` +
       `  This file is downloaded by the init step. If it's missing, re-run\n` +
       `  'mcdev-mcp init -v <version>' or check that the version actually has\n` +
-      `  client_mappings published in Mojang's manifest.`
+      `  client_mappings published in Mojang's manifest.`,
+      { cause: e }
     );
   }
 
@@ -88,7 +89,7 @@ export function convertProguardToTiny(proguardPath: string, tinyPath: string): v
     if (!currentClass || !currentClassObf) continue;
 
     // Field line: "    boolean isClientSide -> f"
-    const fieldMatch = line.match(/^\s+([\w.$<>\[\]]+) ([\w$]+) -> ([\w$]+)$/);
+    const fieldMatch = line.match(/^\s+([\w.$<>[\]]+) ([\w$]+) -> ([\w$]+)$/);
     if (fieldMatch) {
       const desc = convertTypeToDesc(fieldMatch[1]);
       const named = fieldMatch[2];
@@ -98,7 +99,7 @@ export function convertProguardToTiny(proguardPath: string, tinyPath: string): v
     }
 
     // Method line: "    1:1:void <init>(net.minecraft.Foo) -> <init>"
-    const methodMatch = line.match(/^\s+(?:\d+:\d+:)?([\w.$<>\[\]]+) ([\w$<>]+)\(([^)]*)\) -> ([\w$<>]+)$/);
+    const methodMatch = line.match(/^\s+(?:\d+:\d+:)?([\w.$<>[\]]+) ([\w$<>]+)\(([^)]*)\) -> ([\w$<>]+)$/);
     if (methodMatch) {
       const returnType = convertTypeToDesc(methodMatch[1]);
       const named = methodMatch[2];
@@ -138,7 +139,7 @@ export function convertProguardToTiny(proguardPath: string, tinyPath: string): v
     fs.writeFileSync(tinyPath, tinyLines.join('\n'));
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
-    throw new Error(`Failed to write Tiny mappings to ${tinyPath}: ${msg}`);
+    throw new Error(`Failed to write Tiny mappings to ${tinyPath}: ${msg}`, { cause: e });
   }
 }
 

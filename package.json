@@ -18,7 +18,7 @@
     "start": "node dist/cli.js serve",
     "dev": "tsc --watch",
     "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js",
-    "lint": "eslint src --ext .ts",
+    "lint": "eslint src",
     "typecheck": "tsc --noEmit",
     "prepublishOnly": "npm run build",
     "mcpb": "bash scripts/build-mcpb.sh"
@@ -56,14 +56,17 @@
   },
   "devDependencies": {
     "@anthropic-ai/mcpb": "^2.1.2",
+    "@eslint/js": "^10.0.1",
     "@types/jest": "^30.0.0",
     "@types/node": "^25.7.0",
     "@types/sql.js": "^1.4.11",
     "@types/unzipper": "^0.10.10",
     "@types/ws": "^8.5.0",
+    "eslint": "^10.3.0",
     "jest": "^30.4.2",
     "ts-jest": "^29.1.0",
-    "typescript": "^6.0.3"
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.59.3"
   },
   "engines": {
     "node": ">=20.0.0"

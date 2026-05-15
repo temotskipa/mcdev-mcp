@@ -1,5 +1,4 @@
 import * as fs from 'fs';
-import * as path from 'path';
 import { ClassInfo, FieldInfo, MethodInfo, ClassKind } from '../utils/types.js';
 import { isEnvOn } from '../utils/env.js';
 import { parseJavaFileAst, parseJavaContentAst } from './parser-ast.js';
@@ -125,7 +124,7 @@ function extractPackage(content: string): string {
 }
 
 function cleanTypeName(type: string): string {
-  return type.replace(/<.*>/, '').replace(/[\[\]]/g, '').replace(/\s+/g, '').trim().split('.')[0] || type;
+  return type.replace(/<.*>/, '').replace(/[[\]]/g, '').replace(/\s+/g, '').trim().split('.')[0] || type;
 }
 
 function extractFields(content: string, lines: string[]): FieldInfo[] {
@@ -153,7 +152,7 @@ function extractFields(content: string, lines: string[]): FieldInfo[] {
   return fields;
 }
 
-function extractMethods(content: string, lines: string[]): MethodInfo[] {
+function extractMethods(content: string, _lines: string[]): MethodInfo[] {
   const methods: MethodInfo[] = [];
   
   const methodRegex = /(?:@[\w.]+(?:\([^)]*\))?\s*)*(?:public|protected|private)?\s*(?:static\s+)?(?:final\s+)?(?:abstract\s+)?(?:synchronized\s+)?(\w+(?:<[^>]+>)?(?:\[\])*)\s+(\w+)\s*\(([^)]*)\)\s*(?:throws\s+[\w.,\s]+)?\s*(?:\{|;)/g;

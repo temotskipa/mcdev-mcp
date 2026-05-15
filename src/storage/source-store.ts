@@ -309,7 +309,7 @@ export class SourceStore {
   getMethod(
     className: string,
     methodName: string,
-    signatureHint?: string
+    _signatureHint?: string
   ): { method: MethodInfo; source: string; classInfo: ClassInfo; sourcePath: string } | null {
     const classResult = this.getClass(className);
     if (!classResult) return null;

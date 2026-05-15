@@ -22,7 +22,7 @@
 
 import * as fs from 'fs';
 import { parse, BaseJavaCstVisitorWithDefaults, type CstNode, type IToken } from 'java-parser';
-import { ClassInfo, FieldInfo, MethodInfo, ClassKind } from '../utils/types.js';
+import { FieldInfo, MethodInfo, ClassKind } from '../utils/types.js';
 import type { ParsedClass } from './parser.js';
 
 // ---------------------------------------------------------------------------
