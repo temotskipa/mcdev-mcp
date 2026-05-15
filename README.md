@@ -16,7 +16,7 @@ An **MCP (Model Context Protocol) server** that empowers AI coding agents to wor
 - **Class Hierarchy** — Find subclasses and interface implementors
 - **Call Graph Analysis** — Find method callers and callees across the entire codebase
 
-### Runtime Interaction (requires [DebugBridge](https://github.com/weikengchen/debugbridge) mod)
+### Runtime Interaction (requires [DebugBridge](https://github.com/use-ai-for-mc/debugbridge) mod)
 - **Live Lua Execution** — Execute Lua scripts inside the running Minecraft JVM (`mc_execute`)
 - **Game State Snapshots** — Player position, health, dimension, time, weather (`mc_snapshot`)
 - **Screenshots, Recordings & Screen Inspection** — Game-window JPEG, multi-frame contact sheet for temporal debug, and current-GUI structure (`mc_screenshot`, `mc_record_video`, `mc_screen_inspect`)
@@ -66,7 +66,7 @@ The `serve` subcommand starts the MCP server over stdio. Your MCP client (Claude
 
 ### 3. (Optional) Install DebugBridge for live-game tools
 
-The static analysis tools (`mc_search`, `mc_get_class`, `mc_find_refs`, …) work as soon as `init` finishes. The runtime tools (`mc_execute`, `mc_snapshot`, screenshots, world introspection, item textures, glow markers, etc.) additionally require the [DebugBridge mod](https://github.com/weikengchen/debugbridge) installed in the Minecraft instance you want to drive. Without DebugBridge, those tools will just report a connection error — the static half keeps working unaffected.
+The static analysis tools (`mc_search`, `mc_get_class`, `mc_find_refs`, …) work as soon as `init` finishes. The runtime tools (`mc_execute`, `mc_snapshot`, screenshots, world introspection, item textures, glow markers, etc.) additionally require the [DebugBridge mod](https://github.com/use-ai-for-mc/debugbridge) installed in the Minecraft instance you want to drive. Without DebugBridge, those tools will just report a connection error — the static half keeps working unaffected.
 
 ### Supported Versions
 
@@ -235,7 +235,7 @@ Find classes that extend or implement a given class or interface.
 
 ### Runtime Tools
 
-These tools require Minecraft to be running with the [DebugBridge](https://github.com/weikengchen/debugbridge) mod installed.
+These tools require Minecraft to be running with the [DebugBridge](https://github.com/use-ai-for-mc/debugbridge) mod installed.
 
 ### `mc_connect`
 Connect to a running Minecraft instance. Other runtime tools auto-connect if needed. Pass `reset: true` to disconnect and clear state before reconnecting (useful when switching instances). If `port` is omitted, scans ports 9876-9885.
@@ -580,11 +580,11 @@ mcdev-mcp/
 └────────────────────────────┘      │   └──────┬───────┘    │          │
                                     └──────────┼────────────┘
                                                ▼
-                                    ┌──────────────────────────┐
-                                    │ DebugBridge Mod (in game)│
-                                    │ github.com/weikengchen/  │
-                                    │ debugbridge              │
-                                    └──────────────────────────┘
+                                    ┌────────────────────────────┐
+                                    │ DebugBridge Mod (in game)  │
+                                    │ github.com/use-ai-for-mc/  │
+                                    │ debugbridge                │
+                                    └────────────────────────────┘
 ```
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for detailed design documentation.
@@ -675,7 +675,7 @@ Download the bundle from the [Releases page](https://github.com/use-ai-for-mc/mc
 
 - **Static Analysis**: `mc_find_refs` cannot trace calls through reflection, JNI callbacks, or lambda/method references created dynamically
 - **Client Only**: Server-side classes are not included in static analysis
-- **Runtime Tools**: Require Minecraft running with the [DebugBridge](https://github.com/weikengchen/debugbridge) mod installed
+- **Runtime Tools**: Require Minecraft running with the [DebugBridge](https://github.com/use-ai-for-mc/debugbridge) mod installed
 
 ## Legal Notice
 

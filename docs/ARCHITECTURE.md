@@ -1,6 +1,6 @@
 # Architecture Overview
 
-mcdev-mcp is an MCP (Model Context Protocol) server that gives AI coding agents two complementary surfaces: **static analysis** of decompiled Minecraft source code, and **runtime interaction** with a live Minecraft client through the [DebugBridge](https://github.com/weikengchen/debugbridge) mod.
+mcdev-mcp is an MCP (Model Context Protocol) server that gives AI coding agents two complementary surfaces: **static analysis** of decompiled Minecraft source code, and **runtime interaction** with a live Minecraft client through the [DebugBridge](https://github.com/use-ai-for-mc/debugbridge) mod.
 
 ## System Architecture
 
@@ -52,12 +52,12 @@ mcdev-mcp is an MCP (Model Context Protocol) server that gives AI coding agents 
 └────────────────────────────────────────────────────┼──────────────────┘
                                                      │
                             ▼ Vineflower jar         ▼ ws://127.0.0.1:9876-9885
-                            ▼ java-callgraph2     ┌─────────────────────────┐
-┌──────────────────────────────────────────────┐  │ DebugBridge Mod         │
-│ External Java tools (downloaded into cache)  │  │ (running Minecraft JVM) │
-│  ┌─────────────────┐  ┌────────────────────┐ │  │ github.com/weikengchen/ │
-│  │   Vineflower    │  │  java-callgraph2   │ │  │ debugbridge             │
-│  │ Decompiler jar  │  │  + Tiny Remapper   │ │  └─────────────────────────┘
+                            ▼ java-callgraph2     ┌───────────────────────────┐
+┌──────────────────────────────────────────────┐  │ DebugBridge Mod           │
+│ External Java tools (downloaded into cache)  │  │ (running Minecraft JVM)   │
+│  ┌─────────────────┐  ┌────────────────────┐ │  │ github.com/use-ai-for-mc/ │
+│  │   Vineflower    │  │  java-callgraph2   │ │  │ debugbridge               │
+│  │ Decompiler jar  │  │  + Tiny Remapper   │ │  └───────────────────────────┘
 │  │ (single jar)    │  │  (cloned, gradle)  │ │
 │  └─────────────────┘  └────────────────────┘ │
 └──────────────────────────────────────────────┘
