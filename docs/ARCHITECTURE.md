@@ -16,7 +16,7 @@ mcdev-mcp is an MCP (Model Context Protocol) server that gives AI coding agents 
 │                         mcdev-mcp Server                             │
 │                                                                      │
 │   ┌──────────────────────────┐    ┌────────────────────────────┐   │
-│   │  Static Tools (8)         │    │ Runtime Tools (17 + 2 dev) │   │
+│   │  Static Tools (8)         │    │ Runtime Tools (18 + 2 dev) │   │
 │   │  src/tools/static/        │    │ src/tools/runtime/         │   │
 │   │  ┌─────────────────────┐  │    │  ┌──────────────────────┐  │   │
 │   │  │ mc_version          │  │    │  │ mc_connect           │  │   │

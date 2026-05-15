@@ -19,7 +19,7 @@ An **MCP (Model Context Protocol) server** that empowers AI coding agents to wor
 ### Runtime Interaction (requires [DebugBridge](https://github.com/weikengchen/debugbridge) mod)
 - **Live Lua Execution** — Execute Lua scripts inside the running Minecraft JVM (`mc_execute`)
 - **Game State Snapshots** — Player position, health, dimension, time, weather (`mc_snapshot`)
-- **Screenshots & Screen Inspection** — Game-window JPEG and current-GUI structure (`mc_screenshot`, `mc_screen_inspect`)
+- **Screenshots, Recordings & Screen Inspection** — Game-window JPEG, multi-frame contact sheet for temporal debug, and current-GUI structure (`mc_screenshot`, `mc_record_video`, `mc_screen_inspect`)
 - **World Introspection** — Nearby entities and block-entities, plus per-id details (`mc_nearby_entities`, `mc_entity_details`, `mc_nearby_blocks`, `mc_block_details`, `mc_looked_at_entity`)
 - **Visual Markers** — Outline entities or blocks for the user to spot (`mc_set_entity_glow`, `mc_set_block_glow`, `mc_clear_block_glow`)
 - **Item Texture Rendering** — Render an inventory slot, an item id, or a slot on another entity as PNG (`mc_get_item_texture`, `mc_get_item_texture_by_id`, `mc_get_entity_item_texture`)
@@ -272,6 +272,21 @@ Capture the game window as a JPEG file and return its path.
   "quality": 0.75
 }
 ```
+
+### `mc_record_video`
+Capture a short burst of frames for debugging temporal rendering issues (animation glitches, shader bugs, particles, sub-tick artifacts a single screenshot can't resolve). Returns either one composed grid JPEG (default) or N separate frame JPEGs.
+
+```json
+{
+  "frames": 60,
+  "interval": 50,
+  "output": "grid",
+  "downscale": 2,
+  "quality": 0.75
+}
+```
+
+`interval` is either `"frame"` (every render tick, ~60 Hz) or milliseconds (number, >= 1). Numeric intervals (50–100 ms) are recommended unless you specifically need sub-tick detail; at `"frame"` cadence the encoder may fall behind and the response's `dropped` count tells you how many frames were skipped. Capped at 300 frames per call. Files land under `<gameDir>/debugbridge-recordings/<requestId>/`.
 
 ### `mc_screen_inspect`
 Snapshot the screen the player currently has open (chest UI, inventory, advancement screen, etc.) and return its structure.
@@ -541,7 +556,7 @@ mcdev-mcp/
          ┌────────────────────┴────────────────────┐
          ▼                                          ▼
 ┌─────────────────────────────┐    ┌──────────────────────────────────┐
-│   Static Tools (8)          │    │   Runtime Tools (17 + 2 opt-in)  │
+│   Static Tools (8)          │    │   Runtime Tools (18 + 2 opt-in)  │
 │  ┌────────────────────────┐ │    │  ┌────────────────────────────┐  │
 │  │ mc_version             │ │    │  │ mc_connect / mc_execute    │  │
 │  │ mc_search              │ │    │  │ mc_snapshot / mc_screenshot│  │

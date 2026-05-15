@@ -2,6 +2,7 @@ export { mcConnectTool } from './connect.js';
 export { mcExecuteTool } from './execute.js';
 export { mcSnapshotTool } from './snapshot.js';
 export { mcScreenshotTool } from './screenshot.js';
+export { mcRecordVideoTool } from './record-video.js';
 export { mcRunCommandTool } from './command.js';
 export { mcScriptLogsTool } from './script-logs.js';
 export { mcNearbyEntitiesTool } from './nearby-entities.js';
@@ -22,6 +23,7 @@ import { mcConnectTool } from './connect.js';
 import { mcExecuteTool } from './execute.js';
 import { mcSnapshotTool } from './snapshot.js';
 import { mcScreenshotTool } from './screenshot.js';
+import { mcRecordVideoTool } from './record-video.js';
 import { mcRunCommandTool } from './command.js';
 import { mcScriptLogsTool } from './script-logs.js';
 import { mcNearbyEntitiesTool } from './nearby-entities.js';
@@ -50,6 +52,7 @@ export const runtimeTools = [
     mcExecuteTool,
     mcSnapshotTool,
     mcScreenshotTool,
+    mcRecordVideoTool,
     mcNearbyEntitiesTool,
     mcEntityDetailsTool,
     mcNearbyBlocksTool,
