@@ -12,8 +12,10 @@
 #
 # Output: dist-mcpb/mcdev-mcp-<version>.mcpb
 #
-# Requires: node >= 18, npm. The @anthropic-ai/mcpb CLI is a devDependency,
-# so a fresh `npm install` in the repo root is enough to make this script work.
+# Requires: node >= 18, npm. `unzip` is used by the post-pack smoke test;
+# the build degrades gracefully (skips that check) if it is unavailable. The
+# @anthropic-ai/mcpb CLI is a devDependency, so a fresh `npm install` in the
+# repo root is enough to make this script work.
 #
 # Why a staging dir? mcpb pack zips the directory you point it at. If we
 # pointed it at the repo root, we'd ship dev dependencies (jest, ts-jest,
@@ -38,7 +40,9 @@ OUTPUT="${1:-dist-mcpb/mcdev-mcp-${VERSION}.mcpb}"
 mkdir -p "$(dirname "$OUTPUT")"
 
 STAGE="$(mktemp -d)"
-cleanup() { rm -rf "$STAGE"; }
+# SMOKE_EXTRACT is created later (post-pack); the `:+` guard keeps the trap
+# safe under `set -u` while it is still unset.
+cleanup() { rm -rf "$STAGE" ${SMOKE_EXTRACT:+"$SMOKE_EXTRACT"}; }
 trap cleanup EXIT
 
 MCPB="$REPO_ROOT/node_modules/.bin/mcpb"
@@ -86,60 +90,75 @@ if [[ -d "$SQLJS_DIST" ]]; then
     -delete
 fi
 
+# Native-binary re-download blocks used to live here. They're gone now that
+# we use sql.js (WASM) — there is no .node file to ship, and therefore no
+# ABI mismatch or Team-ID dlopen failure to worry about. The whole class of
+# "Claude Desktop bumped Electron, our MCPB silently died on load" bugs
+# disappears.
+
+echo ">> Packing $OUTPUT..."
+"$MCPB" pack "$STAGE" "$OUTPUT"
+
 # ---------------------------------------------------------------------------
-# Smoke test the bootstrap.
+# Smoke test the PACKED bundle.
 #
-# We run the compiled bootstrap on the build host's `node` and watch for the
-# success breadcrumb. This catches the classes of failure that bit us during
-# the bisect:
+# This deliberately runs against the *extracted .mcpb* — not the staging dir.
+# `mcpb pack` applies .mcpbignore (and mcpb's own default excludes) while it
+# zips, so the staging tree and the shipped bundle are NOT the same set of
+# files. A pre-pack smoke test booted code the bundle does not contain, and
+# so was blind to packaging bugs — e.g. an unanchored .mcpbignore pattern
+# (`src/`) stripping a dependency's `src/` entry point, which shipped a
+# bundle that crashed at startup with ERR_MODULE_NOT_FOUND.
 #
+# What it catches:
 #   - dist/mcpb-bootstrap.js missing or broken (tsc didn't emit it)
 #   - a top-level import crash somewhere in the ./index.js module graph
+#   - a dependency file the runtime needs but pack / .mcpbignore removed
 #   - the server.connect(transport) path never resolving
 #   - an async EPIPE-style crash with no stderr output
 #
-# It does NOT catch Node-version-specific bugs when the host happens to run a
-# different Node than Claude Desktop's embedded Electron. For the bugs it
-# does catch, it fails the build loudly instead of shipping a bundle that
-# silently dies when a user installs it.
-#
-# sql.js (WASM) works on Node 14+, so this smoke test runs on any host node
-# with the right LTS.
+# It does NOT catch Node-version-specific bugs when the build host runs a
+# different Node than Claude Desktop's embedded runtime.
 #
 # How it works:
-#   1. Run `node dist/mcpb-bootstrap.js serve` in the background with
+#   1. Extract the packed .mcpb to a temp dir.
+#   2. Run `node dist/mcpb-bootstrap.js serve` there in the background with
 #      MCDEV_MCP_DEBUG_LOG pointing at a temp file.
-#   2. Poll that file for up to 5s for the "startServer: connected" breadcrumb.
-#   3. Kill the process either way, and fail the build if the breadcrumb
-#      never showed up.
+#   3. Poll that file for up to 5s for the "connected, ready" breadcrumb.
+#   4. Kill the process. If the breadcrumb never showed up, delete the broken
+#      bundle (so it cannot be installed) and fail the build.
 #
-# The server never gets a real `initialize` JSON-RPC message — we feed it
-# /dev/null on stdin — so it sits forever on `await server.connect()`. That
-# is exactly the "idle and waiting" state we want to observe; we kill it
-# once we've seen it reach that state.
+# The server never gets a real `initialize` JSON-RPC message — stdin is
+# /dev/null — so it sits idle on `await server.connect()`, which is exactly
+# the "connected and waiting" state we want to observe.
 #
 # Skippable via MCDEV_MCP_SKIP_SMOKE=1 if the build host can't run the
-# bootstrap for any reason.
+# bootstrap for any reason. Also skipped (with a warning) if `unzip` is
+# unavailable, since the bundle cannot be extracted without it.
 # ---------------------------------------------------------------------------
 if [[ "${MCDEV_MCP_SKIP_SMOKE:-0}" == "1" ]]; then
   echo ">> Smoke test skipped (MCDEV_MCP_SKIP_SMOKE=1)"
+elif ! command -v unzip >/dev/null 2>&1; then
+  echo ">> WARNING: 'unzip' not found — skipping the packed-bundle smoke test."
+  echo ">>          Install unzip to re-enable this check."
 else
-  echo ">> Smoke test: booting dist/mcpb-bootstrap.js serve with host Node..."
+  echo ">> Smoke test: extracting and booting the packed bundle..."
+  SMOKE_EXTRACT="$(mktemp -d)"
+  unzip -q "$OUTPUT" -d "$SMOKE_EXTRACT"
+
   SMOKE_LOG="$(mktemp -t mcdev-mcp-smoke.XXXXXX)"
   SMOKE_STDERR="$(mktemp -t mcdev-mcp-smoke-stderr.XXXXXX)"
   SMOKE_PID=""
   SMOKE_OK=0
 
-  # Start the bootstrap in the background. stdin=/dev/null means it gets EOF
-  # immediately on the JSON-RPC stream, but `server.connect()` resolves before
-  # any message is read, so we'll still see the success breadcrumb.
-  #
-  # We tee stderr into SMOKE_STDERR (still drop stdout — JSON-RPC chatter on
-  # the success path is just noise) so a top-level import crash that fires
-  # before the bootstrap's debug-log infrastructure spins up still has a
-  # diagnostic to surface in the failure branch below.
+  # Start the bootstrap in the background from the EXTRACTED bundle.
+  # stdin=/dev/null gives it immediate EOF on the JSON-RPC stream, but
+  # `server.connect()` resolves before any message is read, so the success
+  # breadcrumb still lands. stderr is teed to a file so a top-level import
+  # crash that fires before the debug-log infrastructure spins up still has
+  # a diagnostic to surface in the failure branch below.
   (
-    cd "$STAGE"
+    cd "$SMOKE_EXTRACT"
     MCDEV_MCP_DEBUG_LOG="$SMOKE_LOG" \
       node dist/mcpb-bootstrap.js serve < /dev/null > /dev/null 2> "$SMOKE_STDERR" &
     echo $! > "$SMOKE_LOG.pid"
@@ -169,7 +188,7 @@ else
   wait "$SMOKE_RUNNER" 2>/dev/null || true
 
   if [[ "$SMOKE_OK" != "1" ]]; then
-    echo "!! FATAL: smoke test failed — bootstrap did not reach"
+    echo "!! FATAL: smoke test failed — the packed bundle did not reach"
     echo "!!        'startServer: connected, ready for requests' within 5s."
     echo "!! Debug log ($SMOKE_LOG):"
     if [[ -s "$SMOKE_LOG" ]]; then
@@ -183,24 +202,20 @@ else
     else
       echo "!!   (empty — process exited cleanly without writing stderr.)"
     fi
-    echo "!! To reproduce by hand:"
-    echo "!!   cd $STAGE"
+    echo "!! To reproduce by hand (extract dir left on disk for inspection):"
+    echo "!!   cd $SMOKE_EXTRACT"
     echo "!!   MCDEV_MCP_DEBUG_LOG=/tmp/mcdev-debug.log node dist/mcpb-bootstrap.js serve"
+    echo "!!   (delete it afterwards: rm -rf $SMOKE_EXTRACT)"
+    echo "!! Deleting the broken bundle $OUTPUT so it cannot be installed."
+    rm -f "$OUTPUT"
     rm -f "$SMOKE_LOG" "$SMOKE_STDERR"
+    # Leave SMOKE_EXTRACT on disk for the reproduce-by-hand hint above.
+    SMOKE_EXTRACT=""
     exit 1
   fi
   rm -f "$SMOKE_LOG" "$SMOKE_STDERR"
-  echo ">> Smoke test passed: bootstrap reached 'connected, ready for requests'"
+  echo ">> Smoke test passed: packed bundle reached 'connected, ready for requests'"
 fi
-
-# Native-binary re-download blocks used to live here. They're gone now that
-# we use sql.js (WASM) — there is no .node file to ship, and therefore no
-# ABI mismatch or Team-ID dlopen failure to worry about. The whole class of
-# "Claude Desktop bumped Electron, our MCPB silently died on load" bugs
-# disappears.
-
-echo ">> Packing $OUTPUT..."
-"$MCPB" pack "$STAGE" "$OUTPUT"
 
 echo
 echo ">> Bundle info:"
