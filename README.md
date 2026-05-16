@@ -51,6 +51,35 @@ Data is stored in your OS cache directory (see [Storage location](#storage-locat
 
 ### 2. Add to your MCP client
 
+#### Codex Desktop / Codex CLI
+
+Codex can launch local stdio MCP servers directly. Install the published package with:
+
+```bash
+codex mcp add mcdev-mcp -- npx -y mcdev-mcp serve
+```
+
+If you are developing from a local checkout, build first and point Codex at the local server:
+
+```bash
+git clone https://github.com/use-ai-for-mc/mcdev-mcp.git
+cd mcdev-mcp
+npm install
+npm run build
+codex mcp add mcdev-mcp -- node "$(pwd)/dist/index.js"
+```
+
+Verify that Codex can see it:
+
+```bash
+codex mcp list
+codex mcp get mcdev-mcp
+```
+
+Restart Codex Desktop, or start a new Codex session, after adding the server. Codex will launch the MCP server automatically when a session needs it; you do not run `serve` by hand.
+
+#### Other MCP clients
+
 ```json
 {
   "mcpServers": {
