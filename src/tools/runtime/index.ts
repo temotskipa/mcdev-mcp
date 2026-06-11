@@ -18,6 +18,11 @@ export { mcGetEntityItemTextureTool } from './get-entity-item-texture.js';
 export { mcGetItemTextureByIdTool } from './get-item-texture-by-id.js';
 export { mcChatHistoryTool } from './chat-history.js';
 export { mcScreenInspectTool } from './screen-inspect.js';
+export { mcJoinServerTool } from './join-server.js';
+export { mcLeaveServerTool } from './leave-server.js';
+export { mcWaitUntilInWorldTool } from './wait-until-in-world.js';
+export { mcQuitClientTool } from './quit-client.js';
+export { mcWaitForBridgeTool } from './wait-for-bridge.js';
 
 import { mcConnectTool } from './connect.js';
 import { mcExecuteTool } from './execute.js';
@@ -39,6 +44,11 @@ import { mcGetEntityItemTextureTool } from './get-entity-item-texture.js';
 import { mcGetItemTextureByIdTool } from './get-item-texture-by-id.js';
 import { mcChatHistoryTool } from './chat-history.js';
 import { mcScreenInspectTool } from './screen-inspect.js';
+import { mcJoinServerTool } from './join-server.js';
+import { mcLeaveServerTool } from './leave-server.js';
+import { mcWaitUntilInWorldTool } from './wait-until-in-world.js';
+import { mcQuitClientTool } from './quit-client.js';
+import { mcWaitForBridgeTool } from './wait-for-bridge.js';
 
 // Dev-only tools (default off). The bridge mirrors these gates with its own
 // BridgeConfig flags (runCommandEnabled), so even if
@@ -66,6 +76,17 @@ export const runtimeTools = [
     mcGetItemTextureByIdTool,
     mcChatHistoryTool,
     mcScreenInspectTool,
+    // Session-control tools — always registered, but the bridge gates the
+    // mutating endpoints (joinServer/disconnect/quit) behind
+    // session_control_enabled (default false) in
+    // <minecraft>/config/debugbridge.json. The two wait_* tools are read-only.
+    // Build/deploy/launch orchestration deliberately lives outside this
+    // server, in the agent driving it — see resources/dev-loop.md.
+    mcJoinServerTool,
+    mcLeaveServerTool,
+    mcWaitUntilInWorldTool,
+    mcQuitClientTool,
+    mcWaitForBridgeTool,
     // Dev-only tools — default off; flip env on both sides to enable.
     ...(scriptLogsEnabled ? [mcScriptLogsTool] : []),
     ...(runCommandEnabled ? [mcRunCommandTool] : []),

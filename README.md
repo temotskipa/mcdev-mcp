@@ -24,6 +24,7 @@ An **MCP (Model Context Protocol) server** that empowers AI coding agents to wor
 - **Visual Markers** — Outline entities or blocks for the user to spot (`mc_set_entity_glow`, `mc_set_block_glow`, `mc_clear_block_glow`)
 - **Item Texture Rendering** — Render an inventory slot, an item id, or a slot on another entity as PNG (`mc_get_item_texture`, `mc_get_item_texture_by_id`, `mc_get_entity_item_texture`)
 - **Chat History** — Recent client-side chat messages (`mc_chat_history`)
+- **Session Control & Dev Loop** — Join/leave servers, quit the client, and reconnect after a relaunch (`mc_join_server`, `mc_leave_server`, `mc_quit_client`, `mc_wait_for_bridge`, `mc_wait_until_in_world`; gated by `session_control_enabled` in the DebugBridge config). Build/launch orchestration is the coding agent's job, guided by the `mcdev://guides/dev-loop` resource and the `minecraft-dev-loop` skill.
 - **Slash Commands** — Execute in-game commands (`mc_run_command`, opt-in dev tool)
 - **Script Execution Logs** — Review past `mc_execute` runs and error patterns (`mc_script_logs`, opt-in via Claude Desktop user setting)
 
@@ -267,7 +268,7 @@ Find classes that extend or implement a given class or interface.
 These tools require Minecraft to be running with the [DebugBridge](https://github.com/use-ai-for-mc/debugbridge) mod installed.
 
 ### `mc_connect`
-Connect to a running Minecraft instance. Other runtime tools auto-connect if needed. Pass `reset: true` to disconnect and clear state before reconnecting (useful when switching instances). If `port` is omitted, scans ports 9876-9885.
+Connect to a running Minecraft instance. Other runtime tools auto-connect if needed. Pass `reset: true` to disconnect and clear state before reconnecting (useful when switching instances). If `port` is omitted, scans ports 9876-9886.
 
 ```json
 {
@@ -453,6 +454,62 @@ Render an item carried by another entity. `slot` is `"mainhand"`, `"offhand"`, o
 {
   "entityId": 12345,
   "slot": "mainhand"
+}
+```
+
+### Session control & dev loop
+
+These five tools are the bridge-side primitives of the rebuild → relaunch → rejoin loop. The underlying endpoints (`disconnect`, `joinServer`, `quit`) are **disabled by default**: set `"session_control_enabled": true` in `<minecraft>/config/debugbridge.json` and restart the client (the flag is read at startup). `mc_connect` reports whether the connected instance has it enabled, and the tools return exact instructions when it's off.
+
+The machine-specific halves of the loop — building the mod, copying the jar into `<gameDir>/mods/`, and launching the client — are deliberately **not** server tools: a coding agent with shell access discovers and runs them itself, guided by the [`mcdev://guides/dev-loop` resource](resources/dev-loop.md) (also available as a copyable Claude Code skill in [`skills/minecraft-dev-loop/`](skills/minecraft-dev-loop/SKILL.md)). The short version: the agent derives the deploy target, instance name, and launcher from the `gameDir` that `mc_connect` reports, persists the launch command it composes in the project's CLAUDE.md, and leaves authentication entirely to the launcher.
+
+> **Caution:** `mc_quit_client` shuts down the whole Minecraft client, and `mc_join_server` / `mc_leave_server` change which world the user is in — they tear down the current play session. For repeated automated test runs, prefer a local throwaway server over a live community server (nondeterministic world, other players, server rules).
+
+### `mc_join_server`
+Join a multiplayer server (disconnecting from the current world first if needed). The server resource pack is pre-accepted by default so the join doesn't stall on the confirmation prompt. By default polls every second until a game snapshot shows a player (joined) or a `DisconnectedScreen` appears (failed — its title is returned as the reason).
+
+```json
+{
+  "address": "localhost:25565",
+  "acceptResourcePacks": true,
+  "wait": true,
+  "timeoutSeconds": 60
+}
+```
+
+### `mc_leave_server`
+Leave the current world/server to the title screen (when not in a world, it still resets the open menu screen to the title screen). Fire-and-acknowledge — the ack means the disconnect was queued on the game thread.
+
+```json
+{}
+```
+
+### `mc_wait_until_in_world`
+Poll until the player is in a world, a `DisconnectedScreen` appears, or the timeout elapses. Read-only (doesn't require session control); useful after `mc_join_server` with `wait: false` or after a relaunch.
+
+```json
+{
+  "timeoutSeconds": 60
+}
+```
+
+### `mc_quit_client`
+Gracefully shut down the Minecraft client (the WebSocket dropping right after the ack is the normal success mode). By default polls until the bridge port stops listening, so success means the process is actually gone and it's safe to relaunch.
+
+```json
+{
+  "waitForExit": true,
+  "timeoutSeconds": 30
+}
+```
+
+### `mc_wait_for_bridge`
+Block until a freshly (re)launched client's bridge answers, then connect to it. Sweeps ports 9876-9886 once per second, only accepting the instance that matches the previous connection's game directory / version — so a second running instance isn't mistaken for the relaunch. Pass `expectedVersion` only when deliberately switching instances. Read-only.
+
+```json
+{
+  "expectedVersion": "1.21.11",
+  "timeoutSeconds": 120
 }
 ```
 
