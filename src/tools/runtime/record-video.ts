@@ -1,6 +1,32 @@
 import { bridgeSession } from "./session.js";
 import { expectShape, requireObject, requireResult } from "./validate-resp.js";
 
+/**
+ * The wire wants `"frame"` or a number, but some MCP clients flatten the
+ * schema's oneOf and deliver numeric intervals as strings ("80") — which the
+ * mod then correctly rejects. Coerce numeric strings back; anything else
+ * passes through for the mod's own (self-describing) validation.
+ */
+export function normalizeRecordInterval(value: "frame" | number | string): "frame" | number | string {
+    if (typeof value === "string" && value !== "frame" && value.trim() !== "" && Number.isFinite(Number(value))) {
+        return Number(value);
+    }
+    return value;
+}
+
+/**
+ * Wall-clock budget for one recording request. The bridge only answers when
+ * the capture+encode is done, so the deadline must scale with the recording
+ * length ("frame" ≈ one render tick ≈ 17ms at 60Hz) instead of BridgeSession's
+ * flat 10s default — a 100-frame × 100ms recording is already ~10s of capture
+ * before encoding starts. The generous margin covers encode + a slow client;
+ * BridgeSession's 5-minute ceiling still applies on top.
+ */
+export function recordingDeadlineMs(frames: number, interval: "frame" | number | string | undefined): number {
+    const perFrameMs = typeof interval === "number" && interval >= 1 ? interval : 17;
+    return Math.round(frames * perFrameMs) + 15000;
+}
+
 interface RecordVideoGridResult {
     mode: "grid";
     path: string;
@@ -97,21 +123,25 @@ paths to be readable here. Files land under
 
     handler: async (args: {
         frames: number;
-        interval?: "frame" | number;
+        // Schema says "frame" | number, but clients that flatten the oneOf
+        // deliver numeric strings — normalizeRecordInterval repairs those.
+        interval?: "frame" | number | string;
         output?: "grid" | "frames";
         gridCols?: number;
         downscale?: number;
         quality?: number;
     }) => {
         try {
+            const interval = args.interval !== undefined ? normalizeRecordInterval(args.interval) : undefined;
             const payload: Record<string, unknown> = { frames: args.frames };
-            if (args.interval !== undefined) payload.interval = args.interval;
+            if (interval !== undefined) payload.interval = interval;
             if (args.output !== undefined) payload.output = args.output;
             if (args.gridCols !== undefined) payload.gridCols = args.gridCols;
             if (args.downscale !== undefined) payload.downscale = args.downscale;
             if (args.quality !== undefined) payload.quality = args.quality;
 
-            const resp = await bridgeSession.send("record_video", payload);
+            const resp = await bridgeSession.send(
+                "record_video", payload, recordingDeadlineMs(args.frames, interval));
             if (!resp.success) {
                 return { content: [{ type: "text" as const, text: `Error: ${resp.error}` }], isError: true };
             }
