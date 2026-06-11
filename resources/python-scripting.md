@@ -36,7 +36,7 @@ anything below looks stale.
 
 - **Transport:** plain WebSocket, `ws://127.0.0.1:<port>`, no TLS, no auth. The
   bridge only binds to loopback.
-- **Default port:** `9876`. The MCP server scans `9876..9885` because users
+- **Default port:** `9876`. The MCP server scans `9876..9886` because users
   routinely run multiple Minecraft instances. Honour `DEBUGBRIDGE_PORT` if it
   is set in your environment.
 - **Framing:** one JSON object per WebSocket text frame. Requests and responses
@@ -125,9 +125,9 @@ class DebugBridge:
         self._reader_task: asyncio.Task | None = None
 
     async def connect(self):
-        # The MCP server scans 9876..9885; mirror that if the configured port is busy.
+        # The MCP server scans 9876..9886; mirror that if the configured port is busy.
         last_err = None
-        for port in range(self.port, self.port + 10):
+        for port in range(self.port, self.port + 11):
             try:
                 self.ws = await asyncio.wait_for(
                     websockets.connect(f"ws://127.0.0.1:{port}"),
@@ -139,7 +139,7 @@ class DebugBridge:
                 last_err = e
         else:
             raise BridgeError(
-                f"No DebugBridge on ports {self.port}-{self.port+9}: {last_err}"
+                f"No DebugBridge on ports {self.port}-{self.port+10}: {last_err}"
             )
         self._reader_task = asyncio.create_task(self._reader())
         return await self.send("status", {})

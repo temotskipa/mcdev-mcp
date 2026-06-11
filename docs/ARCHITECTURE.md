@@ -51,7 +51,7 @@ mcdev-mcp is an MCP (Model Context Protocol) server that gives AI coding agents 
 │   └──────────────────────────┘                     │                  │
 └────────────────────────────────────────────────────┼──────────────────┘
                                                      │
-                            ▼ Vineflower jar         ▼ ws://127.0.0.1:9876-9885
+                            ▼ Vineflower jar         ▼ ws://127.0.0.1:9876-9886
                             ▼ java-callgraph2     ┌───────────────────────────┐
 ┌──────────────────────────────────────────────┐  │ DebugBridge Mod           │
 │ External Java tools (downloaded into cache)  │  │ (running Minecraft JVM)   │
