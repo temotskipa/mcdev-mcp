@@ -98,7 +98,14 @@ print(x) -> println x; pcall -> try/catch; local x -> def x;
             // Both are needed: dropping the payload one would let runaway
             // scripts pin the game thread; dropping the 3rd-arg one would
             // let the wait pile up here even after the bridge gave up.
-            const resp = await bridgeSession.send("execute", { code: args.code, timeoutMs: args.timeoutMs }, args.timeoutMs);
+            //
+            // The default is made explicit rather than left to the two sides'
+            // own defaults: with no value, the bridge interrupts at its own
+            // ~10s default while this side also gave up at a flat 10s — a
+            // race the bridge usually lost, so callers saw "the game may be
+            // frozen" instead of the script's real timeout result.
+            const timeoutMs = args.timeoutMs ?? 10000;
+            const resp = await bridgeSession.send("execute", { code: args.code, timeoutMs }, timeoutMs);
             const duration_ms = Date.now() - startTime;
 
             // Log the execution (dev mode only)
