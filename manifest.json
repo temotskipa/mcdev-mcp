@@ -3,7 +3,7 @@
   "manifest_version": "0.4",
   "name": "mcdev-mcp",
   "display_name": "Minecraft Dev MCP",
-  "version": "2.1.0",
+  "version": "2.1.1",
   "description": "MCP server for Minecraft mod development - decompiled code access, symbol search, and runtime interaction via DebugBridge",
   "long_description": "An MCP server for AI-assisted Minecraft mod development. Static tools provide access to decompiled Minecraft source code: browse classes and methods, search symbols, explore package hierarchies, find subclasses/implementors, and trace callers/callees across multiple Minecraft versions. Runtime tools interact with a running Minecraft instance through the DebugBridge mod: execute Groovy inside the JVM, capture game state snapshots and screenshots, inspect open GUI screens, list and inspect nearby entities and block-entities, render item textures from inventory slots or registry IDs, highlight entities or blocks in-world for the user, review recent chat, run slash commands, and drive session control (join/leave servers, quit the client, reconnect after a relaunch). Also exposes an MCP resources surface — including a Python client guide for the DebugBridge wire protocol and a build → deploy → relaunch → rejoin dev-loop guide — for agents that want to script the bridge directly instead of going through these tools.",
   "author": {
@@ -51,41 +51,141 @@
     }
   },
   "tools": [
-    { "name": "mc_version", "description": "Set or list the active Minecraft version for static analysis tools" },
-    { "name": "mc_search", "description": "Search decompiled source for classes, methods, and fields by name" },
-    { "name": "mc_get_class", "description": "Get the decompiled source code of a class" },
-    { "name": "mc_get_method", "description": "Get the decompiled source of a specific method" },
-    { "name": "mc_list_classes", "description": "List all classes in a package path" },
-    { "name": "mc_list_packages", "description": "List all packages in the Minecraft source" },
-    { "name": "mc_find_hierarchy", "description": "Find subclasses or interface implementors of a class" },
-    { "name": "mc_find_refs", "description": "Find callers or callees of a method via the callgraph" },
-    { "name": "mc_connect", "description": "Connect to a running Minecraft instance via the DebugBridge mod" },
-    { "name": "mc_execute", "description": "Execute Groovy code inside the running Minecraft JVM" },
-    { "name": "mc_snapshot", "description": "Get a structured snapshot of current game state" },
-    { "name": "mc_screenshot", "description": "Capture the Minecraft client framebuffer as a JPEG file" },
-    { "name": "mc_screen_inspect", "description": "Snapshot the current GUI screen (chest, inventory, etc.) and its structure" },
-    { "name": "mc_chat_history", "description": "Get recent client-side chat messages" },
-    { "name": "mc_nearby_entities", "description": "List entities (mobs, items, projectiles, players) within range of the player" },
-    { "name": "mc_entity_details", "description": "Get full details for one entity by id" },
-    { "name": "mc_looked_at_entity", "description": "Returns the entity id the player is currently aiming at, or null" },
-    { "name": "mc_nearby_blocks", "description": "List nearby block-entities (signs, chests, banners, beacons, hoppers, ...)" },
-    { "name": "mc_block_details", "description": "Get details for the block-entity at (x, y, z)" },
-    { "name": "mc_set_entity_glow", "description": "Outline an entity with the team-colour glow so the user can spot it" },
-    { "name": "mc_set_block_glow", "description": "Highlight a block in the world (yellow/glow outline)" },
-    { "name": "mc_clear_block_glow", "description": "Clear all block highlights set via mc_set_block_glow" },
-    { "name": "mc_get_item_texture", "description": "Render the item in inventory slot N as a PNG" },
-    { "name": "mc_get_item_texture_by_id", "description": "Render the default texture for a registry id (e.g. minecraft:diamond) as a PNG" },
-    { "name": "mc_get_entity_item_texture", "description": "Render an item carried by another entity (mainhand, offhand, armor slot) as a PNG" },
-    { "name": "mc_join_server", "description": "Join a multiplayer server and wait until in-world (requires bridge-side session_control_enabled)" },
-    { "name": "mc_leave_server", "description": "Leave the current world/server to the title screen (requires bridge-side session_control_enabled)" },
-    { "name": "mc_wait_until_in_world", "description": "Poll until the player is in a world or the join visibly failed" },
-    { "name": "mc_quit_client", "description": "Gracefully shut down the Minecraft client and wait for it to exit (requires bridge-side session_control_enabled)" },
-    { "name": "mc_wait_for_bridge", "description": "Wait for a relaunched client's DebugBridge to answer on ports 9876-9886, then reconnect" },
-    { "name": "mc_run_command", "description": "Execute a Minecraft slash command (opt-in dev tool, requires MCDEV_RUN_COMMAND=1 and bridge-side opt-in)" },
-    { "name": "mc_script_logs", "description": "Review past mc_execute runs and error patterns (opt-in via the 'Log script executions' user setting)" }
+    {
+      "name": "mc_version",
+      "description": "Set or list the active Minecraft version for static analysis tools"
+    },
+    {
+      "name": "mc_search",
+      "description": "Search decompiled source for classes, methods, and fields by name"
+    },
+    {
+      "name": "mc_get_class",
+      "description": "Get the decompiled source code of a class"
+    },
+    {
+      "name": "mc_get_method",
+      "description": "Get the decompiled source of a specific method"
+    },
+    {
+      "name": "mc_list_classes",
+      "description": "List all classes in a package path"
+    },
+    {
+      "name": "mc_list_packages",
+      "description": "List all packages in the Minecraft source"
+    },
+    {
+      "name": "mc_find_hierarchy",
+      "description": "Find subclasses or interface implementors of a class"
+    },
+    {
+      "name": "mc_find_refs",
+      "description": "Find callers or callees of a method via the callgraph"
+    },
+    {
+      "name": "mc_connect",
+      "description": "Connect to a running Minecraft instance via the DebugBridge mod"
+    },
+    {
+      "name": "mc_execute",
+      "description": "Execute Groovy code inside the running Minecraft JVM"
+    },
+    {
+      "name": "mc_snapshot",
+      "description": "Get a structured snapshot of current game state"
+    },
+    {
+      "name": "mc_screenshot",
+      "description": "Capture the Minecraft client framebuffer as a JPEG file"
+    },
+    {
+      "name": "mc_screen_inspect",
+      "description": "Snapshot the current GUI screen (chest, inventory, etc.) and its structure"
+    },
+    {
+      "name": "mc_chat_history",
+      "description": "Get recent client-side chat messages"
+    },
+    {
+      "name": "mc_nearby_entities",
+      "description": "List entities (mobs, items, projectiles, players) within range of the player"
+    },
+    {
+      "name": "mc_entity_details",
+      "description": "Get full details for one entity by id"
+    },
+    {
+      "name": "mc_looked_at_entity",
+      "description": "Returns the entity id the player is currently aiming at, or null"
+    },
+    {
+      "name": "mc_nearby_blocks",
+      "description": "List nearby block-entities (signs, chests, banners, beacons, hoppers, ...)"
+    },
+    {
+      "name": "mc_block_details",
+      "description": "Get details for the block-entity at (x, y, z)"
+    },
+    {
+      "name": "mc_set_entity_glow",
+      "description": "Outline an entity with the team-colour glow so the user can spot it"
+    },
+    {
+      "name": "mc_set_block_glow",
+      "description": "Highlight a block in the world (yellow/glow outline)"
+    },
+    {
+      "name": "mc_clear_block_glow",
+      "description": "Clear all block highlights set via mc_set_block_glow"
+    },
+    {
+      "name": "mc_get_item_texture",
+      "description": "Render the item in inventory slot N as a PNG"
+    },
+    {
+      "name": "mc_get_item_texture_by_id",
+      "description": "Render the default texture for a registry id (e.g. minecraft:diamond) as a PNG"
+    },
+    {
+      "name": "mc_get_entity_item_texture",
+      "description": "Render an item carried by another entity (mainhand, offhand, armor slot) as a PNG"
+    },
+    {
+      "name": "mc_join_server",
+      "description": "Join a multiplayer server and wait until in-world (requires bridge-side session_control_enabled)"
+    },
+    {
+      "name": "mc_leave_server",
+      "description": "Leave the current world/server to the title screen (requires bridge-side session_control_enabled)"
+    },
+    {
+      "name": "mc_wait_until_in_world",
+      "description": "Poll until the player is in a world or the join visibly failed"
+    },
+    {
+      "name": "mc_quit_client",
+      "description": "Gracefully shut down the Minecraft client and wait for it to exit (requires bridge-side session_control_enabled)"
+    },
+    {
+      "name": "mc_wait_for_bridge",
+      "description": "Wait for a relaunched client's DebugBridge to answer on ports 9876-9886, then reconnect"
+    },
+    {
+      "name": "mc_run_command",
+      "description": "Execute a Minecraft slash command (opt-in dev tool, requires MCDEV_RUN_COMMAND=1 and bridge-side opt-in)"
+    },
+    {
+      "name": "mc_script_logs",
+      "description": "Review past mc_execute runs and error patterns (opt-in via the 'Log script executions' user setting)"
+    }
   ],
   "compatibility": {
-    "platforms": ["darwin", "win32", "linux"],
+    "platforms": [
+      "darwin",
+      "win32",
+      "linux"
+    ],
     "runtimes": {
       "node": ">=20.0.0"
     }
