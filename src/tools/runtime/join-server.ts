@@ -66,9 +66,10 @@ Requires session_control_enabled=true in the DebugBridge config.`,
 
             // Probe BEFORE sending the join: if we're currently in a world, the
             // outcome poll must see the old session drop before a player
-            // snapshot counts as "joined" — the ack only means the
-            // disconnect+connect got queued, so early polls still show the old
-            // world's player. Unknown state gates nothing — same as joining
+            // snapshot counts as "joined" — on older bridges the ack only means
+            // the disconnect+connect got queued, so early polls still show the
+            // old world's player (current bridges ack after teardown, where the
+            // gate is harmless). Unknown state gates nothing — same as joining
             // from the title screen.
             let requireAbsenceFirst = false;
             if (args.wait !== false) {
@@ -100,7 +101,7 @@ Requires session_control_enabled=true in the DebugBridge config.`,
                 return {
                     content: [{
                         type: "text" as const,
-                        text: `Join queued: ${safeStringify(resp.result)}\n` +
+                        text: `Join accepted (connect started): ${safeStringify(resp.result)}\n` +
                             `Use mc_wait_until_in_world to confirm the outcome.`,
                     }],
                 };

@@ -86,9 +86,12 @@ is only read at launch.
 
 `mc_quit_client`. It tolerates the WebSocket dropping mid-call (that's the
 normal shutdown signal) and by default polls until the bridge port stops
-listening, so a success result means the process is gone and the port range
-is safe to rescan. If it reports the port still open after its timeout, the
-game is probably stuck on a save/exit dialog — ask the user.
+listening, so the port range is safe to rescan. The JVM can outlive the port
+by a few seconds while it finishes shutting down — wait for the old process
+to actually exit (`pgrep -f` / `kill -0`) before relaunching, or launchers
+that track the instance (Prism) silently ignore the `--launch`. If the port
+is still open after the timeout, the game is probably stuck on a save/exit
+dialog — ask the user.
 
 ## Step 4 — launch, detached
 

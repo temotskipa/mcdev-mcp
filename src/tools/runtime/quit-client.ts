@@ -15,9 +15,11 @@ mcdev://guides/dev-loop resource).
 
 Fire-and-acknowledge: the WebSocket is expected to drop moments after the ack
 (that counts as success). By default this then polls until the bridge port
-stops listening, so a "done" result means the process is actually gone and
-it's safe to relaunch. Requires session_control_enabled=true in the
-DebugBridge config.`,
+stops listening, so the port range is safe to rescan — but the JVM can outlive
+the port by a few seconds while it finishes shutting down. Before relaunching
+through a launcher that tracks the instance (Prism silently ignores --launch
+while the old process lives), confirm the process actually exited (pgrep /
+kill -0). Requires session_control_enabled=true in the DebugBridge config.`,
     inputSchema: {
         type: "object" as const,
         properties: {

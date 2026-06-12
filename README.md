@@ -466,7 +466,7 @@ The machine-specific halves of the loop — building the mod, copying the jar in
 > **Caution:** `mc_quit_client` shuts down the whole Minecraft client, and `mc_join_server` / `mc_leave_server` change which world the user is in — they tear down the current play session. For repeated automated test runs, prefer a local throwaway server over a live community server (nondeterministic world, other players, server rules).
 
 ### `mc_join_server`
-Join a multiplayer server (disconnecting from the current world first if needed). The server resource pack is pre-accepted by default so the join doesn't stall on the confirmation prompt. By default polls every second until a game snapshot shows a player (joined) or a `DisconnectedScreen` appears (failed — its title is returned as the reason).
+Join a multiplayer server (disconnecting from the current world first if needed). The server resource pack is pre-accepted by default so the join doesn't stall on the confirmation prompt. The bridge ack means the connect attempt has *started*: bridges ≥ 2.0.0 defer it until the client has settled (no startup/reload overlay), so a join fired right after a relaunch may take some extra seconds to ack; older bridges ack as soon as the request is queued. By default the tool then polls every second until a game snapshot shows a player (joined) or a `DisconnectedScreen` appears (failed — its title is returned as the reason).
 
 ```json
 {
@@ -494,7 +494,7 @@ Poll until the player is in a world, a `DisconnectedScreen` appears, or the time
 ```
 
 ### `mc_quit_client`
-Gracefully shut down the Minecraft client (the WebSocket dropping right after the ack is the normal success mode). By default polls until the bridge port stops listening, so success means the process is actually gone and it's safe to relaunch.
+Gracefully shut down the Minecraft client (the WebSocket dropping right after the ack is the normal success mode). By default polls until the bridge port stops listening, so the port range is safe to rescan — the JVM itself can outlive the port by a few seconds, so confirm the old process exited before relaunching through a launcher that tracks the instance (Prism silently ignores `--launch` while it still sees the old process).
 
 ```json
 {

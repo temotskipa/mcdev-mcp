@@ -75,8 +75,15 @@ in the DebugBridge repo for the full switch.
 `runCommand` is opt-in on the mod side; expect `success: false` with an
 `error` mentioning the flag if it is disabled. The three session-control types
 are likewise gated by `session_control_enabled` in `debugbridge.json` (`status`
-reports the capability as `sessionControlEnabled`). They are fire-and-acknowledge:
-poll `snapshot` (player present = in world) and `screenInspect` for the outcome.
+reports the capability as `sessionControlEnabled`). `disconnect` and `quit` are
+fire-and-acknowledge: the ack means "queued on the game thread". `joinServer`
+(bridge ≥ 2.0.0) instead defers the connect until the client has settled (no
+startup/reload overlay) and acks once the connect attempt has *started* —
+bounded bridge-side at 60s + 5s grace, so set your read deadline past that; a
+never-settling client gets an error response, and a newer `joinServer`
+supersedes a pending one. Older bridges ack `joinServer` on queue. Either way
+an ack is not "in world": poll `snapshot` (player present = in world) and
+`screenInspect` for the outcome.
 Relaunching a closed client is necessarily external (e.g.
 `prismlauncher --launch <instance>`), then re-scan the port range.
 

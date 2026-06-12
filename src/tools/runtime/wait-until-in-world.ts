@@ -10,8 +10,10 @@ as the reason; anything else keeps waiting until the timeout.
 Use after mc_join_server with wait=false, after a relaunch, or whenever you
 need to confirm the client finished loading into a world. If you fired the
 join from INSIDE a world (mc_join_server wait=false), pass
-requireAbsenceFirst=true — otherwise the first polls can still see the old
-world's player and report in-world for a join that hasn't happened yet.
+requireAbsenceFirst=true: on older bridges the ack comes before the old world
+tears down, so the first polls can still see its player and report in-world
+for a join that hasn't happened yet (current bridges ack after teardown — the
+gate is harmless insurance there).
 Read-only — doesn't require session control to be enabled.`,
     inputSchema: {
         type: "object" as const,
