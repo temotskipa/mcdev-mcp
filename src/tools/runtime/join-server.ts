@@ -15,12 +15,14 @@ user's play session — don't point it at a new server without being asked.
 The server's resource pack is pre-accepted by default so the join doesn't
 stall on the confirmation prompt.
 
-By default this also polls until the player is actually in-world (the bridge
-ack only means "queued"): success when a game snapshot shows a player, failure
-when a DisconnectedScreen appears (its title is returned as the reason). When
-called from inside a world, the poll first waits for the old session to drop
-so a stale snapshot of it can't masquerade as the new join. Set wait=false to
-just fire the join and return.
+The bridge ack means the connect attempt has started — current bridges defer
+it until the client has settled (no startup/reload overlay), so a join issued
+right after client launch is safe and may take some extra seconds to ack. By
+default this also polls until the player is actually in-world: success when a
+game snapshot shows a player, failure when a DisconnectedScreen appears (its
+title is returned as the reason). When called from inside a world, the poll
+first waits for the old session to drop so a stale snapshot of it can't
+masquerade as the new join. Set wait=false to just fire the join and return.
 
 For repeated automated test runs, prefer a local throwaway server over a live
 community server — live servers have nondeterministic worlds, other players,
@@ -79,10 +81,16 @@ Requires session_control_enabled=true in the DebugBridge config.`,
                 } catch { /* can't tell — don't gate */ }
             }
 
+            // Current bridges defer the connect until the client has settled
+            // (startup/reload overlay gone — joining mid-reload silently
+            // dropped the server resource pack) and only then ack, bounded at
+            // 60s + 5s wedge-grace bridge-side. Budget past that bound so the
+            // bridge's own, more specific error always beats our deadline.
+            // Older bridges still ack immediately; they just respond faster.
             const resp = await bridgeSession.send("joinServer", {
                 address: args.address,
                 acceptResourcePacks: args.acceptResourcePacks ?? true,
-            });
+            }, 65_000);
             if (!resp.success) {
                 // Bridge errors here are self-describing (incl. the gated case).
                 return { content: [{ type: "text" as const, text: `Error: ${resp.error}` }], isError: true };

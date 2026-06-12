@@ -134,6 +134,16 @@ as the reason — `"Failed to verify username"`-style messages mean the
 launcher login is stale (see above). For slow joins, `mc_wait_until_in_world`
 continues waiting without re-sending the join.
 
+The bridge port opens well before the client finishes its startup resource
+reload, so a join fired the moment step 5 succeeds used to race that reload:
+the server resource pack's own reload collided with it ("Reload already
+ongoing, replacing" in the log) and the pack silently never applied. Current
+bridges absorb this — `joinServer` waits for the title screen to settle
+before connecting and only then acks, so expect the ack itself to take some
+extra seconds right after a launch. On older bridge jars, wait for the title
+screen yourself (e.g. `mc_screen_inspect` showing TitleScreen) before
+joining a server whose gameplay depends on its resource pack.
+
 Once in-world, verify your change with the runtime tools (`mc_screenshot`,
 `mc_execute`, `mc_snapshot`, …).
 

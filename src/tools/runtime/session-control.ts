@@ -8,11 +8,15 @@ import { SessionInfo } from "./types.js";
  * mc_leave_server, mc_quit_client, mc_wait_until_in_world,
  * mc_wait_for_bridge).
  *
- * The bridge's disconnect/joinServer/quit endpoints are fire-and-acknowledge:
- * success=true means "queued on the game thread", not "completed". Everything
- * here exists to turn those acks into observable outcomes — polling snapshot /
- * screenInspect for join results, and probing the port range to find the
- * bridge again after a client relaunch.
+ * The bridge's disconnect/quit endpoints are fire-and-acknowledge:
+ * success=true means "queued on the game thread", not "completed". joinServer
+ * acks once the connect attempt has started — current bridges defer it until
+ * the client has settled (no startup/reload overlay; joining mid-reload
+ * silently dropped the server resource pack), older ones ack on queue. Either
+ * way an ack is not "in world". Everything here exists to turn those acks
+ * into observable outcomes — polling snapshot / screenInspect for join
+ * results, and probing the port range to find the bridge again after a
+ * client relaunch.
  *
  * Deliberately *not* here: running the build/deploy or launching the client.
  * Those are machine-specific shell concerns that the coding agent driving
@@ -123,12 +127,14 @@ export interface InWorldWaitProgress {
  * One polling tick of the in-world wait, as a pure step over
  * {@link classifyInWorldPoll} so the stale-snapshot gating is unit-testable.
  *
- * The bridge's joinServer ack only means the disconnect+connect got *queued*
- * on the game thread — when the caller was already in a world, the first
- * polls can still see the OLD world's player and would report "joined" for a
- * connection that never happened. With `requireAbsenceFirst`, a
+ * On older bridges the joinServer ack only means the disconnect+connect got
+ * *queued* on the game thread — when the caller was already in a world, the
+ * first polls can still see the OLD world's player and would report "joined"
+ * for a connection that never happened. With `requireAbsenceFirst`, a
  * player-bearing snapshot only counts as joined after at least one successful
- * snapshot WITHOUT a player (the old session dropping).
+ * snapshot WITHOUT a player (the old session dropping). Current bridges ack
+ * only after the old world is torn down, which makes this gate redundant for
+ * them — but it stays: it's harmless there and load-bearing against old jars.
  *
  * "failed" is never gated: a world can't display a DisconnectedScreen, so any
  * one seen after the ack is fresh. Transient nulls (the snapshot request
