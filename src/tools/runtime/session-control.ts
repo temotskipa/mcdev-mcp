@@ -1,4 +1,5 @@
 import net from "net";
+import { execFile } from "child_process";
 import WebSocket from "ws";
 import { bridgeSession } from "./session.js";
 import { SessionInfo } from "./types.js";
@@ -15,8 +16,9 @@ import { SessionInfo } from "./types.js";
  * silently dropped the server resource pack), older ones ack on queue. Either
  * way an ack is not "in world". Everything here exists to turn those acks
  * into observable outcomes — polling snapshot / screenInspect for join
- * results, and probing the port range to find the bridge again after a
- * client relaunch.
+ * results, watching a quitting client's port and process actually go away,
+ * and probing the port range to find the bridge again after a client
+ * relaunch.
  *
  * Deliberately *not* here: running the build/deploy or launching the client.
  * Those are machine-specific shell concerns that the coding agent driving
@@ -361,4 +363,115 @@ export async function waitForBridge(
         `login prompt (the user must log in once in the launcher GUI), or the game may have ` +
         `crashed — read <gameDir>/logs/latest.log.`,
     );
+}
+
+// ---------------------------------------------------------------------------
+// Process exit (quit confirmation)
+// ---------------------------------------------------------------------------
+//
+// The port closing is not the end of shutdown: the JVM has been measured
+// outliving the closed bridge port by ~5s while it finishes tearing down, and
+// launchers that track the instance (Prism) silently ignore --launch while
+// the old process is alive. Since this server runs on the same machine as the
+// client, we can do better than the port: resolve the PID listening on the
+// bridge port *before* sending quit, then wait for that process to die.
+// Everything here is best-effort — when PID resolution fails (no lsof,
+// permissions, exotic setups) callers fall back to port-close-only.
+
+/**
+ * Pure parser for the PID-resolution probes' stdout (`lsof -t` on
+ * macOS/Linux, `Get-NetTCPConnection … .OwningProcess` via PowerShell on
+ * Windows — both print one integer per line). Returns the single distinct
+ * PID, or null when the output is empty, ambiguous (two different listeners
+ * would mean we're not looking at what we think), or not PID-shaped at all.
+ */
+export function parseListeningPids(stdout: string): number | null {
+    const pids = new Set<number>();
+    for (const line of stdout.split(/\r?\n/)) {
+        const t = line.trim();
+        if (t === "") continue;
+        if (!/^\d+$/.test(t)) return null; // unexpected output — don't guess
+        pids.add(Number(t));
+    }
+    if (pids.size !== 1) return null;
+    const pid = [...pids][0];
+    return pid > 0 ? pid : null;
+}
+
+/**
+ * Resolve the PID of the process listening on the port — the Minecraft JVM,
+ * when called on the bridge port while the client is up. `-sTCP:LISTEN` (and
+ * `-State Listen`) matters: it excludes our own ESTABLISHED WebSocket to that
+ * same port. Best-effort: null when the probe tool is missing, errors, times
+ * out, or its output doesn't parse.
+ */
+export function resolveListeningPid(port: number): Promise<number | null> {
+    const probe = process.platform === "win32"
+        ? {
+            cmd: "powershell.exe",
+            args: [
+                "-NoProfile", "-Command",
+                `(Get-NetTCPConnection -LocalPort ${port} -State Listen -ErrorAction SilentlyContinue).OwningProcess`,
+            ],
+        }
+        : { cmd: "lsof", args: ["-t", `-iTCP:${port}`, "-sTCP:LISTEN"] };
+    return new Promise((resolve) => {
+        execFile(probe.cmd, probe.args, { timeout: 4000 }, (err, stdout) => {
+            resolve(err ? null : parseListeningPids(stdout));
+        });
+    });
+}
+
+/**
+ * Pure classifier for a `process.kill(pid, 0)` outcome (no error = the probe
+ * succeeded). Only ESRCH means the process is gone — EPERM means it exists
+ * but isn't ours to signal, and anything unrecognised is treated as alive so
+ * a quit never reports success off an inconclusive probe.
+ */
+export function classifyKillProbe(error: unknown): "alive" | "dead" {
+    if (error === null || error === undefined) return "alive";
+    return (error as NodeJS.ErrnoException).code === "ESRCH" ? "dead" : "alive";
+}
+
+/** Signal-0 liveness probe; see {@link classifyKillProbe}. */
+export function isProcessAlive(pid: number): boolean {
+    try {
+        process.kill(pid, 0);
+        return true;
+    } catch (e) {
+        return classifyKillProbe(e) === "alive";
+    }
+}
+
+export type WaitForClientExitResult =
+    | { state: "exited"; pidConfirmed: boolean }
+    | { state: "timeout"; waitingOn: "port" | "process" };
+
+/** Signal-0 probes are a bare syscall and the JVM's post-port shutdown tail
+ *  is a few seconds — poll it finer than the 1s network checks. */
+const PROCESS_POLL_INTERVAL_MS = 250;
+
+/**
+ * The full quit wait: port closed, then — when a PID was resolved up front —
+ * that process actually gone. One deadline spans both phases, so callers'
+ * timeout semantics are unchanged from the port-only days. `pid` null (PID
+ * resolution failed) degrades to the old port-close-only behaviour, flagged
+ * via `pidConfirmed: false` so the tool can tell the caller to verify exit
+ * themselves.
+ */
+export async function waitForClientExit(
+    port: number,
+    pid: number | null,
+    timeoutMs: number,
+): Promise<WaitForClientExitResult> {
+    const start = Date.now();
+    if (!(await waitForPortClosed(port, timeoutMs))) {
+        return { state: "timeout", waitingOn: "port" };
+    }
+    if (pid === null) return { state: "exited", pidConfirmed: false };
+    for (;;) {
+        if (!isProcessAlive(pid)) return { state: "exited", pidConfirmed: true };
+        if (Date.now() - start >= timeoutMs) return { state: "timeout", waitingOn: "process" };
+        await sleep(PROCESS_POLL_INTERVAL_MS);
+    }
 }

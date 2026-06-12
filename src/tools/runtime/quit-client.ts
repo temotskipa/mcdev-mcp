@@ -1,7 +1,8 @@
 import { bridgeSession } from "./session.js";
 import {
     checkSessionControlEnabled,
-    waitForPortClosed,
+    resolveListeningPid,
+    waitForClientExit,
     DEFAULT_QUIT_TIMEOUT_S,
 } from "./session-control.js";
 
@@ -14,22 +15,27 @@ quit step of build → deploy → quit → launch → mc_wait_for_bridge; see th
 mcdev://guides/dev-loop resource).
 
 Fire-and-acknowledge: the WebSocket is expected to drop moments after the ack
-(that counts as success). By default this then polls until the bridge port
-stops listening, so the port range is safe to rescan — but the JVM can outlive
-the port by a few seconds while it finishes shutting down. Before relaunching
-through a launcher that tracks the instance (Prism silently ignores --launch
-while the old process lives), confirm the process actually exited (pgrep /
-kill -0). Requires session_control_enabled=true in the DebugBridge config.`,
+(that counts as success). By default the tool then waits for the client to be
+truly gone: it resolves the PID listening on the bridge port before quitting,
+polls until the port stops listening, then until that process exits — so on
+success it's safe to relaunch immediately, even through launchers that track
+the instance (Prism silently ignores --launch while the old process lives).
+When the PID can't be resolved (no lsof, permissions), it falls back to
+port-close-only and the result says so — the JVM can outlive the port by a
+few seconds, so in that case confirm the process exited yourself (pgrep /
+kill -0) before relaunching. Requires session_control_enabled=true in the
+DebugBridge config.`,
     inputSchema: {
         type: "object" as const,
         properties: {
             waitForExit: {
                 type: "boolean",
-                description: "Poll until the bridge port stops listening before returning. Default true.",
+                description: "Wait until the client is actually gone — bridge port closed, " +
+                    "then the client process exited (when its PID could be resolved) — before returning. Default true.",
             },
             timeoutSeconds: {
                 type: "number",
-                description: `How long to wait for the port to close. Default ${DEFAULT_QUIT_TIMEOUT_S}.`,
+                description: `How long to wait for the whole shutdown (port close + process exit). Default ${DEFAULT_QUIT_TIMEOUT_S}.`,
             },
         },
         required: [],
@@ -42,8 +48,11 @@ kill -0). Requires session_control_enabled=true in the DebugBridge config.`,
                 return { content: [{ type: "text" as const, text: disabled }], isError: true };
             }
 
-            // Capture before quitting: the close handler nulls the port.
+            // Capture before quitting: the close handler nulls the port. The
+            // PID likewise only resolves while the JVM still owns the port.
             const port = bridgeSession.getConnectedPort();
+            const wantWait = args.waitForExit !== false && port !== null;
+            const pid = wantWait ? await resolveListeningPid(port) : null;
 
             try {
                 const resp = await bridgeSession.send("quit", {});
@@ -58,7 +67,7 @@ kill -0). Requires session_control_enabled=true in the DebugBridge config.`,
             }
             bridgeSession.disconnect();
 
-            if (args.waitForExit === false || port === null) {
+            if (!wantWait) {
                 return {
                     content: [{
                         type: "text" as const,
@@ -69,25 +78,26 @@ kill -0). Requires session_control_enabled=true in the DebugBridge config.`,
             }
 
             const timeoutS = args.timeoutSeconds ?? DEFAULT_QUIT_TIMEOUT_S;
-            const closed = await waitForPortClosed(port, timeoutS * 1000);
-            if (!closed) {
-                return {
-                    content: [{
-                        type: "text" as const,
-                        text: `Quit was acknowledged but port ${port} is still listening after ${timeoutS}s. ` +
-                            `The game may be stuck on a save/exit prompt — ask the user to close it ` +
-                            `manually before relaunching.`,
-                    }],
-                    isError: true,
-                };
+            const result = await waitForClientExit(port, pid, timeoutS * 1000);
+            if (result.state === "timeout") {
+                const text = result.waitingOn === "port"
+                    ? `Quit was acknowledged but port ${port} is still listening after ${timeoutS}s. ` +
+                        `The game may be stuck on a save/exit prompt — ask the user to close it ` +
+                        `manually before relaunching.`
+                    : `Port ${port} closed but the client process (PID ${pid}) is still running ` +
+                        `after ${timeoutS}s — it's likely still finishing shutdown, or hung. ` +
+                        `Wait for it to exit (kill -0 ${pid}) before relaunching.`;
+                return { content: [{ type: "text" as const, text }], isError: true };
             }
-            return {
-                content: [{
-                    type: "text" as const,
-                    text: `Client shut down — port ${port} closed. Safe to relaunch; ` +
-                        `use mc_wait_for_bridge to reconnect afterwards.`,
-                }],
-            };
+            const text = result.pidConfirmed
+                ? `Client shut down — port ${port} closed and process ${pid} exited. ` +
+                    `Safe to relaunch immediately; use mc_wait_for_bridge to reconnect afterwards.`
+                : `Client shut down — port ${port} closed. Couldn't resolve the client PID to ` +
+                    `also confirm process exit, and the JVM can outlive the port by a few ` +
+                    `seconds — if the launcher tracks the instance (Prism ignores --launch ` +
+                    `while the old process lives), confirm it exited (pgrep / kill -0) before ` +
+                    `relaunching. Use mc_wait_for_bridge to reconnect afterwards.`;
+            return { content: [{ type: "text" as const, text }] };
         } catch (e: unknown) {
             const msg = e instanceof Error ? e.message : String(e);
             return { content: [{ type: "text" as const, text: msg }], isError: true };

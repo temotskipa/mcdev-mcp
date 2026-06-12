@@ -85,13 +85,21 @@ is only read at launch.
 ## Step 3 — quit the client
 
 `mc_quit_client`. It tolerates the WebSocket dropping mid-call (that's the
-normal shutdown signal) and by default polls until the bridge port stops
-listening, so the port range is safe to rescan. The JVM can outlive the port
-by a few seconds while it finishes shutting down — wait for the old process
-to actually exit (`pgrep -f` / `kill -0`) before relaunching, or launchers
-that track the instance (Prism) silently ignore the `--launch`. If the port
-is still open after the timeout, the game is probably stuck on a save/exit
-dialog — ask the user.
+normal shutdown signal) and by default waits until the client is truly gone:
+it resolves the PID listening on the bridge port before quitting, then polls
+until the port stops listening and that process exits. On success you can
+relaunch immediately — including through launchers that track the instance
+(Prism silently ignores `--launch` while the old process lives). Read the
+result text for the two degraded cases:
+
+- **PID couldn't be resolved** (no `lsof`, permissions): the tool falls back
+  to port-close-only and says so. The JVM can outlive the port by a few
+  seconds — wait for the old process to actually exit (`pgrep -f` /
+  `kill -0`) before relaunching.
+- **Timeout**: if the port is still open, the game is probably stuck on a
+  save/exit dialog — ask the user. If the port closed but the process is
+  still running, the JVM is hung finishing shutdown; check it again before
+  relaunching.
 
 ## Step 4 — launch, detached
 

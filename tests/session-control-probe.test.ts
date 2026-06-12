@@ -1,6 +1,13 @@
 import { afterEach, describe, expect, it } from '@jest/globals';
+import { spawn, spawnSync } from 'child_process';
 import { WebSocketServer } from 'ws';
-import { probePort, isPortListening } from '../src/tools/runtime/session-control.js';
+import {
+    isPortListening,
+    isProcessAlive,
+    probePort,
+    resolveListeningPid,
+    waitForClientExit,
+} from '../src/tools/runtime/session-control.js';
 
 /**
  * probePort against a real (fake-bridge) WebSocket server. This is the piece
@@ -75,5 +82,76 @@ describe('isPortListening', () => {
         expect(await isPortListening(port)).toBe(true);
         await new Promise<void>((resolve) => server!.close(() => { server = null; resolve(); }));
         expect(await isPortListening(port)).toBe(false);
+    });
+});
+
+/** Open a server just to learn a port that is then guaranteed free. */
+async function freedPort(): Promise<number> {
+    const port = await startFakeBridge(() => ({}));
+    await new Promise<void>((resolve) => server!.close(() => { server = null; resolve(); }));
+    return port;
+}
+
+/** A real short-lived process to watch die: node parked on a timer. */
+function shortLivedChild(ms: number): number {
+    const child = spawn(process.execPath, ['-e', `setTimeout(() => {}, ${ms})`], {
+        stdio: 'ignore',
+    });
+    expect(child.pid).toBeDefined();
+    return child.pid!;
+}
+
+// The POSIX probe shells out to lsof; skip (rather than fail) on machines
+// without it. The Windows probe uses PowerShell, which is always present.
+const hasPidProbe = process.platform === 'win32' || !spawnSync('lsof', ['-v']).error;
+const itWithPidProbe = hasPidProbe ? it : it.skip;
+
+describe('resolveListeningPid', () => {
+    itWithPidProbe('resolves the owner of a listening port (this very process)', async () => {
+        const port = await startFakeBridge((req) => ({ id: req.id, success: true, result: {} }));
+        expect(await resolveListeningPid(port)).toBe(process.pid);
+    });
+
+    itWithPidProbe('returns null when nothing listens on the port', async () => {
+        expect(await resolveListeningPid(await freedPort())).toBeNull();
+    });
+});
+
+describe('isProcessAlive', () => {
+    it('sees this very process as alive', () => {
+        expect(isProcessAlive(process.pid)).toBe(true);
+    });
+
+    it('sees an exited process as dead', () => {
+        const result = spawnSync(process.execPath, ['-e', '']);
+        expect(result.error).toBeUndefined();
+        expect(isProcessAlive(result.pid)).toBe(false);
+    });
+});
+
+describe('waitForClientExit', () => {
+    it('times out on the port phase while the port keeps listening', async () => {
+        const port = await startFakeBridge((req) => ({ id: req.id, success: true, result: {} }));
+        expect(await waitForClientExit(port, process.pid, 400))
+            .toEqual({ state: 'timeout', waitingOn: 'port' });
+    });
+
+    it('degrades to port-close-only when no PID was resolved', async () => {
+        expect(await waitForClientExit(await freedPort(), null, 2000))
+            .toEqual({ state: 'exited', pidConfirmed: false });
+    });
+
+    it('confirms exit once the process dies after the port closed', async () => {
+        const port = await freedPort();
+        const pid = shortLivedChild(400);
+        expect(isProcessAlive(pid)).toBe(true);
+        expect(await waitForClientExit(port, pid, 5000))
+            .toEqual({ state: 'exited', pidConfirmed: true });
+    }, 10000);
+
+    it('times out on the process phase when the port closed but the process lives on', async () => {
+        // Our own PID stands in for a JVM hung mid-shutdown.
+        expect(await waitForClientExit(await freedPort(), process.pid, 600))
+            .toEqual({ state: 'timeout', waitingOn: 'process' });
     });
 });

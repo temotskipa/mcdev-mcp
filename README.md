@@ -494,7 +494,7 @@ Poll until the player is in a world, a `DisconnectedScreen` appears, or the time
 ```
 
 ### `mc_quit_client`
-Gracefully shut down the Minecraft client (the WebSocket dropping right after the ack is the normal success mode). By default polls until the bridge port stops listening, so the port range is safe to rescan — the JVM itself can outlive the port by a few seconds, so confirm the old process exited before relaunching through a launcher that tracks the instance (Prism silently ignores `--launch` while it still sees the old process).
+Gracefully shut down the Minecraft client (the WebSocket dropping right after the ack is the normal success mode). By default it resolves the client's PID from the bridge port before quitting, then polls until the port stops listening *and* that process exits — on success it's safe to relaunch immediately, even through launchers that track the instance (Prism silently ignores `--launch` while it still sees the old process). When the PID can't be resolved (no `lsof`, permissions), it falls back to port-close-only and the result says so — the JVM can outlive the port by a few seconds, so in that case confirm the old process exited yourself before relaunching.
 
 ```json
 {

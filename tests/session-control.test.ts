@@ -1,7 +1,9 @@
 import { describe, expect, it } from '@jest/globals';
 import {
     classifyInWorldPoll,
+    classifyKillProbe,
     instanceMatches,
+    parseListeningPids,
     sessionControlDisabledMessage,
     stepInWorldWait,
     type InWorldWaitProgress,
@@ -72,6 +74,61 @@ describe('sessionControlDisabledMessage', () => {
 
     it('uses a placeholder path when gameDir is unknown', () => {
         expect(sessionControlDisabledMessage(undefined)).toContain('<minecraft>/config/debugbridge.json');
+    });
+});
+
+describe('parseListeningPids', () => {
+    it('parses the single PID lsof -t prints', () => {
+        expect(parseListeningPids('4242\n')).toBe(4242);
+    });
+
+    it('tolerates surrounding whitespace and CRLF (PowerShell output)', () => {
+        expect(parseListeningPids('  4242  \r\n')).toBe(4242);
+        expect(parseListeningPids('4242\r\n\r\n')).toBe(4242);
+    });
+
+    it('dedupes repeats of the same PID (one socket per address family)', () => {
+        expect(parseListeningPids('4242\n4242\n')).toBe(4242);
+    });
+
+    it('refuses to guess between two different listeners', () => {
+        expect(parseListeningPids('4242\n5151\n')).toBeNull();
+    });
+
+    it('returns null on empty output', () => {
+        expect(parseListeningPids('')).toBeNull();
+        expect(parseListeningPids('\n')).toBeNull();
+    });
+
+    it('returns null on output that is not PID-shaped at all', () => {
+        expect(parseListeningPids('lsof: command not found')).toBeNull();
+        expect(parseListeningPids('4242\nwarning: something\n')).toBeNull();
+        expect(parseListeningPids('-1\n')).toBeNull();
+        expect(parseListeningPids('0\n')).toBeNull();
+    });
+});
+
+describe('classifyKillProbe', () => {
+    const errnoError = (code: string): NodeJS.ErrnoException =>
+        Object.assign(new Error(code), { code });
+
+    it('a successful probe (no error) means alive', () => {
+        expect(classifyKillProbe(null)).toBe('alive');
+        expect(classifyKillProbe(undefined)).toBe('alive');
+    });
+
+    it('only ESRCH means the process is gone', () => {
+        expect(classifyKillProbe(errnoError('ESRCH'))).toBe('dead');
+    });
+
+    it('EPERM means it exists but is not ours to signal', () => {
+        expect(classifyKillProbe(errnoError('EPERM'))).toBe('alive');
+    });
+
+    it('anything inconclusive counts as alive, so quit never lies about success', () => {
+        expect(classifyKillProbe(errnoError('EWEIRD'))).toBe('alive');
+        expect(classifyKillProbe(new Error('no code at all'))).toBe('alive');
+        expect(classifyKillProbe('not even an error')).toBe('alive');
     });
 });
 
