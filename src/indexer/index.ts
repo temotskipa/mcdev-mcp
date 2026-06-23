@@ -1,7 +1,11 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import * as os from 'os';
+import { fork } from 'child_process';
+import { fileURLToPath } from 'url';
 import { glob } from 'glob';
 import { PackageIndex, IndexManifest, ClassInfo } from '../utils/types.js';
+import type { ParsedClass } from './parser.js';
 import { parseJavaFile, getParserBackend } from './parser.js';
 import {
   getVersionedIndexManifestPath,
@@ -9,6 +13,11 @@ import {
   ensureVersionedIndexDirs
 } from '../utils/paths.js';
 import { readJsonFileOrNull } from '../utils/json-file.js';
+
+const AST_WORKER_BATCH_SIZE = 10;
+const AST_WORKER_HEAP_MB = 2048;
+const AST_WORKER_RETRY_HEAP_MB = 8192;
+const WORKER_STDERR_LIMIT = 8000;
 
 export interface BuildIndexOptions {
   minecraftSourceDir: string;
@@ -119,39 +128,57 @@ async function processJavaFiles(options: ProcessJavaFilesOptions): Promise<numbe
 
   const sortedFiles = [...files].sort((a, b) => a.localeCompare(b));
   let processedFiles = processedOffset;
+  let nextProgressAt = Math.floor(processedOffset / 500) * 500 + 500;
   let activePackage: string | null = null;
   let activeClasses: Record<string, ClassInfo> | null = null;
 
-  for (const file of sortedFiles) {
-    const parsed = parseJavaFile(file);
-    if (parsed) {
-      const packageName = parsed.packageName || 'default';
+  async function indexParsedClass(parsed: ParsedClass): Promise<void> {
+    const packageName = parsed.packageName || 'default';
 
-      if (activePackage !== null && packageName !== activePackage && activeClasses) {
-        await flushPackage(namespace, activePackage, activeClasses, version, packageNames);
-        activeClasses = null;
-        await yieldForGc();
-      }
-
-      if (activePackage !== packageName) {
-        activePackage = packageName;
-        activeClasses = {};
-      }
-
-      activeClasses![parsed.className] = {
-        ...parsed.info,
-        sourcePath: parsed.info.sourcePath,
-      };
-      onClassIndexed();
-    }
-
-    processedFiles++;
-    if (processedFiles % 100 === 0) {
+    if (activePackage !== null && packageName !== activePackage && activeClasses) {
+      await flushPackage(namespace, activePackage, activeClasses, version, packageNames);
+      activeClasses = null;
       await yieldForGc();
     }
-    if (progressCb && processedFiles % 500 === 0) {
+
+    if (activePackage !== packageName) {
+      activePackage = packageName;
+      activeClasses = {};
+    }
+
+    activeClasses![parsed.className] = {
+      ...parsed.info,
+      sourcePath: parsed.info.sourcePath,
+    };
+    onClassIndexed();
+  }
+
+  function reportProcessed(count: number): void {
+    processedFiles += count;
+    if (progressCb && totalFiles > 0 && processedFiles >= nextProgressAt) {
       const progress = Math.round(5 + (processedFiles / totalFiles) * 85);
       progressCb('index', progress, `Processed ${processedFiles}/${totalFiles} files...`);
+      while (processedFiles >= nextProgressAt) nextProgressAt += 500;
+    }
+  }
+
+  if (shouldUseAstWorkers(sortedFiles.length)) {
+    await parseJavaFilesInWorkerBatches(sortedFiles, async batch => {
+      for (const parsed of batch.parsed) {
+        await indexParsedClass(parsed);
+      }
+    }, reportProcessed);
+  } else {
+    for (const file of sortedFiles) {
+      const parsed = parseJavaFile(file);
+      if (parsed) {
+        await indexParsedClass(parsed);
+      }
+
+      reportProcessed(1);
+      if (processedFiles % 100 === 0) {
+        await yieldForGc();
+      }
     }
   }
 
@@ -160,6 +187,188 @@ async function processJavaFiles(options: ProcessJavaFilesOptions): Promise<numbe
   }
 
   return processedFiles;
+}
+
+interface ParsedBatch {
+  fileCount: number;
+  parsed: ParsedClass[];
+}
+
+function shouldUseAstWorkers(fileCount: number): boolean {
+  if (fileCount === 0 || getParserBackend() !== 'ast') return false;
+  if (getAstWorkerCount() < 1) return false;
+  return fs.existsSync(getParseWorkerPath());
+}
+
+async function parseJavaFilesInWorkerBatches(
+  sortedFiles: string[],
+  onBatchParsed: (batch: ParsedBatch) => Promise<void>,
+  onScheduledBatchComplete?: (fileCount: number) => void,
+): Promise<void> {
+  const batchSize = getAstWorkerBatchSize();
+  const batches: string[][] = [];
+  for (let i = 0; i < sortedFiles.length; i += batchSize) {
+    batches.push(sortedFiles.slice(i, i + batchSize));
+  }
+
+  const completedBatches = new Map<number, ParsedBatch>();
+  const workerCount = Math.min(getAstWorkerCount(), batches.length);
+  let nextBatch = 0;
+  let nextBatchToIndex = 0;
+  let consumeTail = Promise.resolve();
+
+  function consumeReadyBatches(): Promise<void> {
+    consumeTail = consumeTail.then(async () => {
+      while (completedBatches.has(nextBatchToIndex)) {
+        const batch = completedBatches.get(nextBatchToIndex)!;
+        completedBatches.delete(nextBatchToIndex);
+        await onBatchParsed(batch);
+        nextBatchToIndex++;
+        await yieldForGc();
+      }
+    });
+    return consumeTail;
+  }
+
+  async function runNextBatch(): Promise<void> {
+    while (nextBatch < batches.length) {
+      const batchIndex = nextBatch++;
+      const files = batches[batchIndex];
+      const parsed = await parseBatchWithRetry(files);
+      completedBatches.set(batchIndex, { fileCount: files.length, parsed });
+      if (onScheduledBatchComplete) onScheduledBatchComplete(files.length);
+      await consumeReadyBatches();
+    }
+  }
+
+  await Promise.all(Array.from({ length: workerCount }, () => runNextBatch()));
+  await consumeReadyBatches();
+}
+
+async function parseBatchWithRetry(files: string[]): Promise<ParsedClass[]> {
+  try {
+    return await parseBatchInWorker(files);
+  } catch (error) {
+    if (files.length <= 1) {
+      const retryHeapMb = getAstWorkerRetryHeapMb();
+      if (retryHeapMb > getAstWorkerHeapMb()) {
+        try {
+          return await parseBatchInWorker(files, retryHeapMb);
+        } catch {}
+      }
+
+      const cause = error instanceof Error ? error.message : String(error);
+      throw new Error(`Java parse worker failed for ${files[0]}: ${cause}`);
+    }
+
+    const midpoint = Math.floor(files.length / 2);
+    const left = await parseBatchWithRetry(files.slice(0, midpoint));
+    const right = await parseBatchWithRetry(files.slice(midpoint));
+    return [...left, ...right];
+  }
+}
+
+function parseBatchInWorker(files: string[], heapMb = getAstWorkerHeapMb()): Promise<ParsedClass[]> {
+  const workerPath = getParseWorkerPath();
+
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    let stderr = '';
+    const child = fork(workerPath, [], {
+      env: { ...process.env, MCDEV_AST_PARSER: '1' },
+      execArgv: [
+        ...getWorkerExecArgv(),
+        `--max-old-space-size=${heapMb}`,
+      ],
+      stdio: ['ignore', 'ignore', 'pipe', 'ipc'],
+    });
+
+    child.stderr?.on('data', (chunk: Buffer) => {
+      stderr += chunk.toString();
+      if (stderr.length > WORKER_STDERR_LIMIT) {
+        stderr = stderr.slice(-WORKER_STDERR_LIMIT);
+      }
+    });
+
+    child.on('message', (message: unknown) => {
+      const msg = message as { type?: string; parsed?: ParsedClass[]; error?: string };
+      if (msg.type === 'result' && Array.isArray(msg.parsed)) {
+        settled = true;
+        resolve(msg.parsed);
+        return;
+      }
+      if (msg.type === 'error') {
+        settled = true;
+        reject(new Error(msg.error || 'Java parse worker failed.'));
+      }
+    });
+
+    child.on('error', error => {
+      if (settled) return;
+      settled = true;
+      reject(error);
+    });
+
+    child.on('exit', (code, signal) => {
+      if (settled) return;
+      settled = true;
+      const detail = stderr.trim() ? `\n${stderr.trim()}` : '';
+      reject(new Error(`Java parse worker exited with ${signal ?? `code ${code}`}.${detail}`));
+    });
+
+    child.send({ type: 'parse', files });
+  });
+}
+
+function getParseWorkerPath(): string {
+  return fileURLToPath(new URL('./parse-worker.js', import.meta.url));
+}
+
+function getWorkerExecArgv(): string[] {
+  const args: string[] = [];
+  for (let i = 0; i < process.execArgv.length; i++) {
+    const arg = process.execArgv[i];
+    if (
+      arg.startsWith('--max-old-space-size=') ||
+      arg.startsWith('--input-type=') ||
+      arg === '--input-type' ||
+      arg === '--eval' ||
+      arg === '-e' ||
+      arg === '--print' ||
+      arg === '-p'
+    ) {
+      if (arg === '--input-type' || arg === '--eval' || arg === '-e' || arg === '--print' || arg === '-p') i++;
+      continue;
+    }
+    args.push(arg);
+  }
+  return args;
+}
+
+function getAstWorkerCount(): number {
+  const cpuCount = typeof os.availableParallelism === 'function' ? os.availableParallelism() : os.cpus().length;
+  const defaultWorkers = Math.max(1, Math.min(2, cpuCount - 1));
+  return readIntEnv('MCDEV_INDEX_WORKERS', defaultWorkers, 0, 32);
+}
+
+function getAstWorkerBatchSize(): number {
+  return readIntEnv('MCDEV_INDEX_BATCH_SIZE', AST_WORKER_BATCH_SIZE, 1, 2000);
+}
+
+function getAstWorkerHeapMb(): number {
+  return readIntEnv('MCDEV_INDEX_WORKER_HEAP_MB', AST_WORKER_HEAP_MB, 128, 32768);
+}
+
+function getAstWorkerRetryHeapMb(): number {
+  return readIntEnv('MCDEV_INDEX_WORKER_RETRY_HEAP_MB', AST_WORKER_RETRY_HEAP_MB, 128, 32768);
+}
+
+function readIntEnv(name: string, fallback: number, min: number, max: number): number {
+  const raw = process.env[name];
+  if (!raw) return fallback;
+  const parsed = Number.parseInt(raw, 10);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.min(max, Math.max(min, parsed));
 }
 
 async function flushPackage(
