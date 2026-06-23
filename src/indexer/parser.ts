@@ -23,12 +23,31 @@ export interface ParsedClass {
  */
 export type ParserBackend = 'regex' | 'ast';
 
+/**
+ * AST parsing via java-parser can allocate hundreds of MB per file on
+ * brigadier-heavy sources (e.g. server command classes) and that memory is
+ * not reliably reclaimed by GC within one Node process. Fall back to the
+ * regex parser for large files when AST mode is enabled.
+ */
+export const AST_FALLBACK_SIZE_BYTES = 15 * 1024;
+
 export function getParserBackend(): ParserBackend {
   return isEnvOn('MCDEV_AST_PARSER') ? 'ast' : 'regex';
 }
 
+function shouldFallbackToRegex(sizeBytes: number): boolean {
+  return getParserBackend() === 'ast' && sizeBytes > AST_FALLBACK_SIZE_BYTES;
+}
+
 export function parseJavaFile(filePath: string): ParsedClass | null {
-  if (getParserBackend() === 'ast') return parseJavaFileAst(filePath);
+  if (getParserBackend() === 'ast') {
+    const sizeBytes = fs.statSync(filePath).size;
+    if (shouldFallbackToRegex(sizeBytes)) {
+      const content = fs.readFileSync(filePath, 'utf-8');
+      return parseJavaContentRegex(content, filePath);
+    }
+    return parseJavaFileAst(filePath);
+  }
   const content = fs.readFileSync(filePath, 'utf-8');
   return parseJavaContentRegex(content, filePath);
 }
@@ -78,7 +97,12 @@ function parseDeclaration(block: string): {
 }
 
 export function parseJavaContent(content: string, filePath: string): ParsedClass | null {
-  if (getParserBackend() === 'ast') return parseJavaContentAst(content, filePath);
+  if (getParserBackend() === 'ast') {
+    if (shouldFallbackToRegex(content.length)) {
+      return parseJavaContentRegex(content, filePath);
+    }
+    return parseJavaContentAst(content, filePath);
+  }
   return parseJavaContentRegex(content, filePath);
 }
 
