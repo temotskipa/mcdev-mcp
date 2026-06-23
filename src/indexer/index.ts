@@ -48,6 +48,9 @@ export async function buildIndex(options: BuildIndexOptions): Promise<IndexBuild
       addToPackageIndex(minecraftPackages, parsed);
     }
     processedFiles++;
+    if (processedFiles % 100 === 0) {
+      await yieldForGc();
+    }
     if (progressCb && processedFiles % 500 === 0) {
       const progress = Math.round(5 + (processedFiles / totalFiles) * 85);
       progressCb('index', progress, `Processed ${processedFiles}/${totalFiles} files...`);
@@ -64,6 +67,9 @@ export async function buildIndex(options: BuildIndexOptions): Promise<IndexBuild
       addToPackageIndex(fabricPackages, parsed);
     }
     processedFiles++;
+    if (processedFiles % 100 === 0) {
+      await yieldForGc();
+    }
     if (progressCb && processedFiles % 500 === 0) {
       const progress = Math.round(5 + (processedFiles / totalFiles) * 85);
       progressCb('index', progress, `Processed ${processedFiles}/${totalFiles} files...`);
@@ -104,6 +110,10 @@ export async function buildIndex(options: BuildIndexOptions): Promise<IndexBuild
     fabricPackages: Array.from(fabricPackages.keys()),
     totalClasses,
   };
+}
+
+function yieldForGc(): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, 0));
 }
 
 async function findJavaFiles(dir: string): Promise<string[]> {

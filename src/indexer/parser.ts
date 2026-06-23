@@ -8,7 +8,6 @@ export interface ParsedClass {
   className: string;
   fullName: string;
   info: ClassInfo;
-  rawContent: string;
 }
 
 /**
@@ -114,7 +113,6 @@ function parseJavaContentRegex(content: string, filePath: string): ParsedClass |
       methods,
       sourcePath: relativePath,
     },
-    rawContent: content,
   };
 }
 
