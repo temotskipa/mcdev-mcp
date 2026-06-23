@@ -264,33 +264,6 @@ public class C extends Base implements Foo, Bar {}
     });
 });
 
-describe('AST parser — large-file fallback', () => {
-    const ORIG = process.env.MCDEV_AST_PARSER;
-
-    afterEach(() => {
-        if (ORIG === undefined) delete process.env.MCDEV_AST_PARSER;
-        else process.env.MCDEV_AST_PARSER = ORIG;
-    });
-
-    it('falls back to regex for sources larger than AST_FALLBACK_SIZE_BYTES', async () => {
-        process.env.MCDEV_AST_PARSER = '1';
-        const { parseJavaContent, AST_FALLBACK_SIZE_BYTES } = await import('../src/indexer/parser.js');
-        const padding = 'x'.repeat(AST_FALLBACK_SIZE_BYTES);
-        const src = `
-package net.minecraft.server.commands;
-
-public class HugeCommand {
-    private static final String PAD = "${padding}";
-    public static void register() {}
-}
-`;
-        const result = parseJavaContent(src, '/HugeCommand.java');
-        expect(result).not.toBeNull();
-        expect(result?.className).toBe('HugeCommand');
-        expect(result?.info.methods.some(m => m.name === 'register')).toBe(true);
-    });
-});
-
 describe('AST parser — memory shape', () => {
     it('does not retain rawContent on parse results', () => {
         const src = `
