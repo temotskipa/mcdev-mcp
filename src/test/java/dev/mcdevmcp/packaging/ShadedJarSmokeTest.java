@@ -11,7 +11,7 @@ import java.util.jar.JarFile;
 import org.junit.jupiter.api.Test;
 
 class ShadedJarSmokeTest {
-    private static final Path JAR = Path.of("build", "libs", "mcdev-mcp-3.0.0.jar");
+    private static final Path JAR = Path.of(System.getProperty("mcdevMcpJar"));
 
     @Test
     void shadedJarHasRequiredManifestEntries() throws Exception {
@@ -20,7 +20,13 @@ class ShadedJarSmokeTest {
         try (var jar = new JarFile(JAR.toFile())) {
             var manifest = jar.getManifest().getMainAttributes();
             assertEquals("dev.mcdevmcp.app.Main", manifest.getValue("Main-Class"));
-            assertEquals("3.0.0", manifest.getValue("Implementation-Version"));
+            assertEquals(System.getProperty("mcdevMcpVersion"), manifest.getValue("Implementation-Version"));
+            assertTrue(jar.getEntry("META-INF/services/java.sql.Driver") != null);
+            assertTrue(new String(jar.getInputStream(jar.getEntry("META-INF/services/java.sql.Driver")).readAllBytes()).contains("org.sqlite.JDBC"));
+            assertTrue(jar.stream().noneMatch(entry -> entry.getName().matches("META-INF/.*\\.(SF|RSA|DSA)")));
+            assertTrue(jar.stream().anyMatch(entry -> entry.getName().endsWith(".dll")));
+            assertTrue(jar.stream().anyMatch(entry -> entry.getName().endsWith(".so")));
+            assertTrue(jar.stream().anyMatch(entry -> entry.getName().endsWith(".dylib")));
         }
     }
 
@@ -35,6 +41,6 @@ class ShadedJarSmokeTest {
         }
 
         assertEquals(0, process.waitFor());
-        assertEquals("3.0.0", output);
+        assertEquals(System.getProperty("mcdevMcpVersion"), output);
     }
 }

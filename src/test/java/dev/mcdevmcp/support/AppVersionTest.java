@@ -12,7 +12,7 @@ import org.junit.jupiter.api.Test;
 class AppVersionTest {
     @Test
     void readsTheGradleFilteredVersionFromClasses() {
-        assertEquals("3.0.0", AppVersion.current());
+        assertEquals(System.getProperty("mcdevMcpVersion"), AppVersion.current());
     }
 
     @Test
@@ -21,6 +21,9 @@ class AppVersionTest {
         assertFalse(new AppEnvironment(Map.of("MCDEV_MCP_DEBUG_LOG", "")).debugLogPath().isPresent());
         assertFalse(new AppEnvironment(Map.of("MCDEV_MCP_DEBUG_LOG", "off")).debugLogPath().isPresent());
         assertEquals(Path.of("/tmp/mcdev-debug.log"), new AppEnvironment(Map.of("MCDEV_MCP_DEBUG_LOG", "on")).debugLogPath().orElseThrow());
+        assertEquals(Path.of("OFF"), new AppEnvironment(Map.of("MCDEV_MCP_DEBUG_LOG", "OFF")).debugLogPath().orElseThrow());
+        assertEquals(Path.of("ON"), new AppEnvironment(Map.of("MCDEV_MCP_DEBUG_LOG", "ON")).debugLogPath().orElseThrow());
+        assertEquals(" on ", new AppEnvironment(Map.of("MCDEV_MCP_DEBUG_LOG", " on ")).value("MCDEV_MCP_DEBUG_LOG").orElseThrow());
         assertEquals(Path.of("logs/mcdev.log"), new AppEnvironment(Map.of("MCDEV_MCP_DEBUG_LOG", "logs/mcdev.log")).debugLogPath().orElseThrow());
     }
 
@@ -43,5 +46,15 @@ class AppVersionTest {
         DebugLog.write(new AppEnvironment(Map.of("MCDEV_MCP_DEBUG_LOG", directory.toString())), "ignored");
 
         assertEquals("diagnostic" + System.lineSeparator(), Files.readString(logPath));
+    }
+
+    @Test
+    void debugLogSwallowsInvalidPathFailures() {
+        DebugLog.write(new AppEnvironment(Map.of("MCDEV_MCP_DEBUG_LOG", "\u0000invalid")), "ignored");
+    }
+
+    @Test
+    void versionFallbackIsNotPackagedWithExplodedMainResources() {
+        assertFalse(Files.exists(Path.of("build", "resources", "main", "version.properties")));
     }
 }

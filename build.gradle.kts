@@ -10,8 +10,8 @@ plugins {
 
 val applicationVersion = providers.gradleProperty("version").get()
 
-val generateVersionProperties = tasks.register<WriteProperties>("generateVersionProperties") {
-    destinationFile = layout.buildDirectory.file("generated-resources/version.properties").get().asFile
+val generateTestVersionProperties = tasks.register<WriteProperties>("generateTestVersionProperties") {
+    destinationFile = layout.buildDirectory.file("generated-test-resources/version.properties").get().asFile
     property("version", applicationVersion)
 }
 
@@ -45,18 +45,20 @@ tasks.withType<JavaCompile>().configureEach {
 }
 
 sourceSets {
-    main {
-        resources.srcDir(layout.buildDirectory.dir("generated-resources"))
+    test {
+        resources.srcDir(layout.buildDirectory.dir("generated-test-resources"))
     }
 }
 
-tasks.processResources {
-    dependsOn(generateVersionProperties)
+tasks.processTestResources {
+    dependsOn(generateTestVersionProperties)
 }
 
 tasks.withType<Test>().configureEach {
     useJUnitPlatform()
     dependsOn(tasks.named("shadowJar"))
+    systemProperty("mcdevMcpVersion", applicationVersion)
+    systemProperty("mcdevMcpJar", layout.buildDirectory.file("libs/mcdev-mcp-$applicationVersion.jar").get().asFile.absolutePath)
 }
 
 tasks.named<ShadowJar>("shadowJar") {

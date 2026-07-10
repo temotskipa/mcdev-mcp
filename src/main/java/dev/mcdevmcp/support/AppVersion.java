@@ -3,7 +3,6 @@ package dev.mcdevmcp.support;
 import dev.mcdevmcp.app.Main;
 import java.io.IOException;
 import java.io.InputStream;
-import java.net.URL;
 import java.util.Properties;
 
 public final class AppVersion {
@@ -14,11 +13,6 @@ public final class AppVersion {
         if (manifestVersion != null && !manifestVersion.isBlank()) {
             return manifestVersion;
         }
-        URL classResource = Main.class.getResource("Main.class");
-        if (classResource == null || !classResource.getProtocol().equals("file")) {
-            throw new IllegalStateException("Missing implementation version in application manifest");
-        }
-
         try (InputStream input = Main.class.getResourceAsStream("/version.properties")) {
             if (input == null) {
                 throw new IllegalStateException("Missing version.properties");

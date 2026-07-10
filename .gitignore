@@ -5,6 +5,8 @@ node_modules/
 # Build
 dist/
 *.tsbuildinfo
+/.gradle/
+/build/
 java-worker/.gradle/
 java-worker/build/
 

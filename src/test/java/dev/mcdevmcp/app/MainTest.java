@@ -15,7 +15,7 @@ class MainTest {
         int exitCode = Main.execute(new String[] {"--version"}, 25, new PrintWriter(output), new PrintWriter(new StringWriter()));
 
         assertEquals(0, exitCode);
-        assertEquals("3.0.0" + System.lineSeparator(), output.toString());
+        assertEquals(System.getProperty("mcdevMcpVersion") + System.lineSeparator(), output.toString());
     }
 
     @Test

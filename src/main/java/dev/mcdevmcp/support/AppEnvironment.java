@@ -27,9 +27,9 @@ public record AppEnvironment(Map<String, String> values) {
 
     public Optional<Path> debugLogPath() {
         return value("MCDEV_MCP_DEBUG_LOG")
-                .filter(value -> !value.isBlank())
-                .filter(value -> !value.equalsIgnoreCase("off"))
-                .map(value -> value.equalsIgnoreCase("on") ? Path.of("/tmp/mcdev-debug.log") : Path.of(value));
+                .filter(value -> !value.isEmpty())
+                .filter(value -> !value.equals("off"))
+                .map(value -> value.equals("on") ? Path.of("/tmp/mcdev-debug.log") : Path.of(value));
     }
 
     public int indexThreads(int availableProcessors) {
