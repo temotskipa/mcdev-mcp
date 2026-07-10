@@ -31,8 +31,8 @@ boundaries. Internal indexer and callgraph worker protocols disappear.
 - Rewrite the MCP server, CLI, analysis pipeline, storage, and DebugBridge
   client in pure Java.
 - Distribute one cross-platform shaded JAR as the primary artifact.
-- Use the official MCP Java SDK 2.0.0 over STDIO without Spring or another web
-  framework.
+- Use the official MCP Java SDK 2.0.0 asynchronous server over STDIO without
+  Spring or another web framework.
 - Use JDK compiler tree APIs as the sole production source indexer.
 - Remove regex-based Java source parsing, `java-parser`, the TypeScript AST
   parser, and every Java-to-regex fallback.
@@ -162,6 +162,16 @@ The Java server preserves:
   `mcdev://guides/dev-loop`.
 - Unknown-tool and handler-failure responses using MCP tool errors rather than
   terminating the STDIO process.
+
+The server uses the MCP SDK's asynchronous API over STDIO. Internal tool
+handlers expose JDK `CompletionStage` values and a cancellation signal; Reactor
+types remain confined to the MCP SDK adapter. DebugBridge/WebSocket operations
+therefore remain nonblocking end to end. Filesystem, SQLite, and other blocking
+handlers run on a Java 25 virtual-thread executor rather than a Reactor event
+loop. Cancelling an MCP request cancels its future and signals the underlying
+operation. This preserves concurrent in-flight calls, including while a long
+video capture or wait tool is pending, without spreading reactive types through
+the application.
 
 STDOUT is reserved exclusively for MCP JSON-RPC while `serve` is running.
 Diagnostics use STDERR or the existing opt-in debug log file. No logging

@@ -15,6 +15,7 @@
 - Preserve the stash named `preserve-bun-ts7-dependency-experiment-before-java-runtime-task`; it is not part of this rewrite and must not be applied or dropped.
 - Compile with a Java 25 toolchain and `options.release = 25`; reject runtime Java below 25 before downloads or cache mutation. Java 26 is a supported correctness runtime and becomes the documented performance preference only after the benchmark policy passes.
 - Use MCP Java SDK 2.0.0 over production STDIO. Do not add Spring, Ktor, Kotlin, GraalVM native-image, preview JDK APIs, or another production transport.
+- Use `McpServer.async(...)`. Internal handlers return JDK `CompletionStage`, Reactor remains confined to `McpSdkAdapter`, DebugBridge calls stay nonblocking, and SQLite/filesystem handlers use a Java 25 virtual-thread executor with cancellation propagation.
 - Javac compiler/tree APIs are the sole production source parser. No regex parser, `java-parser`, TypeScript AST parser, parser fallback, parser importer, or skip mode may remain. User-requested regex matching in `mc_search` is search behavior, not source parsing, and remains compatible.
 - Use `java.lang.classfile` directly for callgraph generation. Do not clone, build, execute, parse output from, or depend on java-callgraph2.
 - Preserve all baseline MCP tools, including `mc_record_video`, both resources, CLI commands, exit codes, environment gates, defaults, limits, truncation text, error text, and output formatting unless the approved design explicitly corrects them.
@@ -346,6 +347,7 @@ git commit -m "build: establish Java 25 MCP application"
 **Files:**
 - Create: `src/main/java/dev/mcdevmcp/mcp/ToolDefinition.java`
 - Create: `src/main/java/dev/mcdevmcp/mcp/ToolHandler.java`
+- Create: `src/main/java/dev/mcdevmcp/mcp/ToolHandlers.java`
 - Create: `src/main/java/dev/mcdevmcp/mcp/ToolResult.java`
 - Create: `src/main/java/dev/mcdevmcp/mcp/ToolCatalog.java`
 - Create: `src/main/java/dev/mcdevmcp/mcp/ResourceDefinition.java`
@@ -363,7 +365,7 @@ git commit -m "build: establish Java 25 MCP application"
 
 **Interfaces:**
 - Consumes: `/mcp/tools.json`, contract fixtures, `AppEnvironment`, `AppVersion`.
-- Produces: immutable `ToolCatalog`; `ToolHandler.handle(JsonObject)`; `McpServerFactory.startStdio(InputStream, OutputStream)`; the production `serve` command and resource reads.
+- Produces: immutable `ToolCatalog`; async `ToolHandler.handle(JsonObject, Cancellation)`; `McpServerFactory.startStdio(InputStream, OutputStream)`; the production `serve` command and resource reads.
 
 - [ ] **Step 1: Write failing catalog, resource, and process-level STDIO tests**
 
@@ -381,7 +383,8 @@ public record ToolDefinition(
 
 @FunctionalInterface
 public interface ToolHandler {
-    ToolResult handle(JsonObject arguments) throws Exception;
+    CompletionStage<ToolResult> handle(
+            JsonObject arguments, Cancellation cancellation);
 }
 
 public record ToolResult(List<Content> content, boolean isError) {
@@ -410,7 +413,7 @@ private static final Map<String, Availability> AVAILABILITY = Map.of(
 );
 ```
 
-All other tools are `ALWAYS`. `enabledDefinitions()` filters using the existing truthy values (`1`, `true`, `yes`, `on`, case-insensitive). Duplicate metadata, duplicate handlers, a handler without metadata, or malformed schema fails startup. During staged migration, metadata without a handler remains listable but dispatches a deterministic `Tool handler is not available in this migration build: <name>` error; Task 13 removes this transitional state and asserts complete binding.
+All other tools are `ALWAYS`. `enabledDefinitions()` filters using the existing truthy values (`1` and `true`, case-insensitive, without trimming). Duplicate metadata, duplicate handlers, a handler without metadata, or malformed schema fails startup. During staged migration, metadata without a handler remains listable but dispatches a completed future containing the deterministic `Tool handler is not available in this migration build: <name>` error; Task 13 removes this transitional state and asserts complete binding.
 
 - [ ] **Step 4: Implement the shared resource catalog**
 
@@ -423,11 +426,18 @@ mcdev://guides/dev-loop
 
 Unknown URIs throw the same message as the Node fixture. Reads use UTF-8 and do not depend on the current working directory.
 
-- [ ] **Step 5: Adapt the internal registry to MCP Java SDK 2.0.0**
+- [ ] **Step 5: Adapt the internal registry to the MCP SDK asynchronous server**
 
-Use `StdioServerTransportProvider(McpJsonDefaults.getMapper())` and the synchronous server API. Server info is `mcdev-mcp` plus `AppVersion.current()`. Capabilities advertise tools and resources, instructions equal the baseline fixture, tool input validation remains enabled, and blocking handlers use the SDK's default offloaded execution (`immediateExecution=false`). Convert expected handler exceptions into `ToolResult.error("Error executing " + name + ": " + message)` without terminating the process.
+Use `StdioServerTransportProvider(McpJsonDefaults.getMapper())` and `McpServer.async(...)`. Server info is `mcdev-mcp` plus `AppVersion.current()`. Capabilities advertise tools and resources, instructions equal the baseline fixture, and tool input validation remains enabled. Convert each handler stage with `Mono.fromFuture(stage.toCompletableFuture())`; Reactor types must not appear outside `McpSdkAdapter`. On Reactor cancellation, set the request's `Cancellation` signal and cancel the underlying future. Convert expected synchronous throws and exceptional completions into `ToolResult.error("Error executing " + name + ": " + message)` without terminating the process.
 
-The adapter writes protocol messages only to its supplied output stream. `DebugLog` writes only to the configured file; all other diagnostics use the supplied STDERR stream.
+`ToolHandlers.blocking(ExecutorService, BlockingToolHandler)` adapts SQLite,
+filesystem, and other blocking work with `Executors.newVirtualThreadPerTaskExecutor()`.
+`ToolHandlers.completed(...)` covers immediate catalog/resource responses.
+The factory owns and closes the virtual-thread executor with the async server.
+Bridge handlers in later tasks return their natural `CompletionStage` directly
+and never occupy a virtual thread while waiting on WebSocket I/O.
+
+The adapter writes protocol messages only to its supplied output stream. `DebugLog` writes only to the configured file; all other diagnostics use the supplied STDERR stream. Add an integration test where one handler returns an incomplete future while a second request completes, then cancel the first and assert its cancellation signal/future are cancelled. This is the concurrency contract that justifies the async server choice.
 
 - [ ] **Step 6: Run contract and process-level tests**
 
@@ -741,7 +751,12 @@ Map.ofEntries(
 );
 ```
 
-Preserve explicit-version precedence and current active-version fallback. `mc_search` may compile a user-supplied regex only for requested source searching; catch invalid patterns as tool errors and never use that regex to infer declarations.
+Bind these JDBC/filesystem handlers through `ToolHandlers.blocking(...)` so
+their work runs on the factory-owned virtual-thread executor rather than a
+Reactor transport thread. Preserve explicit-version precedence and current
+active-version fallback. `mc_search` may compile a user-supplied regex only for
+requested source searching; catch invalid patterns as tool errors and never use
+that regex to infer declarations.
 
 - [ ] **Step 5: Run focused tests plus MCP list/call integration**
 
@@ -1100,6 +1115,9 @@ Expected: FAIL with missing handlers.
 
 Each handler constructs only the payload fields present in the request, calls the exact endpoint above, checks `success`, validates every consumed result field, tolerates unknown fields, and renders the frozen text. `mc_execute` preserves code/output/return/error behavior and timeout scaling. `mc_connect reset:true` clears prior instance identity before connecting.
 
+Compose results with `CompletionStage` operations; do not call `join`, `get`,
+or block a virtual thread while waiting for DebugBridge.
+
 `RuntimeToolModule.handlers()` returns a mutable builder-backed map so Tasks 11 and 12 can add disjoint handler groups without editing these implementations.
 
 - [ ] **Step 4: Run core runtime plus MCP dispatch tests**
@@ -1249,6 +1267,11 @@ Expected: FAIL at compilation or missing handlers.
 
 Model poll results as sealed records `Joined`, `Failed`, and `Pending`. A player-bearing snapshot counts as joined after an in-world join request only once at least one successful snapshot without a player has been observed. A disconnected screen fails immediately. Null/transient responses provide no state evidence. One deadline spans all polls.
 
+Drive one-second polling with a scheduled executor and chained
+`CompletionStage` operations. MCP cancellation must cancel the scheduled poll
+and pending bridge future; no wait handler may sleep or block an SDK/virtual
+thread between polls.
+
 Scan 9876-9886 plus a valid configured port outside that range. Match game directory first, version second, any instance only when neither expected field exists. Report mismatches once per changed port description.
 
 - [ ] **Step 4: Implement quit confirmation and dev gates**
@@ -1331,7 +1354,8 @@ For approved intentional changes, Java-only assertions govern: server/artifact v
 
 - [ ] **Step 5: Share one server definition with the test-only HTTP harness**
 
-Refactor `McpServerFactory` so STDIO and conformance consume one immutable definition:
+Refactor `McpServerFactory` so STDIO and conformance each build an async SDK
+server from one immutable definition:
 
 ```java
 public record ServerDefinition(
