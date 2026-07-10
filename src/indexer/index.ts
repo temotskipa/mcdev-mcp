@@ -11,6 +11,7 @@ import {
   type ParsedClass,
   type ParserBackend
 } from './parser.js';
+import { parseJavaFilesWithWorker } from './java-worker.js';
 import {
   getVersionedIndexManifestPath,
   getVersionedPackageIndexPath,
@@ -150,8 +151,8 @@ async function processJavaFiles(options: ProcessJavaFilesOptions): Promise<numbe
   let activePackage: string | null = null;
   let activeClasses: Record<string, ClassInfo> | null = null;
 
-  if (parserBackend === 'java') {
-    throw new Error('The Java indexer backend is not wired yet. Use MCDEV_INDEXER=regex to build with the legacy regex indexer.');
+  if (sortedFiles.length === 0) {
+    return processedFiles;
   }
 
   async function flushActivePackage(): Promise<void> {
@@ -191,7 +192,20 @@ async function processJavaFiles(options: ProcessJavaFilesOptions): Promise<numbe
     }
   }
 
-  if (shouldUseAstWorkers(sortedFiles.length, parserBackend)) {
+  if (parserBackend === 'java') {
+    const batch = await parseJavaFilesWithWorker(sortedFiles);
+    const fileOrder = new Map(sortedFiles.map((file, index) => [file.replace(/\\/g, '/'), index]));
+    const parsedClasses = [...batch.parsed].sort((a, b) => {
+      const aOrder = fileOrder.get(a.info.sourcePath) ?? Number.MAX_SAFE_INTEGER;
+      const bOrder = fileOrder.get(b.info.sourcePath) ?? Number.MAX_SAFE_INTEGER;
+      return aOrder - bOrder;
+    });
+
+    for (const parsed of parsedClasses) {
+      await indexParsedClass(parsed);
+    }
+    reportProcessed(sortedFiles.length);
+  } else if (shouldUseAstWorkers(sortedFiles.length, parserBackend)) {
     await parseJavaFilesInWorkerBatches(sortedFiles, async batch => {
       for (const parsed of batch.parsed) {
         await indexParsedClass(parsed);
@@ -199,7 +213,7 @@ async function processJavaFiles(options: ProcessJavaFilesOptions): Promise<numbe
     }, reportProcessed);
   } else {
     for (const file of sortedFiles) {
-      const parsed = parseJavaFileWithBackend(file, 'regex');
+      const parsed = parseJavaFileWithBackend(file, parserBackend);
       if (parsed) {
         await indexParsedClass(parsed);
       }

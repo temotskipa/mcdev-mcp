@@ -9,6 +9,8 @@ import type { IndexManifest } from '../src/utils/types.js';
 describe('Index Builder', () => {
   const originalIndexer = process.env.MCDEV_INDEXER;
   const originalAst = process.env.MCDEV_AST_PARSER;
+  const originalJavaWorkerCommand = process.env.MCDEV_JAVA_WORKER_COMMAND;
+  const originalCwd = process.cwd();
   const tempDir = path.join(os.tmpdir(), 'mcdev-mcp-test-' + Date.now());
   
   beforeEach(() => {
@@ -23,6 +25,9 @@ describe('Index Builder', () => {
     else process.env.MCDEV_INDEXER = originalIndexer;
     if (originalAst === undefined) delete process.env.MCDEV_AST_PARSER;
     else process.env.MCDEV_AST_PARSER = originalAst;
+    if (originalJavaWorkerCommand === undefined) delete process.env.MCDEV_JAVA_WORKER_COMMAND;
+    else process.env.MCDEV_JAVA_WORKER_COMMAND = originalJavaWorkerCommand;
+    process.chdir(originalCwd);
     if (fs.existsSync(tempDir)) {
       fs.rmSync(tempDir, { recursive: true, force: true });
     }
@@ -64,25 +69,44 @@ public class TestClass extends BaseClass implements TestInterface {
     expect(result.totalClasses).toBeGreaterThan(0);
   });
 
-  test('rejects with a clear error when java backend is the default', async () => {
+  test('builds an index through the Java worker backend by default', async () => {
     delete process.env.MCDEV_INDEXER;
     delete process.env.MCDEV_AST_PARSER;
 
-    const testPackageDir = path.join(tempDir, 'defaultjava');
+    const testPackageDir = path.join(tempDir, 'worker', 'backed');
     fs.mkdirSync(testPackageDir, { recursive: true });
-    fs.writeFileSync(path.join(testPackageDir, 'DefaultJava.java'), `
-package defaultjava;
+    fs.writeFileSync(path.join(testPackageDir, 'WorkerBacked.java'), `
+package worker.backed;
 
-public class DefaultJava {}
+public interface WorkerBacked {
+    int LIMIT = 4;
+    default int doubled() {
+        return LIMIT * 2;
+    }
+}
 `);
 
-    await expect(buildIndex({
+    const version = `java-worker-backed-${Date.now()}`;
+    const result = await buildIndex({
       minecraftSourceDir: tempDir,
       fabricApiSourceDir: null,
-      minecraftVersion: `java-default-${Date.now()}`,
+      minecraftVersion: version,
       fabricApiVersion: null,
-    })).rejects.toThrow('The Java indexer backend is not wired yet. Use MCDEV_INDEXER=regex to build with the legacy regex indexer.');
-  });
+    });
+
+    expect(result.totalClasses).toBe(1);
+    expect(result.minecraftPackages).toContain('worker.backed');
+
+    const manifest = readJsonFileOrNull<IndexManifest>(
+      getVersionedIndexManifestPath(version),
+      'test/java-worker-manifest'
+    );
+    expect(manifest?.indexerVersion).toBe('java');
+
+    const indexed = loadPackageIndex('minecraft', 'worker.backed', version);
+    expect(indexed?.classes.WorkerBacked.fields.map(field => field.name)).toContain('LIMIT');
+    expect(indexed?.classes.WorkerBacked.methods.map(method => method.name)).toContain('doubled');
+  }, 20000);
 
   test('merges package index flushes when package files are non-contiguous', async () => {
     const version = `split-package-${Date.now()}`;
@@ -114,6 +138,48 @@ public class ${className} {
     const sharedPackage = loadPackageIndex('minecraft', 'net.shared', version);
     expect(Object.keys(sharedPackage?.classes ?? {}).sort()).toEqual(['One', 'Two']);
   });
+
+  test('does not start the Java worker for empty source sets', async () => {
+    delete process.env.MCDEV_AST_PARSER;
+    process.env.MCDEV_INDEXER = 'java';
+    process.chdir(tempDir);
+
+    const version = `empty-java-${Date.now()}`;
+    const result = await buildIndex({
+      minecraftSourceDir: path.join(tempDir, 'missing-minecraft'),
+      fabricApiSourceDir: path.join(tempDir, 'missing-fabric'),
+      minecraftVersion: version,
+      fabricApiVersion: 'empty-fabric',
+    });
+
+    expect(result).toEqual({
+      minecraftPackages: [],
+      fabricPackages: [],
+      totalClasses: 0,
+    });
+  });
+
+  test('rejects invalid Java with the Java backend instead of falling back to regex', async () => {
+    delete process.env.MCDEV_AST_PARSER;
+    process.env.MCDEV_INDEXER = 'java';
+
+    const testPackageDir = path.join(tempDir, 'invalid');
+    fs.mkdirSync(testPackageDir, { recursive: true });
+    fs.writeFileSync(path.join(testPackageDir, 'Broken.java'), `
+package invalid;
+
+public class Broken {
+    public void nope( {
+}
+`);
+
+    await expect(buildIndex({
+      minecraftSourceDir: tempDir,
+      fabricApiSourceDir: null,
+      minecraftVersion: `invalid-java-${Date.now()}`,
+      fabricApiVersion: null,
+    })).rejects.toThrow(/Java worker failed to parse files/);
+  }, 20000);
 });
 
 // Legacy AST worker tests depend on MCDEV_AST_PARSER selecting the backend.
