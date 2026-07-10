@@ -43,10 +43,10 @@ export interface IndexManifest {
    * Which parser backend produced this index. Omitted on legacy manifests
    * (pre-2026-05-08), which were always produced by the regex parser; the
    * loader treats `undefined` as `'regex'`. New runs stamp this explicitly
-   * so an upgrade to the AST parser can detect stale-but-still-usable
+   * so an upgrade to the Java parser can detect stale-but-still-usable
    * indices and prompt for a `rebuild`.
    */
-  indexerVersion?: 'regex' | 'ast';
+  indexerVersion?: 'regex' | 'ast' | 'java';
   packages: {
     minecraft: string[];
     fabric: string[];

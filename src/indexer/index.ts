@@ -6,7 +6,6 @@ import { fileURLToPath } from 'url';
 import { glob } from 'glob';
 import { PackageIndex, IndexManifest, ClassInfo } from '../utils/types.js';
 import {
-  parseJavaFile,
   parseJavaFileWithBackend,
   getParserBackend,
   type ParsedClass,
@@ -23,6 +22,8 @@ const AST_WORKER_BATCH_SIZE = 10;
 const AST_WORKER_HEAP_MB = 2048;
 const AST_WORKER_RETRY_HEAP_MB = 8192;
 const WORKER_STDERR_LIMIT = 8000;
+
+type LegacyWorkerBackend = ParserBackend | 'ast';
 
 export interface BuildIndexOptions {
   minecraftSourceDir: string;
@@ -149,6 +150,10 @@ async function processJavaFiles(options: ProcessJavaFilesOptions): Promise<numbe
   let activePackage: string | null = null;
   let activeClasses: Record<string, ClassInfo> | null = null;
 
+  if (parserBackend === 'java') {
+    throw new Error('The Java indexer backend is not wired yet. Use MCDEV_INDEXER=regex to build with the legacy regex indexer.');
+  }
+
   async function flushActivePackage(): Promise<void> {
     if (activePackage && activeClasses && Object.keys(activeClasses).length > 0) {
       await flushPackage(namespace, activePackage, activeClasses, version, packageNames, writtenPackageNames);
@@ -194,7 +199,7 @@ async function processJavaFiles(options: ProcessJavaFilesOptions): Promise<numbe
     }, reportProcessed);
   } else {
     for (const file of sortedFiles) {
-      const parsed = parseJavaFile(file);
+      const parsed = parseJavaFileWithBackend(file, 'regex');
       if (parsed) {
         await indexParsedClass(parsed);
       }
@@ -215,7 +220,7 @@ interface ParsedBatch {
   parsed: ParsedClass[];
 }
 
-function shouldUseAstWorkers(fileCount: number, parserBackend: ParserBackend): boolean {
+function shouldUseAstWorkers(fileCount: number, parserBackend: LegacyWorkerBackend): boolean {
   if (fileCount === 0 || parserBackend !== 'ast') return false;
   if (getAstWorkerCount() < 1) return false;
   return fs.existsSync(getParseWorkerPath());

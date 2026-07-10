@@ -1,7 +1,5 @@
 import * as fs from 'fs';
 import { ClassInfo, FieldInfo, MethodInfo, ClassKind } from '../utils/types.js';
-import { isEnvOn } from '../utils/env.js';
-import { parseJavaFileAst, parseJavaContentAst } from './parser-ast.js';
 
 export interface ParsedClass {
   packageName: string;
@@ -11,19 +9,14 @@ export interface ParsedClass {
 }
 
 /**
- * Choice of parser backend. The regex parser (`'regex'`) is the legacy
- * default and is brittle around modern Java (multi-line annotations, nested
- * generics, records, lambda-initialised fields, `}`-bearing string literals
- * — see .dream/review.md). The AST parser (`'ast'`) is `java-parser`-backed
- * (Chevrotain CST) and handles all of those.
- *
- * Toggle with `MCDEV_AST_PARSER=1` (or `true`). The AST parser remains opt-in
- * while users compare index quality against the regex baseline.
+ * Choice of parser backend. Java is the default indexer backend; regex remains
+ * available for legacy synchronous parser helpers by setting
+ * `MCDEV_INDEXER=regex`.
  */
-export type ParserBackend = 'regex' | 'ast';
+export type ParserBackend = 'java' | 'regex';
 
 export function getParserBackend(): ParserBackend {
-  return isEnvOn('MCDEV_AST_PARSER') ? 'ast' : 'regex';
+  return process.env.MCDEV_INDEXER === 'regex' ? 'regex' : 'java';
 }
 
 export function parseJavaFile(filePath: string): ParsedClass | null {
@@ -31,7 +24,7 @@ export function parseJavaFile(filePath: string): ParsedClass | null {
 }
 
 export function parseJavaFileWithBackend(filePath: string, backend: ParserBackend): ParsedClass | null {
-  if (backend === 'ast') return parseJavaFileAst(filePath);
+  if (backend === 'java') throw createJavaBackendSyncError();
   const content = fs.readFileSync(filePath, 'utf-8');
   return parseJavaContentRegex(content, filePath);
 }
@@ -89,8 +82,14 @@ export function parseJavaContentWithBackend(
   filePath: string,
   backend: ParserBackend
 ): ParsedClass | null {
-  if (backend === 'ast') return parseJavaContentAst(content, filePath);
+  if (backend === 'java') throw createJavaBackendSyncError();
   return parseJavaContentRegex(content, filePath);
+}
+
+function createJavaBackendSyncError(): Error {
+  return new Error(
+    'The Java indexer backend is not wired for synchronous parser helpers yet. Use MCDEV_INDEXER=regex for synchronous parser helpers.'
+  );
 }
 
 function parseJavaContentRegex(content: string, filePath: string): ParsedClass | null {

@@ -1,4 +1,36 @@
-import { parseJavaContent } from '../src/indexer/parser.js';
+import { parseJavaContentWithBackend } from '../src/indexer/parser.js';
+
+describe('Indexer backend selection', () => {
+  const originalIndexer = process.env.MCDEV_INDEXER;
+  const originalAst = process.env.MCDEV_AST_PARSER;
+
+  afterEach(() => {
+    if (originalIndexer === undefined) delete process.env.MCDEV_INDEXER;
+    else process.env.MCDEV_INDEXER = originalIndexer;
+    if (originalAst === undefined) delete process.env.MCDEV_AST_PARSER;
+    else process.env.MCDEV_AST_PARSER = originalAst;
+  });
+
+  test('defaults to java backend', async () => {
+    delete process.env.MCDEV_INDEXER;
+    delete process.env.MCDEV_AST_PARSER;
+    const mod = await import('../src/indexer/parser.js');
+    expect(mod.getParserBackend()).toBe('java');
+  });
+
+  test('selects regex only through MCDEV_INDEXER=regex', async () => {
+    process.env.MCDEV_INDEXER = 'regex';
+    const mod = await import('../src/indexer/parser.js');
+    expect(mod.getParserBackend()).toBe('regex');
+  });
+
+  test('ignores legacy MCDEV_AST_PARSER as a backend selector', async () => {
+    delete process.env.MCDEV_INDEXER;
+    process.env.MCDEV_AST_PARSER = '1';
+    const mod = await import('../src/indexer/parser.js');
+    expect(mod.getParserBackend()).toBe('java');
+  });
+});
 
 describe('Java Parser', () => {
   test('parses simple class', () => {
@@ -20,7 +52,7 @@ public class SimpleClass {
 }
 `;
     
-    const result = parseJavaContent(javaCode, '/test/SimpleClass.java');
+    const result = parseJavaContentWithBackend(javaCode, '/test/SimpleClass.java', 'regex');
     
     expect(result).not.toBeNull();
     expect(result?.packageName).toBe('net.minecraft.test');
@@ -36,7 +68,7 @@ public class PlayerEntity extends LivingEntity implements Attackable {
 }
 `;
     
-    const result = parseJavaContent(javaCode, '/test/PlayerEntity.java');
+    const result = parseJavaContentWithBackend(javaCode, '/test/PlayerEntity.java', 'regex');
     
     expect(result).not.toBeNull();
     expect(result?.info.super).toBe('LivingEntity');
@@ -54,7 +86,7 @@ public class FieldsTest {
 }
 `;
     
-    const result = parseJavaContent(javaCode, '/test/FieldsTest.java');
+    const result = parseJavaContentWithBackend(javaCode, '/test/FieldsTest.java', 'regex');
     
     expect(result).not.toBeNull();
     expect(result?.info.fields.length).toBeGreaterThan(0);
@@ -84,7 +116,7 @@ public class MethodTest {
 }
 `;
     
-    const result = parseJavaContent(javaCode, '/test/MethodTest.java');
+    const result = parseJavaContentWithBackend(javaCode, '/test/MethodTest.java', 'regex');
     
     expect(result).not.toBeNull();
     
@@ -111,7 +143,7 @@ public class OuterClass {
 }
 `;
     
-    const result = parseJavaContent(javaCode, '/test/OuterClass.java');
+    const result = parseJavaContentWithBackend(javaCode, '/test/OuterClass.java', 'regex');
     
     expect(result).not.toBeNull();
     expect(result?.className).toBe('OuterClass');
@@ -129,7 +161,7 @@ public class GenericTest {
 }
 `;
     
-    const result = parseJavaContent(javaCode, '/test/GenericTest.java');
+    const result = parseJavaContentWithBackend(javaCode, '/test/GenericTest.java', 'regex');
     
     expect(result).not.toBeNull();
     expect(result?.className).toBe('GenericTest');

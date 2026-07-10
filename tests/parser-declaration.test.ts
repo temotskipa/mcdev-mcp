@@ -1,4 +1,4 @@
-import { parseJavaContent } from '../src/indexer/parser';
+import { parseJavaContentWithBackend } from '../src/indexer/parser';
 
 describe('Declaration Parser', () => {
   test('parses single-line class declaration', () => {
@@ -7,7 +7,7 @@ describe('Declaration Parser', () => {
       public class Foo extends Bar implements Baz {
       }
     `;
-    const result = parseJavaContent(code, 'Foo.java');
+    const result = parseJavaContentWithBackend(code, 'Foo.java', 'regex');
     expect(result?.className).toBe('Foo');
     expect(result?.info.kind).toBe('class');
     expect(result?.info.super).toBe('Bar');
@@ -22,7 +22,7 @@ describe('Declaration Parser', () => {
       FormattedText {
       }
     `;
-    const result = parseJavaContent(code, 'Component.java');
+    const result = parseJavaContentWithBackend(code, 'Component.java', 'regex');
     expect(result?.className).toBe('Component');
     expect(result?.info.kind).toBe('interface');
     expect(result?.info.interfaces).toEqual(['Message', 'FormattedText']);
@@ -34,7 +34,7 @@ describe('Declaration Parser', () => {
       public record ChatType(ChatTypeDecoration chat, ChatTypeDecoration narration) {
       }
     `;
-    const result = parseJavaContent(code, 'ChatType.java');
+    const result = parseJavaContentWithBackend(code, 'ChatType.java', 'regex');
     expect(result?.className).toBe('ChatType');
     expect(result?.info.kind).toBe('record');
   });
@@ -46,7 +46,7 @@ describe('Declaration Parser', () => {
         public record Inner(String name) {}
       }
     `;
-    const result = parseJavaContent(code, 'Outer.java');
+    const result = parseJavaContentWithBackend(code, 'Outer.java', 'regex');
     expect(result?.className).toBe('Outer');
     expect(result?.info.kind).toBe('class');
   });
@@ -57,7 +57,7 @@ describe('Declaration Parser', () => {
       public interface MyInterface extends BaseInterface {
       }
     `;
-    const result = parseJavaContent(code, 'MyInterface.java');
+    const result = parseJavaContentWithBackend(code, 'MyInterface.java', 'regex');
     expect(result?.className).toBe('MyInterface');
     expect(result?.info.kind).toBe('interface');
     expect(result?.info.super).toBe(null);
@@ -70,7 +70,7 @@ describe('Declaration Parser', () => {
       public class MyClass implements Runnable, Serializable, Cloneable {
       }
     `;
-    const result = parseJavaContent(code, 'MyClass.java');
+    const result = parseJavaContentWithBackend(code, 'MyClass.java', 'regex');
     expect(result?.className).toBe('MyClass');
     expect(result?.info.interfaces).toEqual(['Runnable', 'Serializable', 'Cloneable']);
   });
@@ -82,7 +82,7 @@ describe('Declaration Parser', () => {
         RED, GREEN, BLUE
       }
     `;
-    const result = parseJavaContent(code, 'Color.java');
+    const result = parseJavaContentWithBackend(code, 'Color.java', 'regex');
     expect(result?.className).toBe('Color');
     expect(result?.info.kind).toBe('enum');
   });
@@ -93,7 +93,7 @@ describe('Declaration Parser', () => {
       public abstract class AbstractBase {
       }
     `;
-    const result = parseJavaContent(code, 'AbstractBase.java');
+    const result = parseJavaContentWithBackend(code, 'AbstractBase.java', 'regex');
     expect(result?.className).toBe('AbstractBase');
     expect(result?.info.kind).toBe('class');
   });
@@ -104,7 +104,7 @@ describe('Declaration Parser', () => {
       public final class FinalClass {
       }
     `;
-    const result = parseJavaContent(code, 'FinalClass.java');
+    const result = parseJavaContentWithBackend(code, 'FinalClass.java', 'regex');
     expect(result?.className).toBe('FinalClass');
     expect(result?.info.kind).toBe('class');
   });
@@ -115,7 +115,7 @@ describe('Declaration Parser', () => {
       public class MyList extends ArrayList<String> implements List<String> {
       }
     `;
-    const result = parseJavaContent(code, 'MyList.java');
+    const result = parseJavaContentWithBackend(code, 'MyList.java', 'regex');
     expect(result?.className).toBe('MyList');
     expect(result?.info.super).toBe('ArrayList');
     expect(result?.info.interfaces).toEqual(['List']);

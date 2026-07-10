@@ -5,13 +5,13 @@
  * misses entries on at least some of them.
  *
  * The existing parser.test.ts and parser-declaration.test.ts cover the
- * basic happy paths and run against whichever backend MCDEV_AST_PARSER
- * picks; this file is AST-only and forces the env on/off explicitly so
- * the suite is self-contained.
+ * basic happy paths; this file is AST-only and calls the AST parser directly
+ * so the suite is self-contained.
  */
 
-import { afterEach, beforeEach, describe, expect, it } from '@jest/globals';
+import { describe, expect, it } from '@jest/globals';
 import { parseJavaContentAst } from '../src/indexer/parser-ast.js';
+import { parseJavaContentWithBackend } from '../src/indexer/parser.js';
 
 describe('AST parser — dream-report failure modes', () => {
     it('records and their components are picked up as kind=record + fields', () => {
@@ -212,30 +212,18 @@ public class Lines {
 
 // ---------------------------------------------------------------------------
 // Parametrised: every test the legacy parser test file runs should ALSO pass
-// when the AST parser is the backend. We don't import parseJavaContent here
-// — that would bake in whichever env was set at module load — but flipping
-// the env around per-test forces the dispatch each call.
+// through the AST parser. Keep this direct until later tasks remove the old
+// AST parser files.
 // ---------------------------------------------------------------------------
 
 describe('AST parser ↔ regex parser parity (selected cases)', () => {
-    const ORIG = process.env.MCDEV_AST_PARSER;
-    afterEach(() => {
-        if (ORIG === undefined) delete process.env.MCDEV_AST_PARSER;
-        else process.env.MCDEV_AST_PARSER = ORIG;
-    });
-
-    async function parseBoth(src: string, file: string): Promise<{ ast: unknown; regex: unknown }> {
-        // Force-reload parser.ts per call because `getParserBackend` reads
-        // the env at call time — straightforward.
-        const mod = await import('../src/indexer/parser.js');
-        process.env.MCDEV_AST_PARSER = '1';
-        const ast = mod.parseJavaContent(src, file);
-        delete process.env.MCDEV_AST_PARSER;
-        const regex = mod.parseJavaContent(src, file);
+    function parseBoth(src: string, file: string): { ast: unknown; regex: unknown } {
+        const ast = parseJavaContentAst(src, file);
+        const regex = parseJavaContentWithBackend(src, file, 'regex');
         return { ast, regex };
     }
 
-    it('agrees on package + className + kind for simple classes', async () => {
+    it('agrees on package + className + kind for simple classes', () => {
         const src = `
 package net.minecraft.test;
 public class Simple {
@@ -243,7 +231,7 @@ public class Simple {
     public void hello() {}
 }
 `;
-        const { ast, regex } = await parseBoth(src, '/Simple.java');
+        const { ast, regex } = parseBoth(src, '/Simple.java');
         const a = ast as { packageName: string; className: string; info: { kind: string } };
         const r = regex as { packageName: string; className: string; info: { kind: string } };
         expect(a.packageName).toBe(r.packageName);
@@ -251,12 +239,12 @@ public class Simple {
         expect(a.info.kind).toBe(r.info.kind);
     });
 
-    it('agrees on super + interfaces for a class with both', async () => {
+    it('agrees on super + interfaces for a class with both', () => {
         const src = `
 package x;
 public class C extends Base implements Foo, Bar {}
 `;
-        const { ast, regex } = await parseBoth(src, '/C.java');
+        const { ast, regex } = parseBoth(src, '/C.java');
         const a = ast as { info: { super: string | null; interfaces: string[] } };
         const r = regex as { info: { super: string | null; interfaces: string[] } };
         expect(a.info.super).toBe(r.info.super);
