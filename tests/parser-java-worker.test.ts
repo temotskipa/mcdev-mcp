@@ -11,6 +11,8 @@ function gradleCommand(): string {
   return process.platform === 'win32' ? 'gradle.bat' : 'gradle';
 }
 
+type SourceFile = { path: string };
+
 type WorkerResponse = {
   id: number;
   parsed: Array<{
@@ -33,7 +35,7 @@ type WorkerResponse = {
       sourcePath: string;
     };
   }>;
-  failures: Array<{ file: string; error: string }>;
+  failures: Array<{ file: SourceFile; error: string }>;
 };
 
 function startWorker(): ChildProcessWithoutNullStreams {
@@ -98,7 +100,7 @@ function waitForExit(worker: ChildProcessWithoutNullStreams): Promise<number | n
 }
 
 function writeRequest(worker: ChildProcessWithoutNullStreams, id: number, files: string[]): void {
-  worker.stdin.write(`${JSON.stringify({ id, files })}\n`);
+  worker.stdin.write(`${JSON.stringify({ id, files: files.map(file => ({ path: file })) })}\n`);
 }
 
 describe('JavaIndexerWorker', () => {
@@ -243,7 +245,7 @@ public class Recovered {
     expect(response.id).toBe(3);
     expect(response.parsed).toEqual([]);
     expect(response.failures).toHaveLength(1);
-    expect(response.failures[0].file).toBe(file);
+    expect(response.failures[0].file.path).toBe(file);
     expect(response.failures[0].error).toEqual(expect.any(String));
 
     const recoveredResponsePromise = waitForJsonLine(worker);

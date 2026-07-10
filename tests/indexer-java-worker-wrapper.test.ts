@@ -1,7 +1,7 @@
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { parseJavaFilesWithWorker } from '../src/indexer/java-worker.js';
+import { parseJavaFilesWithWorker, sourceFile } from '../src/indexer/java-worker.js';
 
 describe('Java indexer worker wrapper', () => {
   const originalCommand = process.env.MCDEV_JAVA_WORKER_COMMAND;
@@ -37,23 +37,23 @@ process.stdin.on('end', () => {
   process.stdout.write(JSON.stringify({
     id: request.id,
     parsed: [],
-    failures: [{ file: 'Broken.java', error: 'expected identifier' }]
-  }) + '\\n');
+    failures: [{ file: { path: 'Broken.java' }, error: 'expected identifier' }]
+  }) + '\n');
 });
 `);
 
-    await expect(parseJavaFilesWithWorker(['Broken.java'])).rejects.toThrow(
+    await expect(parseJavaFilesWithWorker([sourceFile('Broken.java')])).rejects.toThrow(
       /Java worker failed to parse files:[\s\S]*Broken\.java: expected identifier/
     );
   });
 
   test('rejects invalid JSON emitted by the worker', async () => {
     useFakeWorker(`
-process.stdout.write('{not json}\\n');
+process.stdout.write('{not json}\n');
 process.stdin.resume();
 `);
 
-    await expect(parseJavaFilesWithWorker(['Example.java'])).rejects.toThrow(/invalid JSON/);
+    await expect(parseJavaFilesWithWorker([sourceFile('Example.java')])).rejects.toThrow(/invalid JSON/);
   });
 
   test('rejects a response id mismatch', async () => {
@@ -63,25 +63,25 @@ let input = '';
 process.stdin.on('data', chunk => { input += chunk; });
 process.stdin.on('end', () => {
   const request = JSON.parse(input);
-  process.stdout.write(JSON.stringify({ id: request.id + 1, parsed: [], failures: [] }) + '\\n');
+  process.stdout.write(JSON.stringify({ id: request.id + 1, parsed: [], failures: [] }) + '\n');
 });
 `);
 
-    await expect(parseJavaFilesWithWorker(['Example.java'])).rejects.toThrow(
+    await expect(parseJavaFilesWithWorker([sourceFile('Example.java')])).rejects.toThrow(
       /response id mismatch: expected \d+, got \d+/
     );
   });
 
   test('rejects early close after draining stderr', async () => {
     useFakeWorker(`
-process.stderr.write('first stderr line\\n');
+process.stderr.write('first stderr line\n');
 setImmediate(() => {
-  process.stderr.write('final stderr line\\n', () => process.exit(7));
+  process.stderr.write('final stderr line\n', () => process.exit(7));
 });
 process.stdin.resume();
 `);
 
-    await expect(parseJavaFilesWithWorker(['Example.java'])).rejects.toThrow(
+    await expect(parseJavaFilesWithWorker([sourceFile('Example.java')])).rejects.toThrow(
       /exited before a valid response with code 7[\s\S]*first stderr line[\s\S]*final stderr line/
     );
   });

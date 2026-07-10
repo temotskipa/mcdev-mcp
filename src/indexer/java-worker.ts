@@ -5,8 +5,12 @@ import type { ParsedClass } from './parser.js';
 const WORKER_STDERR_LIMIT = 8000;
 let nextRequestId = 1;
 
+export interface JavaWorkerSourceFile {
+  path: string;
+}
+
 export interface JavaWorkerFailure {
-  file: string;
+  file: JavaWorkerSourceFile;
   error: string;
 }
 
@@ -19,7 +23,11 @@ interface JavaWorkerResponse extends JavaWorkerBatch {
   id: number;
 }
 
-export function parseJavaFilesWithWorker(files: string[]): Promise<JavaWorkerBatch> {
+export function sourceFile(path: string): JavaWorkerSourceFile {
+  return { path };
+}
+
+export function parseJavaFilesWithWorker(files: JavaWorkerSourceFile[]): Promise<JavaWorkerBatch> {
   const id = nextRequestId++;
   const workerPath = getJavaWorkerPath();
   const workerCommand = getJavaWorkerCommand();
@@ -57,7 +65,7 @@ export function parseJavaFilesWithWorker(files: string[]): Promise<JavaWorkerBat
 
     function formatFailures(failures: JavaWorkerFailure[]): string {
       return failures
-        .map(failure => `${failure.file}: ${failure.error}`)
+        .map(failure => `${formatSourceFile(failure.file)}: ${failure.error}`)
         .join('\n');
     }
 
@@ -112,6 +120,10 @@ export function parseJavaFilesWithWorker(files: string[]): Promise<JavaWorkerBat
 
     child.stdin.end(`${JSON.stringify({ id, files })}\n`);
   });
+}
+
+function formatSourceFile(file: JavaWorkerSourceFile): string {
+  return file.path;
 }
 
 function getJavaWorkerPath(): string {
