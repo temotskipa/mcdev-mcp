@@ -24,7 +24,9 @@
     "lint": "eslint src",
     "typecheck": "tsc --noEmit",
     "prepublishOnly": "npm run build",
-    "mcpb": "bash scripts/build-mcpb.sh"
+    "mcpb": "bash scripts/build-mcpb.sh",
+    "oracle:capture": "node scripts/capture-node-contracts.mjs",
+    "oracle:test": "node --test tests/contract-baseline.test.mjs"
   },
   "keywords": [
     "minecraft",

@@ -68,6 +68,10 @@
       "description": "Get the decompiled source of a specific method"
     },
     {
+      "name": "mc_find_refs",
+      "description": "Find callers or callees of a method via the callgraph"
+    },
+    {
       "name": "mc_list_classes",
       "description": "List all classes in a package path"
     },
@@ -78,10 +82,6 @@
     {
       "name": "mc_find_hierarchy",
       "description": "Find subclasses or interface implementors of a class"
-    },
-    {
-      "name": "mc_find_refs",
-      "description": "Find callers or callees of a method via the callgraph"
     },
     {
       "name": "mc_connect",
@@ -100,12 +100,20 @@
       "description": "Capture the Minecraft client framebuffer as a JPEG file"
     },
     {
-      "name": "mc_screen_inspect",
-      "description": "Snapshot the current GUI screen (chest, inventory, etc.) and its structure"
-    },
-    {
-      "name": "mc_chat_history",
-      "description": "Get recent client-side chat messages"
+      "name": "mc_record_video",
+      "description": "Capture a short burst of the Minecraft client framebuffer for debugging\ntemporal rendering issues — animation glitches, shader bugs, particles,\nsub-tick artifacts that mc_screenshot can't resolve. Use the Read tool to\nview the result.\n\nTwo output modes:\n- \"grid\" (default): one composed JPEG laid out as a frame grid. Best for\n  Claude — the whole recording in a single Read.\n- \"frames\": N separate JPEGs. Use only when you need to inspect individual\n  frames closely.\n\nCaps (validated mod-side, request rejected if exceeded):\n- frames: 1..300 (≈5 s at 60 Hz)\n- interval: \"frame\" (every render tick) or milliseconds >= 1\n- downscale: integer >= 1 (default 2)\n- quality: [0.05, 1.0] (default 0.75)\n\nPick interval deliberately. Default to a numeric ms (50–100 ms is usually\nright) — smooth motion, never drops frames. Use \"frame\" only when sub-tick\ndetail matters; at that cadence the encoder may fall behind and the\nresponse's \"dropped\" count tells you how many frames were skipped.\n\nThe mod and the MCP server must run on the same machine for the returned\npaths to be readable here. Files land under\n<gameDir>/debugbridge-recordings/<requestId>/.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "frames": { "type": "number", "description": "Number of frames to capture, 1..300. Required." },
+          "interval": { "description": "\"frame\" for every render tick (~60 Hz), or milliseconds (number, >= 1). Default \"frame\". Recommended: 50–100 ms unless you specifically need sub-tick detail.", "oneOf": [{ "type": "string", "enum": ["frame"] }, { "type": "number", "minimum": 1 }] },
+          "output": { "type": "string", "enum": ["grid", "frames"], "description": "\"grid\" (one composed JPEG, default) or \"frames\" (N separate JPEGs)." },
+          "gridCols": { "type": "number", "description": "Columns in grid layout. Default ceil(sqrt(frames)). Only used in \"grid\" mode." },
+          "downscale": { "type": "number", "description": "Integer downscale factor. Default 2 (half each axis)." },
+          "quality": { "type": "number", "description": "JPEG quality in [0.05, 1.0]. Default 0.75. In \"grid\" mode applies once to the composed image." }
+        },
+        "required": ["frames"]
+      }
     },
     {
       "name": "mc_nearby_entities",
@@ -116,16 +124,16 @@
       "description": "Get full details for one entity by id"
     },
     {
-      "name": "mc_looked_at_entity",
-      "description": "Returns the entity id the player is currently aiming at, or null"
-    },
-    {
       "name": "mc_nearby_blocks",
       "description": "List nearby block-entities (signs, chests, banners, beacons, hoppers, ...)"
     },
     {
       "name": "mc_block_details",
       "description": "Get details for the block-entity at (x, y, z)"
+    },
+    {
+      "name": "mc_looked_at_entity",
+      "description": "Returns the entity id the player is currently aiming at, or null"
     },
     {
       "name": "mc_set_entity_glow",
@@ -144,12 +152,20 @@
       "description": "Render the item in inventory slot N as a PNG"
     },
     {
+      "name": "mc_get_entity_item_texture",
+      "description": "Render an item carried by another entity (mainhand, offhand, armor slot) as a PNG"
+    },
+    {
       "name": "mc_get_item_texture_by_id",
       "description": "Render the default texture for a registry id (e.g. minecraft:diamond) as a PNG"
     },
     {
-      "name": "mc_get_entity_item_texture",
-      "description": "Render an item carried by another entity (mainhand, offhand, armor slot) as a PNG"
+      "name": "mc_chat_history",
+      "description": "Get recent client-side chat messages"
+    },
+    {
+      "name": "mc_screen_inspect",
+      "description": "Snapshot the current GUI screen (chest, inventory, etc.) and its structure"
     },
     {
       "name": "mc_join_server",
@@ -172,12 +188,12 @@
       "description": "Wait for a relaunched client's DebugBridge to answer on ports 9876-9886, then reconnect"
     },
     {
-      "name": "mc_run_command",
-      "description": "Execute a Minecraft slash command (opt-in dev tool, requires MCDEV_RUN_COMMAND=1 and bridge-side opt-in)"
-    },
-    {
       "name": "mc_script_logs",
       "description": "Review past mc_execute runs and error patterns (opt-in via the 'Log script executions' user setting)"
+    },
+    {
+      "name": "mc_run_command",
+      "description": "Execute a Minecraft slash command (opt-in dev tool, requires MCDEV_RUN_COMMAND=1 and bridge-side opt-in)"
     }
   ],
   "compatibility": {

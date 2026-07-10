@@ -12,6 +12,7 @@ java-worker/build/
 .vscode/
 .idea/
 .codex/
+.superpowers/
 *.swp
 *.swo
 .DS_Store
