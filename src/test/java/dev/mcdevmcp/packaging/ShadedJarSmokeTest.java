@@ -24,9 +24,9 @@ class ShadedJarSmokeTest {
             assertTrue(jar.getEntry("META-INF/services/java.sql.Driver") != null);
             assertTrue(new String(jar.getInputStream(jar.getEntry("META-INF/services/java.sql.Driver")).readAllBytes()).contains("org.sqlite.JDBC"));
             assertTrue(jar.stream().noneMatch(entry -> entry.getName().matches("META-INF/.*\\.(SF|RSA|DSA)")));
-            assertTrue(jar.stream().anyMatch(entry -> entry.getName().endsWith(".dll")));
-            assertTrue(jar.stream().anyMatch(entry -> entry.getName().endsWith(".so")));
-            assertTrue(jar.stream().anyMatch(entry -> entry.getName().endsWith(".dylib")));
+            assertTrue(jar.stream().anyMatch(entry -> entry.getName().startsWith("org/sqlite/native/") && entry.getName().endsWith(".dll")));
+            assertTrue(jar.stream().anyMatch(entry -> entry.getName().startsWith("org/sqlite/native/") && entry.getName().endsWith(".so")));
+            assertTrue(jar.stream().anyMatch(entry -> entry.getName().startsWith("org/sqlite/native/") && entry.getName().endsWith(".dylib")));
         }
     }
 

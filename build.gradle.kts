@@ -57,6 +57,7 @@ tasks.processTestResources {
 tasks.withType<Test>().configureEach {
     useJUnitPlatform()
     dependsOn(tasks.named("shadowJar"))
+    systemProperty("dev.mcdevmcp.test.versionFallback", "true")
     systemProperty("mcdevMcpVersion", applicationVersion)
     systemProperty("mcdevMcpJar", layout.buildDirectory.file("libs/mcdev-mcp-$applicationVersion.jar").get().asFile.absolutePath)
 }

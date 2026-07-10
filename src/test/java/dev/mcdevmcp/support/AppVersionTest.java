@@ -3,6 +3,7 @@ package dev.mcdevmcp.support;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import java.nio.file.Path;
 import java.nio.file.Files;
@@ -13,6 +14,22 @@ class AppVersionTest {
     @Test
     void readsTheGradleFilteredVersionFromClasses() {
         assertEquals(System.getProperty("mcdevMcpVersion"), AppVersion.current());
+    }
+
+    @Test
+    void rejectsTestResourceFallbackWhenTheTestGuardIsDisabled() {
+        String property = AppVersion.TEST_FALLBACK_PROPERTY;
+        String previous = System.getProperty(property);
+        try {
+            System.clearProperty(property);
+            assertThrows(IllegalStateException.class, AppVersion::current);
+        } finally {
+            if (previous == null) {
+                System.clearProperty(property);
+            } else {
+                System.setProperty(property, previous);
+            }
+        }
     }
 
     @Test
