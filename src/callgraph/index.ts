@@ -2,6 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { spawn } from 'child_process';
 import { ensureDir, getHomeDir, getMinecraftJarPath } from '../utils/paths.js';
+import { assertJavaAtLeast, MIN_SUPPORTED_JAVA } from '../utils/java.js';
 import { getCallgraphDir, getCallgraphDbPath } from './query.js';
 import { loadSqlJs } from './sqlite-loader.js';
 
@@ -131,6 +132,8 @@ export async function ensureRemappedJar(version: string, progressCb?: ProgressCa
 }
 
 export async function generateCallgraph(version: string, progressCb?: ProgressCallback): Promise<string> {
+  assertJavaAtLeast('java', MIN_SUPPORTED_JAVA, 'Callgraph generation');
+
   const javacgPath = await ensureJavaCG(progressCb);
   const libDir = getJavaCGLibDir();
   const outputDir = getCallgraphDir(version);

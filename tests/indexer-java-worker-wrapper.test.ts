@@ -38,7 +38,7 @@ process.stdin.on('end', () => {
     id: request.id,
     parsed: [],
     failures: [{ file: { path: 'Broken.java' }, error: 'expected identifier' }]
-  }) + '\n');
+  }) + '\\n');
 });
 `);
 
@@ -49,7 +49,7 @@ process.stdin.on('end', () => {
 
   test('rejects invalid JSON emitted by the worker', async () => {
     useFakeWorker(`
-process.stdout.write('{not json}\n');
+process.stdout.write('{not json}\\n');
 process.stdin.resume();
 `);
 
@@ -63,7 +63,7 @@ let input = '';
 process.stdin.on('data', chunk => { input += chunk; });
 process.stdin.on('end', () => {
   const request = JSON.parse(input);
-  process.stdout.write(JSON.stringify({ id: request.id + 1, parsed: [], failures: [] }) + '\n');
+  process.stdout.write(JSON.stringify({ id: request.id + 1, parsed: [], failures: [] }) + '\\n');
 });
 `);
 
@@ -74,9 +74,9 @@ process.stdin.on('end', () => {
 
   test('rejects early close after draining stderr', async () => {
     useFakeWorker(`
-process.stderr.write('first stderr line\n');
+process.stderr.write('first stderr line\\n');
 setImmediate(() => {
-  process.stderr.write('final stderr line\n', () => process.exit(7));
+  process.stderr.write('final stderr line\\n', () => process.exit(7));
 });
 process.stdin.resume();
 `);
@@ -84,5 +84,16 @@ process.stdin.resume();
     await expect(parseJavaFilesWithWorker([sourceFile('Example.java')])).rejects.toThrow(
       /exited before a valid response with code 7[\s\S]*first stderr line[\s\S]*final stderr line/
     );
+  });
+
+  test('does not spawn a worker for an empty batch', async () => {
+    const markerPath = path.join(tempDir, 'worker-started');
+    useFakeWorker(`
+require('fs').writeFileSync(${JSON.stringify(markerPath)}, 'started');
+process.stdin.resume();
+`);
+
+    await expect(parseJavaFilesWithWorker([])).resolves.toEqual({ parsed: [], failures: [] });
+    expect(fs.existsSync(markerPath)).toBe(false);
   });
 });

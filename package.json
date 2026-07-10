@@ -15,9 +15,9 @@
     "LICENSE"
   ],
   "scripts": {
-    "build": "npm run build:ts && npm run build:java",
+    "build": "npm run build:java-worker && npm run build:ts",
     "build:ts": "tsc",
-    "build:java": "gradle -p java-worker shadowJar && node scripts/copy-java-worker.mjs",
+    "build:java-worker": "node scripts/build-java-worker.mjs",
     "start": "node dist/cli.js serve",
     "dev": "tsc --watch",
     "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js",

@@ -1,6 +1,8 @@
 import { spawn } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import type { ParsedClass } from './parser.js';
+import { assertJavaAtLeast, MIN_SUPPORTED_JAVA } from '../utils/java.js';
 
 const WORKER_STDERR_LIMIT = 8000;
 let nextRequestId = 1;
@@ -28,6 +30,12 @@ export function sourceFile(path: string): JavaWorkerSourceFile {
 }
 
 export function parseJavaFilesWithWorker(files: JavaWorkerSourceFile[]): Promise<JavaWorkerBatch> {
+  if (files.length === 0) {
+    return Promise.resolve({ parsed: [], failures: [] });
+  }
+
+  assertJavaAtLeast('java', MIN_SUPPORTED_JAVA, 'Java indexer');
+
   const id = nextRequestId++;
   const workerPath = getJavaWorkerPath();
   const workerCommand = getJavaWorkerCommand();
@@ -127,7 +135,10 @@ function formatSourceFile(file: JavaWorkerSourceFile): string {
 }
 
 function getJavaWorkerPath(): string {
-  return fileURLToPath(new URL('../java/mcdev-java-worker.jar', import.meta.url));
+  const packagedWorker = fileURLToPath(new URL('../java/mcdev-java-worker.jar', import.meta.url));
+  if (existsSync(packagedWorker)) return packagedWorker;
+
+  return fileURLToPath(new URL('../../java-worker/build/libs/mcdev-java-worker.jar', import.meta.url));
 }
 
 function getJavaWorkerCommand(): string {

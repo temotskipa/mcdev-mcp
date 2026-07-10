@@ -235,15 +235,17 @@ async function flushPackage(
 ): Promise<void> {
   packageNames.add(packageName);
   const key = `${namespace}:${packageName}`;
-  if (writtenPackageNames.has(key)) return;
+  const existingClasses = writtenPackageNames.has(key)
+    ? loadPackageIndex(namespace, packageName, version)?.classes
+    : undefined;
   writtenPackageNames.add(key);
 
   const packageIndex: PackageIndex = {
     package: packageName,
-    classes,
+    classes: { ...existingClasses, ...classes },
   };
 
-  const packagePath = getVersionedPackageIndexPath(version, namespace, packageName);
+  const packagePath = getVersionedPackageIndexPath(namespace, packageName, version);
   fs.writeFileSync(packagePath, JSON.stringify(packageIndex, null, 2));
 }
 
@@ -344,6 +346,18 @@ async function runAstWorkerBatch(files: string[], heapMb: number): Promise<AstWo
   });
 }
 
-export async function loadIndexManifest(minecraftVersion: string): Promise<IndexManifest | null> {
+export function loadIndexManifest(minecraftVersion: string): IndexManifest | null {
   return readJsonFileOrNull<IndexManifest>(getVersionedIndexManifestPath(minecraftVersion));
+}
+
+export function loadPackageIndex(
+  namespace: 'minecraft' | 'fabric',
+  packageName: string,
+  minecraftVersion?: string,
+): PackageIndex | null {
+  if (!minecraftVersion) return null;
+  return readJsonFileOrNull<PackageIndex>(
+    getVersionedPackageIndexPath(namespace, packageName, minecraftVersion),
+    `indexer/package:${minecraftVersion}/${namespace}/${packageName}`,
+  );
 }
