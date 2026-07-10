@@ -5,6 +5,8 @@ node_modules/
 # Build
 dist/
 *.tsbuildinfo
+java-worker/.gradle/
+java-worker/build/
 
 # IDE
 .vscode/

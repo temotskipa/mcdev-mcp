@@ -115,7 +115,7 @@ export function parseJavaFilesWithWorker(files: string[]): Promise<JavaWorkerBat
 }
 
 function getJavaWorkerPath(): string {
-  return fileURLToPath(new URL('./java-worker/JavaIndexerWorker.java', import.meta.url));
+  return fileURLToPath(new URL('../java/mcdev-java-worker.jar', import.meta.url));
 }
 
 function getJavaWorkerCommand(): string {
@@ -124,11 +124,13 @@ function getJavaWorkerCommand(): string {
 
 function getJavaWorkerArgs(workerPath: string): string[] {
   const override = process.env.MCDEV_JAVA_WORKER_ARGS_JSON;
-  if (!override) return [workerPath];
-
-  const parsed = JSON.parse(override) as unknown;
-  if (!Array.isArray(parsed) || !parsed.every(item => typeof item === 'string')) {
-    throw new Error('MCDEV_JAVA_WORKER_ARGS_JSON must be a JSON array of strings.');
+  if (override) {
+    const parsed = JSON.parse(override) as unknown;
+    if (!Array.isArray(parsed) || !parsed.every(item => typeof item === 'string')) {
+      throw new Error('MCDEV_JAVA_WORKER_ARGS_JSON must be a JSON array of strings.');
+    }
+    return parsed;
   }
-  return parsed;
+
+  return ['-jar', workerPath];
 }

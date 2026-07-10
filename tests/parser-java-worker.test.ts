@@ -1,11 +1,15 @@
-import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
+import { spawn, spawnSync, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const workerPath = path.join(repoRoot, 'src', 'indexer', 'java-worker', 'JavaIndexerWorker.java');
+const workerJarPath = path.join(repoRoot, 'java-worker', 'build', 'libs', 'mcdev-java-worker.jar');
+
+function gradleCommand(): string {
+  return process.platform === 'win32' ? 'gradle.bat' : 'gradle';
+}
 
 type WorkerResponse = {
   id: number;
@@ -33,7 +37,7 @@ type WorkerResponse = {
 };
 
 function startWorker(): ChildProcessWithoutNullStreams {
-  return spawn('java', [workerPath], {
+  return spawn('java', ['-jar', workerJarPath], {
     cwd: repoRoot,
     stdio: ['pipe', 'pipe', 'pipe'],
   });
@@ -99,6 +103,19 @@ function writeRequest(worker: ChildProcessWithoutNullStreams, id: number, files:
 
 describe('JavaIndexerWorker', () => {
   let tempDir: string;
+
+  beforeAll(() => {
+    const result = spawnSync(gradleCommand(), ['-p', 'java-worker', 'shadowJar'], {
+      cwd: repoRoot,
+      encoding: 'utf8',
+    });
+
+    if (result.status !== 0) {
+      throw new Error(
+        `Failed to build Java worker jar.\nstdout:\n${result.stdout}\nstderr:\n${result.stderr}`
+      );
+    }
+  }, 120_000);
 
   beforeEach(() => {
     tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mcdev-java-worker-'));
