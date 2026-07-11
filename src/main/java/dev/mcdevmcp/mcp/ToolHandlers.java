@@ -14,7 +14,7 @@ public final class ToolHandlers {
         return CompletableFuture.completedFuture(Objects.requireNonNull(result));
     }
     
-    public static ToolHandler blocking(ExecutorService executor, BlockingToolHandler handler) {
+    public static <A> ToolHandler<A> blocking(ExecutorService executor, BlockingToolHandler<A> handler) {
         Objects.requireNonNull(executor, "executor");
         Objects.requireNonNull(handler, "handler");
         return (arguments, cancellation) -> {

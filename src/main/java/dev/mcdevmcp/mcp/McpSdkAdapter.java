@@ -1,6 +1,6 @@
 package dev.mcdevmcp.mcp;
 
-import dev.mcdevmcp.support.JsonSupport;
+import io.modelcontextprotocol.json.McpJsonMapper;
 import io.modelcontextprotocol.server.McpAsyncServerExchange;
 import io.modelcontextprotocol.server.McpServerFeatures;
 import io.modelcontextprotocol.spec.McpSchema;
@@ -18,6 +18,12 @@ import java.util.function.BiFunction;
  * The only production boundary that exposes Reactor types.
  */
 public final class McpSdkAdapter {
+    private final McpJsonMapper mapper;
+
+    McpSdkAdapter(McpJsonMapper mapper) {
+        this.mapper = Objects.requireNonNull(mapper, "mapper");
+    }
+
     public List<McpServerFeatures.AsyncToolSpecification> tools(ToolCatalog catalog) {
         return catalog.enabledDefinitions().stream().map(definition -> McpServerFeatures.AsyncToolSpecification.builder().tool(toSdkTool(definition)).callHandler(callHandler(definition)).build()).toList();
     }
@@ -43,7 +49,7 @@ public final class McpSdkAdapter {
             var cancelled = new AtomicBoolean();
             CompletionStage<ToolResult> stage;
             try {
-                stage = Objects.requireNonNull(definition.handler().handle(JsonSupport.toJsonObject(request.arguments()), cancelled::get), "Tool handler returned null: " + definition.name());
+                stage = Objects.requireNonNull(definition.binding().invoke(mapper, request.arguments(), cancelled::get), "Tool handler returned null: " + definition.name());
             } catch (RuntimeException exception) {
                 return Mono.just(error(definition.name(), exception));
             }
@@ -63,7 +69,7 @@ public final class McpSdkAdapter {
     }
     
     private McpSchema.Tool toSdkTool(ToolDefinition definition) {
-        return McpSchema.Tool.builder(definition.name(), JsonSupport.toMap(definition.inputSchema())).description(definition.description()).build();
+        return McpSchema.Tool.builder(definition.name(), definition.inputSchema()).description(definition.description()).build();
     }
     
     private McpSchema.CallToolResult toSdkResult(ToolResult result) {

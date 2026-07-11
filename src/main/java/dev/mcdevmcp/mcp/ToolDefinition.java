@@ -1,15 +1,16 @@
 package dev.mcdevmcp.mcp;
 
-import com.google.gson.JsonObject;
+import dev.mcdevmcp.support.JsonValues;
 
+import java.util.Map;
 import java.util.Objects;
 
-public record ToolDefinition(String name, String description, JsonObject inputSchema, ToolHandler handler, ToolAvailability availability) {
+public record ToolDefinition(String name, String description, Map<String, Object> inputSchema, ToolBinding<?> binding, ToolAvailability availability) {
     public ToolDefinition {
         name = requireText(name, "Tool name");
         description = requireText(description, "Tool description");
-        inputSchema = Objects.requireNonNull(inputSchema, "Tool input schema").deepCopy();
-        Objects.requireNonNull(handler, "Tool handler");
+        inputSchema = JsonValues.freezeMap(inputSchema);
+        Objects.requireNonNull(binding, "Tool binding");
         Objects.requireNonNull(availability, "Tool availability");
     }
     
@@ -18,10 +19,5 @@ public record ToolDefinition(String name, String description, JsonObject inputSc
             throw new IllegalArgumentException(label + " must not be blank");
         }
         return value;
-    }
-    
-    @Override
-    public JsonObject inputSchema() {
-        return inputSchema.deepCopy();
     }
 }

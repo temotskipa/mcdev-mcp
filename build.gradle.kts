@@ -28,7 +28,6 @@ dependencies {
     implementation(libs.mcp)
     implementation(libs.picocli)
     implementation(libs.sqlite)
-    implementation(libs.gson)
     implementation(libs.vineflower)
     implementation(libs.tiny.remapper)
     implementation(libs.slf4j.nop)

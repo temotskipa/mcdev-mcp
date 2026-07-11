@@ -1,47 +1,41 @@
 package dev.mcdevmcp.mcp;
 
-import com.google.gson.JsonArray;
-import com.google.gson.JsonObject;
-import com.google.gson.JsonParser;
+import io.modelcontextprotocol.json.McpJsonDefaults;
+import io.modelcontextprotocol.json.McpJsonMapper;
+import io.modelcontextprotocol.json.TypeRef;
 import org.junit.jupiter.api.Test;
 
-import java.io.IOException;
-import java.io.InputStreamReader;
 import java.net.URI;
-import java.nio.charset.StandardCharsets;
+import java.util.List;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class ResourceCatalogTest {
-    private static String contractText(String name) throws IOException {
-        return contract(name).getAsJsonObject("result").getAsJsonArray("contents").get(0).getAsJsonObject().get("text").getAsString();
-    }
+    private static final McpJsonMapper MAPPER = McpJsonDefaults.getMapper();
 
-    private static JsonObject contract(String name) throws IOException {
-        try (var input = ResourceCatalogTest.class.getResourceAsStream("/contracts/mcp/" + name)) {
-            if (input == null) {
-                throw new IOException("Missing contract: " + name);
-            }
-            return JsonParser.parseReader(new InputStreamReader(input, StandardCharsets.UTF_8)).getAsJsonObject();
-        }
+    private static String contractText(String name) throws Exception {
+        var result = MAPPER.convertValue(ToolCatalogContractTest.readContract(name).get("result"), new TypeRef<Map<String, List<Map<String, Object>>>>() {
+        });
+        return (String) result.get("contents").getFirst().get("text");
     }
 
     @Test
     void resourceListMatchesTheNodeContract() throws Exception {
         var catalog = new ResourceCatalog();
-        var actual = new JsonArray();
-        for (var definition : catalog.definitions()) {
-            var resource = new JsonObject();
-            resource.addProperty("uri", definition.uri().toString());
-            resource.addProperty("name", definition.name());
-            resource.addProperty("title", definition.title());
-            resource.addProperty("description", definition.description());
-            resource.addProperty("mimeType", definition.mimeType());
-            actual.add(resource);
-        }
+        var actual = catalog.definitions().stream()
+                .map(definition -> Map.<String, Object>of(
+                        "uri", definition.uri().toString(),
+                        "name", definition.name(),
+                        "title", definition.title(),
+                        "description", definition.description(),
+                        "mimeType", definition.mimeType()))
+                .toList();
+        var expected = MAPPER.convertValue(ToolCatalogContractTest.readContract("resources-list.json").get("result"), new TypeRef<Map<String, List<Map<String, Object>>>>() {
+        }).get("resources");
 
-        assertEquals(ToolCatalogContractTest.normalize(contract("resources-list.json").getAsJsonObject("result").getAsJsonArray("resources")), ToolCatalogContractTest.normalize(actual));
+        assertEquals(ToolCatalogContractTest.normalize(expected), ToolCatalogContractTest.normalize(actual));
     }
 
     @Test

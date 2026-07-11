@@ -1,6 +1,5 @@
 package dev.mcdevmcp.mcp;
 
-import com.google.gson.JsonObject;
 import dev.mcdevmcp.support.Cancellation;
 import org.junit.jupiter.api.Test;
 
@@ -20,7 +19,7 @@ class ToolHandlersTest {
         var virtualThread = new AtomicBoolean();
 
         try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
-            ToolHandler handler = ToolHandlers.blocking(executor, (_, _) -> {
+            ToolHandler<TestEmptyArguments> handler = ToolHandlers.blocking(executor, (_, _) -> {
                 virtualThread.set(Thread.currentThread().isVirtual());
                 started.countDown();
                 try {
@@ -32,7 +31,7 @@ class ToolHandlersTest {
                 }
             });
 
-            var future = handler.handle(new JsonObject(), Cancellation.none()).toCompletableFuture();
+            var future = handler.handle(new TestEmptyArguments(), Cancellation.none()).toCompletableFuture();
             assertTrue(started.await(5, TimeUnit.SECONDS), "blocking handler did not start");
             assertTrue(future.cancel(true), "blocking handler future was not cancelled");
             assertTrue(interrupted.await(5, TimeUnit.SECONDS), "cancellation did not interrupt the virtual thread");
