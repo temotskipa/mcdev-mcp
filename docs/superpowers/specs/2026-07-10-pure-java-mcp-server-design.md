@@ -54,6 +54,9 @@ boundaries. Internal indexer and callgraph worker protocols disappear.
 - Do not merge mcdev-mcp into the DebugBridge repository or Minecraft process.
 - Do not use Kotlin, Spring Boot, Ktor, GraalVM native-image, or preview JDK
   features.
+- Do not add a production SSE or Streamable HTTP transport as parity work. The
+  frozen TypeScript server exposes only STDIO; Task 13's URL-based HTTP server
+  is a test-only MCP conformance harness over the same registry.
 - Do not preserve the TypeScript server as a permanent compatibility layer.
 - Do not retain Bun, a TypeScript 6 compatibility package, or a Rust-Bun canary.
 - Do not reproduce java-callgraph2 reports unrelated to `mc_find_refs`.
@@ -102,13 +105,48 @@ The build uses:
 - MCP Java SDK 2.0.0 (`io.modelcontextprotocol.sdk:mcp`).
 - Picocli 4.7.7 for the command surface.
 - Xerial SQLite JDBC 3.53.2.0 for symbol and callgraph storage.
-- Gson 2.14.0 for DebugBridge wire compatibility.
 - Vineflower 1.11.2 and Tiny Remapper 0.10.4 as embedded libraries.
 - JUnit 6.1.0 for tests.
 
 Dependency versions remain pinned through a Gradle version catalog. The final
 JAR is built without JPMS module boundaries so service descriptors from shaded
 libraries can be merged predictably.
+
+## Java Engineering Conventions
+
+- Use final Java 25 language features where they simplify the implementation.
+  The executable entry point uses the Java 25 launch protocol through an
+  instance `void main(String[] arguments)` method rather than the legacy
+  `public static void main(String[] arguments)` incantation.
+- Production classes, interfaces, records, and enums are top-level types by
+  default. Nesting is reserved for a tiny private implementation detail that
+  is inseparable from its owner or for an SDK contract that requires it; a
+  reusable domain value or cross-task interface gets its own focused file.
+- Represent domain values with designated Java or JDK types at their
+  boundaries. In particular, use `URI`, `Path`, `Duration`, `Instant`, enums,
+  or validated value records instead of carrying URIs, filesystem paths,
+  timeouts, timestamps, modes, or similar closed concepts as unvalidated
+  `String` values. Protocol text, identifiers, MIME types, descriptors, and
+  other genuinely open vocabularies remain strings.
+- Use the SDK 2.0 `McpJsonMapper` supplied by `McpJsonDefaults` as the only
+  production and test JSON implementation. Do not add Gson, a second JSON
+  engine, direct Jackson imports or annotations, or `JsonNode`. Fixed wire
+  shapes use top-level records; genuinely open JSON uses deeply immutable
+  `Map<String,Object>` and `List<Object>` values.
+- Never serialize `Path` implicitly. Convert it explicitly to the exact URI or
+  string form defined by the existing wire contract, and parse it back at the
+  boundary. The SDK mapper remains appropriate for `URI`, `Duration`,
+  `Instant`, enums, records, and generic JSON collections covered by contract
+  tests.
+- The current IntelliJ-formatted Java source and its surrounding style are
+  authoritative. Preserve that formatting in later edits, follow the current
+  code style for new files, and do not introduce broad reformatting or a
+  competing formatter as part of feature work.
+- Compile every Java source set with `-Xlint:all -Werror`. Each task gate also
+  runs IntelliJ MCP project compilation and changed-file problem inspection;
+  fix actionable errors and warnings before review. Any unavoidable
+  suppression must be narrow and explain why the warning is intentionally
+  deferred.
 
 ## Migration Strategy
 
@@ -172,6 +210,28 @@ loop. Cancelling an MCP request cancels its future and signals the underlying
 operation. This preserves concurrent in-flight calls, including while a long
 video capture or wait tool is pending, without spreading reactive types through
 the application.
+
+One process-scoped raw `McpJsonMapper` deserializes tool metadata and backs
+application JSON boundaries. SDK 2.0 exposes tool arguments only as
+`Map<String,Object>`, but its mapper provides `convertValue`; the application
+therefore adds only a thin generic `ToolBinding<A>`/`ArgumentDecoder<A>` adapter
+that converts the complete argument map into a top-level per-tool record before
+calling `ToolHandler<A>`. It does not add a second generic JSON tree or a broad
+typed-getter facade. When a wire representation differs from the domain type,
+the decoder explicitly maps a package-private wire record into a domain record,
+for example milliseconds to `Duration`, path text to `Path`, or a wire name to
+an enum. Raw maps remain only for genuinely open payloads. Tool schemas remain
+deeply immutable ordered maps. `NodeParityJsonMapper` wraps the raw mapper only
+at the MCP transport boundary to adapt SDK-specific typed responses required by
+the frozen Node contract; DebugBridge and other application code always receive
+the unwrapped mapper.
+
+The typed-binding adapter remains an extraction-ready internal package during
+the rewrite. It gains no mcdev-specific dependencies, but it is not split into
+a repository, published, or proposed upstream until several static and runtime
+tool families have proven the API and its error model. This avoids committing
+to an independent release and compatibility surface before real usage
+stabilizes the abstraction.
 
 STDOUT is reserved exclusively for MCP JSON-RPC while `serve` is running.
 Diagnostics use STDERR or the existing opt-in debug log file. No logging
@@ -385,11 +445,13 @@ wire envelope is:
 {"id":"req_1","success":true,"result":{}}
 ```
 
-The Java client initially owns two small local envelope records matching
+The Java client initially owns small top-level envelope records matching
 DebugBridge's `BridgeRequest` and `BridgeResponse`. Stable endpoint payloads
-use typed adapters; intentionally dynamic Groovy results remain JSON trees.
-Unknown fields are tolerated and required fields are validated before tool
-handlers consume them.
+use top-level records converted through the raw `McpJsonMapper`; intentionally
+dynamic Groovy or mod-defined results remain deeply immutable maps, lists,
+primitives, or null. Request enums map their exact wire names explicitly rather
+than relying on enum identifier serialization. Unknown fields are tolerated and
+required fields are validated before tool handlers consume them.
 
 Versioned request, success, error, missing-optional-field, and malformed
 fixtures are captured from DebugBridge releases and stored under
@@ -554,6 +616,18 @@ limit 100, limit 5000, and limit-plus-one truncation.
 
 Every migrated behavior starts with a failing Java test. The TypeScript code is
 deleted only after the equivalent Java tests and differential checks pass.
+Every task also leaves Gradle warning-clean under `-Xlint:all -Werror` and has
+clean IntelliJ MCP build and changed-file diagnostics without reformatting
+unrelated source.
+
+SDK mapper contract tests cover top-level records, enums, `URI`, unknown-field
+tolerance, generic collections, large numbers, `Duration`, and `Instant`.
+Generic tool-binding tests prove one whole-map conversion into a typed argument
+record, explicit wire-to-domain mapping, bounded conversion failures, and raw
+map use only for a deliberately open payload. A dependency/archive test rejects
+Gson classes and direct Jackson implementation/annotation imports. `Path`
+coverage uses explicit contract text conversion and never generic JSON
+serialization.
 
 ## Acceptance Criteria
 
@@ -579,10 +653,17 @@ deleted only after the equivalent Java tests and differential checks pass.
   MCPB contains the checksum-verified JAR built once on Java 25.
 - The MCPB contains only a minimal Node bootstrap plus the same Java JAR and
   passes an extracted-bundle smoke test.
+- The SDK `McpJsonMapper` is the sole JSON implementation: Gson is absent from
+  source, tests, the runtime graph, and the shaded JAR; application code has no
+  direct Jackson implementation, annotation, or `JsonNode` dependency.
 - TypeScript, Bun, Kotlin, Jest, ESLint, npm runtime dependencies, worker JSON
   protocols, package JSON index readers/writers, and obsolete Superpowers
   migration documents are absent after final cutover. Legacy cache data is
   ignored unless the user explicitly runs `clean --index`.
+- Production Java follows the top-level-type and semantic-value conventions,
+  uses the Java 25 instance entry-point syntax, preserves the established
+  IntelliJ formatting, compiles with `-Xlint:all -Werror`, and has no actionable
+  IntelliJ project or file diagnostics.
 
 ## Primary References
 

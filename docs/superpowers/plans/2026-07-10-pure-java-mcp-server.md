@@ -6,7 +6,7 @@
 
 **Architecture:** A single Gradle application owns the official MCP Java SDK STDIO server, Picocli CLI, Javac source indexer, Class-File API callgraph scanner, SQLite storage, embedded Tiny Remapper/Vineflower pipeline, and JDK WebSocket DebugBridge client. The untouched `master` checkout at commit `7b98bdb4a1d885d588cd141d8eb21e3c5c18b2b6` is the Node parity oracle; tests materialize that commit into ignored scratch inside the isolated Java worktree, so neither `master` nor its working tree is modified. TypeScript remains only until differential parity passes, then is removed in one cutover task; MCPB retains only a minimal JavaScript launcher around the exact release JAR.
 
-**Tech Stack:** Java 25 language/bytecode, Gradle Wrapper 9.6.1, Shadow 9.5.1, MCP Java SDK 2.0.0, Picocli 4.7.7, SQLite JDBC 3.53.2.0, Gson 2.14.0, Tiny Remapper 0.10.4, Vineflower 1.11.2, JUnit 6.1.0, Java Class-File API, Javac compiler APIs, JDK HttpClient/WebSocket.
+**Tech Stack:** Java 25 language/bytecode, Gradle Wrapper 9.6.1, Shadow 9.5.1, MCP Java SDK 2.0.0 with its Jackson 3-backed `McpJsonMapper`, Picocli 4.7.7, SQLite JDBC 3.53.2.0, Tiny Remapper 0.10.4, Vineflower 1.11.2, JUnit 6.1.0, Java Class-File API, Javac compiler APIs, JDK HttpClient/WebSocket.
 
 ## Global Constraints
 
@@ -14,7 +14,17 @@
 - Treat `7b98bdb4a1d885d588cd141d8eb21e3c5c18b2b6` from the clean original checkout as the immutable Node parity oracle. Materialize it under ignored `.superpowers/parity/node-oracle/` before building or running it.
 - Preserve the stash named `preserve-bun-ts7-dependency-experiment-before-java-runtime-task`; it is not part of this rewrite and must not be applied or dropped.
 - Compile with a Java 25 toolchain and `options.release = 25`; reject runtime Java below 25 before downloads or cache mutation. Java 26 is a supported correctness runtime and becomes the documented performance preference only after the benchmark policy passes.
+- Use final Java 25 language features where they simplify the code. The executable entry point is an instance `void main(String[] arguments)` method under the Java 25 launch protocol, not the legacy `public static void main(String[] arguments)` incantation.
+- Keep production classes, interfaces, records, and enums top-level by default. Nest only a tiny private detail that is inseparable from its owner or a type whose SDK contract requires nesting; reusable domain values and cross-task interfaces get focused files of their own.
+- Use designated Java/JDK domain types at boundaries: `URI`, `Path`, `Duration`, `Instant`, enums, or validated value records instead of unvalidated strings for URIs, paths, timeouts, timestamps, modes, and similar closed concepts. Protocol text, identifiers, MIME types, descriptors, and other open vocabularies remain strings.
+- Use `McpJsonDefaults.getMapper()` as the sole JSON implementation. Do not add Gson, direct Jackson APIs/annotations, `JsonNode`, or a second JSON engine. The MCP transport alone wraps the raw mapper in `NodeParityJsonMapper`; metadata, tool arguments, tests, and DebugBridge receive the raw SDK interface.
+- SDK 2.0 exposes `CallToolRequest.arguments()` as `Map<String,Object>` and typed conversion through `McpJsonMapper.convertValue`; do not build a parallel typed-getter facade. A thin generic `ToolBinding<A>` plus `ArgumentDecoder<A>` converts the complete map into a top-level per-tool record before `ToolHandler<A>` runs. Explicit decoders map wire-only primitives into `URI`, `Path`, `Duration`, `Instant`, enums, or validated domain records wherever structured alternatives exist. Raw maps/lists/primitives remain only for genuinely open JSON payloads.
+- Keep the typed-binding package extraction-ready and free of mcdev-specific dependencies, but do not create or publish a separate repository during this rewrite. Reconsider extraction or an upstream SDK proposal only after multiple static and runtime tool families prove the API and error model.
+- Never serialize `Path` implicitly through a JSON mapper. Encode the exact contract-defined URI or path text explicitly and parse it at the boundary.
+- Preserve the current IntelliJ-established Java formatting and follow its surrounding code style in every new edit. Do not run broad reformatting, rewrite unrelated whitespace, or introduce a competing formatter as part of feature work.
+- Compile every Java source set with `-Xlint:all -Werror`. Before each task review, run IntelliJ MCP `build_project` and `get_file_problems` for every changed Java file, fix actionable errors and warnings, and keep any unavoidable suppression narrow and documented.
 - Use MCP Java SDK 2.0.0 over production STDIO. Do not add Spring, Ktor, Kotlin, GraalVM native-image, preview JDK APIs, or another production transport.
+- Production remains STDIO-only because the frozen TypeScript server has no SSE or Streamable HTTP surface. Task 13's URL-based HTTP server is a test-only conformance harness over the same registry, not a second production transport.
 - Use `McpServer.async(...)`. Internal handlers return JDK `CompletionStage`, Reactor remains confined to `McpSdkAdapter`, DebugBridge calls stay nonblocking, and SQLite/filesystem handlers use a Java 25 virtual-thread executor with cancellation propagation.
 - Javac compiler/tree APIs are the sole production source parser. No regex parser, `java-parser`, TypeScript AST parser, parser fallback, parser importer, or skip mode may remain. User-requested regex matching in `mc_search` is search behavior, not source parsing, and remains compatible.
 - Use `java.lang.classfile` directly for callgraph generation. Do not clone, build, execute, parse output from, or depend on java-callgraph2.
@@ -41,12 +51,18 @@ settings.gradle.kts
 gradle.properties
 gradle/libs.versions.toml
 src/main/java/dev/mcdevmcp/
-  app/Main.java, McdevCommand.java, ServeCommand.java, InitCommand.java,
-      CallgraphCommand.java, RebuildCommand.java, StatusCommand.java,
-      CleanCommand.java, AnalysisPipeline.java
+  app/Main.java, McdevCommand.java, McdevVersionProvider.java,
+      ServeCommand.java, InitCommand.java, CallgraphCommand.java,
+      RebuildCommand.java, StatusCommand.java, CleanCommand.java,
+      AnalysisPipeline.java
   mcp/McpServerFactory.java, McpSdkAdapter.java, ToolCatalog.java,
-      ToolDefinition.java, ToolHandler.java, ToolResult.java,
-      ResourceCatalog.java, ResourceDefinition.java
+      ToolDefinition.java, ToolAvailability.java, ToolHandler.java,
+      BlockingToolHandler.java, ToolHandlers.java, ToolBinding.java,
+      ArgumentDecoder.java, ToolMetadata.java, ToolResult.java,
+      ToolContent.java, ToolContentType.java, ResourceCatalog.java,
+      ResourceDefinition.java, ResourceRead.java, StdioServer.java,
+      NodeParityJsonMapper.java, EofTrackingInputStream.java,
+      NonClosingOutputStream.java
   analysis/index/SourceIndexer.java, IndexRequest.java, IndexSummary.java,
       ClassFileTypeCatalog.java, JavacSourceParser.java, TypeResolver.java,
       ParsedType.java, ParsedField.java, ParsedMethod.java, ParsedParameter.java,
@@ -57,15 +73,17 @@ src/main/java/dev/mcdevmcp/
   analysis/decompile/VersionManifestClient.java, DownloadService.java,
       MappingConverter.java, MinecraftRemapper.java, MinecraftDecompiler.java
   storage/PlatformPaths.java, DatabaseLock.java, AtomicSqliteDatabase.java,
-      SymbolSchema.java, SymbolRepository.java, CallgraphSchema.java,
-      CallgraphRepository.java, VersionStateRepository.java, IndexCleaner.java
+      SqliteBuilder.java, SqliteValidator.java, SymbolSchema.java,
+      SymbolRepository.java, CallgraphSchema.java, CallgraphRepository.java,
+      VersionStateRepository.java, IndexCleaner.java
   bridge/BridgeRequest.java, BridgeResponse.java, BridgeJson.java,
       BridgeClient.java, BridgeSession.java, BridgeProbe.java,
       BridgePayloadValidator.java
   tools/statictool/*.java
   tools/runtime/*.java
   support/AppEnvironment.java, AppVersion.java, DebugLog.java,
-      ProgressSink.java, JsonSupport.java, Cancellation.java
+      ProgressSink.java, JsonValues.java, JsonResourceReader.java,
+      Cancellation.java
 src/main/resources/
   mcp/tools.json
   guides/python-scripting.md
@@ -74,7 +92,9 @@ src/test/java/dev/mcdevmcp/**
 src/test/resources/contracts/**
 src/test/resources/debugbridge/2.0.0/**
 src/conformance/java/dev/mcdevmcp/conformance/ConformanceServerMain.java
-src/benchmark/java/dev/mcdevmcp/benchmark/AnalysisBenchmarkMain.java
+src/benchmark/java/dev/mcdevmcp/benchmark/AnalysisBenchmarkMain.java,
+    BenchmarkResult.java, BenchmarkDecision.java,
+    BenchmarkComparisonRun.java, BenchmarkPolicy.java
 packaging/mcpb/bootstrap.cjs
 packaging/mcpb/manifest.template.json
 packaging/mcpb/package.json
@@ -286,7 +306,6 @@ Expected: FAIL because the root wrapper/build and Java classes do not exist.
 mcp = "2.0.0"
 picocli = "4.7.7"
 sqlite = "3.53.2.0"
-gson = "2.14.0"
 vineflower = "1.11.2"
 tiny-remapper = "0.10.4"
 junit = "6.1.0"
@@ -296,7 +315,7 @@ tomcat = "11.0.2"
 servlet = "6.1.0"
 ```
 
-Use `io.modelcontextprotocol.sdk:mcp`, `info.picocli:picocli`, `org.xerial:sqlite-jdbc`, `com.google.code.gson:gson`, `org.vineflower:vineflower`, `net.fabricmc:tiny-remapper`, and `org.slf4j:slf4j-nop`. Configure Java toolchain 25, `options.release = 25`, UTF-8, JUnit Platform, application main class, and Shadow. Shadow must call `mergeServiceFiles()`, exclude `META-INF/*.SF`, `META-INF/*.RSA`, and `META-INF/*.DSA`, preserve native libraries, emit no classifier, and set manifest entries from `project.version`.
+Use `io.modelcontextprotocol.sdk:mcp`, `info.picocli:picocli`, `org.xerial:sqlite-jdbc`, `org.vineflower:vineflower`, `net.fabricmc:tiny-remapper`, and `org.slf4j:slf4j-nop`. The SDK's transitive Jackson 3-backed `McpJsonMapper` is the sole JSON engine; do not declare Gson or Jackson directly. Configure Java toolchain 25, `options.release = 25`, UTF-8, JUnit Platform, application main class, and Shadow. Shadow must call `mergeServiceFiles()`, exclude `META-INF/*.SF`, `META-INF/*.RSA`, and `META-INF/*.DSA`, preserve native libraries, emit no classifier, and set manifest entries from `project.version`.
 
 Set `gradle.properties` to:
 
@@ -319,7 +338,7 @@ Verify `gradle/wrapper/gradle-wrapper.properties` points to `gradle-9.6.1-bin.zi
 
 - [ ] **Step 5: Implement the entry point and Java preflight**
 
-`Main.main(String[])` delegates to a Picocli `McdevCommand`, returns its exit code, and checks `Runtime.version().feature() >= 25` before constructing commands that can download or mutate caches. `AppVersion.current()` reads `Main.class.getPackage().getImplementationVersion()` and falls back to the Gradle-filtered `/version.properties` only in test/classes execution. No version literal may appear in Java.
+`Main` exposes an instance `void main(String[] arguments)` under the Java 25 launch protocol. It delegates through a testable `execute(...)` method to a Picocli `McdevCommand`, exits with Picocli's exit code, and checks `Runtime.version().feature() >= 25` before constructing commands that can download or mutate caches. Do not add a legacy `public static void main(...)`. `AppVersion.current()` reads `Main.class.getPackage().getImplementationVersion()` and falls back to the Gradle-filtered `/version.properties` only in test/classes execution. No version literal may appear in Java.
 
 - [ ] **Step 6: Run focused tests, the full root build, and the shaded JAR**
 
@@ -345,54 +364,114 @@ git commit -m "build: establish Java 25 MCP application"
 **Recommended agent:** `gpt-5.6-terra`, high reasoning. Official SDK 2.0 integration, exact protocol behavior, and STDOUT hygiene are cross-cutting.
 
 **Files:**
+- Create: `src/main/java/dev/mcdevmcp/mcp/ToolAvailability.java`
 - Create: `src/main/java/dev/mcdevmcp/mcp/ToolDefinition.java`
 - Create: `src/main/java/dev/mcdevmcp/mcp/ToolHandler.java`
+- Create: `src/main/java/dev/mcdevmcp/mcp/BlockingToolHandler.java`
 - Create: `src/main/java/dev/mcdevmcp/mcp/ToolHandlers.java`
+- Create: `src/main/java/dev/mcdevmcp/mcp/ToolBinding.java`
+- Create: `src/main/java/dev/mcdevmcp/mcp/ArgumentDecoder.java`
+- Create: `src/main/java/dev/mcdevmcp/mcp/ToolMetadata.java`
+- Create: `src/main/java/dev/mcdevmcp/mcp/ToolContentType.java`
+- Create: `src/main/java/dev/mcdevmcp/mcp/ToolContent.java`
 - Create: `src/main/java/dev/mcdevmcp/mcp/ToolResult.java`
 - Create: `src/main/java/dev/mcdevmcp/mcp/ToolCatalog.java`
 - Create: `src/main/java/dev/mcdevmcp/mcp/ResourceDefinition.java`
+- Create: `src/main/java/dev/mcdevmcp/mcp/ResourceRead.java`
 - Create: `src/main/java/dev/mcdevmcp/mcp/ResourceCatalog.java`
 - Create: `src/main/java/dev/mcdevmcp/mcp/McpSdkAdapter.java`
+- Create: `src/main/java/dev/mcdevmcp/mcp/NodeParityJsonMapper.java`
 - Create: `src/main/java/dev/mcdevmcp/mcp/McpServerFactory.java`
+- Create: `src/main/java/dev/mcdevmcp/mcp/StdioServer.java`
+- Create: `src/main/java/dev/mcdevmcp/mcp/EofTrackingInputStream.java`
+- Create: `src/main/java/dev/mcdevmcp/mcp/NonClosingOutputStream.java`
 - Create: `src/main/java/dev/mcdevmcp/app/ServeCommand.java`
-- Create: `src/main/java/dev/mcdevmcp/support/JsonSupport.java`
+- Create: `src/main/java/dev/mcdevmcp/app/McdevVersionProvider.java`
+- Create: `src/main/java/dev/mcdevmcp/support/JsonValues.java`
+- Create: `src/main/java/dev/mcdevmcp/support/JsonResourceReader.java`
 - Create: `src/main/resources/guides/python-scripting.md`
 - Create: `src/main/resources/guides/dev-loop.md`
 - Create: `src/test/java/dev/mcdevmcp/mcp/ToolCatalogContractTest.java`
+- Create: `src/test/java/dev/mcdevmcp/mcp/ToolBindingTest.java`
+- Create: `src/test/java/dev/mcdevmcp/mcp/SdkJsonMapperTest.java`
+- Create: `src/test/java/dev/mcdevmcp/packaging/GsonAbsenceTest.java`
 - Create: `src/test/java/dev/mcdevmcp/mcp/ResourceCatalogTest.java`
 - Create: `src/test/java/dev/mcdevmcp/mcp/McpStdioIntegrationTest.java`
 - Modify: `src/main/java/dev/mcdevmcp/app/McdevCommand.java`
 
 **Interfaces:**
-- Consumes: `/mcp/tools.json`, contract fixtures, `AppEnvironment`, `AppVersion`.
-- Produces: immutable `ToolCatalog`; async `ToolHandler.handle(JsonObject, Cancellation)`; `McpServerFactory.startStdio(InputStream, OutputStream)`; the production `serve` command and resource reads.
+- Consumes: `/mcp/tools.json`, contract fixtures, `AppEnvironment`, `AppVersion`, and the raw `McpJsonMapper` supplied by `McpJsonDefaults`.
+- Produces: immutable `ToolCatalog`; generic SDK-mapper-backed `ToolBinding<A>`; async `ToolHandler<A>.handle(A, Cancellation)`; `McpServerFactory.startStdio(InputStream, OutputStream)` returning owned `StdioServer`; the production `serve` command and typed `ResourceRead` values.
 
 - [ ] **Step 1: Write failing catalog, resource, and process-level STDIO tests**
 
 Define the internal API exactly:
 
 ```java
-public record ToolDefinition(
-        String name,
-        String description,
-        JsonObject inputSchema,
-        ToolHandler handler,
-        Availability availability) {
-    public enum Availability { ALWAYS, SCRIPT_LOGS, RUN_COMMAND }
+public enum ToolAvailability { ALWAYS, SCRIPT_LOGS, RUN_COMMAND }
+
+public enum ToolContentType { TEXT, IMAGE, AUDIO }
+
+public record ToolDefinition(String name, String description,
+        Map<String, Object> inputSchema, ToolBinding<?> binding,
+        ToolAvailability availability) {}
+
+public record ToolMetadata(String name, String description,
+        Map<String, Object> inputSchema) {}
+
+@FunctionalInterface
+public interface ToolHandler<A> {
+    CompletionStage<ToolResult> handle(
+            A arguments, Cancellation cancellation);
 }
 
 @FunctionalInterface
-public interface ToolHandler {
-    CompletionStage<ToolResult> handle(
-            JsonObject arguments, Cancellation cancellation);
+public interface BlockingToolHandler<A> {
+    ToolResult handle(A arguments, Cancellation cancellation)
+            throws Exception;
 }
 
-public record ToolResult(List<Content> content, boolean isError) {
-    public record Content(String type, String text, String mimeType, String data) {}
+@FunctionalInterface
+public interface ArgumentDecoder<A> {
+    A decode(McpJsonMapper mapper, Map<String, Object> arguments);
+    static <A> ArgumentDecoder<A> sdk(Class<A> type);
+    default <B> ArgumentDecoder<B> map(Function<A, B> mapper);
+}
+
+public final class ToolBinding<A> {
+    public ToolBinding(ArgumentDecoder<A> decoder, ToolHandler<A> handler);
+    CompletionStage<ToolResult> invoke(McpJsonMapper mapper,
+            Map<String, Object> arguments, Cancellation cancellation);
+}
+
+public record ToolContent(ToolContentType type, String text,
+        String mimeType, String data) {}
+
+public record ToolResult(List<ToolContent> content, boolean isError) {
     public static ToolResult text(String text);
     public static ToolResult error(String text);
 }
+
+public record ResourceDefinition(URI uri, String name, String title,
+        String description, String mimeType, String classpathResource) {}
+
+public record ResourceRead(URI uri, String mimeType, String text) {}
 ```
+
+`ArgumentDecoder.sdk(Class<A>)` delegates the complete map to the SDK mapper;
+`map(...)` then converts a wire record into a domain record when units or wire
+names differ. Per-tool wire records remain top-level and package-private. A
+handler receives the domain record, so milliseconds become `Duration`, path
+text becomes `Path`, URI text becomes `URI`, and closed strings become enums or
+validated value records before business logic runs. Decoder failures name the
+tool and bounded conversion error. A raw immutable map decoder is permitted
+only for a field whose schema intentionally accepts arbitrary JSON.
+
+Each declaration above is a top-level type in its own file. Compact
+constructors validate required text, recursively freeze mutable JSON/list
+inputs, and enforce the legal content shape. Do not replace `URI`, `Path`,
+`Duration`, `Instant`, enums, typed argument strategies, or designated domain
+values with strings or raw maps where a structured alternative exists.
 
 Tests compare default and dev-enabled list responses byte-for-byte after JSON object-key normalization, assert both resources match the Node fixtures, assert an unknown tool returns `Unknown tool: <name>` with `isError=true`, and spawn the shaded JAR to verify initialize/list/read plus zero non-JSON bytes on STDOUT.
 
@@ -404,12 +483,12 @@ Expected: FAIL at compilation because the MCP catalog and server do not exist.
 
 - [ ] **Step 3: Load exact metadata and bind availability without duplicating schemas**
 
-`ToolCatalog` loads the checked-in JSON metadata in list order and attaches handlers by name. The two availability rules are Java-owned and exact:
+`ToolCatalog` uses an injected raw `McpJsonMapper` and `JsonResourceReader` to deserialize the checked-in metadata into `ToolMetadata[]` in list order, recursively freezes each schema map, and attaches handlers by name. No Gson tree or mapper-to-mapper conversion exists. The two availability rules are Java-owned and exact:
 
 ```java
-private static final Map<String, Availability> AVAILABILITY = Map.of(
-    "mc_script_logs", Availability.SCRIPT_LOGS,
-    "mc_run_command", Availability.RUN_COMMAND
+private static final Map<String, ToolAvailability> AVAILABILITY = Map.of(
+    "mc_script_logs", ToolAvailability.SCRIPT_LOGS,
+    "mc_run_command", ToolAvailability.RUN_COMMAND
 );
 ```
 
@@ -428,7 +507,7 @@ Unknown URIs throw the same message as the Node fixture. Reads use UTF-8 and do 
 
 - [ ] **Step 5: Adapt the internal registry to the MCP SDK asynchronous server**
 
-Use `StdioServerTransportProvider(McpJsonDefaults.getMapper())` and `McpServer.async(...)`. Server info is `mcdev-mcp` plus `AppVersion.current()`. Capabilities advertise tools and resources, instructions equal the baseline fixture, and tool input validation remains enabled. Convert each handler stage with `Mono.fromFuture(stage.toCompletableFuture())`; Reactor types must not appear outside `McpSdkAdapter`. On Reactor cancellation, set the request's `Cancellation` signal and cancel the underlying future. Convert expected synchronous throws and exceptional completions into `ToolResult.error("Error executing " + name + ": " + message)` without terminating the process.
+`McpServerFactory` creates one process-scoped raw mapper with `McpJsonDefaults.getMapper()` and injects it into the catalog and adapter. The production transport receives only `new NodeParityJsonMapper(rawMapper)`. Use `StdioServerTransportProvider(...)` and `McpServer.async(...)`. Server info is `mcdev-mcp` plus `AppVersion.current()`. Capabilities advertise tools and resources, instructions equal the baseline fixture, and tool input validation remains enabled. Pass the request's native argument map directly to `ToolBinding.invoke`, which decodes once and calls the typed handler; no serialization round-trip or field-by-field generic facade is allowed. Convert each handler stage with `Mono.fromFuture(stage.toCompletableFuture())`; Reactor types must not appear outside `McpSdkAdapter`. On Reactor cancellation, set the request's `Cancellation` signal and cancel the underlying future. Convert expected synchronous throws and exceptional completions into `ToolResult.error("Error executing " + name + ": " + message)` without terminating the process.
 
 `ToolHandlers.blocking(ExecutorService, BlockingToolHandler)` adapts SQLite,
 filesystem, and other blocking work with `Executors.newVirtualThreadPerTaskExecutor()`.
@@ -439,20 +518,40 @@ and never occupy a virtual thread while waiting on WebSocket I/O.
 
 The adapter writes protocol messages only to its supplied output stream. `DebugLog` writes only to the configured file; all other diagnostics use the supplied STDERR stream. Add an integration test where one handler returns an incomplete future while a second request completes, then cancel the first and assert its cancellation signal/future are cancelled. This is the concurrency contract that justifies the async server choice.
 
+If SDK 2.0 forces wire-visible behavior that differs from the frozen Node
+contract, adapt typed SDK response objects in `NodeParityJsonMapper`; do not
+parse or mutate serialized JSON strings. The mapper remains a narrowly tested
+compatibility boundary and must not grow server business logic.
+
+All production and test JSON reads/writes use only the `McpJsonMapper`
+interface. Do not import Jackson implementation APIs or annotations. Permanent
+mapper tests pin record, enum, `URI`, unknown-field, generic collection, large
+number, `Duration`, and `Instant` behavior. Paths are tested through explicit
+text parsing and are never passed to `writeValueAsString`.
+
 - [ ] **Step 6: Run contract and process-level tests**
 
 Run:
 
 ```powershell
-.\gradlew.bat test --tests "dev.mcdevmcp.mcp.*" shadowJar --console=plain
+.\gradlew.bat test --tests "dev.mcdevmcp.mcp.*" --tests "dev.mcdevmcp.packaging.GsonAbsenceTest" shadowJar --console=plain
 ```
 
 Expected: all MCP tests PASS and the spawned process returns valid initialize, tools, resources, and error responses.
 
+Run `dependencyInsight` and inspect the shaded archive. Expected: no direct or
+transitive Gson dependency, no `com/google/gson/` class, and no production or
+test import of Gson, Jackson implementation APIs, annotations, or `JsonNode`.
+
+Run IntelliJ MCP `build_project` and `get_file_problems` for every changed Java
+file after the Gradle command. Expected: successful project build and no
+actionable errors or warnings. Preserve the current IntelliJ formatting while
+fixing diagnostics; do not reformat unrelated files.
+
 - [ ] **Step 7: Commit the MCP shell**
 
 ```powershell
-git add src/main/java/dev/mcdevmcp/mcp src/main/java/dev/mcdevmcp/app src/main/java/dev/mcdevmcp/support src/main/resources/guides src/test/java/dev/mcdevmcp/mcp
+git add build.gradle.kts gradle/libs.versions.toml src/main/java/dev/mcdevmcp/mcp src/main/java/dev/mcdevmcp/app src/main/java/dev/mcdevmcp/support src/main/resources/guides src/test/java/dev/mcdevmcp/mcp src/test/java/dev/mcdevmcp/packaging
 git commit -m "feat: add Java MCP STDIO shell"
 ```
 
@@ -464,6 +563,8 @@ git commit -m "feat: add Java MCP STDIO shell"
 - Create: `src/main/java/dev/mcdevmcp/storage/PlatformPaths.java`
 - Create: `src/main/java/dev/mcdevmcp/storage/DatabaseLock.java`
 - Create: `src/main/java/dev/mcdevmcp/storage/AtomicSqliteDatabase.java`
+- Create: `src/main/java/dev/mcdevmcp/storage/SqliteBuilder.java`
+- Create: `src/main/java/dev/mcdevmcp/storage/SqliteValidator.java`
 - Create: `src/main/java/dev/mcdevmcp/storage/SymbolSchema.java`
 - Create: `src/main/java/dev/mcdevmcp/storage/SymbolRepository.java`
 - Create: `src/main/java/dev/mcdevmcp/storage/VersionStateRepository.java`
@@ -499,18 +600,22 @@ public final class AtomicSqliteDatabase {
     public <T> T rebuild(Path target, Duration lockTimeout,
                          SqliteBuilder<T> builder,
                          SqliteValidator validator) throws IOException, SQLException;
+}
 
-    @FunctionalInterface
-    public interface SqliteBuilder<T> {
-        T build(Connection connection) throws Exception;
-    }
+@FunctionalInterface
+public interface SqliteBuilder<T> {
+    T build(Connection connection) throws Exception;
+}
 
-    @FunctionalInterface
-    public interface SqliteValidator {
-        void validate(Connection connection) throws Exception;
-    }
+@FunctionalInterface
+public interface SqliteValidator {
+    void validate(Connection connection) throws Exception;
 }
 ```
+
+`SqliteBuilder` and `SqliteValidator` are top-level interfaces in their own
+files. Storage APIs carry filesystem locations and lock deadlines as `Path`
+and `Duration`; they do not accept string encodings of either value.
 
 Within that root preserve the current layout: Minecraft sources at
 `cache/<version>/client`, obfuscated/unobfuscated JARs at
@@ -719,7 +824,7 @@ Normalize limits through one API:
 
 ```java
 public record LimitSpec(int defaultValue, int maximum) {
-    public int normalize(JsonObject arguments, String fieldName);
+    public int normalize(OptionalInt requestedLimit);
 }
 ```
 
@@ -974,7 +1079,9 @@ git commit -m "feat: embed analysis pipeline and CLI"
 
 **Files:**
 - Create: `src/main/java/dev/mcdevmcp/bridge/BridgeRequest.java`
+- Create: `src/main/java/dev/mcdevmcp/bridge/BridgeEndpoint.java`
 - Create: `src/main/java/dev/mcdevmcp/bridge/BridgeResponse.java`
+- Create: `src/main/java/dev/mcdevmcp/bridge/BridgeWireResponse.java`
 - Create: `src/main/java/dev/mcdevmcp/bridge/BridgeJson.java`
 - Create: `src/main/java/dev/mcdevmcp/bridge/BridgeClient.java`
 - Create: `src/main/java/dev/mcdevmcp/bridge/BridgeSession.java`
@@ -993,7 +1100,7 @@ git commit -m "feat: embed analysis pipeline and CLI"
 - Create: `src/test/resources/debugbridge/2.0.0/malformed.json`
 
 **Interfaces:**
-- Consumes: JDK `HttpClient.WebSocket`, Gson, `DEBUGBRIDGE_PORT`, DebugBridge v2.0.0 envelope fixtures.
+- Consumes: JDK `HttpClient.WebSocket`, the injected raw SDK `McpJsonMapper`, `DEBUGBRIDGE_PORT`, DebugBridge v2.0.0 envelope fixtures.
 - Produces: typed local envelope; concurrent `BridgeSession.connect/send/reset/adoptPort`; status probes; tolerant JSON and strict consumed-field validation.
 
 - [ ] **Step 1: Add exact v2.0.0 fixture provenance and failing wire/session tests**
@@ -1012,16 +1119,20 @@ git commit -m "feat: embed analysis pipeline and CLI"
 Define envelopes:
 
 ```java
-public record BridgeRequest(String id, String type, JsonObject payload) {}
+public record BridgeEndpoint(String wireName) {}
+public record BridgeRequest(String id, BridgeEndpoint endpoint, Object payload) {}
 public record BridgeResponse(
-        String id, boolean success, JsonElement result,
+        String id, boolean success, Object result,
+        String output, String error) {}
+public record BridgeWireResponse(
+        String id, Boolean success, Object result,
         String output, String error) {}
 
 public final class BridgeSession implements AutoCloseable {
     public CompletionStage<SessionInfo> connect(Integer explicitPort);
     public CompletionStage<SessionInfo> adoptPort(int port);
     public CompletionStage<BridgeResponse> send(
-            String type, JsonObject payload, Duration endpointTimeout);
+            BridgeEndpoint endpoint, Object payload, Duration endpointTimeout);
     public OptionalInt connectedPort();
     public Optional<SessionInfo> sessionInfo();
     public void reset();
@@ -1038,7 +1149,7 @@ Expected: FAIL at compilation.
 
 - [ ] **Step 3: Implement strict envelope/tolerant payload JSON**
 
-Use Gson configured to ignore unknown fields. Validate envelope required fields before correlation. `BridgePayloadValidator` exposes `requireResult`, `requireObject`, primitive shape validation, safe bounded JSON display, and a 7 MiB base64 PNG text cap. Error messages match the Node `validate-resp` fixtures and include endpoint names.
+Inject the same raw `McpJsonMapper` used by the application. `BridgeJson` maps `BridgeEndpoint.wireName()` explicitly into the request envelope, serializes top-level request payload records directly, reads `BridgeWireResponse`, validates required ID/success before correlation, recursively freezes open results, and then constructs `BridgeResponse`. Stable endpoint payloads/results use top-level records and `convertValue`; only intentionally dynamic script/mod payloads use open JSON maps/lists/primitives/null. `BridgePayloadValidator` exposes typed `requireResult(response, Class<T>)`, intentionally open `requireOpenObject`, primitive shape validation, safe bounded JSON display, and a 7 MiB base64 PNG text cap. Error messages match the Node `validate-resp` fixtures and include endpoint names. Do not import Gson, Jackson implementation APIs/annotations, or `JsonNode`.
 
 - [ ] **Step 4: Implement JDK WebSocket request correlation and reconnects**
 
@@ -1188,11 +1299,11 @@ Expected: FAIL with missing handlers.
 Texture tools return MCP image content with `image/png` and enforce the base64 bound before allocation/copy. Screenshot preserves baseline text/image ordering. `McRecordVideoTool` uses:
 
 ```java
-static long recordingDeadlineMs(int frames, JsonElement interval) {
-    long perFrame = interval != null && interval.isJsonPrimitive()
-            && interval.getAsJsonPrimitive().isNumber()
-            ? Math.max(1L, interval.getAsLong()) : 17L;
-    return Math.addExact(Math.multiplyExact(frames, perFrame), 15_000L);
+static Duration recordingDeadline(int frames, OptionalLong intervalMillis) {
+    long perFrame = intervalMillis.isPresent()
+            ? Math.max(1L, intervalMillis.getAsLong()) : 17L;
+    return Duration.ofMillis(
+            Math.addExact(Math.multiplyExact(frames, perFrame), 15_000L));
 }
 ```
 
@@ -1459,6 +1570,8 @@ git commit -m "build: package Java server for MCPB"
 **Files:**
 - Create: `src/benchmark/java/dev/mcdevmcp/benchmark/AnalysisBenchmarkMain.java`
 - Create: `src/benchmark/java/dev/mcdevmcp/benchmark/BenchmarkResult.java`
+- Create: `src/benchmark/java/dev/mcdevmcp/benchmark/BenchmarkDecision.java`
+- Create: `src/benchmark/java/dev/mcdevmcp/benchmark/BenchmarkComparisonRun.java`
 - Create: `src/benchmark/java/dev/mcdevmcp/benchmark/BenchmarkPolicy.java`
 - Create: `src/test/java/dev/mcdevmcp/benchmark/BenchmarkPolicyTest.java`
 - Create: `scripts/verify-release-assets.ps1`
@@ -1482,14 +1595,22 @@ public record BenchmarkResult(
         double indexClassesPerSecond, double callEdgesPerSecond,
         long indexPeakRssBytes, long callgraphPeakRssBytes) {}
 
+public record BenchmarkDecision(
+        boolean preferJava26, List<String> reasons) {}
+
+public record BenchmarkComparisonRun(
+        long workflowRunNumber, String machineId,
+        BenchmarkResult java25, BenchmarkResult java26) {}
+
 public final class BenchmarkPolicy {
-    public static Decision evaluate(List<ComparisonRun> threeRuns);
-    public record Decision(boolean preferJava26, List<String> reasons) {}
-    public record ComparisonRun(
-            long workflowRunNumber, String machineId,
-            BenchmarkResult java25, BenchmarkResult java26) {}
+    public static BenchmarkDecision evaluate(
+            List<BenchmarkComparisonRun> threeRuns);
 }
 ```
+
+All four benchmark domain types are top-level. Keep workflow and machine IDs
+as protocol identifiers, but use numeric metric types rather than formatting
+measurements as strings inside the policy boundary.
 
 Tests require exactly three consecutive runs; geometric mean of Java-26 index/callgraph throughput ratios >=1.05; each workflow ratio >=0.98; each Java-26 RSS ratio <=1.10. Any missing metric, mixed machine ID, nonconsecutive run, or failed threshold returns `preferJava26=false` with exact reasons.
 
@@ -1587,7 +1708,7 @@ git commit -m "ci: test and release Java artifacts"
 
 - [ ] **Step 1: Add a failing repository-cutover invariant test**
 
-Create a Gradle `cutoverCheck` task that fails when forbidden files/dependencies remain. It scans tracked files and build metadata, allowing only `packaging/mcpb/bootstrap.cjs`, `packaging/mcpb/package.json`, `packaging/mcpb/package-lock.json`, and frozen JSON/text fixtures. It rejects `.ts`, `java-worker`, Jest, ESLint, TypeScript, Bun, `java-parser`, `sql.js`, Node MCP SDK, parser worker env names, java-callgraph2, package JSON index readers/writers, and downloaded analysis-tool launchers.
+Create a Gradle `cutoverCheck` task that fails when forbidden files/dependencies remain. It scans tracked files and build metadata, allowing only `packaging/mcpb/bootstrap.cjs`, `packaging/mcpb/package.json`, `packaging/mcpb/package-lock.json`, and frozen JSON/text fixtures. It rejects `.ts`, `java-worker`, Jest, ESLint, TypeScript, Bun, Gson, direct Jackson implementation/annotation imports, `JsonNode`, `java-parser`, `sql.js`, Node MCP SDK, parser worker env names, java-callgraph2, package JSON index readers/writers, and downloaded analysis-tool launchers.
 
 Run: `.\gradlew.bat cutoverCheck --console=plain`
 
@@ -1690,6 +1811,11 @@ git -C C:\Users\ttski\Projects\mcdev-mcp status --short --branch
 
 Expected: all build/test/package/conformance checks PASS; design branch clean except ignored evidence; original prints only clean master status.
 
+Then run IntelliJ MCP `build_project` with a full rebuild and
+`get_file_problems` with warnings enabled for every production and test Java
+file. Expected: successful build, no timeouts, and zero actionable errors or
+warnings. Inspection must not trigger or justify reformatting unrelated code.
+
 - [ ] **Step 3: Run Java 25 and Java 26 runtime acceptance on the exact JAR**
 
 Use CI or local installed JDKs to run the uploaded `runtimeTestBundle` and exact SHA-checked JAR under both versions. Capture feature/vendor, test counts, failures, JAR SHA, SQLite smoke, Tiny Remapper/Vineflower fixture, STDIO initialize, and MCPB launch. A test rebuilt under the second JDK is not acceptable evidence for exact-artifact runtime parity.
@@ -1737,7 +1863,10 @@ Expected: remote codex branch updates successfully. Do not merge, tag, create a 
 |---|---|
 | Immutable Node parity oracle and `mc_record_video` catalog correction | Tasks 1 and 13 |
 | Root Java 25 build, one shaded JAR, version authority, signature/service/native-resource handling | Tasks 2, 14, 15, and 17 |
+| Java 25 instance entry point, top-level production types, semantic Java values, preserved IntelliJ style, and warning-clean Gradle/IDE diagnostics | Tasks 2 through 17, audited in Task 17 |
+| SDK-only JSON mapping, generic typed tool bindings, explicit wire/domain conversion, and Gson absence | Tasks 3, 9 through 13, 16, and 17 |
 | Official MCP protocol via the Java SDK STDIO server, tools/resources, errors, STDOUT hygiene | Tasks 3 and 13 |
+| Frozen STDIO-only production transport, with Streamable HTTP confined to the test conformance harness | Tasks 3 and 13 |
 | CLI and cache lifecycle | Tasks 4 and 8 |
 | Javac-only accurate source indexing and semantic type identity | Task 5 |
 | Normalized SQLite symbols, locks, atomic promotion, legacy detection/cleaning | Tasks 4, 5, and 6 |
