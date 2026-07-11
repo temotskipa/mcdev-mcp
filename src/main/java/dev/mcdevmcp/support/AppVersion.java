@@ -1,6 +1,7 @@
 package dev.mcdevmcp.support;
 
 import dev.mcdevmcp.app.Main;
+
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URL;
@@ -8,18 +9,17 @@ import java.util.Properties;
 
 public final class AppVersion {
     public static final String TEST_FALLBACK_PROPERTY = "dev.mcdevmcp.test.versionFallback";
-
-    private AppVersion() {}
-
+    
+    private AppVersion() {
+    }
+    
     public static String current() {
         String manifestVersion = Main.class.getPackage().getImplementationVersion();
         if (manifestVersion != null && !manifestVersion.isBlank()) {
             return manifestVersion;
         }
         URL classResource = Main.class.getResource("Main.class");
-        if (!Boolean.getBoolean(TEST_FALLBACK_PROPERTY)
-                || classResource == null
-                || !classResource.getProtocol().equals("file")) {
+        if (!Boolean.getBoolean(TEST_FALLBACK_PROPERTY) || classResource == null || !classResource.getProtocol().equals("file")) {
             throw new IllegalStateException("Missing implementation version in application manifest");
         }
         try (InputStream input = Main.class.getResourceAsStream("/version.properties")) {

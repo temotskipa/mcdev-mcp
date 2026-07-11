@@ -9,6 +9,9 @@ plugins {
 }
 
 val applicationVersion = providers.gradleProperty("version").get()
+val java25Launcher = javaToolchains.launcherFor {
+    languageVersion.set(JavaLanguageVersion.of(25))
+}
 
 val generateTestVersionProperties = tasks.register<WriteProperties>("generateTestVersionProperties") {
     destinationFile = layout.buildDirectory.file("generated-test-resources/version.properties").get().asFile
@@ -42,6 +45,7 @@ application {
 tasks.withType<JavaCompile>().configureEach {
     options.release.set(25)
     options.encoding = "UTF-8"
+    options.compilerArgs.addAll(listOf("-Xlint:all", "-Werror"))
 }
 
 sourceSets {
@@ -60,6 +64,7 @@ tasks.withType<Test>().configureEach {
     systemProperty("dev.mcdevmcp.test.versionFallback", "true")
     systemProperty("mcdevMcpVersion", applicationVersion)
     systemProperty("mcdevMcpJar", layout.buildDirectory.file("libs/mcdev-mcp-$applicationVersion.jar").get().asFile.absolutePath)
+    systemProperty("mcdevMcpJava", java25Launcher.get().executablePath.asFile.absolutePath)
 }
 
 tasks.named<ShadowJar>("shadowJar") {
@@ -68,6 +73,9 @@ tasks.named<ShadowJar>("shadowJar") {
     archiveVersion.set(applicationVersion)
     duplicatesStrategy = DuplicatesStrategy.INCLUDE
     mergeServiceFiles()
+    append("META-INF/LICENSE")
+    append("META-INF/LICENSE.txt")
+    append("META-INF/NOTICE")
     exclude("META-INF/*.SF", "META-INF/*.RSA", "META-INF/*.DSA")
     manifest {
         attributes[
