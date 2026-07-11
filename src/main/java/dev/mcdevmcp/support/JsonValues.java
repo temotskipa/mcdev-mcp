@@ -12,7 +12,16 @@ public final class JsonValues {
     }
 
     public static Object freeze(Object value) {
-        if (value == null || value instanceof String || value instanceof Boolean || value instanceof Number) {
+        if (value == null || value instanceof String || value instanceof Boolean) {
+            return value;
+        }
+        if (value instanceof Double number && !Double.isFinite(number)) {
+            throw new IllegalArgumentException("JSON numbers must be finite");
+        }
+        if (value instanceof Float number && !Float.isFinite(number)) {
+            throw new IllegalArgumentException("JSON numbers must be finite");
+        }
+        if (value instanceof Number) {
             return value;
         }
         if (value instanceof Map<?, ?> map) {
@@ -26,7 +35,7 @@ public final class JsonValues {
             return Collections.unmodifiableMap(frozen);
         }
         if (value instanceof List<?> list) {
-            var frozen = new ArrayList<Object>(list.size());
+            var frozen = new ArrayList<>(list.size());
             for (Object item : list) {
                 frozen.add(freeze(item));
             }
@@ -40,11 +49,6 @@ public final class JsonValues {
         return asMap(freeze(values));
     }
 
-    public static List<Object> freezeList(List<?> values) {
-        Objects.requireNonNull(values, "JSON array");
-        return asList(freeze(values));
-    }
-
     private static Map<String, Object> asMap(Object value) {
         if (value instanceof Map<?, ?> map) {
             var result = new LinkedHashMap<String, Object>();
@@ -56,10 +60,4 @@ public final class JsonValues {
         throw new IllegalStateException("Frozen JSON object is not a map");
     }
 
-    private static List<Object> asList(Object value) {
-        if (value instanceof List<?> list) {
-            return Collections.unmodifiableList(new ArrayList<>(list));
-        }
-        throw new IllegalStateException("Frozen JSON array is not a list");
-    }
 }

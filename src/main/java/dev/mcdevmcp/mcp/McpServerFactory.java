@@ -12,9 +12,11 @@ import io.modelcontextprotocol.spec.McpSchema;
 
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 public final class McpServerFactory {
@@ -37,6 +39,13 @@ public final class McpServerFactory {
         this.resourceCatalog = Objects.requireNonNull(resourceCatalog, "resourceCatalog");
         this.mapper = Objects.requireNonNull(mapper, "mapper");
     }
+
+    ToolCatalog loadToolCatalog(ExecutorService blockingExecutor) {
+        Objects.requireNonNull(blockingExecutor, "blockingExecutor");
+        var adaptedBindings = new LinkedHashMap<String, ToolBinding<?>>();
+        bindings.forEach((name, binding) -> adaptedBindings.put(name, binding.withBlockingExecutor(blockingExecutor)));
+        return ToolCatalog.load(environment, adaptedBindings, mapper);
+    }
     
     public StdioServer startStdio(InputStream input, OutputStream output) {
         Objects.requireNonNull(input, "input");
@@ -47,8 +56,8 @@ public final class McpServerFactory {
         var transport = new StdioServerTransportProvider(transportMapper, new EofTrackingInputStream(input, inputClosed), new NonClosingOutputStream(output));
         var blockingExecutor = Executors.newVirtualThreadPerTaskExecutor();
         try {
-            ToolCatalog toolCatalog = ToolCatalog.load(environment, bindings, mapper);
-            var adapter = new McpSdkAdapter(mapper);
+            ToolCatalog toolCatalog = loadToolCatalog(blockingExecutor);
+            var adapter = new McpSdkAdapter(mapper, blockingExecutor);
             McpAsyncServer server = McpServer.async(transport).jsonMapper(transportMapper).serverInfo("mcdev-mcp", AppVersion.current()).instructions(ResourceCatalog.INSTRUCTIONS).capabilities(McpSchema.ServerCapabilities.builder().resources(null, null).tools(null).build()).validateToolInputs(true).tools(adapter.tools(toolCatalog)).resources(adapter.resources(resourceCatalog)).build();
             return new StdioServer(server, blockingExecutor, inputClosed);
         } catch (RuntimeException | Error exception) {

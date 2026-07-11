@@ -8,9 +8,12 @@ import reactor.core.publisher.Mono;
 
 import java.net.URI;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BiFunction;
 
@@ -19,9 +22,11 @@ import java.util.function.BiFunction;
  */
 public final class McpSdkAdapter {
     private final McpJsonMapper mapper;
+    private final ExecutorService blockingExecutor;
 
-    McpSdkAdapter(McpJsonMapper mapper) {
+    McpSdkAdapter(McpJsonMapper mapper, ExecutorService blockingExecutor) {
         this.mapper = Objects.requireNonNull(mapper, "mapper");
+        this.blockingExecutor = Objects.requireNonNull(blockingExecutor, "blockingExecutor");
     }
 
     public List<McpServerFeatures.AsyncToolSpecification> tools(ToolCatalog catalog) {
@@ -37,10 +42,31 @@ public final class McpSdkAdapter {
     }
     
     private Mono<McpSchema.ReadResourceResult> readResource(ResourceCatalog catalog, URI uri) {
-        return Mono.fromSupplier(() -> {
-            ResourceRead read = catalog.read(uri);
-            var contents = McpSchema.TextResourceContents.builder(read.uri().toString(), read.text()).mimeType(read.mimeType()).build();
-            return McpSchema.ReadResourceResult.builder(List.of(contents)).build();
+        return Mono.defer(() -> {
+            var result = new CompletableFuture<McpSchema.ReadResourceResult>();
+            Future<?> task;
+            try {
+                task = blockingExecutor.submit(() -> {
+                    try {
+                        ResourceRead read = catalog.read(uri);
+                        var contents = McpSchema.TextResourceContents.builder(read.uri().toString(), read.text()).mimeType(read.mimeType()).build();
+                        result.complete(McpSchema.ReadResourceResult.builder(List.of(contents)).build());
+                    } catch (Throwable exception) {
+                        result.completeExceptionally(exception);
+                        if (exception instanceof Error error) {
+                            throw error;
+                        }
+                    }
+                });
+            } catch (RuntimeException exception) {
+                return Mono.error(exception);
+            }
+            result.whenComplete((_, _) -> {
+                if (result.isCancelled()) {
+                    task.cancel(true);
+                }
+            });
+            return Mono.fromFuture(result);
         });
     }
     
@@ -49,7 +75,8 @@ public final class McpSdkAdapter {
             var cancelled = new AtomicBoolean();
             CompletionStage<ToolResult> stage;
             try {
-                stage = Objects.requireNonNull(definition.binding().invoke(mapper, request.arguments(), cancelled::get), "Tool handler returned null: " + definition.name());
+                Map<String, Object> arguments = request.arguments();
+                stage = Objects.requireNonNull(definition.binding().invoke(mapper, arguments == null ? Map.of() : arguments, cancelled::get), "Tool handler returned null: " + definition.name());
             } catch (RuntimeException exception) {
                 return Mono.just(error(definition.name(), exception));
             }

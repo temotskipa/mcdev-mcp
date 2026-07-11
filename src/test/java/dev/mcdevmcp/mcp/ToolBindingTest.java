@@ -18,6 +18,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -44,7 +48,7 @@ class ToolBindingTest {
         var mapper = new CountingMcpJsonMapper(MAPPER);
         var received = new CompletableFuture<DomainArguments>();
         var binding = new ToolBinding<>(
-                ArgumentDecoder.<WireArguments>sdk(WireArguments.class).<DomainArguments>map(wire -> new DomainArguments(
+                ArgumentDecoder.sdk(WireArguments.class).map(wire -> new DomainArguments(
                         URI.create(wire.uri()),
                         Path.of(wire.path()),
                         Duration.ofMillis(wire.timeoutMs()),
@@ -102,6 +106,35 @@ class ToolBindingTest {
                 () -> binding.invoke(MAPPER, Map.of(), Cancellation.none()).toCompletableFuture().join());
 
         assertEquals("async failure", exception.getCause().getMessage());
+    }
+
+    @Test
+    void blockingBindingRunsOnItsAssignedVirtualExecutorAndCancellationInterruptsIt() throws Exception {
+        var started = new CountDownLatch(1);
+        var interrupted = new CountDownLatch(1);
+        var virtualThread = new AtomicBoolean();
+        var binding = ToolBinding.blocking(ArgumentDecoder.sdk(TestEmptyArguments.class), (_, _) -> {
+            virtualThread.set(Thread.currentThread().isVirtual());
+            started.countDown();
+            try {
+                Thread.sleep(java.time.Duration.ofMinutes(1));
+                return ToolResult.text("unexpected");
+            } catch (InterruptedException exception) {
+                interrupted.countDown();
+                throw exception;
+            }
+        });
+
+        try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
+            var future = binding.withBlockingExecutor(executor)
+                    .invoke(MAPPER, Map.of(), Cancellation.none())
+                    .toCompletableFuture();
+
+            assertTrue(started.await(5, TimeUnit.SECONDS), "blocking binding did not start");
+            assertTrue(future.cancel(true), "blocking binding future was not cancelled");
+            assertTrue(interrupted.await(5, TimeUnit.SECONDS), "cancellation did not interrupt the virtual thread");
+            assertTrue(virtualThread.get(), "blocking binding did not run on a virtual thread");
+        }
     }
 }
 

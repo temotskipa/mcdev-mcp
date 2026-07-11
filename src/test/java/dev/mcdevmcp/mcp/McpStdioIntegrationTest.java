@@ -17,6 +17,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
@@ -149,39 +150,41 @@ class McpStdioIntegrationTest {
     void incompleteHandlerDoesNotBlockAnotherRequestAndCancellationCancelsItsFuture() throws Exception {
         var pending = new CompletableFuture<ToolResult>();
         var cancellation = new AtomicReference<Cancellation>();
-        var adapter = new McpSdkAdapter(MAPPER);
-        var slow = new ToolDefinition(
-                "slow",
-                "slow",
-                Map.of("type", "object"),
-                binding((_, signal) -> {
-                    cancellation.set(signal);
-                    return pending;
-                }),
-                ToolAvailability.ALWAYS);
-        var fast = new ToolDefinition(
-                "fast",
-                "fast",
-                Map.of("type", "object"),
-                binding((_, _) -> ToolHandlers.completed(ToolResult.text("fast"))),
-                ToolAvailability.ALWAYS);
+        try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
+            var adapter = new McpSdkAdapter(MAPPER, executor);
+            var slow = new ToolDefinition(
+                    "slow",
+                    "slow",
+                    Map.of("type", "object"),
+                    binding((_, signal) -> {
+                        cancellation.set(signal);
+                        return pending;
+                    }),
+                    ToolAvailability.ALWAYS);
+            var fast = new ToolDefinition(
+                    "fast",
+                    "fast",
+                    Map.of("type", "object"),
+                    binding((_, _) -> ToolHandlers.completed(ToolResult.text("fast"))),
+                    ToolAvailability.ALWAYS);
 
-        var slowRequest = McpSchema.CallToolRequest.builder("slow")
-                .arguments(Map.of())
-                .build();
-        var fastRequest = McpSchema.CallToolRequest.builder("fast")
-                .arguments(Map.of())
-                .build();
-        var slowSubscription = adapter.callHandler(slow).apply(null, slowRequest).subscribe();
-        var fastResult = adapter.callHandler(fast)
-                .apply(null, fastRequest)
-                .toFuture()
-                .get(5, TimeUnit.SECONDS);
+            var slowRequest = McpSchema.CallToolRequest.builder("slow")
+                    .arguments(Map.of())
+                    .build();
+            var fastRequest = McpSchema.CallToolRequest.builder("fast")
+                    .arguments(Map.of())
+                    .build();
+            var slowSubscription = adapter.callHandler(slow).apply(null, slowRequest).subscribe();
+            var fastResult = adapter.callHandler(fast)
+                    .apply(null, fastRequest)
+                    .toFuture()
+                    .get(5, TimeUnit.SECONDS);
 
-        assertEquals("fast", ((McpSchema.TextContent) fastResult.content().getFirst()).text());
-        slowSubscription.dispose();
-        assertTrue(pending.isCancelled());
-        assertTrue(cancellation.get().isCancelled());
+            assertEquals("fast", ((McpSchema.TextContent) fastResult.content().getFirst()).text());
+            slowSubscription.dispose();
+            assertTrue(pending.isCancelled());
+            assertTrue(cancellation.get().isCancelled());
+        }
     }
 
     @Test
@@ -200,24 +203,26 @@ class McpStdioIntegrationTest {
                 Map.of("type", "object"),
                 binding((_, _) -> CompletableFuture.failedFuture(new IllegalStateException("async failure"))),
                 ToolAvailability.ALWAYS);
-        var adapter = new McpSdkAdapter(MAPPER);
+        try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
+            var adapter = new McpSdkAdapter(MAPPER, executor);
 
-        var syncResult = adapter.callHandler(synchronous)
-                .apply(null, McpSchema.CallToolRequest.builder("sync").arguments(Map.of()).build())
-                .toFuture()
-                .get(5, TimeUnit.SECONDS);
-        var asyncResult = adapter.callHandler(asynchronous)
-                .apply(null, McpSchema.CallToolRequest.builder("async").arguments(Map.of()).build())
-                .toFuture()
-                .get(5, TimeUnit.SECONDS);
+            var syncResult = adapter.callHandler(synchronous)
+                    .apply(null, McpSchema.CallToolRequest.builder("sync").arguments(Map.of()).build())
+                    .toFuture()
+                    .get(5, TimeUnit.SECONDS);
+            var asyncResult = adapter.callHandler(asynchronous)
+                    .apply(null, McpSchema.CallToolRequest.builder("async").arguments(Map.of()).build())
+                    .toFuture()
+                    .get(5, TimeUnit.SECONDS);
 
-        assertTrue(syncResult.isError());
-        assertEquals(
-                "Error executing sync: sync failure",
-                ((McpSchema.TextContent) syncResult.content().getFirst()).text());
-        assertTrue(asyncResult.isError());
-        assertEquals(
-                "Error executing async: async failure",
-                ((McpSchema.TextContent) asyncResult.content().getFirst()).text());
+            assertTrue(syncResult.isError());
+            assertEquals(
+                    "Error executing sync: sync failure",
+                    ((McpSchema.TextContent) syncResult.content().getFirst()).text());
+            assertTrue(asyncResult.isError());
+            assertEquals(
+                    "Error executing async: async failure",
+                    ((McpSchema.TextContent) asyncResult.content().getFirst()).text());
+        }
     }
 }
