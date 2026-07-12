@@ -303,25 +303,203 @@ val cutoverCheck = tasks.register("cutoverCheck") {
                                 hasForbiddenJavaScriptEntrypoint(value)
                             }
 
-                        fun hasForbiddenNodeCommandText(value: String): Boolean {
-                            val nodeCommand = Regex("""(?i)\bnode(?:\.exe)?\b""").find(value)
-                                ?: return false
-                            if (!isPackagingMetadata) {
+                        fun isNodeCommand(value: String) =
+                            value.trim().replace('\\', '/').substringAfterLast('/')
+                                .let { it.equals("node", ignoreCase = true) || it.equals("node.exe", ignoreCase = true) }
+
+                        fun parseCommandSegments(value: String): List<List<String>>? {
+                            val segments = mutableListOf<List<String>>()
+                            val words = mutableListOf<String>()
+                            val word = StringBuilder()
+                            var wordStarted = false
+                            var quote: Char? = null
+                            var requiresSegment = false
+                            var index = 0
+
+                            fun finishWord() {
+                                if (wordStarted) {
+                                    words += word.toString()
+                                    word.setLength(0)
+                                    wordStarted = false
+                                }
+                            }
+
+                            fun finishSegment(requiresFollowingSegment: Boolean): Boolean {
+                                finishWord()
+                                if (words.isEmpty()) {
+                                    return false
+                                }
+                                segments += words.toList()
+                                words.clear()
+                                requiresSegment = requiresFollowingSegment
                                 return true
                             }
-                            val commandArguments = value.substring(nodeCommand.range.last + 1).trim()
-                            if (commandArguments.isEmpty()) {
-                                return false
+
+                            while (index < value.length) {
+                                val character = value[index]
+                                if (quote != null) {
+                                    when (character) {
+                                        quote -> quote = null
+                                        '\\' -> {
+                                            if (index + 1 < value.length && value[index + 1] == quote) {
+                                                index++
+                                                word.append(value[index])
+                                            } else {
+                                                word.append(character)
+                                            }
+                                        }
+                                        else -> word.append(character)
+                                    }
+                                    wordStarted = true
+                                    index++
+                                    continue
+                                }
+
+                                when {
+                                    character == '\'' || character == '"' -> {
+                                        quote = character
+                                        wordStarted = true
+                                    }
+                                    character == '\r' || character == '\n' || character == ';' -> {
+                                        finishWord()
+                                        if (words.isNotEmpty()) {
+                                            finishSegment(false)
+                                        } else if (requiresSegment && character == ';') {
+                                            return null
+                                        }
+                                        if (character == '\r' &&
+                                            index + 1 < value.length &&
+                                            value[index + 1] == '\n'
+                                        ) {
+                                            index++
+                                        }
+                                    }
+                                    character == '&' -> {
+                                        if (index + 1 >= value.length || value[index + 1] != '&') {
+                                            return null
+                                        }
+                                        if (!finishSegment(true)) {
+                                            return null
+                                        }
+                                        index++
+                                    }
+                                    character == '|' -> {
+                                        if (!finishSegment(true)) {
+                                            return null
+                                        }
+                                        if (index + 1 < value.length && value[index + 1] == '|') {
+                                            index++
+                                        }
+                                    }
+                                    character.isWhitespace() -> finishWord()
+                                    character == '\\' && index + 1 < value.length &&
+                                        (value[index + 1].isWhitespace() ||
+                                            value[index + 1] in setOf('\'', '"', ';', '&', '|')) -> {
+                                        index++
+                                        word.append(value[index])
+                                        wordStarted = true
+                                    }
+                                    else -> {
+                                        word.append(character)
+                                        wordStarted = true
+                                    }
+                                }
+                                index++
                             }
-                            val arguments = commandArguments.split(Regex("""\s+"""))
-                                .map { argument -> argument.trim('"', '\'') }
-                            if (arguments.size == 1 &&
-                                arguments.first() in setOf("-v", "--version", "-h", "--help")
-                            ) {
-                                return false
+
+                            if (quote != null) {
+                                return null
                             }
-                            return normalizedEntrypoint(arguments.first()) !in allowedEntrypoints ||
-                                arguments.drop(1).any(::hasForbiddenJavaScriptEntrypoint)
+                            finishWord()
+                            if (words.isNotEmpty()) {
+                                finishSegment(false)
+                            } else if (requiresSegment) {
+                                return null
+                            }
+                            return segments
+                        }
+
+                        fun resolveCommandSegment(words: List<String>): Pair<Int, Boolean>? {
+                            val assignmentName = Regex("""[A-Za-z_][A-Za-z0-9_]*""")
+                            var executableIndex = 0
+                            var hasNodeOptions = false
+
+                            fun consumeAssignments() {
+                                while (executableIndex < words.size) {
+                                    val assignment = words[executableIndex].indexOf('=')
+                                    if (assignment <= 0) {
+                                        break
+                                    }
+                                    val name = words[executableIndex].substring(0, assignment)
+                                    if (!assignmentName.matches(name)) {
+                                        break
+                                    }
+                                    hasNodeOptions = hasNodeOptions ||
+                                        normalizedMetadataKey(name) == "nodeoptions"
+                                    executableIndex++
+                                }
+                            }
+
+                            consumeAssignments()
+                            while (executableIndex < words.size) {
+                                when (words[executableIndex].lowercase()) {
+                                    "env" -> {
+                                        executableIndex++
+                                        if (executableIndex < words.size && words[executableIndex] == "--") {
+                                            executableIndex++
+                                        } else if (executableIndex < words.size &&
+                                            words[executableIndex].startsWith("-")
+                                        ) {
+                                            return null
+                                        }
+                                        consumeAssignments()
+                                    }
+                                    "exec", "command" -> {
+                                        executableIndex++
+                                        if (executableIndex < words.size && words[executableIndex] == "--") {
+                                            executableIndex++
+                                        } else if (executableIndex < words.size &&
+                                            words[executableIndex].startsWith("-")
+                                        ) {
+                                            return null
+                                        }
+                                    }
+                                    else -> break
+                                }
+                            }
+                            if (executableIndex < words.size && words[executableIndex].contains('=')) {
+                                return null
+                            }
+                            return executableIndex.takeIf { it < words.size }
+                                ?.let { it to hasNodeOptions }
+                        }
+
+                        fun hasForbiddenNodeCommandText(value: String): Boolean {
+                            val nodeToken = Regex("""(?i)\bnode(?:\.exe)?\b""")
+                            val segments = parseCommandSegments(value)
+                                ?: return nodeToken.containsMatchIn(value)
+                            for (segment in segments) {
+                                val (executableIndex, hasNodeOptions) = resolveCommandSegment(segment)
+                                    ?: if (segment.any(nodeToken::containsMatchIn)) {
+                                        return true
+                                    } else {
+                                        continue
+                                    }
+                                if (!isNodeCommand(segment[executableIndex])) {
+                                    continue
+                                }
+                                if (hasNodeOptions || !isPackagingMetadata) {
+                                    return true
+                                }
+                                val arguments = segment.drop(executableIndex + 1)
+                                if (arguments.isNotEmpty() &&
+                                    (normalizedEntrypoint(arguments.first()) !in allowedEntrypoints ||
+                                        arguments.drop(1).any(::hasForbiddenJavaScriptEntrypoint))
+                                ) {
+                                    return true
+                                }
+                            }
+                            return false
                         }
 
                         fun stringArguments(value: Any?): List<String> = when (value) {
@@ -330,10 +508,6 @@ val cutoverCheck = tasks.register("cutoverCheck") {
                             is Iterable<*> -> value.flatMap(::stringArguments)
                             else -> emptyList()
                         }
-
-                        fun isNodeCommand(value: String) =
-                            value.trim().replace('\\', '/').substringAfterLast('/')
-                                .let { it.equals("node", ignoreCase = true) || it.equals("node.exe", ignoreCase = true) }
 
                         fun hasForbiddenStructuredNodeInvocation(root: Any): Boolean {
                             val pendingCommands = ArrayDeque<Any>()
