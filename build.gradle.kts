@@ -303,9 +303,10 @@ val cutoverCheck = tasks.register("cutoverCheck") {
                                 hasForbiddenJavaScriptEntrypoint(value)
                             }
 
-                        fun isNodeCommand(value: String) =
-                            value.trim().replace('\\', '/').substringAfterLast('/')
-                                .let { it.equals("node", ignoreCase = true) || it.equals("node.exe", ignoreCase = true) }
+                        fun normalizedExecutableName(value: String) =
+                            value.trim().replace('\\', '/').substringAfterLast('/').lowercase().removeSuffix(".exe")
+
+                        fun isNodeCommand(value: String) = normalizedExecutableName(value) == "node"
 
                         fun parseCommandSegments(value: String): List<List<String>>? {
                             val segments = mutableListOf<List<String>>()
@@ -442,7 +443,7 @@ val cutoverCheck = tasks.register("cutoverCheck") {
 
                             consumeAssignments()
                             while (executableIndex < words.size) {
-                                when (words[executableIndex].lowercase()) {
+                                when (normalizedExecutableName(words[executableIndex])) {
                                     "env" -> {
                                         executableIndex++
                                         if (executableIndex < words.size && words[executableIndex] == "--") {
