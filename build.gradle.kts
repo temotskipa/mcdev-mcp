@@ -39,6 +39,7 @@ dependencies {
 
 application {
     mainClass.set("dev.mcdevmcp.app.Main")
+    applicationDefaultJvmArgs = listOf("--enable-native-access=ALL-UNNAMED")
 }
 
 tasks.withType<JavaCompile>().configureEach {
@@ -60,6 +61,7 @@ tasks.processTestResources {
 tasks.withType<Test>().configureEach {
     useJUnitPlatform()
     dependsOn(tasks.named("shadowJar"))
+    jvmArgs("--enable-native-access=ALL-UNNAMED")
     systemProperty("dev.mcdevmcp.test.versionFallback", "true")
     systemProperty("mcdevMcpVersion", applicationVersion)
     systemProperty("mcdevMcpJar", layout.buildDirectory.file("libs/mcdev-mcp-$applicationVersion.jar").get().asFile.absolutePath)
@@ -81,6 +83,8 @@ tasks.named<ShadowJar>("shadowJar") {
             "Main-Class"
         ] = application.mainClass.get()
         attributes["Implementation-Version"] = applicationVersion
+        // Required for Xerial SQLite JNI/FFM under JDK 24+ restricted native access.
+        attributes["Enable-Native-Access"] = "ALL-UNNAMED"
     }
 }
 

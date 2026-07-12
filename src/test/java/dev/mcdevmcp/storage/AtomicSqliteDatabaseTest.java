@@ -65,6 +65,10 @@ class AtomicSqliteDatabaseTest {
     @Test
     void promotesValidatedDatabasesWithoutSqliteSidecars() throws Exception {
         Path target = temporaryDirectory.resolve("symbols.db");
+        // Stale target-side sidecars from a prior crash must not survive promotion.
+        Files.writeString(target.resolveSibling("symbols.db-wal"), "stale");
+        Files.writeString(target.resolveSibling("symbols.db-shm"), "stale");
+        Files.writeString(target.resolveSibling("symbols.db-journal"), "stale");
 
         String result = new AtomicSqliteDatabase().rebuild(
                 target,
@@ -80,6 +84,52 @@ class AtomicSqliteDatabaseTest {
         assertFalse(Files.exists(target.resolveSibling("symbols.db-journal")));
         assertFalse(Files.exists(target.resolveSibling("symbols.db-wal")));
         assertFalse(Files.exists(target.resolveSibling("symbols.db-shm")));
+    }
+
+    @Test
+    void removesInvalidTargetWhenBackupFallbackValidationFailsWithoutPriorTarget() throws Exception {
+        Path target = temporaryDirectory.resolve("symbols.db");
+        Path temporary = target.resolveSibling("symbols.db.promote.tmp");
+        createMarkerDatabase(temporary, "new");
+
+        SQLException exception = assertThrows(SQLException.class, () ->
+                AtomicSqliteDatabase.promoteWithBackupForTest(
+                        temporary,
+                        target,
+                        _ -> {
+                            throw new SQLException("validation rejected promoted database");
+                        }));
+
+        assertTrue(exception.getMessage().contains("validation rejected promoted database")
+                || exception.getCause() != null
+                || exception.getSuppressed().length > 0);
+        assertFalse(Files.exists(target), "invalid promoted target must be removed");
+        assertFalse(Files.exists(target.resolveSibling("symbols.db.bak")));
+        assertFalse(Files.exists(temporary));
+        assertFalse(Files.exists(target.resolveSibling("symbols.db-journal")));
+        assertFalse(Files.exists(target.resolveSibling("symbols.db-wal")));
+        assertFalse(Files.exists(target.resolveSibling("symbols.db-shm")));
+    }
+
+    @Test
+    void failedRebuildWithNoPriorTargetLeavesNoDatabaseArtifacts() {
+        Path target = temporaryDirectory.resolve("symbols.db");
+        Path temporary = target.resolveSibling(target.getFileName() + "." + ProcessHandle.current().pid() + ".tmp");
+
+        assertThrows(SQLException.class, () -> new AtomicSqliteDatabase().rebuild(
+                target,
+                Duration.ofSeconds(1),
+                connection -> {
+                    writeMarker(connection, "new");
+                    return "new";
+                },
+                _ -> {
+                    throw new SQLException("validation rejected temporary database");
+                }));
+
+        assertFalse(Files.exists(target));
+        assertFalse(Files.exists(target.resolveSibling("symbols.db.bak")));
+        assertFalse(Files.exists(temporary));
     }
 
     @Test
@@ -131,9 +181,13 @@ class AtomicSqliteDatabaseTest {
     }
 
     private static void createOldMarkerDatabase(Path database) throws SQLException, IOException {
+        createMarkerDatabase(database, "old");
+    }
+
+    private static void createMarkerDatabase(Path database, String value) throws SQLException, IOException {
         Files.createDirectories(database.getParent());
         try (Connection connection = DriverManager.getConnection("jdbc:sqlite:" + database.toAbsolutePath())) {
-            writeMarker(connection, "old");
+            writeMarker(connection, value);
         }
     }
 

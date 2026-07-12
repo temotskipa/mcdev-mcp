@@ -23,6 +23,7 @@ class ShadedJarSmokeTest {
             var manifest = jar.getManifest().getMainAttributes();
             assertEquals("dev.mcdevmcp.app.Main", manifest.getValue("Main-Class"));
             assertEquals(System.getProperty("mcdevMcpVersion"), manifest.getValue("Implementation-Version"));
+            assertEquals("ALL-UNNAMED", manifest.getValue("Enable-Native-Access"));
             assertNotNull(jar.getEntry("META-INF/services/java.sql.Driver"));
             assertTrue(new String(jar.getInputStream(jar.getEntry("META-INF/services/java.sql.Driver")).readAllBytes()).contains("org.sqlite.JDBC"));
             assertTrue(jar.stream().noneMatch(entry -> entry.getName().matches("META-INF/.*\\.(SF|RSA|DSA)")));
