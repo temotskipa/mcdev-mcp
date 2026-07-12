@@ -266,6 +266,65 @@ val cutoverCheck = tasks.register("cutoverCheck") {
                                 arguments !in setOf("-v", "--version", "-h", "--help")
                         }
 
+                        fun stringArguments(value: Any?): List<String> = when (value) {
+                            is String -> listOf(value)
+                            is Map<*, *> -> value.values.flatMap(::stringArguments)
+                            is Iterable<*> -> value.flatMap(::stringArguments)
+                            else -> emptyList()
+                        }
+
+                        fun isNodeCommand(value: String) =
+                            value.trim().replace('\\', '/').substringAfterLast('/')
+                                .let { it.equals("node", ignoreCase = true) || it.equals("node.exe", ignoreCase = true) }
+
+                        fun hasForbiddenNodeCommandArguments(root: Any): Boolean {
+                            val pendingCommands = ArrayDeque<Any>()
+                            pendingCommands.add(root)
+                            while (pendingCommands.isNotEmpty()) {
+                                when (val value = pendingCommands.removeFirst()) {
+                                    is Map<*, *> -> {
+                                        val fields = value.entries.associate { (key, fieldValue) ->
+                                            (key as? String)?.let(::normalizedMetadataKey) to fieldValue
+                                        }
+                                        val command = fields["command"]
+                                        val explicitArguments = fields["args"] ?: fields["arguments"]
+                                        val (executable, arguments) = when (command) {
+                                            is String -> command to stringArguments(explicitArguments)
+                                            is Iterable<*> -> {
+                                                val commandParts = command.toList()
+                                                (commandParts.firstOrNull() as? String) to
+                                                    (stringArguments(commandParts.drop(1)) +
+                                                        stringArguments(explicitArguments))
+                                            }
+                                            is Map<*, *> -> {
+                                                val commandFields = command.entries.associate { (key, fieldValue) ->
+                                                    (key as? String)?.let(::normalizedMetadataKey) to fieldValue
+                                                }
+                                                val commandExecutable =
+                                                    listOf("command", "executable", "program")
+                                                        .firstNotNullOfOrNull { commandFields[it] as? String }
+                                                val commandArguments =
+                                                    commandFields["args"] ?: commandFields["arguments"]
+                                                commandExecutable to
+                                                    (stringArguments(commandArguments) +
+                                                        stringArguments(explicitArguments))
+                                            }
+                                            else -> null to emptyList()
+                                        }
+                                        if (executable != null &&
+                                            isNodeCommand(executable) &&
+                                            arguments.any(::hasForbiddenJavaScriptEntrypoint)
+                                        ) {
+                                            return true
+                                        }
+                                        value.values.filterNotNull().forEach(pendingCommands::add)
+                                    }
+                                    is Iterable<*> -> value.filterNotNull().forEach(pendingCommands::add)
+                                }
+                            }
+                            return false
+                        }
+
                         val entrypointKeys = setOf("main", "module", "browser", "bin", "exports", "entrypoint")
                         val nodeRuntime = jsonFields.any { (key, value) ->
                             val normalizedKey = normalizedMetadataKey(key)
@@ -319,7 +378,9 @@ val cutoverCheck = tasks.register("cutoverCheck") {
                             }
                         }
                         if (isPackagingMetadata) {
-                            javascriptMetadata || nestedJavaScriptMetadata.any { it }
+                            javascriptMetadata ||
+                                nestedJavaScriptMetadata.any { it } ||
+                                parsedJson != null && hasForbiddenNodeCommandArguments(parsedJson)
                         } else {
                             nodeRuntime || javascriptMetadata || nestedJavaScriptMetadata.any { it }
                         }
