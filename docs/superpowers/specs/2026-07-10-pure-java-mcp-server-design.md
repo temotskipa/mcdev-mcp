@@ -92,7 +92,7 @@ There is one production entry point:
 java -jar mcdev-mcp-<version>.jar <command>
 ```
 
-The JAR contains the server, Java indexer, callgraph generator, SQLite JDBC
+The JAR contains the server, Java indexer, callgraph generator, H2 MVStore JDBC
 driver, Tiny Remapper, Vineflower, resources, and all normal runtime
 dependencies. It does not download or launch an indexer, callgraph tool,
 Tiny Remapper JAR, or Vineflower JAR.
@@ -104,7 +104,7 @@ The build uses:
 - Gradle Shadow 9.5.1 for the executable JAR.
 - MCP Java SDK 2.0.0 (`io.modelcontextprotocol.sdk:mcp`).
 - Picocli 4.7.7 for the command surface.
-- Xerial SQLite JDBC 3.53.2.0 for symbol and callgraph storage.
+- H2 2.4.240 for pure-Java symbol and callgraph MVStore storage. H2 supports a single closed `.mv.db` file, durable validation, and promotion without native access. sqlite4j/Endive remains unsuitable because its VFS is memory-backed, needs explicit host backup, uses a non-threadsafe SQLite build, and has no WAL.
 - Vineflower 1.11.2 and Tiny Remapper 0.10.4 as embedded libraries.
 - JUnit 6.1.0 for tests.
 
@@ -199,7 +199,7 @@ The Java server preserves:
 The server uses the MCP SDK's asynchronous API over STDIO. Internal tool
 handlers expose JDK `CompletionStage` values and a cancellation signal; Reactor
 types remain confined to the MCP SDK adapter. DebugBridge/WebSocket operations
-therefore remain nonblocking end to end. Filesystem, SQLite, and other blocking
+therefore remain nonblocking end to end. Filesystem, H2, and other blocking
 handlers run on a Java 25 virtual-thread executor rather than a Reactor event
 loop. Cancelling an MCP request cancels its future and signals the underlying
 operation. This preserves concurrent in-flight calls, including while a long
@@ -314,8 +314,8 @@ importer, or recovery path. There is no skip mode in the initial Java server.
 
 ## Symbol Storage
 
-The package JSON index is intentionally replaced by a normalized SQLite symbol
-database at `<index>/<version>/symbols.db`. This removes thousands of JSON files
+The package JSON index is intentionally replaced by a normalized H2 MVStore symbol
+database at `<index>/<version>/symbols.mv.db`. This removes thousands of JSON files
 and prevents old regex-derived data from being silently treated as accurate.
 
 The database contains metadata, packages, classes, interfaces, fields,
@@ -347,7 +347,7 @@ package JSON indexes are detected but not imported because they may contain
 regex-derived inaccuracies. A successful rebuild leaves those legacy files
 untouched to avoid deleting user-modified cache data; the Java server ignores
 them. `status` reports a legacy-only index as `needs rebuild`, and
-`clean --index` removes both the SQLite index and legacy package JSON indexes.
+`clean --index` removes both the H2 index and legacy package JSON indexes.
 If cached sources exist, the diagnostic instructs the user to run `rebuild`;
 no source redownload is required.
 
@@ -483,9 +483,9 @@ second hand-written catalog.
 
 Shadow merges service descriptors with `mergeServiceFiles()`, removes stale
 archive signatures under `META-INF/*.SF`, `META-INF/*.RSA`, and
-`META-INF/*.DSA`, and preserves SQLite JDBC native libraries and the embedded
-resources required by Tiny Remapper and Vineflower. Cross-platform tests run
-from the extracted shaded JAR and prove JDBC driver discovery plus SQLite
+`META-INF/*.DSA`, merges JDBC services, and preserves embedded resources
+required by Tiny Remapper and Vineflower. Cross-platform tests run
+from the extracted shaded JAR and prove JDBC driver discovery plus H2
 read/write, a Tiny Remapper fixture, a Vineflower fixture, MCP STDIO
 initialization, and the absence of signed-archive verification failures.
 
@@ -577,7 +577,7 @@ than release gates.
 - Downloads use timeouts, bounded redirects, checksums where available, and
   temporary files followed by atomic promotion.
 - Index and callgraph builds never replace a valid database with partial data.
-- SQLite connections, compiler file managers, JARs, streams, and WebSockets use
+- H2 connections, compiler file managers, JARs, streams, and WebSockets use
   deterministic close paths.
 - MCP handlers convert expected failures to `isError` tool results and keep the
   server alive.

@@ -1,5 +1,7 @@
 package dev.mcdevmcp.storage;
 
+import dev.mcdevmcp.storage.model.MinecraftVersion;
+import dev.mcdevmcp.storage.model.VersionState;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -13,36 +15,52 @@ public final class VersionStateRepository {
         this.paths = Objects.requireNonNull(paths, "paths");
     }
     
-    public boolean isSqliteReady(String version) {
+    public VersionState state(MinecraftVersion version) {
         Path database = paths.symbolDatabase(version);
+        if (isH2Ready(database)) {
+            return VersionState.READY;
+        }
+        if (hasLegacyIndex(version)) {
+            return VersionState.NEEDS_REBUILD;
+        }
+        if (Files.isDirectory(paths.sourceRoot(version))) {
+            return VersionState.SOURCE_ONLY;
+        }
+        return VersionState.ABSENT;
+    }
+
+    public boolean isH2Ready(MinecraftVersion version) {
+        return state(version) == VersionState.READY;
+    }
+
+    public boolean needsRebuild(MinecraftVersion version) {
+        return state(version) == VersionState.NEEDS_REBUILD;
+    }
+
+    public boolean isSourceOnly(MinecraftVersion version) {
+        return state(version) == VersionState.SOURCE_ONLY;
+    }
+
+    public boolean isAbsent(MinecraftVersion version) {
+        return state(version) == VersionState.ABSENT;
+    }
+
+    private static boolean isH2Ready(Path database) {
         if (!Files.isRegularFile(database)) {
             return false;
         }
         try {
-            return new SymbolRepository(database).query(connection -> {
-                try (var statement = connection.createStatement();
-                     var results = statement.executeQuery("PRAGMA user_version")) {
-                    return results.next() && results.getInt(1) == SymbolSchema.VERSION;
-                }
+            new SymbolRepository(database).query(connection -> {
+                SymbolSchema.validate(connection);
+                return null;
             });
+            return true;
         } catch (IOException | SQLException exception) {
             return false;
         }
     }
-    
-    public boolean needsRebuild(String version) {
-        return !isSqliteReady(version) && hasLegacyIndex(version);
-    }
-    
-    public boolean isSourceOnly(String version) {
-        return Files.isDirectory(paths.sourceRoot(version)) && !isSqliteReady(version) && !hasLegacyIndex(version);
-    }
-    
-    public boolean isAbsent(String version) {
-        return !isSqliteReady(version) && !hasLegacyIndex(version) && !Files.isDirectory(paths.sourceRoot(version));
-    }
-    
-    private boolean hasLegacyIndex(String version) {
+
+    private boolean hasLegacyIndex(MinecraftVersion version) {
         Path root = paths.indexRoot(version);
         return Files.isRegularFile(root.resolve("manifest.json")) || Files.isDirectory(root.resolve("minecraft")) || Files.isDirectory(root.resolve("fabric"));
     }

@@ -1,123 +1,50 @@
 package dev.mcdevmcp.storage;
 
+import dev.mcdevmcp.storage.model.MinecraftVersion;
+
 import java.nio.file.Path;
 import java.sql.Connection;
+import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.time.Instant;
 import java.util.Objects;
+import java.util.Set;
 
 //noinspection SqlNoDataSourceInspection,SqlResolve
 public final class SymbolSchema {
     public static final int VERSION = 1;
-    
+    private static final Set<String> TABLES = Set.of("METADATA", "PACKAGES", "TYPES", "TYPE_INTERFACES", "FIELDS", "METHODS", "PARAMETERS");
+
     private SymbolSchema() {
     }
-    
-    public static void create(Connection connection, String minecraftVersion, Path sourceRoot, String remappedJarSha256, Instant builtAt) throws SQLException {
+
+    public static void create(Connection connection, MinecraftVersion minecraftVersion, Path sourceRoot, String remappedJarSha256, Instant builtAt) throws SQLException {
         Objects.requireNonNull(connection, "connection");
         Objects.requireNonNull(minecraftVersion, "minecraftVersion");
         Objects.requireNonNull(sourceRoot, "sourceRoot");
         Objects.requireNonNull(remappedJarSha256, "remappedJarSha256");
         Objects.requireNonNull(builtAt, "builtAt");
         try (Statement statement = connection.createStatement()) {
-            if (connection.getAutoCommit()) {
-                execute(statement, "PRAGMA journal_mode = DELETE");
-                execute(statement, "PRAGMA synchronous = FULL");
-                execute(statement, "PRAGMA foreign_keys = ON");
-            }
-            execute(statement, "PRAGMA user_version = " + VERSION);
-            execute(statement, "CREATE TABLE metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL)");
-            execute(statement, """
-                               CREATE TABLE packages (
-                                   id INTEGER PRIMARY KEY,
-                                   namespace TEXT NOT NULL CHECK(namespace IN ('minecraft', 'fabric')),
-                                   name TEXT NOT NULL,
-                                   UNIQUE(namespace, name)
-                               )
-                               """);
-            execute(statement, """
-                               CREATE TABLE types (
-                                   id INTEGER PRIMARY KEY,
-                                   package_id INTEGER NOT NULL REFERENCES packages(id),
-                                   namespace TEXT NOT NULL CHECK(namespace IN ('minecraft', 'fabric')),
-                                   binary_name TEXT NOT NULL UNIQUE,
-                                   simple_name TEXT NOT NULL,
-                                   kind TEXT NOT NULL CHECK(kind IN ('class', 'interface', 'enum', 'record', 'annotation')),
-                                   superclass_binary_name TEXT,
-                                   source_path TEXT NOT NULL,
-                                   start_offset INTEGER NOT NULL,
-                                   end_offset INTEGER NOT NULL,
-                                   start_line INTEGER NOT NULL,
-                                   end_line INTEGER NOT NULL
-                               )
-                               """);
-            execute(statement, """
-                               CREATE TABLE type_interfaces (
-                                   type_id INTEGER NOT NULL REFERENCES types(id) ON DELETE CASCADE,
-                                   ordinal INTEGER NOT NULL,
-                                   interface_binary_name TEXT NOT NULL,
-                                   PRIMARY KEY(type_id, ordinal)
-                               )
-                               """);
-            execute(statement, """
-                               CREATE TABLE fields (
-                                   id INTEGER PRIMARY KEY,
-                                   type_id INTEGER NOT NULL REFERENCES types(id) ON DELETE CASCADE,
-                                   ordinal INTEGER NOT NULL,
-                                   name TEXT NOT NULL,
-                                   type TEXT NOT NULL,
-                                   modifiers TEXT NOT NULL,
-                                   start_offset INTEGER NOT NULL,
-                                   end_offset INTEGER NOT NULL,
-                                   start_line INTEGER NOT NULL,
-                                   end_line INTEGER NOT NULL,
-                                   UNIQUE(type_id, ordinal)
-                               )
-                               """);
-            execute(statement, """
-                               CREATE TABLE methods (
-                                   id INTEGER PRIMARY KEY,
-                                   type_id INTEGER NOT NULL REFERENCES types(id) ON DELETE CASCADE,
-                                   ordinal INTEGER NOT NULL,
-                                   name TEXT NOT NULL,
-                                   descriptor TEXT NOT NULL,
-                                   return_type TEXT,
-                                   modifiers TEXT NOT NULL,
-                                   constructor INTEGER NOT NULL CHECK(constructor IN (0, 1)),
-                                   start_offset INTEGER NOT NULL,
-                                   end_offset INTEGER NOT NULL,
-                                   start_line INTEGER NOT NULL,
-                                   end_line INTEGER NOT NULL,
-                                   UNIQUE(type_id, ordinal)
-                               )
-                               """);
-            execute(statement, """
-                               CREATE TABLE parameters (
-                                   id INTEGER PRIMARY KEY,
-                                   method_id INTEGER NOT NULL REFERENCES methods(id) ON DELETE CASCADE,
-                                   ordinal INTEGER NOT NULL,
-                                   name TEXT NOT NULL,
-                                   type TEXT NOT NULL,
-                                   varargs INTEGER NOT NULL CHECK(varargs IN (0, 1)),
-                                   start_offset INTEGER NOT NULL,
-                                   end_offset INTEGER NOT NULL,
-                                   start_line INTEGER NOT NULL,
-                                   end_line INTEGER NOT NULL,
-                                   UNIQUE(method_id, ordinal)
-                               )
-                               """);
+            execute(statement, "CREATE TABLE metadata (singleton BOOLEAN PRIMARY KEY CHECK (singleton), schema_version INTEGER NOT NULL, minecraft_version VARCHAR NOT NULL, source_root VARCHAR NOT NULL, remapped_jar_sha256 VARCHAR NOT NULL, built_at TIMESTAMP WITH TIME ZONE NOT NULL)");
+            execute(statement, "CREATE TABLE packages (id BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY, source_namespace VARCHAR NOT NULL CHECK (source_namespace IN ('minecraft', 'fabric')), fabric_api_version VARCHAR, name VARCHAR NOT NULL, CHECK (source_namespace <> 'minecraft' OR fabric_api_version IS NULL), UNIQUE(source_namespace, fabric_api_version, name))");
+            execute(statement, "CREATE TABLE types (id BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY, package_id BIGINT NOT NULL REFERENCES packages(id), source_namespace VARCHAR NOT NULL CHECK (source_namespace IN ('minecraft', 'fabric')), fabric_api_version VARCHAR, binary_name VARCHAR NOT NULL UNIQUE, simple_name VARCHAR NOT NULL, kind VARCHAR NOT NULL CHECK (kind IN ('class', 'interface', 'enum', 'record', 'annotation')), superclass_binary_name VARCHAR, source_path VARCHAR NOT NULL, start_offset INTEGER NOT NULL, end_offset INTEGER NOT NULL, start_line INTEGER NOT NULL, end_line INTEGER NOT NULL, CHECK (source_namespace <> 'minecraft' OR fabric_api_version IS NULL))");
+            execute(statement, "CREATE TABLE type_interfaces (type_id BIGINT NOT NULL REFERENCES types(id) ON DELETE CASCADE, ordinal INTEGER NOT NULL, interface_binary_name VARCHAR NOT NULL, PRIMARY KEY(type_id, ordinal))");
+            execute(statement, "CREATE TABLE fields (id BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY, type_id BIGINT NOT NULL REFERENCES types(id) ON DELETE CASCADE, ordinal INTEGER NOT NULL, name VARCHAR NOT NULL, type VARCHAR NOT NULL, modifiers VARCHAR NOT NULL, start_offset INTEGER NOT NULL, end_offset INTEGER NOT NULL, start_line INTEGER NOT NULL, end_line INTEGER NOT NULL, UNIQUE(type_id, ordinal))");
+            execute(statement, "CREATE TABLE methods (id BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY, type_id BIGINT NOT NULL REFERENCES types(id) ON DELETE CASCADE, ordinal INTEGER NOT NULL, name VARCHAR NOT NULL, descriptor VARCHAR NOT NULL, return_type VARCHAR, modifiers VARCHAR NOT NULL, constructor BOOLEAN NOT NULL, start_offset INTEGER NOT NULL, end_offset INTEGER NOT NULL, start_line INTEGER NOT NULL, end_line INTEGER NOT NULL, UNIQUE(type_id, ordinal))");
+            execute(statement, "CREATE TABLE parameters (id BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY, method_id BIGINT NOT NULL REFERENCES methods(id) ON DELETE CASCADE, ordinal INTEGER NOT NULL, name VARCHAR NOT NULL, type VARCHAR NOT NULL, varargs BOOLEAN NOT NULL, start_offset INTEGER NOT NULL, end_offset INTEGER NOT NULL, start_line INTEGER NOT NULL, end_line INTEGER NOT NULL, UNIQUE(method_id, ordinal))");
         }
-        //noinspection SqlNoDataSourceInspection,SqlResolve
-        try (var statement = connection.prepareStatement("INSERT INTO metadata(key, value) VALUES (?, ?)")) {
-            insertMetadata(statement, "minecraft_version", minecraftVersion);
-            insertMetadata(statement, "source_root", sourceRoot.toString());
-            insertMetadata(statement, "remapped_jar_sha256", remappedJarSha256);
-            insertMetadata(statement, "built_at", builtAt.toString());
+        try (PreparedStatement statement = connection.prepareStatement(sql("INSERT INTO metadata(singleton, schema_version, minecraft_version, source_root, remapped_jar_sha256, built_at) VALUES (TRUE, ?, ?, ?, ?, ?)")) ) {
+            statement.setInt(1, VERSION);
+            statement.setString(2, minecraftVersion.value());
+            statement.setString(3, sourceRoot.toString());
+            statement.setString(4, remappedJarSha256);
+            statement.setObject(5, builtAt);
+            statement.executeUpdate();
         }
     }
-    
+
     public static void createIndexes(Connection connection) throws SQLException {
         try (Statement statement = connection.createStatement()) {
             execute(statement, "CREATE INDEX idx_type_binary_name ON types(binary_name)");
@@ -127,23 +54,47 @@ public final class SymbolSchema {
             execute(statement, "CREATE INDEX idx_type_interfaces_binary_name ON type_interfaces(interface_binary_name, type_id)");
         }
     }
-    
-    public static void validateForeignKeys(Connection connection) throws SQLException {
-        try (Statement statement = connection.createStatement();
-             ResultSet results = statement.executeQuery("PRAGMA foreign_key_check")) {
+
+    public static void validate(Connection connection) throws SQLException {
+        Set<String> tables = tableNames(connection);
+        if (!tables.containsAll(TABLES)) {
+            throw new SQLException("Missing required H2 symbol tables: expected " + TABLES + ", found " + tables);
+        }
+        try (Statement statement = connection.createStatement(); ResultSet results = statement.executeQuery(sql("SELECT schema_version FROM metadata WHERE singleton = TRUE"))) {
+            if (!results.next() || results.getInt(1) != VERSION || results.next()) {
+                throw new SQLException("Expected exactly one metadata row with schema version " + VERSION);
+            }
+        }
+        verifyNoOrphans(connection, "SELECT 1 FROM types t LEFT JOIN packages p ON p.id = t.package_id WHERE p.id IS NULL", "types.package_id");
+        verifyNoOrphans(connection, "SELECT 1 FROM type_interfaces i LEFT JOIN types t ON t.id = i.type_id WHERE t.id IS NULL", "type_interfaces.type_id");
+        verifyNoOrphans(connection, "SELECT 1 FROM fields f LEFT JOIN types t ON t.id = f.type_id WHERE t.id IS NULL", "fields.type_id");
+        verifyNoOrphans(connection, "SELECT 1 FROM methods m LEFT JOIN types t ON t.id = m.type_id WHERE t.id IS NULL", "methods.type_id");
+        verifyNoOrphans(connection, "SELECT 1 FROM parameters p LEFT JOIN methods m ON m.id = p.method_id WHERE m.id IS NULL", "parameters.method_id");
+    }
+
+    private static Set<String> tableNames(Connection connection) throws SQLException {
+        try (Statement statement = connection.createStatement(); ResultSet results = statement.executeQuery(sql("SELECT table_name FROM information_schema.tables WHERE table_schema = 'PUBLIC'"))) {
+            var names = new java.util.HashSet<String>();
+            while (results.next()) {
+                names.add(results.getString(1));
+            }
+            return Set.copyOf(names);
+        }
+    }
+
+    private static void verifyNoOrphans(Connection connection, String query, String relationship) throws SQLException {
+        try (Statement statement = connection.createStatement(); ResultSet results = statement.executeQuery(query)) {
             if (results.next()) {
-                throw new SQLException("SQLite foreign key check failed for table " + results.getString(1));
+                throw new SQLException("H2 orphan validation failed for " + relationship);
             }
         }
     }
-    
-    private static void insertMetadata(java.sql.PreparedStatement statement, String key, String value) throws SQLException {
-        statement.setString(1, key);
-        statement.setString(2, value);
-        statement.executeUpdate();
-    }
-    
+
     private static void execute(Statement statement, String sql) throws SQLException {
         statement.execute(sql);
+    }
+
+    private static String sql(String statement) {
+        return statement;
     }
 }

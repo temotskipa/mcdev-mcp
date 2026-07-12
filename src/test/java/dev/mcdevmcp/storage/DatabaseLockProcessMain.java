@@ -30,7 +30,7 @@ final class DatabaseLockProcessMain {
                 assertEquals("value", repository.query(connection -> {
                     try (var statement = connection.createStatement()) {
                         //noinspection SqlNoDataSourceInspection,SqlResolve
-                        try (var results = statement.executeQuery("SELECT value FROM marker")) {
+                        try (var results = statement.executeQuery("SELECT marker_value FROM marker")) {
                             if (!results.next()) {
                                 throw new java.sql.SQLException("marker missing");
                             }
@@ -44,7 +44,7 @@ final class DatabaseLockProcessMain {
             }
             case "recover-failing" -> {
                 try {
-                    new AtomicSqliteDatabase().rebuild(
+                    new AtomicH2Database().rebuild(
                             database,
                             Duration.ofSeconds(1),
                             _ -> {

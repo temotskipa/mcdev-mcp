@@ -1,7 +1,7 @@
 [versions]
 mcp = "2.0.1-SNAPSHOT"
 picocli = "4.7.7"
-sqlite = "3.53.2.0"
+h2 = "2.4.240"
 vineflower = "1.11.2"
 tiny-remapper = "0.10.4"
 junit = "6.1.0"
@@ -13,7 +13,7 @@ servlet = "6.1.0"
 [libraries]
 mcp = { module = "io.modelcontextprotocol.sdk:mcp", version.ref = "mcp" }
 picocli = { module = "info.picocli:picocli", version.ref = "picocli" }
-sqlite = { module = "org.xerial:sqlite-jdbc", version.ref = "sqlite" }
+h2 = { module = "com.h2database:h2", version.ref = "h2" }
 vineflower = { module = "org.vineflower:vineflower", version.ref = "vineflower" }
 tiny-remapper = { module = "net.fabricmc:tiny-remapper", version.ref = "tiny-remapper" }
 slf4j-nop = { module = "org.slf4j:slf4j-nop", version.ref = "slf4j" }

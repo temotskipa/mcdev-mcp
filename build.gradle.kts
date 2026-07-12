@@ -81,7 +81,7 @@ java {
 dependencies {
     implementation(libs.mcp)
     implementation(libs.picocli)
-    implementation(libs.sqlite)
+    implementation(libs.h2)
     implementation(libs.vineflower)
     implementation(libs.tiny.remapper)
     implementation(libs.slf4j.nop)
@@ -93,7 +93,6 @@ dependencies {
 
 application {
     mainClass.set("dev.mcdevmcp.app.Main")
-    applicationDefaultJvmArgs = listOf("--enable-native-access=ALL-UNNAMED")
 }
 
 tasks.withType<JavaCompile>().configureEach {
@@ -116,7 +115,6 @@ tasks.withType<Test>().configureEach {
     useJUnitPlatform()
     dependsOn(tasks.named("shadowJar"))
     javaLauncher.set(testJavaLauncher)
-    jvmArgs("--enable-native-access=ALL-UNNAMED")
     testLogging.showStandardStreams = true
     systemProperty("dev.mcdevmcp.test.versionFallback", "true")
     systemProperty("dev.mcdevmcp.test.javaFeature", testJavaFeature.get())
@@ -140,8 +138,6 @@ tasks.named<ShadowJar>("shadowJar") {
             "Main-Class"
         ] = application.mainClass.get()
         attributes["Implementation-Version"] = applicationVersion
-        // Required for Xerial SQLite JNI/FFM under JDK 24+ restricted native access.
-        attributes["Enable-Native-Access"] = "ALL-UNNAMED"
     }
 }
 

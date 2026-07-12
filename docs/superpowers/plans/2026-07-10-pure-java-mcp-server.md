@@ -4,11 +4,11 @@
 
 **Goal:** Replace mcdev-mcp's TypeScript/Node server and Java worker processes with one Java 25 shaded executable JAR while preserving the complete MCP, CLI, static-analysis, DebugBridge, packaging, and release behavior.
 
-**Architecture:** A single Gradle application owns the official MCP Java SDK STDIO server, Picocli CLI, Javac source indexer, Class-File API callgraph scanner, SQLite storage, embedded Tiny Remapper/Vineflower pipeline, and JDK WebSocket DebugBridge client. The untouched `master` checkout at commit `7b98bdb4a1d885d588cd141d8eb21e3c5c18b2b6` is the Node parity oracle; tests materialize that commit into ignored scratch inside the isolated Java worktree, so neither `master` nor its working tree is modified. The early worktree cutover removes all legacy server source, worker code, and root Node toolchain before parity completes; later differential tests use the pinned oracle rather than restoring those files. MCPB retains only a minimal JavaScript launcher around the exact release JAR when packaging work begins.
+**Architecture:** A single Gradle application owns the official MCP Java SDK STDIO server, Picocli CLI, Javac source indexer, Class-File API callgraph scanner, H2 MVStore storage, embedded Tiny Remapper/Vineflower pipeline, and JDK WebSocket DebugBridge client. The untouched `master` checkout at commit `7b98bdb4a1d885d588cd141d8eb21e3c5c18b2b6` is the Node parity oracle; tests materialize that commit into ignored scratch inside the isolated Java worktree, so neither `master` nor its working tree is modified. The early worktree cutover removes all legacy server source, worker code, and root Node toolchain before parity completes; later differential tests use the pinned oracle rather than restoring those files. MCPB retains only a minimal JavaScript launcher around the exact release JAR when packaging work begins.
 
 > **Early cutover amendment (2026-07-12):** The isolated Java worktree removes the retired server, worker, root Node metadata, and Node CI before the later parity/release tasks. `cutoverCheck` is the tracked-file guard for this state. The original clean `master` checkout remains the immutable Node oracle; later tasks must materialize or invoke it from ignored scratch and must not restore legacy source in this worktree.
 
-**Tech Stack:** Java 25 language/bytecode, Gradle Wrapper 9.6.1, Shadow 9.5.1, MCP Java SDK 2.0.1-SNAPSHOT with its Jackson 3-backed `McpJsonMapper`, Picocli 4.7.7, SQLite JDBC 3.53.2.0, Tiny Remapper 0.10.4, Vineflower 1.11.2, JUnit 6.1.0, Java Class-File API, Javac compiler APIs, JDK HttpClient/WebSocket.
+**Tech Stack:** Java 25 language/bytecode, Gradle Wrapper 9.6.1, Shadow 9.5.1, MCP Java SDK 2.0.1-SNAPSHOT with its Jackson 3-backed `McpJsonMapper`, Picocli 4.7.7, H2 2.4.240, Tiny Remapper 0.10.4, Vineflower 1.11.2, JUnit 6.1.0, Java Class-File API, Javac compiler APIs, JDK HttpClient/WebSocket.
 
 ## Global Constraints
 
@@ -27,7 +27,7 @@
 - Compile every Java source set with `-Xlint:all -Werror`. Before each task review, run IntelliJ MCP `build_project` and `get_file_problems` for every changed Java file, fix actionable errors and warnings, and keep any unavoidable suppression narrow and documented.
 - Use the official MCP Java SDK 2.0.1-SNAPSHOT over production STDIO. Do not add Spring, Ktor, Kotlin, GraalVM native-image, preview JDK APIs, or another production transport.
 - Production remains STDIO-only because the frozen TypeScript server has no SSE or Streamable HTTP surface. Task 13's URL-based HTTP server is a test-only conformance harness over the same registry, not a second production transport.
-- Use `McpServer.async(...)`. Internal handlers return JDK `CompletionStage`, Reactor remains confined to `McpSdkAdapter`, DebugBridge calls stay nonblocking, and SQLite/filesystem handlers use a Java 25 virtual-thread executor with cancellation propagation.
+- Use `McpServer.async(...)`. Internal handlers return JDK `CompletionStage`, Reactor remains confined to `McpSdkAdapter`, DebugBridge calls stay nonblocking, and H2/filesystem handlers use a Java 25 virtual-thread executor with cancellation propagation.
 - Javac compiler/tree APIs are the sole production source parser. No regex parser, `java-parser`, TypeScript AST parser, parser fallback, parser importer, or skip mode may remain. User-requested regex matching in `mc_search` is search behavior, not source parsing, and remains compatible.
 - Use `java.lang.classfile` directly for callgraph generation. Do not clone, build, execute, parse output from, or depend on java-callgraph2.
 - Preserve all baseline MCP tools, including `mc_record_video`, both resources, CLI commands, exit codes, environment gates, defaults, limits, truncation text, error text, and output formatting unless the approved design explicitly corrects them.
@@ -74,8 +74,8 @@ src/main/java/dev/mcdevmcp/
       CallgraphWriter.java
   analysis/decompile/VersionManifestClient.java, DownloadService.java,
       MappingConverter.java, MinecraftRemapper.java, MinecraftDecompiler.java
-  storage/PlatformPaths.java, DatabaseLock.java, AtomicSqliteDatabase.java,
-      SqliteBuilder.java, SqliteValidator.java, SymbolSchema.java,
+  storage/PlatformPaths.java, DatabaseLock.java, AtomicH2Database.java,
+      DatabaseBuilder.java, DatabaseQuery.java, DatabaseValidator.java, SymbolSchema.java,
       SymbolRepository.java, CallgraphSchema.java, CallgraphRepository.java,
       VersionStateRepository.java, IndexCleaner.java
   bridge/BridgeRequest.java, BridgeResponse.java, BridgeJson.java,
@@ -307,7 +307,7 @@ Expected: FAIL because the root wrapper/build and Java classes do not exist.
 [versions]
 mcp = "2.0.1-SNAPSHOT"
 picocli = "4.7.7"
-sqlite = "3.53.2.0"
+h2 = "2.4.240"
 vineflower = "1.11.2"
 tiny-remapper = "0.10.4"
 junit = "6.1.0"
@@ -317,7 +317,7 @@ tomcat = "11.0.2"
 servlet = "6.1.0"
 ```
 
-Use `io.modelcontextprotocol.sdk:mcp`, `info.picocli:picocli`, `org.xerial:sqlite-jdbc`, `org.vineflower:vineflower`, `net.fabricmc:tiny-remapper`, and `org.slf4j:slf4j-nop`. The SDK's transitive Jackson 3-backed `McpJsonMapper` is the sole JSON engine; do not declare Gson or Jackson directly. Configure Java toolchain 25, `options.release = 25`, UTF-8, JUnit Platform, application main class, and Shadow. Shadow must call `mergeServiceFiles()`, exclude `META-INF/*.SF`, `META-INF/*.RSA`, and `META-INF/*.DSA`, preserve native libraries, emit no classifier, and set manifest entries from `project.version`.
+Use `io.modelcontextprotocol.sdk:mcp`, `info.picocli:picocli`, `com.h2database:h2`, `org.vineflower:vineflower`, `net.fabricmc:tiny-remapper`, and `org.slf4j:slf4j-nop`. The SDK's transitive Jackson 3-backed `McpJsonMapper` is the sole JSON engine; do not declare Gson or Jackson directly. Configure Java toolchain 25, `options.release = 25`, UTF-8, JUnit Platform, application main class, and Shadow. Shadow must call `mergeServiceFiles()`, exclude `META-INF/*.SF`, `META-INF/*.RSA`, and `META-INF/*.DSA`, emit no classifier, and set manifest entries from `project.version` without native-access grants.
 
 Set `gradle.properties` to:
 
@@ -511,7 +511,7 @@ Unknown URIs throw the same message as the Node fixture. Reads use UTF-8 and do 
 
 `McpServerFactory` creates one process-scoped raw mapper with `McpJsonDefaults.getMapper()` and injects it into the catalog and adapter. The production transport receives only `new NodeParityJsonMapper(rawMapper)`. Use `StdioServerTransportProvider(...)` and `McpServer.async(...)`. Server info is `mcdev-mcp` plus `AppVersion.current()`. Capabilities advertise tools and resources, instructions equal the baseline fixture, and tool input validation remains enabled. Pass the request's native argument map directly to `ToolBinding.invoke`, which decodes once and calls the typed handler; no serialization round-trip or field-by-field generic facade is allowed. Convert each handler stage with `Mono.fromFuture(stage.toCompletableFuture())`; Reactor types must not appear outside `McpSdkAdapter`. On Reactor cancellation, set the request's `Cancellation` signal and cancel the underlying future. Convert expected synchronous throws and exceptional completions into `ToolResult.error("Error executing " + name + ": " + message)` without terminating the process.
 
-`ToolHandlers.blocking(ExecutorService, BlockingToolHandler)` adapts SQLite,
+`ToolHandlers.blocking(ExecutorService, BlockingToolHandler)` adapts H2,
 filesystem, and other blocking work with `Executors.newVirtualThreadPerTaskExecutor()`.
 `ToolHandlers.completed(...)` covers immediate catalog/resource responses.
 The factory owns and closes the virtual-thread executor with the async server.
@@ -569,16 +569,17 @@ No new typed argument abstraction is justified: `McpSchema.CallToolRequest.argum
 
 The snapshot also carries useful future Streamable HTTP/stateless parity fixes: stateless initialized and roots notifications are handled without warning, unregistered stateless methods return JSON-RPC method-not-found responses, Streamable HTTP responses close after method-not-found, and completions with no handler return an empty result. These benefits do not add a production transport in this amendment.
 
-## Task 4: Build Cross-Platform Paths And Atomic SQLite Storage
+## Task 4: Build Cross-Platform Paths And Atomic H2 Storage
 
 **Recommended agent:** `gpt-5.6-terra`, high reasoning. Cross-process locks, Windows handles, crash recovery, and durable promotion are subtle integration work.
 
 **Files:**
 - Create: `src/main/java/dev/mcdevmcp/storage/PlatformPaths.java`
 - Create: `src/main/java/dev/mcdevmcp/storage/DatabaseLock.java`
-- Create: `src/main/java/dev/mcdevmcp/storage/AtomicSqliteDatabase.java`
-- Create: `src/main/java/dev/mcdevmcp/storage/SqliteBuilder.java`
-- Create: `src/main/java/dev/mcdevmcp/storage/SqliteValidator.java`
+- Create: `src/main/java/dev/mcdevmcp/storage/AtomicH2Database.java`
+- Create: `src/main/java/dev/mcdevmcp/storage/DatabaseBuilder.java`
+- Create: `src/main/java/dev/mcdevmcp/storage/DatabaseQuery.java`
+- Create: `src/main/java/dev/mcdevmcp/storage/DatabaseValidator.java`
 - Create: `src/main/java/dev/mcdevmcp/storage/SymbolSchema.java`
 - Create: `src/main/java/dev/mcdevmcp/storage/SymbolRepository.java`
 - Create: `src/main/java/dev/mcdevmcp/storage/VersionStateRepository.java`
@@ -588,13 +589,13 @@ The snapshot also carries useful future Streamable HTTP/stateless parity fixes: 
 - Create: `src/main/java/dev/mcdevmcp/storage/model/MethodSymbol.java`
 - Create: `src/main/java/dev/mcdevmcp/storage/model/ParameterSymbol.java`
 - Create: `src/test/java/dev/mcdevmcp/storage/PlatformPathsTest.java`
-- Create: `src/test/java/dev/mcdevmcp/storage/AtomicSqliteDatabaseTest.java`
+- Create: `src/test/java/dev/mcdevmcp/storage/AtomicH2DatabaseTest.java`
 - Create: `src/test/java/dev/mcdevmcp/storage/SymbolSchemaTest.java`
 - Create: `src/test/java/dev/mcdevmcp/storage/DatabaseLockProcessTest.java`
 
 **Interfaces:**
 - Consumes: OS environment and JDBC.
-- Produces: `PlatformPaths.forEnvironment(Map<String,String>)`; `DatabaseLock.read/write`; `AtomicSqliteDatabase.rebuild`; schema version 1; short-lived read-only `SymbolRepository` queries; legacy index detection/cleaning.
+- Produces: `PlatformPaths.forEnvironment(Map<String,String>)`; `DatabaseLock.read/write`; `AtomicH2Database.rebuild`; schema version 1; short-lived read-only `SymbolRepository` queries; legacy index detection/cleaning.
 
 - [ ] **Step 1: Write failing platform, schema, lock, recovery, and promotion tests**
 
@@ -610,24 +611,24 @@ public record PlatformPaths(Path cacheRoot) {
     public Path callgraphDatabase(String version);
 }
 
-public final class AtomicSqliteDatabase {
+public final class AtomicH2Database {
     public <T> T rebuild(Path target, Duration lockTimeout,
-                         SqliteBuilder<T> builder,
-                         SqliteValidator validator) throws IOException, SQLException;
+                         DatabaseBuilder<T> builder,
+                         DatabaseValidator validator) throws IOException, SQLException;
 }
 
 @FunctionalInterface
-public interface SqliteBuilder<T> {
+public interface DatabaseBuilder<T> {
     T build(Connection connection) throws Exception;
 }
 
 @FunctionalInterface
-public interface SqliteValidator {
+public interface DatabaseValidator {
     void validate(Connection connection) throws Exception;
 }
 ```
 
-`SqliteBuilder` and `SqliteValidator` are top-level interfaces in their own
+`DatabaseBuilder`, `DatabaseQuery`, and `DatabaseValidator` are top-level interfaces in their own
 files. Storage APIs carry filesystem locations and lock deadlines as `Path`
 and `Duration`; they do not accept string encodings of either value.
 
@@ -668,7 +669,7 @@ Combine a process-local `ReentrantReadWriteLock` with sibling file locks. Reads 
 
 - [ ] **Step 6: Implement legacy detection and cleaning without implicit deletion**
 
-`VersionStateRepository` reports SQLite-ready, legacy-only `needs rebuild`, source-only, and absent. A successful SQLite rebuild leaves legacy JSON untouched. `IndexCleaner.cleanIndex(version)` removes the SQLite DB, lock/temp/backup sidecars, legacy manifest, namespace indexes, and legacy package JSON only after resolving every path beneath the version/index root.
+`VersionStateRepository` reports H2-ready, legacy-only `needs rebuild`, source-only, and absent. A successful H2 rebuild leaves legacy JSON untouched. `IndexCleaner.cleanIndex(version)` removes the H2 `.mv.db`, lock/temp/backup companions, legacy manifest, namespace indexes, and legacy package JSON only after resolving every path beneath the version/index root.
 
 - [ ] **Step 7: Run focused and full storage tests**
 
@@ -684,7 +685,7 @@ Expected: all storage tests PASS, including subprocess lock and rename checks.
 
 ```powershell
 git add src/main/java/dev/mcdevmcp/storage src/test/java/dev/mcdevmcp/storage
-git commit -m "feat: add atomic SQLite storage"
+git commit -m "refactor: use pure Java H2 storage"
 ```
 
 ## Task 5: Replace Every Source Parser With The Javac Indexer
@@ -712,8 +713,8 @@ git commit -m "feat: add atomic SQLite storage"
 - Create: `src/test/resources/indexer/sources/**`
 
 **Interfaces:**
-- Consumes: `AtomicSqliteDatabase`, `SymbolSchema`, a source root, the matching remapped JAR, optional source-only classpath, `MCDEV_INDEX_THREADS`, `ProgressSink`, `Cancellation`.
-- Produces: schema-v1 `symbols.db`; deterministic `IndexSummary`; exact stored declaration identities/ranges; no parser fallback.
+- Consumes: `AtomicH2Database`, `SymbolSchema`, a source root, the matching remapped JAR, optional source-only classpath, `MCDEV_INDEX_THREADS`, `ProgressSink`, `Cancellation`.
+- Produces: schema-v1 `symbols.mv.db`; deterministic `IndexSummary`; exact stored declaration identities/ranges; no parser fallback.
 
 - [ ] **Step 1: Write failing syntax, semantic identity, declaration, and atomicity tests**
 
@@ -782,7 +783,7 @@ For catalog-backed types, join by fully qualified binary name and take superclas
 
 - [ ] **Step 6: Merge deterministically and write atomically**
 
-Merge worker results in normalized source-path order, then declaration offset. Check duplicate binary names before opening the output writer. `SymbolIndexWriter` inserts explicit JDBC batches in one transaction, creates secondary indexes afterward, validates counts and foreign keys, and delegates promotion to `AtomicSqliteDatabase`. Parse/attribution/cancellation failures leave the prior DB byte-for-byte unchanged.
+Merge worker results in normalized source-path order, then declaration offset. Check duplicate binary names before opening the output writer. `SymbolIndexWriter` inserts explicit JDBC batches in one transaction, creates secondary indexes afterward, validates counts and foreign keys, and delegates promotion to `AtomicH2Database`. Parse/attribution/cancellation failures leave the prior DB byte-for-byte unchanged.
 
 Parse `MCDEV_INDEX_THREADS` as a positive integer clamped to `1..availableProcessors`; invalid values fail with the variable name and supplied value. Default to available processors.
 
@@ -917,7 +918,7 @@ git commit -m "feat: port static analysis tools to Java"
 - Modify: `src/main/java/dev/mcdevmcp/tools/statictool/StaticToolModule.java`
 
 **Interfaces:**
-- Consumes: remapped JAR, atomic SQLite infrastructure, frozen `mc_find_refs` schema.
+- Consumes: remapped JAR, atomic H2 infrastructure, frozen `mc_find_refs` schema.
 - Produces: existing `calls` table DB; callers/callees repository queries; fully compatible `mc_find_refs` with intentional 5000-limit correction.
 
 - [ ] **Step 1: Write failing opcode, dynamic-call, line, order, and limit tests**
@@ -943,7 +944,7 @@ public record CallgraphRequest(
         int threads, ProgressSink progress, Cancellation cancellation) {}
 ```
 
-Compile fixture classes that emit `invokevirtual`, `invokeinterface`, `invokestatic`, `invokespecial`, constructors, lambda/method-reference `invokedynamic`, string-concat `invokedynamic`, duplicate calls on one line, duplicate calls on different lines, overloaded targets, and a class compiled without debug lines. Add a legacy SQLite fixture with null/empty descriptors. Assert one edge per qualifying instruction and no invented string-concat edge.
+Compile fixture classes that emit `invokevirtual`, `invokeinterface`, `invokestatic`, `invokespecial`, constructors, lambda/method-reference `invokedynamic`, string-concat `invokedynamic`, duplicate calls on one line, duplicate calls on different lines, overloaded targets, and a class compiled without debug lines. Add a legacy H2 fixture with null/empty descriptors. Assert one edge per qualifying instruction and no invented string-concat edge.
 
 - [ ] **Step 2: Run callgraph tests and observe missing implementation**
 
@@ -1066,7 +1067,7 @@ status [-v <version>]
 clean [--callgraph|--cache|--index|--all] [-v <version>]
 ```
 
-Preserve the current version validator (Minecraft 1.14+ and modern 26.x-style versions), exit codes, progress and summary text. `status` distinguishes SQLite-ready, legacy-only `needs rebuild`, decompiled-only, and absent. `rebuild` reuses cached source/remapped JAR. Cancellation preserves valid previous files and thread interruption.
+Preserve the current version validator (Minecraft 1.14+ and modern 26.x-style versions), exit codes, progress and summary text. `status` distinguishes H2-ready, legacy-only `needs rebuild`, decompiled-only, and absent. `rebuild` reuses cached source/remapped JAR. Cancellation preserves valid previous files and thread interruption.
 
 - [ ] **Step 6: Run embedded library, CLI, and full pipeline tests**
 
@@ -1477,7 +1478,7 @@ Remove inherited `npm_config_allow_scripts`, provide a scratch-local empty `NPM_
 
 Normalize only JSON-RPC IDs, absolute fixture roots, timestamps documented in the fixture, and dynamically assigned fake-bridge ports. Do not normalize list order, schemas, limits, descriptors, line numbers, error wording, whitespace inside tool text, or truncation. On mismatch, write request, Node response, Java response, and JSON-pointer/text diff under `build/reports/parity/`.
 
-For approved intentional changes, Java-only assertions govern: server/artifact version is the rewrite release `3.0.0` rather than the Node oracle's `2.2.1`; schema-v1 SQLite replaces package JSON; `mc_find_refs` honors 101..5000 and displays descriptors; legacy-only status says `needs rebuild`.
+For approved intentional changes, Java-only assertions govern: server/artifact version is the rewrite release `3.0.0` rather than the Node oracle's `2.2.1`; schema-v1 H2 replaces package JSON; `mc_find_refs` honors 101..5000 and displays descriptors; legacy-only status says `needs rebuild`.
 
 - [ ] **Step 5: Share one server definition with the test-only HTTP harness**
 
@@ -1647,13 +1648,13 @@ Add a Gradle `benchmark` source set compiled with release 25. `AnalysisBenchmark
 `ci.yml` jobs:
 
 1. `build-java25`: checkout, install Temurin 25, run `clean test shadowJar runtimeTestBundle`, hash JAR, upload JAR/checksum/compiled test runtime.
-2. `runtime-matrix`: matrix Temurin 25 and 26, download exact artifacts, verify hash, run compiled integration tests and direct JAR STDIO/SQLite/TinyRemapper/Vineflower smoke without compilation.
+2. `runtime-matrix`: matrix Temurin 25 and 26, download exact artifacts, verify hash, run compiled integration tests and direct JAR STDIO/H2/TinyRemapper/Vineflower smoke without compilation.
 3. `mcpb`: download exact JAR/checksum, generate metadata, pack/extract/smoke, upload MCPB.
 4. `conformance`: install Temurin 25 and Node 24 with `actions/setup-node`, run the test-only Java harness, and invoke only the pinned build-time `@modelcontextprotocol/conformance@0.1.16` package through `npx`.
 
 No matrix job invokes `shadowJar`.
 
-The exact-JAR smoke also loads every merged service provider, opens SQLite,
+The exact-JAR smoke also loads every merged service provider, opens H2,
 and scans the archive to prove stale `.SF`, `.RSA`, and `.DSA` signatures are
 absent; class loading must produce no signed-archive verification failure.
 
@@ -1759,7 +1760,7 @@ Preserve `DEBUGBRIDGE_PORT`, `MCDEV_RUN_COMMAND`, `MCDEV_SCRIPT_LOGS`, `MCDEV_MC
 
 - [ ] **Step 4: Rewrite user and architecture documentation**
 
-Document Java 25 minimum, `java -jar ...` CLI/client configuration, one-JAR architecture, embedded tools, SQLite rebuild migration, ignored legacy JSON until `clean --index`, new/retired environment variables, GitHub Release/MCPB installation, DebugBridge v2.0.0 compatibility, and npm package retirement. Do not claim Java 26 preferred unless three benchmark artifacts satisfy `BenchmarkPolicy`; otherwise state both runtimes are supported and benchmark evidence is pending/neutral.
+Document Java 25 minimum, `java -jar ...` CLI/client configuration, one-JAR architecture, embedded tools, H2 rebuild migration, ignored legacy JSON until `clean --index`, new/retired environment variables, GitHub Release/MCPB installation, DebugBridge v2.0.0 compatibility, and npm package retirement. Do not claim Java 26 preferred unless three benchmark artifacts satisfy `BenchmarkPolicy`; otherwise state both runtimes are supported and benchmark evidence is pending/neutral.
 
 Add transition text that npm `mcdev-mcp` 2.2.1 is the final Node line and the next Java release is installed from GitHub Releases or MCPB. The release workflow must not execute `npm deprecate`; that external action remains a separately approved release operation.
 
@@ -1826,7 +1827,7 @@ warnings. Inspection must not trigger or justify reformatting unrelated code.
 
 - [ ] **Step 3: Run Java 25 and Java 26 runtime acceptance on the exact JAR**
 
-Use CI or local installed JDKs to run the uploaded `runtimeTestBundle` and exact SHA-checked JAR under both versions. Capture feature/vendor, test counts, failures, JAR SHA, SQLite smoke, Tiny Remapper/Vineflower fixture, STDIO initialize, and MCPB launch. A test rebuilt under the second JDK is not acceptable evidence for exact-artifact runtime parity.
+Use CI or local installed JDKs to run the uploaded `runtimeTestBundle` and exact SHA-checked JAR under both versions. Capture feature/vendor, test counts, failures, JAR SHA, H2 smoke, Tiny Remapper/Vineflower fixture, STDIO initialize, and MCPB launch. A test rebuilt under the second JDK is not acceptable evidence for exact-artifact runtime parity.
 
 - [ ] **Step 4: Run a live DebugBridge v2.0.0 smoke test**
 
@@ -1877,7 +1878,7 @@ Expected: remote codex branch updates successfully. Do not merge, tag, create a 
 | Frozen STDIO-only production transport, with Streamable HTTP confined to the test conformance harness | Tasks 3 and 13 |
 | CLI and cache lifecycle | Tasks 4 and 8 |
 | Javac-only accurate source indexing and semantic type identity | Task 5 |
-| Normalized SQLite symbols, locks, atomic promotion, legacy detection/cleaning | Tasks 4, 5, and 6 |
+| Normalized H2 symbols, locks, atomic promotion, legacy detection/cleaning | Tasks 4, 5, and 6 |
 | Static tools and intentional user search regex | Task 6 |
 | Class-File API callgraph and full `mc_find_refs` behavior | Task 7 |
 | Embedded download, Tiny Remapper, and Vineflower pipeline | Task 8 |

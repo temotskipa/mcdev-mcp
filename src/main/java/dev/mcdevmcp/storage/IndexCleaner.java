@@ -1,5 +1,6 @@
 package dev.mcdevmcp.storage;
 
+import dev.mcdevmcp.storage.model.MinecraftVersion;
 import java.io.IOException;
 import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
@@ -23,12 +24,12 @@ public final class IndexCleaner {
         Files.delete(normalized);
     }
     
-    public void cleanIndex(String version) throws IOException {
+    public void cleanIndex(MinecraftVersion version) throws IOException {
         Path root = paths.indexRoot(version).toAbsolutePath().normalize();
         if (!root.startsWith(paths.cacheRoot().toAbsolutePath().normalize())) {
             throw new IOException("Refusing to clean index outside cache root: " + root);
         }
-        if (!Files.exists(root)) {
+        if (!Files.exists(root, java.nio.file.LinkOption.NOFOLLOW_LINKS)) {
             return;
         }
         Files.walkFileTree(root, new SimpleFileVisitor<>() {

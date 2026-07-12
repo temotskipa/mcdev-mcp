@@ -17,6 +17,9 @@ class GsonAbsenceTest {
 
         try (var jar = new JarFile(JAR.toFile())) {
             assertTrue(jar.stream().noneMatch(entry -> entry.getName().startsWith("com/google/gson/")));
+            assertTrue(jar.stream().noneMatch(entry -> entry.getName().startsWith("org/sqlite/") || entry.getName().startsWith("org/sqlite/native/")));
         }
+
+        assertThrows(ClassNotFoundException.class, () -> Class.forName("org.sqlite.JDBC"));
     }
 }

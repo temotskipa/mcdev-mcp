@@ -1,5 +1,7 @@
 package dev.mcdevmcp.storage;
 
+import dev.mcdevmcp.storage.model.MinecraftVersion;
+import dev.mcdevmcp.storage.model.VersionState;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -14,6 +16,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class PlatformPathsTest {
     @TempDir
     Path temporaryDirectory;
+
+    private static final MinecraftVersion VERSION = new MinecraftVersion("1.21.5");
 
     @Test
     void resolvesMacOsLinuxAndWindowsCacheRootsWithoutAPrivateEnvironmentOverride() {
@@ -38,13 +42,13 @@ class PlatformPathsTest {
     void preservesTheVersionedCacheAndIndexLayout() {
         var paths = new PlatformPaths(Path.of("/cache/mcdev-mcp"));
 
-        assertEquals(Path.of("/cache/mcdev-mcp/cache/1.21.5"), paths.versionCache("1.21.5"));
-        assertEquals(Path.of("/cache/mcdev-mcp/cache/1.21.5/client"), paths.sourceRoot("1.21.5"));
-        assertEquals(Path.of("/cache/mcdev-mcp/cache/1.21.5/jars/1.21.5_unobfuscated.jar"), paths.remappedJar("1.21.5"));
-        assertEquals(Path.of("/cache/mcdev-mcp/cache/1.21.5/callgraph/client-remapped.jar"), paths.remappedCallgraphJar("1.21.5"));
-        assertEquals(Path.of("/cache/mcdev-mcp/cache/1.21.5/callgraph/callgraph.db"), paths.callgraphDatabase("1.21.5"));
-        assertEquals(Path.of("/cache/mcdev-mcp/cache/fabric-api-0.120.0"), paths.fabricSourceRoot("0.120.0"));
-        assertEquals(Path.of("/cache/mcdev-mcp/index/1.21.5/symbols.db"), paths.symbolDatabase("1.21.5"));
+        assertEquals(Path.of("/cache/mcdev-mcp/cache/1.21.5"), paths.versionCache(VERSION));
+        assertEquals(Path.of("/cache/mcdev-mcp/cache/1.21.5/client"), paths.sourceRoot(VERSION));
+        assertEquals(Path.of("/cache/mcdev-mcp/cache/1.21.5/jars/1.21.5_unobfuscated.jar"), paths.remappedJar(VERSION));
+        assertEquals(Path.of("/cache/mcdev-mcp/cache/1.21.5/callgraph/client-remapped.jar"), paths.remappedCallgraphJar(VERSION));
+        assertEquals(Path.of("/cache/mcdev-mcp/cache/1.21.5/callgraph/callgraph.mv.db"), paths.callgraphDatabase(VERSION));
+        assertEquals(Path.of("/cache/mcdev-mcp/cache/fabric-api-1.21.5"), paths.fabricSourceRoot(VERSION));
+        assertEquals(Path.of("/cache/mcdev-mcp/index/1.21.5/symbols.mv.db"), paths.symbolDatabase(VERSION));
     }
 
     @Test
@@ -52,32 +56,33 @@ class PlatformPathsTest {
         var paths = new PlatformPaths(temporaryDirectory);
         var states = new VersionStateRepository(paths);
 
-        assertTrue(states.isAbsent("1.21.5"));
-        Files.createDirectories(paths.sourceRoot("1.21.5"));
-        assertTrue(states.isSourceOnly("1.21.5"));
-        Files.createDirectories(paths.symbolDatabase("1.21.5").getParent());
-        Files.writeString(paths.symbolDatabase("1.21.5"), "not-a-database");
-        assertFalse(states.isSqliteReady("1.21.5"));
-        Files.delete(paths.symbolDatabase("1.21.5"));
-        Files.writeString(paths.indexRoot("1.21.5").resolve("manifest.json"), "{}");
-        assertTrue(states.needsRebuild("1.21.5"));
+        assertEquals(VersionState.ABSENT, states.state(VERSION));
+        assertTrue(states.isAbsent(VERSION));
+        Files.createDirectories(paths.sourceRoot(VERSION));
+        assertTrue(states.isSourceOnly(VERSION));
+        Files.createDirectories(paths.symbolDatabase(VERSION).getParent());
+        Files.writeString(paths.symbolDatabase(VERSION), "not-a-database");
+        assertFalse(states.isH2Ready(VERSION));
+        Files.delete(paths.symbolDatabase(VERSION));
+        Files.writeString(paths.indexRoot(VERSION).resolve("manifest.json"), "{}");
+        assertTrue(states.needsRebuild(VERSION));
     }
 
     @Test
     void cleansOnlyIndexFilesContainedByTheVersionRoot() throws Exception {
         var paths = new PlatformPaths(temporaryDirectory);
-        Path indexRoot = paths.indexRoot("1.21.5");
+        Path indexRoot = paths.indexRoot(VERSION);
         Path outside = temporaryDirectory.resolve("outside.json");
         Files.createDirectories(indexRoot.resolve("minecraft/net/minecraft"));
-        Files.writeString(paths.symbolDatabase("1.21.5"), "db");
-        Files.writeString(paths.symbolDatabase("1.21.5").resolveSibling("symbols.db.lock"), "lock");
-        Files.writeString(paths.symbolDatabase("1.21.5").resolveSibling("symbols.db.99.tmp"), "tmp");
-        Files.writeString(paths.symbolDatabase("1.21.5").resolveSibling("symbols.db.bak"), "backup");
+        Files.writeString(paths.symbolDatabase(VERSION), "db");
+        Files.writeString(paths.symbolDatabase(VERSION).resolveSibling("symbols.lock"), "lock");
+        Files.writeString(paths.symbolDatabase(VERSION).resolveSibling("symbols.99.tmp.mv.db"), "tmp");
+        Files.writeString(paths.symbolDatabase(VERSION).resolveSibling("symbols.mv.db.bak"), "backup");
         Files.writeString(indexRoot.resolve("manifest.json"), "{}");
         Files.writeString(indexRoot.resolve("minecraft/net/minecraft/world.json"), "{}");
         Files.writeString(outside, "keep");
 
-        new IndexCleaner(paths).cleanIndex("1.21.5");
+        new IndexCleaner(paths).cleanIndex(VERSION);
 
         assertFalse(Files.exists(indexRoot));
         assertTrue(Files.exists(outside));

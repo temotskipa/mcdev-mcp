@@ -1,5 +1,7 @@
 package dev.mcdevmcp.storage;
 
+import dev.mcdevmcp.storage.model.MinecraftVersion;
+
 import java.nio.file.Path;
 import java.util.Locale;
 import java.util.Map;
@@ -15,56 +17,50 @@ public record PlatformPaths(Path cacheRoot) {
         Objects.requireNonNull(env, "env");
         Objects.requireNonNull(home, "home");
         String normalizedOsName = osName.toLowerCase(Locale.ROOT);
-        if (normalizedOsName.contains("win")) {
-            Path localApplicationData = Path.of(env.getOrDefault("LOCALAPPDATA", home.resolve("AppData").resolve("Local").toString()));
-            return new PlatformPaths(localApplicationData.resolve("mcdev-mcp").resolve("Cache"));
-        }
-        if (normalizedOsName.contains("mac")) {
+        if (normalizedOsName.contains("mac") || normalizedOsName.contains("darwin")) {
             return new PlatformPaths(home.resolve("Library").resolve("Caches").resolve("mcdev-mcp"));
         }
-        Path xdgCache = Path.of(env.getOrDefault("XDG_CACHE_HOME", home.resolve(".cache").toString()));
+        if (normalizedOsName.contains("win")) {
+            String configuredLocalApplicationData = env.get("LOCALAPPDATA");
+            Path localApplicationData = configuredLocalApplicationData == null || configuredLocalApplicationData.isBlank()
+                    ? home.resolve("AppData").resolve("Local")
+                    : Path.of(configuredLocalApplicationData);
+            return new PlatformPaths(localApplicationData.resolve("mcdev-mcp").resolve("Cache"));
+        }
+        String configuredXdgCache = env.get("XDG_CACHE_HOME");
+        Path xdgCache = configuredXdgCache == null || configuredXdgCache.isBlank() ? home.resolve(".cache") : Path.of(configuredXdgCache);
         return new PlatformPaths(xdgCache.resolve("mcdev-mcp"));
     }
-    
-    private static String validVersion(String version) {
-        Objects.requireNonNull(version, "version");
-        Path path = Path.of(version);
-        if (version.isBlank() || path.isAbsolute() || path.getNameCount() != 1 || version.equals(".") || version.equals("..")) {
-            throw new IllegalArgumentException("Invalid Minecraft version path component: " + version);
-        }
-        return version;
+
+    public Path versionCache(MinecraftVersion version) {
+        return cacheRoot.resolve("cache").resolve(version.value());
     }
     
-    public Path versionCache(String version) {
-        return cacheRoot.resolve("cache").resolve(validVersion(version));
-    }
-    
-    public Path sourceRoot(String version) {
+    public Path sourceRoot(MinecraftVersion version) {
         return versionCache(version).resolve("client");
     }
     
-    public Path remappedJar(String version) {
-        String safeVersion = validVersion(version);
-        return versionCache(safeVersion).resolve("jars").resolve(safeVersion + "_unobfuscated.jar");
+    public Path remappedJar(MinecraftVersion version) {
+        return versionCache(version).resolve("jars").resolve(version.value() + "_unobfuscated.jar");
     }
     
-    public Path remappedCallgraphJar(String version) {
+    public Path remappedCallgraphJar(MinecraftVersion version) {
         return versionCache(version).resolve("callgraph").resolve("client-remapped.jar");
     }
     
-    public Path fabricSourceRoot(String version) {
-        return cacheRoot.resolve("cache").resolve("fabric-api-" + validVersion(version));
+    public Path fabricSourceRoot(MinecraftVersion version) {
+        return cacheRoot.resolve("cache").resolve("fabric-api-" + version.value());
     }
     
-    public Path symbolDatabase(String version) {
-        return indexRoot(version).resolve("symbols.db");
+    public Path symbolDatabase(MinecraftVersion version) {
+        return indexRoot(version).resolve("symbols.mv.db");
     }
     
-    public Path callgraphDatabase(String version) {
-        return versionCache(version).resolve("callgraph").resolve("callgraph.db");
+    public Path callgraphDatabase(MinecraftVersion version) {
+        return versionCache(version).resolve("callgraph").resolve("callgraph.mv.db");
     }
     
-    public Path indexRoot(String version) {
-        return cacheRoot.resolve("index").resolve(validVersion(version));
+    public Path indexRoot(MinecraftVersion version) {
+        return cacheRoot.resolve("index").resolve(version.value());
     }
 }

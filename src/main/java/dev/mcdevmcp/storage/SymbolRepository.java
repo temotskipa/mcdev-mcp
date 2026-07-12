@@ -5,7 +5,6 @@ import java.nio.file.Path;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
-import java.sql.Statement;
 import java.util.Objects;
 
 public final class SymbolRepository {
@@ -15,22 +14,15 @@ public final class SymbolRepository {
         this.database = Objects.requireNonNull(database, "database").toAbsolutePath().normalize();
     }
     
-    private static String readOnlyUrl(Path database) {
-        return "jdbc:sqlite:file:" + database.toAbsolutePath().toString().replace('\\', '/') + "?mode=ro";
-    }
-    
-    public <T> T query(SqliteBuilder<T> query) throws IOException, SQLException {
+    public <T> T query(DatabaseQuery<T> query) throws IOException, SQLException {
         Objects.requireNonNull(query, "query");
-        try (var databaseLock = DatabaseLock.read(database, AtomicSqliteDatabase.WRITE_LOCK_TIMEOUT);
-             Connection connection = DriverManager.getConnection(readOnlyUrl(database))) {
+        try (var databaseLock = DatabaseLock.read(database, AtomicH2Database.WRITE_LOCK_TIMEOUT);
+             Connection connection = DriverManager.getConnection(H2DatabaseUrls.reader(database))) {
             if (!databaseLock.isHeld()) {
                 throw new IOException("Failed to acquire shared database lock");
             }
-            try (Statement statement = connection.createStatement()) {
-                statement.execute("PRAGMA query_only = ON");
-            }
             try {
-                return query.build(connection);
+                return query.query(connection);
             } catch (SQLException exception) {
                 throw exception;
             } catch (Exception exception) {
