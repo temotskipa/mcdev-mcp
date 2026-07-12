@@ -256,23 +256,25 @@ val cutoverCheck = tasks.register("cutoverCheck") {
                                         if (nestedValue != null) {
                                             pendingEnvironmentValues.add(
                                                 nestedValue to
-                                                    (normalizedKey in environmentKeys && nestedValue is Iterable<*>)
+                                                    (normalizedKey in environmentKeys &&
+                                                        (nestedValue is String || nestedValue is Iterable<*>))
                                             )
                                         }
                                     }
                                     is Iterable<*> -> value.filterNotNull().forEach { nestedValue ->
                                         pendingEnvironmentValues.add(
-                                            nestedValue to (assignmentList && nestedValue is Iterable<*>)
+                                            nestedValue to
+                                                (assignmentList &&
+                                                    (nestedValue is String || nestedValue is Iterable<*>))
                                         )
-                                        if (assignmentList && nestedValue is String) {
-                                            val assignment = nestedValue.indexOf('=')
-                                            if (assignment > 0 &&
-                                                normalizedMetadataKey(
-                                                    nestedValue.substring(0, assignment).trim()
-                                                ) == "nodeoptions"
-                                            ) {
-                                                return true
-                                            }
+                                    }
+                                    is String -> {
+                                        val assignment = value.indexOf('=')
+                                        if (assignmentList &&
+                                            assignment > 0 &&
+                                            normalizedMetadataKey(value.substring(0, assignment).trim()) == "nodeoptions"
+                                        ) {
+                                            return true
                                         }
                                     }
                                 }
@@ -301,15 +303,25 @@ val cutoverCheck = tasks.register("cutoverCheck") {
                                 hasForbiddenJavaScriptEntrypoint(value)
                             }
 
-                        fun runsNodeJavaScript(value: String): Boolean {
+                        fun hasForbiddenNodeCommandText(value: String): Boolean {
                             val nodeCommand = Regex("""(?i)\bnode(?:\.exe)?\b""").find(value)
                                 ?: return false
-                            if (javascriptEntrypoint.containsMatchIn(value)) {
+                            if (!isPackagingMetadata) {
+                                return true
+                            }
+                            val commandArguments = value.substring(nodeCommand.range.last + 1).trim()
+                            if (commandArguments.isEmpty()) {
                                 return false
                             }
-                            val arguments = value.substring(nodeCommand.range.last + 1).trim()
-                            return arguments.isNotEmpty() &&
-                                arguments !in setOf("-v", "--version", "-h", "--help")
+                            val arguments = commandArguments.split(Regex("""\s+"""))
+                                .map { argument -> argument.trim('"', '\'') }
+                            if (arguments.size == 1 &&
+                                arguments.first() in setOf("-v", "--version", "-h", "--help")
+                            ) {
+                                return false
+                            }
+                            return normalizedEntrypoint(arguments.first()) !in allowedEntrypoints ||
+                                arguments.drop(1).any(::hasForbiddenJavaScriptEntrypoint)
                         }
 
                         fun stringArguments(value: Any?): List<String> = when (value) {
@@ -388,8 +400,7 @@ val cutoverCheck = tasks.register("cutoverCheck") {
                             val isEntrypoint = normalizedKey in entrypointKeys
                             val isCommand = normalizedKey == "command"
                             isEntrypoint && hasForbiddenEntrypointTarget(value) ||
-                                isCommand &&
-                                (hasForbiddenJavaScriptEntrypoint(value) || runsNodeJavaScript(value))
+                                isCommand && hasForbiddenNodeCommandText(value)
                         }
                         val nestedJavaScriptMetadata = mutableListOf<Boolean>()
                         val nestedEntrypointKeys = setOf("bin", "exports", "browser")
@@ -411,8 +422,7 @@ val cutoverCheck = tasks.register("cutoverCheck") {
                                             parentKey in nestedEntrypointKeys &&
                                                 hasForbiddenEntrypointTarget(nestedValue) ||
                                                 (parentKey == "scripts" || normalizedKey == "command") &&
-                                                (hasForbiddenJavaScriptEntrypoint(nestedValue) ||
-                                                    runsNodeJavaScript(nestedValue))
+                                                hasForbiddenNodeCommandText(nestedValue)
                                     }
                                     if (nestedValue != null) {
                                         pendingMetadataValues.add(
