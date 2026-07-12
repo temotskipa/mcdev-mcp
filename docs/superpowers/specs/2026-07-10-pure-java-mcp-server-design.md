@@ -166,18 +166,13 @@ chosen per task: the least expensive model that can reliably handle the task,
 with stronger reasoning reserved for parser semantics, concurrency, protocol
 parity, release integration, and the final whole-branch review.
 
-The cutover occurs only after:
-
-1. MCP protocol and tool catalog parity passes.
-2. Static tools pass against the same cached Minecraft version.
-3. Runtime tools pass fixture tests and a live DebugBridge smoke suite.
-4. CLI and cache lifecycle scenarios pass.
-5. The packed MCPB launches the Java JAR successfully.
-6. Java 25 and Java 26 CI are green.
-
-After cutover, `src/**/*.ts`, TypeScript tests, Node production dependencies,
-the Java worker protocol, and obsolete build scripts are deleted together.
-Git history remains the migration record.
+The isolated Java worktree cuts over early: `src/**/*.ts`, retired tests, Node
+production metadata, the Java worker protocol, and obsolete build scripts are
+deleted before parity is complete. `cutoverCheck` guards the tracked repository
+surface. The clean original `master` checkout remains the immutable Node oracle
+for later differential tests, which must materialize or invoke it from ignored
+scratch rather than restore legacy source here. Git history remains the
+migration record.
 
 ## MCP Surface
 
@@ -614,9 +609,10 @@ resolvable and unresolvable `invokedynamic`, overloaded methods, constructor
 calls, missing `LineNumberTable`, legacy empty descriptors, both directions,
 limit 100, limit 5000, and limit-plus-one truncation.
 
-Every migrated behavior starts with a failing Java test. The TypeScript code is
-deleted only after the equivalent Java tests and differential checks pass.
-Every task also leaves Gradle warning-clean under `-Xlint:all -Werror` and has
+Every migrated behavior starts with a failing Java test. The early cutover
+removes legacy source before parity is complete, so later differential checks
+must use the immutable original checkout as their oracle. Every task also
+leaves Gradle warning-clean under `-Xlint:all -Werror` and has
 clean IntelliJ MCP build and changed-file diagnostics without reformatting
 unrelated source.
 

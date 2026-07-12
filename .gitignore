@@ -1,12 +1,9 @@
-# Dependencies
-node_modules/
 .worktrees/
 
 # Build
-dist/
-*.tsbuildinfo
 /.gradle/
 /build/
+# Preserve ignored local artifacts from the removed legacy worker.
 java-worker/.gradle/
 java-worker/build/
 
@@ -21,7 +18,6 @@ java-worker/build/
 
 # Logs
 *.log
-npm-debug.log*
 
 # Environment
 .env
@@ -30,7 +26,7 @@ npm-debug.log*
 # Test
 coverage/
 
-# Ruff (Python linter cache; matches the entry in .mcpbignore)
+# Ruff (Python linter cache)
 .ruff_cache/
 
 # Dream audit workspace (intermediate state from .claude/skills/dream)
@@ -38,6 +34,6 @@ coverage/
 # user-facing audit trail and stay outside git too — easier than splitting.
 .dream/
 
-# MCPB build output (produced by scripts/build-mcpb.sh and CI release workflow)
+# MCPB build output
 dist-mcpb/
 *.mcpb

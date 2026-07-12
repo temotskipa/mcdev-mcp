@@ -3,169 +3,25 @@ name: CI
 on:
   push:
     branches: [main, master]
-    tags: ['v*']
   pull_request:
     branches: [main, master]
 
 jobs:
   build:
     runs-on: ubuntu-latest
-
     strategy:
       matrix:
-        # sql.js (WASM) works on Node 14+, so we cover the active LTS line.
-        # The lower bound matches package.json engines (>=20.0.0) — bumped
-        # because commander@14 and other modern deps require Node >=20.
-        node-version: [20.x, 22.x, 24.x]
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v7
-
-      - name: Setup Node.js ${{ matrix.node-version }}
-        uses: actions/setup-node@v6
-        with:
-          node-version: ${{ matrix.node-version }}
-
-      - name: Install dependencies
-        run: npm install
-
-      - name: Build TypeScript
-        run: npm run build
-
-      - name: Run tests
-        run: npm test
-
-      - name: Verify CLI
-        run: |
-          node dist/cli.js --help
-          node dist/cli.js status || true
-
-      - name: Upload build artifacts
-        uses: actions/upload-artifact@v7
-        if: matrix.node-version == '22.x'
-        with:
-          name: dist
-          path: dist/
-          retention-days: 7
-
-  lint:
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v7
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: '22.x'
-
-      - name: Install dependencies
-        run: npm install
-
-      - name: Check TypeScript
-        run: npx tsc --noEmit
-
-  # Sanity-check that the pushed tag matches the versions baked into
-  # package.json and manifest.json. Cheap fail-fast before the matrix
-  # runs three platform builds with a wrong filename, or npm publishes
-  # a version that disagrees with the tag.
-  verify-version:
-    runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/v')
+        java: [25, 26]
     steps:
       - uses: actions/checkout@v7
-      - name: Verify package.json + manifest.json match tag
-        run: |
-          PKG="$(node -p 'require("./package.json").version')"
-          MAN="$(node -p 'require("./manifest.json").version')"
-          TAG="${GITHUB_REF_NAME#v}"
-          [ "$PKG" = "$TAG" ] || { echo "package.json $PKG != tag $TAG"; exit 1; }
-          [ "$MAN" = "$TAG" ] || { echo "manifest.json $MAN != tag $TAG"; exit 1; }
-
-  # Build the MCPB (Claude Desktop extension) bundle. Runs on tag pushes
-  # only — wasted CI minutes otherwise.
-  #
-  # The bundle is universal: sql.js (WASM) replaced the old native sqlite
-  # bindings, so there's no per-platform binary in the output. One run on
-  # ubuntu-latest produces a .mcpb that works on macOS (arm64/x86_64),
-  # Linux, and Windows. See scripts/build-mcpb.sh for the rationale.
-  mcpb:
-    needs: [build, lint, verify-version]
-    if: startsWith(github.ref, 'refs/tags/v')
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v7
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
+      - uses: actions/setup-java@v5
         with:
-          node-version: '22.x'
-
-      - name: Install dependencies
-        run: npm install --no-fund --no-audit
-
-      - name: Build MCPB bundle
-        run: bash scripts/build-mcpb.sh
-
-      - name: Upload MCPB artifact
-        uses: actions/upload-artifact@v7
+          distribution: temurin
+          java-version: ${{ matrix.java }}
+      - run: ./gradlew clean test shadowJar --console=plain
+      - uses: actions/upload-artifact@v7
+        if: matrix.java == '25'
         with:
-          name: mcpb
-          path: dist-mcpb/*.mcpb
+          name: mcdev-mcp-java-25
+          path: build/libs/mcdev-mcp-*.jar
           retention-days: 7
-
-  # Tag-driven release: publishes to npm via OIDC (npm Trusted Publishing —
-  # no long-lived token, configured on npmjs.com under the package's
-  # publishing access) and creates a GitHub Release with the universal MCPB
-  # bundle attached. Triggered by `git push --tags` of a `v*` tag.
-  release:
-    needs: [build, lint, verify-version, mcpb]
-    runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/v')
-    permissions:
-      contents: write   # needed by softprops/action-gh-release
-      id-token: write   # OIDC for npm Trusted Publishing + provenance
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v7
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
-        with:
-          # Trusted publishing requires npm CLI >= 11.5.1 for the OIDC
-          # handshake. Node 22 ships npm 10 and fails with a misleading
-          # 404 ("'<pkg>@<version>' is not in this registry"); Node 24
-          # ships npm 11.x.
-          node-version: '24.x'
-          registry-url: 'https://registry.npmjs.org'
-
-      - name: Install dependencies
-        run: npm install
-
-      - name: Build
-        run: npm run build
-
-      - name: Publish to npm
-        # Trusted Publishing: the OIDC token minted via `id-token: write` is
-        # exchanged for a short-lived npm publish credential, scoped to this
-        # repo+workflow. No NPM_TOKEN secret needed. `--provenance` records a
-        # signed attestation that this version was built from this workflow.
-        run: npm publish --provenance
-
-      - name: Download MCPB artifact
-        uses: actions/download-artifact@v8
-        with:
-          name: mcpb
-          path: dist-mcpb
-
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v3
-        with:
-          files: dist-mcpb/*.mcpb
-          generate_release_notes: true
-          fail_on_unmatched_files: true
