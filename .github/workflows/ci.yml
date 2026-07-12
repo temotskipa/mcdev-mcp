@@ -6,21 +6,32 @@ on:
   pull_request:
     branches: [main, master]
 
+permissions:
+  contents: read
+
 jobs:
   build:
+    name: Java ${{ matrix.runtime }} tests
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        java: [25, 26]
+        runtime: [25, 26]
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-java@v5
         with:
           distribution: temurin
-          java-version: ${{ matrix.java }}
-      - run: ./gradlew clean test shadowJar --console=plain
+          java-version: |
+            25
+            26
+      - name: Test with Java ${{ matrix.runtime }}
+        run: >-
+          ./gradlew
+          -Dorg.gradle.java.installations.paths="$JAVA_HOME_25_X64,$JAVA_HOME_26_X64"
+          clean check cutoverCheck shadowJar --console=plain
+          -PtestJavaVersion=${{ matrix.runtime }}
       - uses: actions/upload-artifact@v7
-        if: matrix.java == '25'
+        if: matrix.runtime == '25'
         with:
           name: mcdev-mcp-java-25
           path: build/libs/mcdev-mcp-*.jar

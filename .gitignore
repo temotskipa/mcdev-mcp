@@ -3,9 +3,6 @@
 # Build
 /.gradle/
 /build/
-# Preserve ignored local artifacts from the removed legacy worker.
-java-worker/.gradle/
-java-worker/build/
 
 # IDE
 .vscode/

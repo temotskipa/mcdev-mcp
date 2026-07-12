@@ -4,8 +4,8 @@
 
 This worktree is an in-progress Java 25 rewrite, not a completed replacement
 for the retired server. The early cutover removed the retired runtime and its
-worker from this branch. The clean `master` checkout at
-`C:\Users\ttski\Projects\mcdev-mcp` is the read-only parity oracle for later
+worker from this branch. The pinned clean `master` checkout described by
+`contracts/node-oracle.json` is the read-only parity oracle for later
 differential work.
 
 ## Current Java Surface

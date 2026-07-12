@@ -1457,7 +1457,9 @@ Expected: FAIL until all handlers are bound and normalization/process orchestrat
 
 - [ ] **Step 3: Materialize the original checkout without touching it**
 
-`NodeOracleMaterializer` reads `contracts/node-oracle.json`, locates the original clean master checkout, verifies exact SHA and clean status, and delegates to `scripts/materialize-node-oracle.mjs`. It refuses the current Java worktree and checks the original status again after tests. Java and Node processes receive separate temporary standard cache roots (`LOCALAPPDATA`, `XDG_CACHE_HOME`, and `HOME`) populated from the same fixtures.
+`NodeOracleMaterializer` reads `contracts/node-oracle.json` and implements the complete workflow in Java with `ProcessBuilder`; it never delegates to a repository script. It parses `git worktree list --porcelain`, requires exactly one checkout on `refs/heads/master` at the pinned SHA, rejects the current Java worktree, and records that checkout's exact clean status before doing any work. It creates only ignored `.superpowers/parity/node-oracle/` scratch, verifies the resolved deletion/materialization path remains below `.superpowers/parity/`, then runs a local `git clone --no-hardlinks --no-checkout`, detached checkout of the pinned SHA, `npm ci`, and `npm run build` in that scratch clone. Node oracle process tests also run only from the scratch clone.
+
+Remove inherited `npm_config_allow_scripts`, provide a scratch-local empty `NPM_CONFIG_USERCONFIG`, and fail closed on any command error. Java and Node processes receive separate temporary `LOCALAPPDATA`, `XDG_CACHE_HOME`, and `HOME` roots populated from the same immutable fixtures. A `finally` guard re-reads the original checkout's branch, HEAD, and porcelain status and requires byte-for-byte equality with the pre-test snapshot, including when materialization, build, or differential execution fails.
 
 - [ ] **Step 4: Compare responses with a narrow normalizer**
 
@@ -1486,7 +1488,7 @@ Add a `conformance` Gradle source set with test-only Jakarta Servlet 6.1.0 and T
 npx --yes @modelcontextprotocol/conformance@0.1.16 server --url http://127.0.0.1:3000/mcp --suite active
 ```
 
-It always terminates the harness and propagates exit code. Also run the shaded JAR STDIO suite; official conformance is not described as STDIO coverage.
+It always terminates the harness and propagates exit code. The build-only CI conformance job provisions Node 24 with `actions/setup-node`; Node and `npx` are test tooling only and never enter the Java runtime artifact. Also run the shaded JAR STDIO suite; official conformance is not described as STDIO coverage.
 
 Run:
 
@@ -1539,6 +1541,8 @@ Expected: FAIL at compilation or missing bundle.
 - [ ] **Step 3: Implement generated MCPB metadata**
 
 `McpbManifestGenerator` loads the template, injects Gradle/JAR version and the union tool metadata, and preserves user config for `MCDEV_SCRIPT_LOGS` plus existing supported settings. It never parses Java source. Gradle task `generateMcpbManifest` writes both root `manifest.json` and staging manifest, then a test proves `git diff --exit-code manifest.json` after generation.
+
+The generated root `manifest.json` is Java-generated MCPB catalog/install metadata, not Node code, and contains no Node runtime selector, command, or server entry point. The separate staging manifest may name `packaging/mcpb/bootstrap.cjs` only where the MCPB packer schema requires it. `cutoverCheck` inspects both as metadata. All JavaScript, package metadata, npm dependencies, and npm execution stay under `packaging/mcpb/`; root `scripts/build-mcpb.ps1` is allowed only as PowerShell orchestration that sets the packaging directory explicitly before invoking those dependencies.
 
 - [ ] **Step 4: Implement the packaging-only launcher**
 
@@ -1633,7 +1637,7 @@ Add a Gradle `benchmark` source set compiled with release 25. `AnalysisBenchmark
 1. `build-java25`: checkout, install Temurin 25, run `clean test shadowJar runtimeTestBundle`, hash JAR, upload JAR/checksum/compiled test runtime.
 2. `runtime-matrix`: matrix Temurin 25 and 26, download exact artifacts, verify hash, run compiled integration tests and direct JAR STDIO/SQLite/TinyRemapper/Vineflower smoke without compilation.
 3. `mcpb`: download exact JAR/checksum, generate metadata, pack/extract/smoke, upload MCPB.
-4. `conformance`: run the test-only harness and conformance 0.1.16.
+4. `conformance`: install Temurin 25 and Node 24 with `actions/setup-node`, run the test-only Java harness, and invoke only the pinned build-time `@modelcontextprotocol/conformance@0.1.16` package through `npx`.
 
 No matrix job invokes `shadowJar`.
 
@@ -1675,24 +1679,11 @@ git add src/benchmark src/test/java/dev/mcdevmcp/benchmark scripts/verify-releas
 git commit -m "ci: test and release Java artifacts"
 ```
 
-## Task 16: Cut Over And Remove The TypeScript/Worker Implementations
+## Task 16: Audit The Early Cutover And Final Documentation
 
-**Recommended agent:** `gpt-5.6-terra`, high reasoning. This is a broad deletion/integration task where accidental loss of packaging assets, docs, fixtures, or parity evidence is the main risk.
+**Recommended agent:** `gpt-5.6-terra`, high reasoning. The implementation was removed during the early worktree cutover; this task verifies that invariant after parity and packaging work without recreating or deleting the oracle evidence.
 
 **Files:**
-- Delete: `src/**/*.ts`
-- Delete: `tests/**/*.ts`
-- Delete: `java-worker/**`
-- Delete: `scripts/build-java-worker.mjs`
-- Delete: `scripts/copy-java-worker.mjs`
-- Delete: `scripts/materialize-node-oracle.mjs`
-- Delete: `scripts/capture-node-contracts.mjs`
-- Delete: `scripts/build-mcpb.sh`
-- Delete: `tsconfig.json`
-- Delete: `jest.config.js`
-- Delete: `eslint.config.js`
-- Delete: root `package.json`
-- Delete: root `package-lock.json`
 - Modify: `README.md`
 - Modify: `docs/ARCHITECTURE.md`
 - Modify: `docs/MULTIVER.md`
@@ -1700,40 +1691,40 @@ git commit -m "ci: test and release Java artifacts"
 - Modify: `docs/fork.md`
 - Modify: `skills/minecraft-dev-loop/SKILL.md`
 - Modify: `.gitignore`
-- Modify: `manifest.json` (generated output only)
 - Modify: `build.gradle.kts`
-- Modify: `src/test/java/dev/mcdevmcp/parity/NodeOracleMaterializer.java`
+- Audit: `manifest.json` (Java-generated metadata only)
+- Audit: `packaging/mcpb/**`
+- Audit: `scripts/build-mcpb.ps1`
 
 **Interfaces:**
 - Consumes: passing parity, conformance, packed-artifact, Java 25/26, static/runtime, indexer/callgraph tests.
-- Produces: pure Java server repository; only `packaging/mcpb/bootstrap.cjs` and its packaging dependencies remain Node-related; transition/deprecation documentation.
+- Produces: final evidence that the early cutover still holds; only `packaging/mcpb/bootstrap.cjs`, packaging-local package metadata, and packaging-local npm dependencies remain Node-related; root generated JSON remains free of Node server entry points; transition/deprecation documentation.
 
 - [ ] **Step 1: Add a failing repository-cutover invariant test**
 
-Create a Gradle `cutoverCheck` task that fails when forbidden files/dependencies remain. It scans tracked files and build metadata, allowing only `packaging/mcpb/bootstrap.cjs`, `packaging/mcpb/package.json`, `packaging/mcpb/package-lock.json`, and frozen JSON/text fixtures. It rejects `.ts`, `java-worker`, Jest, ESLint, TypeScript, Bun, Gson, direct Jackson implementation/annotation imports, `JsonNode`, `java-parser`, `sql.js`, Node MCP SDK, parser worker env names, java-callgraph2, package JSON index readers/writers, and downloaded analysis-tool launchers.
+Extend the existing Gradle `cutoverCheck` with focused bypass tests before changing its matcher. It scans tracked files and relevant build/package/manifest metadata, allowing only `packaging/mcpb/bootstrap.cjs`, packaging-local `package.json`/`package-lock.json`, and frozen JSON/text fixtures. It rejects `.js`, `.mjs`, `.cjs`, `.ts`, `.tsx`, `java-worker`, root or non-packaging package metadata, Jest, ESLint, TypeScript, Bun, Gson/direct `JsonNode`, `java-parser`, `sql.js`, Node MCP SDK, every retired parser/worker environment name, java-callgraph2, package-JSON production indexes, downloaded analysis-tool launchers, and Node server entry points in non-packaging JSON metadata. Packaging manifests may point only to `packaging/mcpb/bootstrap.cjs`; root generated JSON must contain no Node runtime selector, command, or server entry point. Wire the invariant into Gradle `check`.
 
 Run: `.\gradlew.bat cutoverCheck --console=plain`
 
-Expected: FAIL and list the current TypeScript/worker files.
+Expected for each synthetic bypass: FAIL and list the forbidden tracked path or reference. Remove all synthetic index/worktree entries before continuing; the real repository then passes.
 
-- [ ] **Step 2: Run the complete pre-deletion parity gate one final time**
+- [ ] **Step 2: Run the complete post-parity audit gate**
 
 Run:
 
 ```powershell
-npm run oracle:test
 .\gradlew.bat clean test parityTest shadowJar --console=plain
 .\scripts\run-conformance.ps1
 .\scripts\build-mcpb.ps1 -Jar build\libs\mcdev-mcp-3.0.0.jar
 ```
 
-Expected: both Node oracle/reference tests and Java gates PASS. Do not delete the reference implementation if any gate fails.
+Expected: Java parity, conformance, and packed-artifact gates PASS. Differential tests materialize the pinned Node oracle through `NodeOracleMaterializer`; no command runs from deleted root npm metadata.
 
-- [ ] **Step 3: Delete the replaced implementations and root Node toolchain**
+- [ ] **Step 3: Audit the retired implementation and environment inventory**
 
-Remove the listed TypeScript, Jest/ESLint/TypeScript config, nested Java worker/protocol, Java worker scripts, old MCPB shell script, oracle `.mjs` scripts, and root npm metadata. Keep frozen contract fixtures and `contracts/node-oracle.json`. Replace the script delegation in `NodeOracleMaterializer` with Java `ProcessBuilder` calls that clone the pinned original checkout into ignored scratch, check out the exact SHA, run `npm ci`/`npm run build` only there, and re-check original cleanliness. Keep the MCPB launcher/package strictly under `packaging/mcpb/`.
+Confirm the already-removed TypeScript/Jest/ESLint toolchain, nested Java worker/protocol, legacy scripts, and root npm metadata have not returned. Keep frozen contract/oracle fixtures and `contracts/node-oracle.json`. Verify `NodeOracleMaterializer` owns its Java `ProcessBuilder` workflow from Task 13 and that all Node oracle build/test activity remains in ignored scratch.
 
-Delete production support for:
+Confirm production support remains absent for:
 
 ```text
 MCDEV_INDEXER
@@ -1760,6 +1751,8 @@ Document Java 25 minimum, `java -jar ...` CLI/client configuration, one-JAR arch
 
 Add transition text that npm `mcdev-mcp` 2.2.1 is the final Node line and the next Java release is installed from GitHub Releases or MCPB. The release workflow must not execute `npm deprecate`; that external action remains a separately approved release operation.
 
+Keep `manifest.json` at the root as Java-generated metadata with no Node server entry point. Keep `scripts/build-mcpb.ps1` as non-Node orchestration; it must set `packaging/mcpb/` as the working directory for every npm command, and no npm dependency or JavaScript execution may escape that packaging subtree.
+
 - [ ] **Step 5: Run cutover, clean-build, forbidden-reference, and packed-artifact checks**
 
 Run:
@@ -1767,17 +1760,18 @@ Run:
 ```powershell
 .\gradlew.bat clean check cutoverCheck shadowJar generateMcpbManifest --console=plain
 .\scripts\build-mcpb.ps1 -Jar build\libs\mcdev-mcp-3.0.0.jar
-rg -n "java-parser|java-callgraph2|MCDEV_AST_PARSER|MCDEV_INDEXER|typescript|ts-jest|@modelcontextprotocol/sdk|sql\.js" --glob '!docs/superpowers/**' --glob '!src/test/resources/contracts/**' .
+git ls-files | rg "(?i)(\\.tsx?$|\\.[mc]?js$|^java-worker/|(^|/)package(-lock)?\\.json$|tsconfig|jest|eslint)"
+git grep -n -I -E "typescript|ts-jest|@modelcontextprotocol/sdk|java-parser|sql\\.js|java-callgraph2|MCDEV_AST_PARSER|MCDEV_INDEXER" -- ":(exclude)docs/superpowers/**" ":(exclude)src/test/resources/contracts/**" ":(exclude)src/test/resources/oracle/**" ":(exclude)contracts/node-oracle.json"
 git -C C:\Users\ttski\Projects\mcdev-mcp status --short --branch
 ```
 
-Expected: Gradle/MCPB PASS; `rg` has no production/build matches; original master remains clean.
+Expected: Gradle/MCPB PASS; the tracked-file search returns only explicitly permitted MCPB paths; the reference audit has no production/build matches; original master remains clean.
 
-- [ ] **Step 6: Commit the cutover**
+- [ ] **Step 6: Commit the final audit**
 
 ```powershell
 git add -A
-git commit -m "refactor: cut over to pure Java server"
+git commit -m "docs: audit the early Java cutover"
 ```
 
 ## Task 17: Run The Full Acceptance Audit And Prepare The Branch

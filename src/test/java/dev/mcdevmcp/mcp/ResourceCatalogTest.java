@@ -6,11 +6,16 @@ import io.modelcontextprotocol.json.TypeRef;
 import org.junit.jupiter.api.Test;
 
 import java.net.URI;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ResourceCatalogTest {
     private static final McpJsonMapper MAPPER = McpJsonDefaults.getMapper();
@@ -39,7 +44,7 @@ class ResourceCatalogTest {
     }
 
     @Test
-    void resourceContentsMatchTheNodeFixtures() throws Exception {
+    void resourceContentsMatchExpectedContracts() throws Exception {
         var catalog = new ResourceCatalog();
 
         assertEquals(
@@ -48,6 +53,23 @@ class ResourceCatalogTest {
         assertEquals(
                 contractText("resource-dev-loop.json"),
                 catalog.read(URI.create("mcdev://guides/dev-loop")).text());
+    }
+
+    @Test
+    void pythonGuidePinsRetiredLinksWhilePreservingTheNodeOracle() throws Exception {
+        var currentGuide = new ResourceCatalog().read(URI.create("mcdev://guides/python-scripting")).text();
+        var oracleLink = "https://github.com/use-ai-for-mc/mcdev-mcp/blob/"
+                + "7b98bdb4a1d885d588cd141d8eb21e3c5c18b2b6/src/tools/runtime/session.ts";
+
+        assertTrue(currentGuide.contains(oracleLink));
+        assertFalse(currentGuide.contains("](../src/tools/runtime/"));
+
+        try (var oracleResource = ResourceCatalogTest.class.getResourceAsStream("/oracle/python-scripting-node.md")) {
+            assertNotNull(oracleResource, "The frozen Node-visible Python guide must be retained separately");
+            var frozenOracle = new String(oracleResource.readAllBytes(), StandardCharsets.UTF_8);
+            assertTrue(frozenOracle.contains("](../src/tools/runtime/session.ts)"));
+            assertNotEquals(frozenOracle, currentGuide);
+        }
     }
 
     @Test

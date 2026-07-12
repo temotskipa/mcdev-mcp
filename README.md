@@ -6,9 +6,10 @@ This branch is an in-progress Java 25 rewrite. The early worktree cutover has
 removed the retired server, worker, and root toolchain from this worktree; it
 does not assert behavioral parity is complete.
 
-`C:\Users\ttski\Projects\mcdev-mcp` on `master` remains the immutable,
-read-only parity oracle. Future differential checks must invoke or materialize
-that checkout without restoring retired source here.
+The pinned clean `master` checkout described by `contracts/node-oracle.json`
+remains the immutable, read-only parity oracle. Future differential checks
+must verify and materialize that checkout without restoring retired source
+here.
 
 ## Build
 

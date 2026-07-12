@@ -1,4 +1,5 @@
 import com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar
+import groovy.json.JsonSlurper
 import org.gradle.api.file.DuplicatesStrategy
 import org.gradle.api.tasks.WriteProperties
 import org.gradle.api.tasks.compile.JavaCompile
@@ -11,11 +12,17 @@ plugins {
 }
 
 val applicationVersion = providers.gradleProperty("version").get()
-val java25Launcher = javaToolchains.launcherFor {
-    languageVersion.set(JavaLanguageVersion.of(25))
+val testJavaFeature = providers.gradleProperty("testJavaVersion").orElse("25").map { configuredVersion ->
+    configuredVersion.toInt().also { feature ->
+        require(feature == 25 || feature == 26) { "testJavaVersion must be 25 or 26, got $feature" }
+    }
+}
+val testJavaLauncher = javaToolchains.launcherFor {
+    languageVersion.set(testJavaFeature.map(JavaLanguageVersion::of))
 }
 
 val generateTestVersionProperties = tasks.register<WriteProperties>("generateTestVersionProperties") {
+    description = "Generates version metadata for Java tests."
     destinationFile = layout.buildDirectory.file("generated-test-resources/version.properties").get().asFile
     property("version", applicationVersion)
 }
@@ -63,11 +70,14 @@ tasks.processTestResources {
 tasks.withType<Test>().configureEach {
     useJUnitPlatform()
     dependsOn(tasks.named("shadowJar"))
+    javaLauncher.set(testJavaLauncher)
     jvmArgs("--enable-native-access=ALL-UNNAMED")
+    testLogging.showStandardStreams = true
     systemProperty("dev.mcdevmcp.test.versionFallback", "true")
+    systemProperty("dev.mcdevmcp.test.javaFeature", testJavaFeature.get())
     systemProperty("mcdevMcpVersion", applicationVersion)
     systemProperty("mcdevMcpJar", layout.buildDirectory.file("libs/mcdev-mcp-$applicationVersion.jar").get().asFile.absolutePath)
-    systemProperty("mcdevMcpJava", java25Launcher.get().executablePath.asFile.absolutePath)
+    systemProperty("mcdevMcpJava", testJavaLauncher.get().executablePath.asFile.absolutePath)
 }
 
 tasks.named<ShadowJar>("shadowJar") {
@@ -94,13 +104,16 @@ tasks.named("build") {
     dependsOn(tasks.named("shadowJar"))
 }
 
-tasks.register("cutoverCheck") {
+val cutoverCheck = tasks.register("cutoverCheck") {
     group = "verification"
     description = "Rejects tracked retired implementation surface."
     val repositoryRoot = project.layout.projectDirectory.asFile
-    val forbiddenRootFiles = setOf(
-        "package.json",
-        "package-lock.json",
+    val allowedScriptFiles = setOf("packaging/mcpb/bootstrap.cjs")
+    val allowedPackageMetadata = setOf(
+        "packaging/mcpb/package.json",
+        "packaging/mcpb/package-lock.json"
+    )
+    val forbiddenMetadataFiles = setOf(
         "tsconfig.json",
         "jest.config.js",
         "eslint.config.js"
@@ -116,12 +129,27 @@ tasks.register("cutoverCheck") {
             "\\bgso" + "n\\b",
             "\\bjson" + "node\\b",
             "\\bjava-callgraph" + "2\\b",
+            "\\bjavacg(?:-static)?(?:\\.jar)?\\b",
+            "\\bcallgraph" + "\\.txt\\b",
+            "\\b(?:build|copy)-java-worker\\b",
             "\\bMCDEV_AST_" + "PARSER\\b",
-            "\\bMCDEV_" + "INDEXER\\b"
+            "\\bMCDEV_" + "INDEXER\\b",
+            "\\bMCDEV_SUPPRESS_INDEXER_" + "HINT\\b",
+            "\\bMCDEV_JAVA_WORKER_" + "COMMAND\\b",
+            "\\bMCDEV_JAVA_WORKER_ARGS_" + "JSON\\b",
+            "\\bMCDEV_INDEX_" + "WORKERS\\b",
+            "\\bMCDEV_INDEX_BATCH_" + "SIZE\\b",
+            "\\bMCDEV_INDEX_WORKER_HEAP_" + "MB\\b",
+            "\\bMCDEV_INDEX_WORKER_RETRY_HEAP_" + "MB\\b",
+            "\\bMCDEV_INDEX_PARSE_WORKER_" + "PATH\\b",
+            "\\bMCDEV_INDEX_WORKER_" + "MARKER\\b",
+            "\\bMCDEV_INDEX_SINGLE_FILE_" + "FALLBACK\\b",
+            "\\bMCDEV_MCP_REMAPPER_" + "HEAP\\b",
+            "\\bMCDEV_ARGV_" + "CAPTURE\\b",
+            "\\bpackage[- ]json (?:index|reader|writer)s?\\b"
         ).joinToString("|"),
         RegexOption.IGNORE_CASE
     )
-
     doLast {
         val git = ProcessBuilder("git", "ls-files", "-z")
             .directory(repositoryRoot)
@@ -139,18 +167,29 @@ tasks.register("cutoverCheck") {
 
         trackedFiles.forEach { path ->
             val normalizedPath = path.replace('\\', '/')
+            val lowercasePath = normalizedPath.lowercase()
+            val fileName = lowercasePath.substringAfterLast('/')
             if (
-                normalizedPath.endsWith(".ts") ||
-                normalizedPath.endsWith(".tsx") ||
-                ((normalizedPath.endsWith(".mjs") || normalizedPath.endsWith(".cjs")) &&
-                    normalizedPath != "packaging/mcpb/bootstrap.cjs") ||
-                normalizedPath in forbiddenRootFiles ||
-                normalizedPath.startsWith("java-worker/")
+                lowercasePath.endsWith(".ts") ||
+                lowercasePath.endsWith(".tsx") ||
+                ((lowercasePath.endsWith(".js") ||
+                    lowercasePath.endsWith(".mjs") ||
+                    lowercasePath.endsWith(".cjs")) &&
+                    normalizedPath !in allowedScriptFiles) ||
+                ((fileName == "package.json" || fileName == "package-lock.json") &&
+                    normalizedPath !in allowedPackageMetadata) ||
+                fileName in forbiddenMetadataFiles ||
+                lowercasePath.startsWith("java-worker/")
             ) {
                 violations += "forbidden tracked file: $normalizedPath"
             }
 
             val mustInspectContents =
+                (lowercasePath.endsWith(".json") &&
+                    normalizedPath != "contracts/node-oracle.json" &&
+                    !normalizedPath.startsWith("src/test/resources/contracts/") &&
+                    !normalizedPath.startsWith("src/test/resources/oracle/") &&
+                    !normalizedPath.startsWith("docs/superpowers/")) ||
                 normalizedPath == "build.gradle.kts" ||
                 normalizedPath == "settings.gradle.kts" ||
                 normalizedPath.endsWith(".gradle") ||
@@ -165,7 +204,64 @@ tasks.register("cutoverCheck") {
                 val file = repositoryRoot.toPath().resolve(path)
                 if (Files.isRegularFile(file)) {
                     val contents = Files.readString(file)
-                    if (forbiddenReferences.containsMatchIn(contents)) {
+                    val forbiddenNodeMetadata = if (lowercasePath.endsWith(".json")) {
+                        val isPackagingMetadata = normalizedPath.startsWith("packaging/mcpb/")
+                        val jsonFields = mutableListOf<Pair<String, String>>()
+                        val parsedJson = runCatching { JsonSlurper().parseText(contents) }
+                            .getOrElse { cause ->
+                                violations += "invalid inspected JSON metadata: $normalizedPath (${cause.message})"
+                                null
+                            }
+                        val pendingJsonValues = ArrayDeque<Any>()
+                        if (parsedJson != null) {
+                            pendingJsonValues.add(parsedJson)
+                        }
+                        while (pendingJsonValues.isNotEmpty()) {
+                            when (val jsonValue = pendingJsonValues.removeFirst()) {
+                                is Map<*, *> -> jsonValue.forEach { (key, nestedValue) ->
+                                    if (key is String && nestedValue is String) {
+                                        jsonFields += key to nestedValue
+                                    }
+                                    if (nestedValue != null) {
+                                        pendingJsonValues.add(nestedValue)
+                                    }
+                                }
+                                is Iterable<*> -> jsonValue.forEach { nestedValue ->
+                                    if (nestedValue != null) {
+                                        pendingJsonValues.add(nestedValue)
+                                    }
+                                }
+                            }
+                        }
+                        val nodeRuntime = jsonFields.any { (key, value) ->
+                            val normalizedKey = key.lowercase().replace("_", "").replace("-", "")
+                            (normalizedKey == "runtime" || normalizedKey == "type") &&
+                                value.equals("node", ignoreCase = true) ||
+                                normalizedKey == "command" &&
+                                (value.equals("node", ignoreCase = true) ||
+                                    value.equals("node.exe", ignoreCase = true))
+                        }
+                        val entrypoints = jsonFields
+                            .filter { (key, _) ->
+                                key.lowercase().replace("_", "").replace("-", "") == "entrypoint"
+                            }
+                            .map { (_, value) -> value.replace('\\', '/') }
+                            .filter { entrypoint ->
+                                entrypoint.substringAfterLast('.').lowercase() in
+                                    setOf("js", "mjs", "cjs", "ts", "tsx")
+                            }
+                        if (isPackagingMetadata) {
+                            entrypoints.any { entrypoint ->
+                                entrypoint != "bootstrap.cjs" &&
+                                    entrypoint != "packaging/mcpb/bootstrap.cjs"
+                            }
+                        } else {
+                            nodeRuntime || entrypoints.isNotEmpty()
+                        }
+                    } else {
+                        false
+                    }
+                    if (forbiddenReferences.containsMatchIn(contents) || forbiddenNodeMetadata) {
                         violations += "forbidden production/build reference: $normalizedPath"
                     }
                 }
@@ -176,4 +272,8 @@ tasks.register("cutoverCheck") {
             "Early worktree cutover is incomplete:\n${violations.joinToString("\n")}"
         }
     }
+}
+
+tasks.named("check") {
+    dependsOn(cutoverCheck)
 }
