@@ -17,29 +17,25 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
 public final class DatabaseLock implements AutoCloseable {
     private static final ConcurrentHashMap<Path, ReentrantReadWriteLock> LOCAL_LOCKS = new ConcurrentHashMap<>();
     private static final Duration RETRY_DELAY = Duration.ofMillis(25);
-
+    
     private final Lock localLock;
     private final FileChannel channel;
     private final FileLock fileLock;
-
+    
     private DatabaseLock(Lock localLock, FileChannel channel, FileLock fileLock) {
         this.localLock = localLock;
         this.channel = channel;
         this.fileLock = fileLock;
     }
-
+    
     public static DatabaseLock read(Path database, Duration timeout) throws IOException {
         return acquire(database, timeout, true);
     }
-
+    
     public static DatabaseLock write(Path database, Duration timeout) throws IOException {
         return acquire(database, timeout, false);
     }
-
-    public boolean isHeld() {
-        return fileLock.isValid();
-    }
-
+    
     private static DatabaseLock acquire(Path database, Duration timeout, boolean shared) throws IOException {
         Objects.requireNonNull(database, "database");
         Objects.requireNonNull(timeout, "timeout");
@@ -78,7 +74,7 @@ public final class DatabaseLock implements AutoCloseable {
             throw exception;
         }
     }
-
+    
     private static FileLock acquireFileLock(FileChannel channel, boolean shared, long deadline, Duration timeout) throws IOException {
         while (true) {
             try {
@@ -100,15 +96,15 @@ public final class DatabaseLock implements AutoCloseable {
             }
         }
     }
-
+    
     private static IOException timeoutFailure(boolean shared, Duration timeout) {
         return new IOException("Timed out acquiring " + mode(shared) + " database lock after " + format(timeout) + "; close active queries and retry.");
     }
-
+    
     private static String mode(boolean shared) {
         return shared ? "shared" : "exclusive";
     }
-
+    
     private static String format(Duration duration) {
         if (duration.toNanos() % TimeUnit.SECONDS.toNanos(1) == 0) {
             long seconds = duration.toSeconds();
@@ -116,7 +112,11 @@ public final class DatabaseLock implements AutoCloseable {
         }
         return duration.toMillis() + " milliseconds";
     }
-
+    
+    public boolean isHeld() {
+        return fileLock.isValid();
+    }
+    
     @Override
     public void close() throws IOException {
         IOException failure = null;
@@ -130,7 +130,8 @@ public final class DatabaseLock implements AutoCloseable {
         } catch (IOException exception) {
             if (failure == null) {
                 failure = exception;
-            } else {
+            }
+            else {
                 failure.addSuppressed(exception);
             }
         } finally {

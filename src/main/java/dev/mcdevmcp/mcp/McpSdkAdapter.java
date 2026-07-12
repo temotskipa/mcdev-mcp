@@ -23,12 +23,12 @@ import java.util.function.BiFunction;
 public final class McpSdkAdapter {
     private final McpJsonMapper mapper;
     private final ExecutorService blockingExecutor;
-
+    
     McpSdkAdapter(McpJsonMapper mapper, ExecutorService blockingExecutor) {
         this.mapper = Objects.requireNonNull(mapper, "mapper");
         this.blockingExecutor = Objects.requireNonNull(blockingExecutor, "blockingExecutor");
     }
-
+    
     public List<McpServerFeatures.AsyncToolSpecification> tools(ToolCatalog catalog) {
         return catalog.enabledDefinitions().stream().map(definition -> McpServerFeatures.AsyncToolSpecification.builder().tool(toSdkTool(definition)).callHandler(callHandler(definition)).build()).toList();
     }

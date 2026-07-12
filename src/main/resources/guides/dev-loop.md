@@ -51,12 +51,12 @@ Minecraft version. From `gameDir` you can derive nearly everything:
 
 Compose and record a launch command. Working examples:
 
-| Setup | Command |
-|---|---|
-| Linux, native Prism | `prismlauncher --launch "<instance>"` |
-| Linux, Flatpak Prism | `flatpak run org.prismlauncher.PrismLauncher --launch "<instance>"` |
-| macOS | `"/Applications/Prism Launcher.app/Contents/MacOS/prismlauncher" --launch "<instance>"` |
-| Windows | `start "" "C:\…\prismlauncher.exe" --launch "<instance>"` |
+| Setup                | Command                                                                                 |
+|----------------------|-----------------------------------------------------------------------------------------|
+| Linux, native Prism  | `prismlauncher --launch "<instance>"`                                                   |
+| Linux, Flatpak Prism | `flatpak run org.prismlauncher.PrismLauncher --launch "<instance>"`                     |
+| macOS                | `"/Applications/Prism Launcher.app/Contents/MacOS/prismlauncher" --launch "<instance>"` |
+| Windows              | `start "" "C:\…\prismlauncher.exe" --launch "<instance>"`                               |
 
 On macOS, call the binary inside the app bundle directly. The tempting
 `open -a "Prism Launcher" --args --launch "<instance>"` only forwards

@@ -10,11 +10,19 @@ import java.util.Objects;
 
 public final class IndexCleaner {
     private final PlatformPaths paths;
-
+    
     public IndexCleaner(PlatformPaths paths) {
         this.paths = Objects.requireNonNull(paths, "paths");
     }
-
+    
+    private static void deleteContained(Path root, Path candidate) throws IOException {
+        Path normalized = candidate.toAbsolutePath().normalize();
+        if (!normalized.startsWith(root)) {
+            throw new IOException("Refusing to delete path outside index root: " + candidate);
+        }
+        Files.delete(normalized);
+    }
+    
     public void cleanIndex(String version) throws IOException {
         Path root = paths.indexRoot(version).toAbsolutePath().normalize();
         if (!root.startsWith(paths.cacheRoot().toAbsolutePath().normalize())) {
@@ -30,7 +38,7 @@ public final class IndexCleaner {
                 deleteContained(root, file);
                 return FileVisitResult.CONTINUE;
             }
-
+            
             @Override
             @SuppressWarnings("NullableProblems")
             public FileVisitResult postVisitDirectory(Path directory, IOException exception) throws IOException {
@@ -41,13 +49,5 @@ public final class IndexCleaner {
                 return FileVisitResult.CONTINUE;
             }
         });
-    }
-
-    private static void deleteContained(Path root, Path candidate) throws IOException {
-        Path normalized = candidate.toAbsolutePath().normalize();
-        if (!normalized.startsWith(root)) {
-            throw new IOException("Refusing to delete path outside index root: " + candidate);
-        }
-        Files.delete(normalized);
     }
 }

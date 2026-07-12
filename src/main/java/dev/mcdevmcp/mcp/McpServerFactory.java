@@ -24,7 +24,7 @@ public final class McpServerFactory {
     private final Map<String, ToolBinding<?>> bindings;
     private final ResourceCatalog resourceCatalog;
     private final McpJsonMapper mapper;
-
+    
     public McpServerFactory(AppEnvironment environment) {
         this(environment, Map.of(), McpJsonDefaults.getMapper());
     }
@@ -32,14 +32,14 @@ public final class McpServerFactory {
     McpServerFactory(AppEnvironment environment, Map<String, ToolBinding<?>> bindings, McpJsonMapper mapper) {
         this(environment, bindings, new ResourceCatalog(new JsonResourceReader(mapper)), mapper);
     }
-
+    
     McpServerFactory(AppEnvironment environment, Map<String, ToolBinding<?>> bindings, ResourceCatalog resourceCatalog, McpJsonMapper mapper) {
         this.environment = Objects.requireNonNull(environment, "environment");
         this.bindings = Map.copyOf(bindings);
         this.resourceCatalog = Objects.requireNonNull(resourceCatalog, "resourceCatalog");
         this.mapper = Objects.requireNonNull(mapper, "mapper");
     }
-
+    
     ToolCatalog loadToolCatalog(ExecutorService blockingExecutor) {
         Objects.requireNonNull(blockingExecutor, "blockingExecutor");
         var adaptedBindings = new LinkedHashMap<String, ToolBinding<?>>();

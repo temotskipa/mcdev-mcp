@@ -4,22 +4,14 @@ import java.util.Locale;
 import java.util.Objects;
 
 public enum TypeKind {
-    CLASS("class"),
-    INTERFACE("interface"),
-    ENUM("enum"),
-    RECORD("record"),
-    ANNOTATION("annotation");
-
+    CLASS("class"), INTERFACE("interface"), ENUM("enum"), RECORD("record"), ANNOTATION("annotation");
+    
     private final String wireName;
-
+    
     TypeKind(String wireName) {
         this.wireName = wireName;
     }
-
-    public String wireName() {
-        return wireName;
-    }
-
+    
     public static TypeKind fromWireName(String wireName) {
         Objects.requireNonNull(wireName, "wireName");
         String normalized = wireName.toLowerCase(Locale.ROOT);
@@ -30,7 +22,11 @@ public enum TypeKind {
         }
         throw new IllegalArgumentException("Unsupported type kind: " + wireName);
     }
-
+    
+    public String wireName() {
+        return wireName;
+    }
+    
     @Override
     public String toString() {
         return wireName;

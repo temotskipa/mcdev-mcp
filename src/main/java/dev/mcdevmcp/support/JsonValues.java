@@ -1,23 +1,20 @@
 package dev.mcdevmcp.support;
 
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
+import java.util.*;
 
 public final class JsonValues {
     private JsonValues() {
     }
-
+    
     public static Object freeze(Object value) {
         return switch (value) {
             case null -> null;
             case String text -> text;
             case Boolean flag -> flag;
-            case Double number when !Double.isFinite(number) -> throw new IllegalArgumentException("JSON numbers must be finite");
-            case Float number when !Float.isFinite(number) -> throw new IllegalArgumentException("JSON numbers must be finite");
+            case Double number when !Double.isFinite(number) ->
+                    throw new IllegalArgumentException("JSON numbers must be finite");
+            case Float number when !Float.isFinite(number) ->
+                    throw new IllegalArgumentException("JSON numbers must be finite");
             case Number number -> number;
             case Map<?, ?> map -> {
                 var frozen = new LinkedHashMap<String, Object>();
@@ -39,12 +36,12 @@ public final class JsonValues {
             default -> throw new IllegalArgumentException("Unsupported JSON value type: " + value.getClass().getName());
         };
     }
-
+    
     public static Map<String, Object> freezeMap(Map<String, ?> values) {
         Objects.requireNonNull(values, "JSON object");
         return asMap(freeze(values));
     }
-
+    
     private static Map<String, Object> asMap(Object value) {
         if (value instanceof Map<?, ?> map) {
             var result = new LinkedHashMap<String, Object>();
@@ -55,5 +52,5 @@ public final class JsonValues {
         }
         throw new IllegalStateException("Frozen JSON object is not a map");
     }
-
+    
 }

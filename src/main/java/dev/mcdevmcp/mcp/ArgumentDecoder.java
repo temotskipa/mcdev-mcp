@@ -12,9 +12,9 @@ public interface ArgumentDecoder<A> {
         Objects.requireNonNull(type, "type");
         return (mapper, arguments) -> Objects.requireNonNull(mapper, "mapper").convertValue(arguments, type);
     }
-
+    
     A decode(McpJsonMapper mapper, Map<String, Object> arguments);
-
+    
     default <B> ArgumentDecoder<B> map(Function<A, B> converter) {
         Objects.requireNonNull(converter, "converter");
         return (mapper, arguments) -> converter.apply(decode(mapper, arguments));

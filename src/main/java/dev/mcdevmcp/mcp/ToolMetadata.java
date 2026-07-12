@@ -10,7 +10,7 @@ public record ToolMetadata(String name, String description, Map<String, Object> 
         description = requireText(description, "Tool metadata description");
         inputSchema = JsonValues.freezeMap(inputSchema);
     }
-
+    
     private static String requireText(String value, String label) {
         if (value == null || value.isBlank()) {
             throw new IllegalArgumentException(label + " must not be blank");

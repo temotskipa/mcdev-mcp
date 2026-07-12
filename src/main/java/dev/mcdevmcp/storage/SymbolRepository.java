@@ -10,11 +10,15 @@ import java.util.Objects;
 
 public final class SymbolRepository {
     private final Path database;
-
+    
     public SymbolRepository(Path database) {
         this.database = Objects.requireNonNull(database, "database").toAbsolutePath().normalize();
     }
-
+    
+    private static String readOnlyUrl(Path database) {
+        return "jdbc:sqlite:file:" + database.toAbsolutePath().toString().replace('\\', '/') + "?mode=ro";
+    }
+    
     public <T> T query(SqliteBuilder<T> query) throws IOException, SQLException {
         Objects.requireNonNull(query, "query");
         try (var databaseLock = DatabaseLock.read(database, AtomicSqliteDatabase.WRITE_LOCK_TIMEOUT);
@@ -33,9 +37,5 @@ public final class SymbolRepository {
                 throw new SQLException("Read-only symbol query failed", exception);
             }
         }
-    }
-
-    private static String readOnlyUrl(Path database) {
-        return "jdbc:sqlite:file:" + database.toAbsolutePath().toString().replace('\\', '/') + "?mode=ro";
     }
 }
