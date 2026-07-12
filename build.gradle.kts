@@ -241,6 +241,43 @@ val cutoverCheck = tasks.register("cutoverCheck") {
                         fun normalizedEntrypoint(value: String) =
                             value.trim().replace('\\', '/').removePrefix("./")
 
+                        fun hasNodeOptionsMetadata(root: Any): Boolean {
+                            val environmentKeys = setOf("env", "environment")
+                            val pendingEnvironmentValues = ArrayDeque<Pair<Any, String?>>()
+                            pendingEnvironmentValues.add(root to null)
+                            while (pendingEnvironmentValues.isNotEmpty()) {
+                                val (value, environmentContext) = pendingEnvironmentValues.removeFirst()
+                                when (value) {
+                                    is Map<*, *> -> value.forEach { (key, nestedValue) ->
+                                        val normalizedKey = (key as? String)?.let(::normalizedMetadataKey)
+                                        if (normalizedKey == "nodeoptions") {
+                                            return true
+                                        }
+                                        if (nestedValue != null) {
+                                            pendingEnvironmentValues.add(
+                                                nestedValue to
+                                                    (normalizedKey?.takeIf { it in environmentKeys } ?:
+                                                        environmentContext)
+                                            )
+                                        }
+                                    }
+                                    is Iterable<*> -> value.filterNotNull().forEach { nestedValue ->
+                                        pendingEnvironmentValues.add(nestedValue to environmentContext)
+                                    }
+                                    is String -> {
+                                        val assignment = value.indexOf('=')
+                                        if (environmentContext in environmentKeys &&
+                                            assignment > 0 &&
+                                            normalizedMetadataKey(value.substring(0, assignment).trim()) == "nodeoptions"
+                                        ) {
+                                            return true
+                                        }
+                                    }
+                                }
+                            }
+                            return false
+                        }
+
                         val allowedEntrypoints = setOf(
                             "bootstrap.cjs",
                             "packaging/mcpb/bootstrap.cjs"
@@ -381,6 +418,7 @@ val cutoverCheck = tasks.register("cutoverCheck") {
                         if (isPackagingMetadata) {
                             javascriptMetadata ||
                                 nestedJavaScriptMetadata.any { it } ||
+                                parsedJson != null && hasNodeOptionsMetadata(parsedJson) ||
                                 parsedJson != null && hasForbiddenStructuredNodeInvocation(parsedJson)
                         } else {
                             nodeRuntime || javascriptMetadata || nestedJavaScriptMetadata.any { it }
