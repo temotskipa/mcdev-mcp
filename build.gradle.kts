@@ -206,57 +206,122 @@ val cutoverCheck = tasks.register("cutoverCheck") {
                     val contents = Files.readString(file)
                     val forbiddenNodeMetadata = if (lowercasePath.endsWith(".json")) {
                         val isPackagingMetadata = normalizedPath.startsWith("packaging/mcpb/")
-                        val jsonFields = mutableListOf<Pair<String, String>>()
                         val parsedJson = runCatching { JsonSlurper().parseText(contents) }
                             .getOrElse { cause ->
                                 violations += "invalid inspected JSON metadata: $normalizedPath (${cause.message})"
                                 null
                             }
-                        val pendingJsonValues = ArrayDeque<Any>()
+                        val jsonFields = mutableListOf<Pair<String, String>>()
+                        val pendingJsonValues = ArrayDeque<Pair<Any, String?>>()
                         if (parsedJson != null) {
-                            pendingJsonValues.add(parsedJson)
+                            pendingJsonValues.add(parsedJson to null)
                         }
                         while (pendingJsonValues.isNotEmpty()) {
-                            when (val jsonValue = pendingJsonValues.removeFirst()) {
+                            val (jsonValue, parentKey) = pendingJsonValues.removeFirst()
+                            when (jsonValue) {
                                 is Map<*, *> -> jsonValue.forEach { (key, nestedValue) ->
                                     if (key is String && nestedValue is String) {
                                         jsonFields += key to nestedValue
                                     }
                                     if (nestedValue != null) {
-                                        pendingJsonValues.add(nestedValue)
+                                        pendingJsonValues.add(nestedValue to (key as? String ?: parentKey))
                                     }
                                 }
+
                                 is Iterable<*> -> jsonValue.forEach { nestedValue ->
                                     if (nestedValue != null) {
-                                        pendingJsonValues.add(nestedValue)
+                                        pendingJsonValues.add(nestedValue to parentKey)
                                     }
                                 }
                             }
                         }
-                        val nodeRuntime = jsonFields.any { (key, value) ->
-                            val normalizedKey = key.lowercase().replace("_", "").replace("-", "")
-                            (normalizedKey == "runtime" || normalizedKey == "type") &&
-                                value.equals("node", ignoreCase = true) ||
-                                normalizedKey == "command" &&
-                                (value.equals("node", ignoreCase = true) ||
-                                    value.equals("node.exe", ignoreCase = true))
+                        fun normalizedMetadataKey(key: String) =
+                            key.lowercase().replace("_", "").replace("-", "")
+
+                        fun normalizedEntrypoint(value: String) =
+                            value.trim().replace('\\', '/').removePrefix("./")
+
+                        val allowedEntrypoints = setOf(
+                            "bootstrap.cjs",
+                            "packaging/mcpb/bootstrap.cjs"
+                        )
+                        val javascriptEntrypoint = Regex(
+                            """(?i)\b[^\s"';|&()]*\.(?:js|mjs|cjs|ts|tsx)\b"""
+                        )
+
+                        fun hasForbiddenJavaScriptEntrypoint(value: String) =
+                            javascriptEntrypoint.findAll(value).any { match ->
+                                !isPackagingMetadata ||
+                                        normalizedEntrypoint(match.value) !in allowedEntrypoints
+                            }
+
+                        fun runsNodeJavaScript(value: String): Boolean {
+                            val nodeCommand = Regex("""(?i)\bnode(?:\.exe)?\b""").find(value)
+                                ?: return false
+                            if (javascriptEntrypoint.containsMatchIn(value)) {
+                                return false
+                            }
+                            val arguments = value.substring(nodeCommand.range.last + 1).trim()
+                            return arguments.isNotEmpty() &&
+                                arguments !in setOf("-v", "--version", "-h", "--help")
                         }
-                        val entrypoints = jsonFields
-                            .filter { (key, _) ->
-                                key.lowercase().replace("_", "").replace("-", "") == "entrypoint"
+
+                        val entrypointKeys = setOf("main", "module", "browser", "bin", "exports", "entrypoint")
+                        val nodeRuntime = jsonFields.any { (key, value) ->
+                            val normalizedKey = normalizedMetadataKey(key)
+                            (normalizedKey == "runtime" || normalizedKey == "type") &&
+                                    value.equals("node", ignoreCase = true) ||
+                                    normalizedKey == "command" &&
+                                    (value.equals("node", ignoreCase = true) ||
+                                            value.equals("node.exe", ignoreCase = true))
+                        }
+                        val javascriptMetadata = jsonFields.any { (key, value) ->
+                            val normalizedKey = normalizedMetadataKey(key)
+                            val isEntrypoint = normalizedKey in entrypointKeys
+                            val isCommand = normalizedKey == "command"
+                            (isEntrypoint || isCommand) &&
+                                    (hasForbiddenJavaScriptEntrypoint(value) ||
+                                            (isCommand && runsNodeJavaScript(value)))
+                        }
+                        val nestedJavaScriptMetadata = mutableListOf<Boolean>()
+                        val nestedMetadataKeys = setOf("bin", "exports", "browser", "scripts")
+                        val pendingMetadataValues = ArrayDeque<Pair<Any, String?>>()
+                        if (parsedJson != null) {
+                            pendingMetadataValues.add(parsedJson to null)
+                        }
+                        while (pendingMetadataValues.isNotEmpty()) {
+                            val (jsonValue, parentKey) = pendingMetadataValues.removeFirst()
+                            when (jsonValue) {
+                                is Map<*, *> -> jsonValue.forEach { (key, nestedValue) ->
+                                    val normalizedKey = (key as? String)?.let(::normalizedMetadataKey)
+                                    if (nestedValue is String &&
+                                        (parentKey in nestedMetadataKeys ||
+                                                normalizedKey == "command")
+                                    ) {
+                                        nestedJavaScriptMetadata +=
+                                            hasForbiddenJavaScriptEntrypoint(nestedValue) ||
+                                                    ((parentKey == "scripts" || normalizedKey == "command") &&
+                                                            runsNodeJavaScript(nestedValue))
+                                    }
+                                    if (nestedValue != null) {
+                                        pendingMetadataValues.add(
+                                            nestedValue to
+                                                    (normalizedKey?.takeIf { it in nestedMetadataKeys } ?: parentKey)
+                                        )
+                                    }
+                                }
+
+                                is Iterable<*> -> jsonValue.forEach { nestedValue ->
+                                    if (nestedValue != null) {
+                                        pendingMetadataValues.add(nestedValue to parentKey)
+                                    }
+                                }
                             }
-                            .map { (_, value) -> value.replace('\\', '/') }
-                            .filter { entrypoint ->
-                                entrypoint.substringAfterLast('.').lowercase() in
-                                    setOf("js", "mjs", "cjs", "ts", "tsx")
-                            }
+                        }
                         if (isPackagingMetadata) {
-                            entrypoints.any { entrypoint ->
-                                entrypoint != "bootstrap.cjs" &&
-                                    entrypoint != "packaging/mcpb/bootstrap.cjs"
-                            }
+                            javascriptMetadata || nestedJavaScriptMetadata.any { it }
                         } else {
-                            nodeRuntime || entrypoints.isNotEmpty()
+                            nodeRuntime || javascriptMetadata || nestedJavaScriptMetadata.any { it }
                         }
                     } else {
                         false
