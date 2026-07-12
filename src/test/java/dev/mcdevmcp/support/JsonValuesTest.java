@@ -37,7 +37,11 @@ class JsonValuesTest {
         assertSame(preciseDecimal, numbers.get(2));
         assertEquals(1.5D, numbers.get(3));
         assertEquals(2.5F, numbers.get(4));
-        assertThrows(UnsupportedOperationException.class, () -> frozen.put("later", true));
+        assertThrows(UnsupportedOperationException.class, () -> addValue(frozen));
         assertThrows(UnsupportedOperationException.class, numbers::clear);
+    }
+
+    private static void addValue(Map<String, Object> values) {
+        values.put("later", true);
     }
 }

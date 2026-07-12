@@ -12,36 +12,32 @@ public final class JsonValues {
     }
 
     public static Object freeze(Object value) {
-        if (value == null || value instanceof String || value instanceof Boolean) {
-            return value;
-        }
-        if (value instanceof Double number && !Double.isFinite(number)) {
-            throw new IllegalArgumentException("JSON numbers must be finite");
-        }
-        if (value instanceof Float number && !Float.isFinite(number)) {
-            throw new IllegalArgumentException("JSON numbers must be finite");
-        }
-        if (value instanceof Number) {
-            return value;
-        }
-        if (value instanceof Map<?, ?> map) {
-            var frozen = new LinkedHashMap<String, Object>();
-            for (Map.Entry<?, ?> entry : map.entrySet()) {
-                if (!(entry.getKey() instanceof String key)) {
-                    throw new IllegalArgumentException("JSON object keys must be strings");
+        return switch (value) {
+            case null -> null;
+            case String text -> text;
+            case Boolean flag -> flag;
+            case Double number when !Double.isFinite(number) -> throw new IllegalArgumentException("JSON numbers must be finite");
+            case Float number when !Float.isFinite(number) -> throw new IllegalArgumentException("JSON numbers must be finite");
+            case Number number -> number;
+            case Map<?, ?> map -> {
+                var frozen = new LinkedHashMap<String, Object>();
+                for (Map.Entry<?, ?> entry : map.entrySet()) {
+                    if (!(entry.getKey() instanceof String key)) {
+                        throw new IllegalArgumentException("JSON object keys must be strings");
+                    }
+                    frozen.put(key, freeze(entry.getValue()));
                 }
-                frozen.put(key, freeze(entry.getValue()));
+                yield Collections.unmodifiableMap(frozen);
             }
-            return Collections.unmodifiableMap(frozen);
-        }
-        if (value instanceof List<?> list) {
-            var frozen = new ArrayList<>(list.size());
-            for (Object item : list) {
-                frozen.add(freeze(item));
+            case List<?> list -> {
+                var frozen = new ArrayList<>(list.size());
+                for (Object item : list) {
+                    frozen.add(freeze(item));
+                }
+                yield Collections.unmodifiableList(frozen);
             }
-            return Collections.unmodifiableList(frozen);
-        }
-        throw new IllegalArgumentException("Unsupported JSON value type: " + value.getClass().getName());
+            default -> throw new IllegalArgumentException("Unsupported JSON value type: " + value.getClass().getName());
+        };
     }
 
     public static Map<String, Object> freezeMap(Map<String, ?> values) {
