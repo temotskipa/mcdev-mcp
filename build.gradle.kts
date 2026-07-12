@@ -243,10 +243,10 @@ val cutoverCheck = tasks.register("cutoverCheck") {
 
                         fun hasNodeOptionsMetadata(root: Any): Boolean {
                             val environmentKeys = setOf("env", "environment")
-                            val pendingEnvironmentValues = ArrayDeque<Pair<Any, String?>>()
-                            pendingEnvironmentValues.add(root to null)
+                            val pendingEnvironmentValues = ArrayDeque<Pair<Any, Boolean>>()
+                            pendingEnvironmentValues.add(root to false)
                             while (pendingEnvironmentValues.isNotEmpty()) {
-                                val (value, environmentContext) = pendingEnvironmentValues.removeFirst()
+                                val (value, assignmentList) = pendingEnvironmentValues.removeFirst()
                                 when (value) {
                                     is Map<*, *> -> value.forEach { (key, nestedValue) ->
                                         val normalizedKey = (key as? String)?.let(::normalizedMetadataKey)
@@ -256,21 +256,23 @@ val cutoverCheck = tasks.register("cutoverCheck") {
                                         if (nestedValue != null) {
                                             pendingEnvironmentValues.add(
                                                 nestedValue to
-                                                    (normalizedKey?.takeIf { it in environmentKeys } ?:
-                                                        environmentContext)
+                                                    (normalizedKey in environmentKeys && nestedValue is Iterable<*>)
                                             )
                                         }
                                     }
                                     is Iterable<*> -> value.filterNotNull().forEach { nestedValue ->
-                                        pendingEnvironmentValues.add(nestedValue to environmentContext)
-                                    }
-                                    is String -> {
-                                        val assignment = value.indexOf('=')
-                                        if (environmentContext in environmentKeys &&
-                                            assignment > 0 &&
-                                            normalizedMetadataKey(value.substring(0, assignment).trim()) == "nodeoptions"
-                                        ) {
-                                            return true
+                                        pendingEnvironmentValues.add(
+                                            nestedValue to (assignmentList && nestedValue is Iterable<*>)
+                                        )
+                                        if (assignmentList && nestedValue is String) {
+                                            val assignment = nestedValue.indexOf('=')
+                                            if (assignment > 0 &&
+                                                normalizedMetadataKey(
+                                                    nestedValue.substring(0, assignment).trim()
+                                                ) == "nodeoptions"
+                                            ) {
+                                                return true
+                                            }
                                         }
                                     }
                                 }
@@ -290,6 +292,13 @@ val cutoverCheck = tasks.register("cutoverCheck") {
                             javascriptEntrypoint.findAll(value).any { match ->
                                 !isPackagingMetadata ||
                                         normalizedEntrypoint(match.value) !in allowedEntrypoints
+                            }
+
+                        fun hasForbiddenEntrypointTarget(value: String) =
+                            if (isPackagingMetadata) {
+                                normalizedEntrypoint(value) !in allowedEntrypoints
+                            } else {
+                                hasForbiddenJavaScriptEntrypoint(value)
                             }
 
                         fun runsNodeJavaScript(value: String): Boolean {
@@ -348,9 +357,11 @@ val cutoverCheck = tasks.register("cutoverCheck") {
                                             }
                                             else -> null to emptyList()
                                         }
-                                        if (executable != null && isNodeCommand(executable) && arguments.isNotEmpty()) {
-                                            if (normalizedEntrypoint(arguments.first()) !in allowedEntrypoints ||
-                                                arguments.drop(1).any(::hasForbiddenJavaScriptEntrypoint)
+                                        if (executable != null && isNodeCommand(executable)) {
+                                            if (!isPackagingMetadata ||
+                                                arguments.isNotEmpty() &&
+                                                (normalizedEntrypoint(arguments.first()) !in allowedEntrypoints ||
+                                                    arguments.drop(1).any(::hasForbiddenJavaScriptEntrypoint))
                                             ) {
                                                 return true
                                             }
@@ -376,12 +387,13 @@ val cutoverCheck = tasks.register("cutoverCheck") {
                             val normalizedKey = normalizedMetadataKey(key)
                             val isEntrypoint = normalizedKey in entrypointKeys
                             val isCommand = normalizedKey == "command"
-                            (isEntrypoint || isCommand) &&
-                                    (hasForbiddenJavaScriptEntrypoint(value) ||
-                                            (isCommand && runsNodeJavaScript(value)))
+                            isEntrypoint && hasForbiddenEntrypointTarget(value) ||
+                                isCommand &&
+                                (hasForbiddenJavaScriptEntrypoint(value) || runsNodeJavaScript(value))
                         }
                         val nestedJavaScriptMetadata = mutableListOf<Boolean>()
-                        val nestedMetadataKeys = setOf("bin", "exports", "browser", "scripts")
+                        val nestedEntrypointKeys = setOf("bin", "exports", "browser")
+                        val nestedMetadataKeys = nestedEntrypointKeys + "scripts"
                         val pendingMetadataValues = ArrayDeque<Pair<Any, String?>>()
                         if (parsedJson != null) {
                             pendingMetadataValues.add(parsedJson to null)
@@ -396,9 +408,11 @@ val cutoverCheck = tasks.register("cutoverCheck") {
                                                 normalizedKey == "command")
                                     ) {
                                         nestedJavaScriptMetadata +=
-                                            hasForbiddenJavaScriptEntrypoint(nestedValue) ||
-                                                    ((parentKey == "scripts" || normalizedKey == "command") &&
-                                                            runsNodeJavaScript(nestedValue))
+                                            parentKey in nestedEntrypointKeys &&
+                                                hasForbiddenEntrypointTarget(nestedValue) ||
+                                                (parentKey == "scripts" || normalizedKey == "command") &&
+                                                (hasForbiddenJavaScriptEntrypoint(nestedValue) ||
+                                                    runsNodeJavaScript(nestedValue))
                                     }
                                     if (nestedValue != null) {
                                         pendingMetadataValues.add(
@@ -421,7 +435,10 @@ val cutoverCheck = tasks.register("cutoverCheck") {
                                 parsedJson != null && hasNodeOptionsMetadata(parsedJson) ||
                                 parsedJson != null && hasForbiddenStructuredNodeInvocation(parsedJson)
                         } else {
-                            nodeRuntime || javascriptMetadata || nestedJavaScriptMetadata.any { it }
+                            nodeRuntime ||
+                                javascriptMetadata ||
+                                nestedJavaScriptMetadata.any { it } ||
+                                parsedJson != null && hasForbiddenStructuredNodeInvocation(parsedJson)
                         }
                     } else {
                         false
