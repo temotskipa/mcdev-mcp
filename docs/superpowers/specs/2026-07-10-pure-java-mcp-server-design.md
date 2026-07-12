@@ -318,29 +318,43 @@ The package JSON index is intentionally replaced by a normalized H2 MVStore symb
 database at `<index>/<version>/symbols.mv.db`. This removes thousands of JSON files
 and prevents old regex-derived data from being silently treated as accurate.
 
-The database contains metadata, packages, classes, interfaces, fields,
-methods, and parameters with foreign keys and query indexes. Schema version 1
-is recorded with `PRAGMA user_version=1`. Source text stays in the existing
-decompiled source tree and is read on demand.
+The database contains a typed single-row metadata table plus normalized
+packages, types, type interfaces, fields, methods, and parameters. Schema
+version 1 is stored in metadata with the Minecraft version, source-root
+`Path`, remapped-JAR SHA-256, and `TIMESTAMP WITH TIME ZONE` build instant.
+Stable named primary, unique, check, and foreign-key constraints enforce the
+complete schema. Package and type source identities use nullable public Fabric
+API versions plus generated normalized keys so duplicate Minecraft packages
+and namespace/version mismatches are impossible. Reopened validation checks
+exact required columns and relevant types/nullability, generated expressions,
+constraint names/columns/check clauses, foreign-key rules, secondary indexes,
+metadata, and explicit orphan queries through H2 `INFORMATION_SCHEMA`. Source
+text stays in the existing decompiled source tree and is read on demand.
 
-Each database has a sibling lock file. Queries take a shared lock, open a
-read-only JDBC connection for one operation, close it promptly, then release
-the lock so Windows never retains a long-lived handle. A rebuild waits up to 30
-seconds for an exclusive lock and fails with an actionable diagnostic on
-timeout. Its same-directory temporary database is uniquely named
-`symbols.db.<pid>.tmp` and uses `journal_mode=DELETE`, `synchronous=FULL`, and
-`foreign_keys=ON`. The writer performs one explicit transaction, creates
-secondary indexes after bulk insertion, validates row counts and
-`foreign_key_check`, commits, closes every connection, and verifies that no
-journal, WAL, or SHM sidecar remains before promotion.
+Each database has a sibling application lock file. Queries take a shared lock,
+open one short-lived H2 connection with `ACCESS_MODE_DATA=r` and
+`IFEXISTS=TRUE`, close it promptly, then release the lock so Windows retains no
+long-lived database handle. Writers wait up to 30 seconds for exclusive mode.
+JDBC URLs stay inside the H2 boundary and use `DB_CLOSE_ON_EXIT=FALSE`,
+`FILE_LOCK=FS`, `WRITE_DELAY=0`, `LOCK_TIMEOUT=30000`, and
+`TRACE_LEVEL_FILE=0`. The same-directory temporary file is
+`symbols.<pid>.tmp.mv.db`. One explicit transaction loads rows, creates
+secondary indexes after bulk insertion, validates the complete schema/data,
+commits, runs `CHECKPOINT SYNC`, closes H2, and forces the closed `.mv.db` with
+`FileChannel.force(true)`. Closed validation rejects `.newFile`, `.tempFile`,
+`.lock.db`, `.trace.db`, `.trace.db.old`, and numbered `<base>.<n>.temp.db`
+companions before promotion.
 
-Promotion first uses `ATOMIC_MOVE` with `REPLACE_EXISTING`. If the filesystem
-does not support atomic replacement, the fallback renames the current target
-to `symbols.db.bak`, moves the completed temporary file into place, deletes the
-backup only after reopening and validating the new target, and restores the
-backup on failure. Startup restores `symbols.db.bak` when the target is absent,
-and reports rather than guesses when both files exist but the target fails
-validation.
+Promotion first uses `ATOMIC_MOVE` with `REPLACE_EXISTING`; no fallible work
+runs after a successful atomic replacement. If atomic replacement is
+unsupported, the fallback moves the current target to `symbols.mv.db.bak`,
+moves the completed temporary file into place, reopens and validates the new
+target, then deletes the backup. Rollback is stage-aware: failure moving the
+old target preserves it, while only an actually promoted invalid target is
+deleted before restoring a backup. Original failures are preserved and
+restoration failures are suppressed. Startup restores `symbols.mv.db.bak` only
+when the target is absent; when both exist it deletes the stale backup only if
+the target validates, otherwise it preserves both with an actionable error.
 
 Existing cache and source directories are retained. Legacy `manifest.json` and
 package JSON indexes are detected but not imported because they may contain
@@ -358,7 +372,7 @@ class entries with `java.lang.classfile.ClassFile`, and writes directly through
 JDBC. There is no cloned repository, external build, text report, worker JSON,
 or whole-graph in-memory representation.
 
-The output remains `<cache>/<version>/callgraph/callgraph.db` with the existing
+The output remains `<cache>/<version>/callgraph/callgraph.mv.db` with the existing
 `calls` columns:
 
 ```text
@@ -393,7 +407,7 @@ Class parsing is bounded and parallel. One writer owns the JDBC connection,
 inserts explicit batches inside a transaction, creates `idx_callee` and
 `idx_caller` after insertion, validates the database, and atomically replaces
 the previous file using the same lock, temporary-file, validation, and
-promotion rules as `symbols.db`. `line_number` is the original class file's
+promotion rules as `symbols.mv.db`. `line_number` is the original class file's
 `LineNumberTable` call-site line for the invocation offset, or SQL `NULL` when
 debug information is absent. It is not promised to match a line in
 Vineflower's decompiled source.
@@ -485,8 +499,9 @@ Shadow merges service descriptors with `mergeServiceFiles()`, removes stale
 archive signatures under `META-INF/*.SF`, `META-INF/*.RSA`, and
 `META-INF/*.DSA`, merges JDBC services, and preserves embedded resources
 required by Tiny Remapper and Vineflower. Cross-platform tests run
-from the extracted shaded JAR and prove JDBC driver discovery plus H2
-read/write, a Tiny Remapper fixture, a Vineflower fixture, MCP STDIO
+from the extracted shaded JAR and prove `ServiceLoader<Driver>` and
+`DriverManager` discovery plus H2 read/write/close under
+`--illegal-native-access=deny`, a Tiny Remapper fixture, a Vineflower fixture, MCP STDIO
 initialization, and the absence of signed-archive verification failures.
 
 While MCPB manifest v0.4 remains Node-only, its staging tree contains the same

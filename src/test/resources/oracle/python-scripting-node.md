@@ -55,17 +55,17 @@ anything below looks stale.
 
 Notes per type:
 
-| `type`       | `payload`                                                                  | Returns in `result` |
-|--------------|----------------------------------------------------------------------------|---------------------|
-| `status`     | `{}`                                                                       | `SessionInfo` (version, mappingStatus, gameDir, logsDir, latestLog, …) |
-| `execute`    | `{ "code": "<groovy>", "timeoutMs"?: <int 1000-300000> }`                      | Whatever the Groovy `return`s; `output` carries `println` lines |
-| `snapshot`   | `{}` (player/world snapshot — see `mc_snapshot`)                            | snapshot JSON |
-| `screenshot` | `{}` (returns base64 JPEG)                                                  | image payload |
-| `search`     | `{ "pattern": "<str>" }`                                                    | mapping search results |
-| `runCommand` | `{ "command": "/give @s diamond" }` — gated by `run_command_enabled` on the mod | command result |
-| `disconnect` | `{}` — leave the current world/server (lands on the title screen)            | ack only |
-| `joinServer` | `{ "address": "host[:port]", "acceptResourcePacks"?: bool (default true) }`  | ack `{status: "connecting"}` |
-| `quit`       | `{}` — close the Minecraft client (the bridge dies with it)                  | ack only |
+| `type`       | `payload`                                                                       | Returns in `result`                                                    |
+|--------------|---------------------------------------------------------------------------------|------------------------------------------------------------------------|
+| `status`     | `{}`                                                                            | `SessionInfo` (version, mappingStatus, gameDir, logsDir, latestLog, …) |
+| `execute`    | `{ "code": "<groovy>", "timeoutMs"?: <int 1000-300000> }`                       | Whatever the Groovy `return`s; `output` carries `println` lines        |
+| `snapshot`   | `{}` (player/world snapshot — see `mc_snapshot`)                                | snapshot JSON                                                          |
+| `screenshot` | `{}` (returns base64 JPEG)                                                      | image payload                                                          |
+| `search`     | `{ "pattern": "<str>" }`                                                        | mapping search results                                                 |
+| `runCommand` | `{ "command": "/give @s diamond" }` — gated by `run_command_enabled` on the mod | command result                                                         |
+| `disconnect` | `{}` — leave the current world/server (lands on the title screen)               | ack only                                                               |
+| `joinServer` | `{ "address": "host[:port]", "acceptResourcePacks"?: bool (default true) }`     | ack `{status: "connecting"}`                                           |
+| `quit`       | `{}` — close the Minecraft client (the bridge dies with it)                     | ack only                                                               |
 
 The table is not exhaustive — the mod also serves the native inspection types
 the MCP tools use (`screenInspect`, `chatHistory`, `nearbyEntities`,

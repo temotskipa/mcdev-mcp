@@ -22,16 +22,14 @@ public record PlatformPaths(Path cacheRoot) {
         }
         if (normalizedOsName.contains("win")) {
             String configuredLocalApplicationData = env.get("LOCALAPPDATA");
-            Path localApplicationData = configuredLocalApplicationData == null || configuredLocalApplicationData.isBlank()
-                    ? home.resolve("AppData").resolve("Local")
-                    : Path.of(configuredLocalApplicationData);
+            Path localApplicationData = configuredLocalApplicationData == null || configuredLocalApplicationData.isBlank() ? home.resolve("AppData").resolve("Local") : Path.of(configuredLocalApplicationData);
             return new PlatformPaths(localApplicationData.resolve("mcdev-mcp").resolve("Cache"));
         }
         String configuredXdgCache = env.get("XDG_CACHE_HOME");
         Path xdgCache = configuredXdgCache == null || configuredXdgCache.isBlank() ? home.resolve(".cache") : Path.of(configuredXdgCache);
         return new PlatformPaths(xdgCache.resolve("mcdev-mcp"));
     }
-
+    
     public Path versionCache(MinecraftVersion version) {
         return cacheRoot.resolve("cache").resolve(version.value());
     }

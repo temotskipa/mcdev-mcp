@@ -16,22 +16,14 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionException;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.*;
 
 class ToolBindingTest {
     private static final McpJsonMapper MAPPER = McpJsonDefaults.getMapper();
-
+    
     @Test
     void decodesTheWholeArgumentMapOnceAndConvertsWireValuesToDomainValues() {
         var options = new LinkedHashMap<String, Object>();
@@ -47,22 +39,14 @@ class ToolBindingTest {
         arguments.put("options", options);
         var mapper = new CountingMcpJsonMapper(MAPPER);
         var received = new CompletableFuture<DomainArguments>();
-        var binding = new ToolBinding<>(
-                ArgumentDecoder.sdk(WireArguments.class).map(wire -> new DomainArguments(
-                        URI.create(wire.uri()),
-                        Path.of(wire.path()),
-                        Duration.ofMillis(wire.timeoutMs()),
-                        wire.startedAt(),
-                        wire.mode(),
-                        JsonValues.freezeMap(wire.options()))),
-                (domain, _) -> {
-                    received.complete(domain);
-                    return ToolHandlers.completed(ToolResult.text("ok"));
-                });
-
+        var binding = new ToolBinding<>(ArgumentDecoder.sdk(WireArguments.class).map(wire -> new DomainArguments(URI.create(wire.uri()), Path.of(wire.path()), Duration.ofMillis(wire.timeoutMs()), wire.startedAt(), wire.mode(), JsonValues.freezeMap(wire.options()))), (domain, _) -> {
+            received.complete(domain);
+            return ToolHandlers.completed(ToolResult.text("ok"));
+        });
+        
         var result = binding.invoke(mapper, arguments, Cancellation.none()).toCompletableFuture().resultNow();
         var domain = received.resultNow();
-
+        
         assertFalse(result.isError());
         assertEquals(1, mapper.convertValueCalls());
         assertEquals(URI.create("https://example.test/tool"), domain.uri());
@@ -74,40 +58,32 @@ class ToolBindingTest {
         assertThrows(UnsupportedOperationException.class, () -> domain.options().put("later", false));
         assertThrows(UnsupportedOperationException.class, () -> ((List<?>) domain.options().get("values")).clear());
     }
-
+    
     @Test
     void propagatesSynchronousDecoderFailureBeforeCallingTheHandler() {
         var handlerCalled = new CompletableFuture<Void>();
-        var binding = new ToolBinding<TestEmptyArguments>(
-                (_, _) -> {
-                    throw new IllegalArgumentException("bad arguments");
-                },
-                (_, _) -> {
-                    handlerCalled.complete(null);
-                    return ToolHandlers.completed(ToolResult.text("unexpected"));
-                });
-
-        var exception = assertThrows(
-                IllegalArgumentException.class,
-                () -> binding.invoke(MAPPER, Map.of(), Cancellation.none()));
-
+        var binding = new ToolBinding<TestEmptyArguments>((_, _) -> {
+            throw new IllegalArgumentException("bad arguments");
+        }, (_, _) -> {
+            handlerCalled.complete(null);
+            return ToolHandlers.completed(ToolResult.text("unexpected"));
+        });
+        
+        var exception = assertThrows(IllegalArgumentException.class, () -> binding.invoke(MAPPER, Map.of(), Cancellation.none()));
+        
         assertEquals("bad arguments", exception.getMessage());
         assertFalse(handlerCalled.isDone());
     }
-
+    
     @Test
     void preservesAsynchronousHandlerFailure() {
-        var binding = new ToolBinding<>(
-                ArgumentDecoder.sdk(TestEmptyArguments.class),
-                (_, _) -> CompletableFuture.failedFuture(new IllegalStateException("async failure")));
-
-        var exception = assertThrows(
-                CompletionException.class,
-                () -> binding.invoke(MAPPER, Map.of(), Cancellation.none()).toCompletableFuture().join());
-
+        var binding = new ToolBinding<>(ArgumentDecoder.sdk(TestEmptyArguments.class), (_, _) -> CompletableFuture.failedFuture(new IllegalStateException("async failure")));
+        
+        var exception = assertThrows(CompletionException.class, () -> binding.invoke(MAPPER, Map.of(), Cancellation.none()).toCompletableFuture().join());
+        
         assertEquals("async failure", exception.getCause().getMessage());
     }
-
+    
     @Test
     void blockingBindingRunsOnItsAssignedVirtualExecutorAndCancellationInterruptsIt() throws Exception {
         var started = new CountDownLatch(1);
@@ -124,12 +100,10 @@ class ToolBindingTest {
                 throw exception;
             }
         });
-
+        
         try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
-            var future = binding.withBlockingExecutor(executor)
-                    .invoke(MAPPER, Map.of(), Cancellation.none())
-                    .toCompletableFuture();
-
+            var future = binding.withBlockingExecutor(executor).invoke(MAPPER, Map.of(), Cancellation.none()).toCompletableFuture();
+            
             assertTrue(started.await(5, TimeUnit.SECONDS), "blocking binding did not start");
             assertTrue(future.cancel(true), "blocking binding future was not cancelled");
             assertTrue(interrupted.await(5, TimeUnit.SECONDS), "cancellation did not interrupt the virtual thread");
@@ -147,52 +121,52 @@ record DomainArguments(URI uri, Path path, Duration timeout, Instant startedAt, 
 final class CountingMcpJsonMapper implements McpJsonMapper {
     private final McpJsonMapper delegate;
     private int convertValueCalls;
-
+    
     CountingMcpJsonMapper(McpJsonMapper delegate) {
         this.delegate = delegate;
     }
-
+    
     int convertValueCalls() {
         return convertValueCalls;
     }
-
+    
     @Override
     public <T> T readValue(String content, Class<T> type) throws IOException {
         return delegate.readValue(content, type);
     }
-
+    
     @Override
     public <T> T readValue(byte[] content, Class<T> type) throws IOException {
         return delegate.readValue(content, type);
     }
-
+    
     @Override
     public <T> T readValue(String content, TypeRef<T> type) throws IOException {
         return delegate.readValue(content, type);
     }
-
+    
     @Override
     public <T> T readValue(byte[] content, TypeRef<T> type) throws IOException {
         return delegate.readValue(content, type);
     }
-
+    
     @Override
     public <T> T convertValue(Object value, Class<T> type) {
         convertValueCalls++;
         return delegate.convertValue(value, type);
     }
-
+    
     @Override
     public <T> T convertValue(Object value, TypeRef<T> type) {
         convertValueCalls++;
         return delegate.convertValue(value, type);
     }
-
+    
     @Override
     public String writeValueAsString(Object value) throws IOException {
         return delegate.writeValueAsString(value);
     }
-
+    
     @Override
     public byte[] writeValueAsBytes(Object value) throws IOException {
         return delegate.writeValueAsBytes(value);

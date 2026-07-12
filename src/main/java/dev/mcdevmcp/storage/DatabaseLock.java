@@ -16,13 +16,13 @@ import java.util.concurrent.locks.Lock;
 public final class DatabaseLock implements AutoCloseable {
     private static final ConcurrentHashMap<Path, DatabaseLockState> LOCKS = new ConcurrentHashMap<>();
     private static final Duration RETRY_DELAY = Duration.ofMillis(25);
-
+    
     private final Lock localLock;
     private final DatabaseLockState state;
     private final boolean shared;
     private final FileChannel channel;
     private final FileLock fileLock;
-
+    
     private DatabaseLock(Lock localLock, DatabaseLockState state, boolean shared, FileChannel channel, FileLock fileLock) {
         this.localLock = localLock;
         this.state = state;
@@ -30,15 +30,15 @@ public final class DatabaseLock implements AutoCloseable {
         this.channel = channel;
         this.fileLock = fileLock;
     }
-
+    
     public static DatabaseLock read(Path database, Duration timeout) throws IOException {
         return acquire(database, timeout, true);
     }
-
+    
     public static DatabaseLock write(Path database, Duration timeout) throws IOException {
         return acquire(database, timeout, false);
     }
-
+    
     private static DatabaseLock acquire(Path database, Duration timeout, boolean shared) throws IOException {
         Objects.requireNonNull(database, "database");
         Objects.requireNonNull(timeout, "timeout");
@@ -80,7 +80,7 @@ public final class DatabaseLock implements AutoCloseable {
             throw exception;
         }
     }
-
+    
     private static void acquireSharedLock(DatabaseLockState state, Path lockPath, Duration timeout) throws IOException {
         synchronized (state.sharedGuard) {
             if (state.sharedReferences++ > 0) {
@@ -103,7 +103,7 @@ public final class DatabaseLock implements AutoCloseable {
             }
         }
     }
-
+    
     private static FileLock acquireFileLock(FileChannel channel, boolean shared, Duration timeout) throws IOException {
         long deadline = System.nanoTime() + timeout.toNanos();
         while (true) {
@@ -126,15 +126,15 @@ public final class DatabaseLock implements AutoCloseable {
             }
         }
     }
-
+    
     private static IOException timeoutFailure(boolean shared, Duration timeout) {
         return new IOException("Timed out acquiring " + mode(shared) + " database lock after " + format(timeout) + "; close active queries and retry.");
     }
-
+    
     private static String mode(boolean shared) {
         return shared ? "shared" : "exclusive";
     }
-
+    
     private static String format(Duration duration) {
         if (duration.toNanos() % TimeUnit.SECONDS.toNanos(1) == 0) {
             long seconds = duration.toSeconds();
@@ -142,20 +142,21 @@ public final class DatabaseLock implements AutoCloseable {
         }
         return duration.toMillis() + " milliseconds";
     }
-
+    
     public boolean isHeld() {
         synchronized (state.sharedGuard) {
             return shared ? state.sharedFileLock != null && state.sharedFileLock.isValid() : fileLock.isValid();
         }
     }
-
+    
     @Override
     public void close() throws IOException {
         IOException failure = null;
         try {
             if (shared) {
                 releaseSharedLock();
-            } else {
+            }
+            else {
                 fileLock.release();
                 channel.close();
             }
@@ -168,7 +169,7 @@ public final class DatabaseLock implements AutoCloseable {
             throw failure;
         }
     }
-
+    
     private void releaseSharedLock() throws IOException {
         synchronized (state.sharedGuard) {
             if (--state.sharedReferences != 0) {
@@ -185,7 +186,8 @@ public final class DatabaseLock implements AutoCloseable {
             } catch (IOException exception) {
                 if (failure == null) {
                     failure = exception;
-                } else {
+                }
+                else {
                     failure.addSuppressed(exception);
                 }
             } finally {

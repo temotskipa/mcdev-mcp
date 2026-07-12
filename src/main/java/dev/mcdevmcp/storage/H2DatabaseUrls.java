@@ -5,18 +5,18 @@ import java.util.Objects;
 
 final class H2DatabaseUrls {
     private static final String MV_STORE_SUFFIX = ".mv.db";
-
+    
     private H2DatabaseUrls() {
     }
-
+    
     static String writer(Path database) {
         return url(database, ";DB_CLOSE_ON_EXIT=FALSE;FILE_LOCK=FS;WRITE_DELAY=0;LOCK_TIMEOUT=30000;TRACE_LEVEL_FILE=0");
     }
-
+    
     static String reader(Path database) {
         return url(database, ";DB_CLOSE_ON_EXIT=FALSE;FILE_LOCK=FS;WRITE_DELAY=0;LOCK_TIMEOUT=30000;TRACE_LEVEL_FILE=0;ACCESS_MODE_DATA=r;IFEXISTS=TRUE");
     }
-
+    
     static Path basePath(Path database) {
         Path normalized = Objects.requireNonNull(database, "database").toAbsolutePath().normalize();
         String fileName = normalized.getFileName().toString();
@@ -29,7 +29,7 @@ final class H2DatabaseUrls {
         }
         return normalized.resolveSibling(baseName);
     }
-
+    
     private static String url(Path database, String settings) {
         Path base = basePath(database);
         if (base.toString().contains(";")) {

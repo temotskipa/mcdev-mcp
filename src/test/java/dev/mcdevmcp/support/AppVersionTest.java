@@ -1,21 +1,19 @@
 package dev.mcdevmcp.support;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-
-import java.nio.file.Path;
-import java.nio.file.Files;
-import java.util.Map;
 import org.junit.jupiter.api.Test;
+
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.Map;
+
+import static org.junit.jupiter.api.Assertions.*;
 
 class AppVersionTest {
     @Test
     void readsTheGradleFilteredVersionFromClasses() {
         assertEquals(System.getProperty("mcdevMcpVersion"), AppVersion.current());
     }
-
+    
     @Test
     void rejectsTestResourceFallbackWhenTheTestGuardIsDisabled() {
         String property = AppVersion.TEST_FALLBACK_PROPERTY;
@@ -26,12 +24,13 @@ class AppVersionTest {
         } finally {
             if (previous == null) {
                 System.clearProperty(property);
-            } else {
+            }
+            else {
                 System.setProperty(property, previous);
             }
         }
     }
-
+    
     @Test
     void debugLogEnvironmentRulesMatchTheNodeServer() {
         assertFalse(new AppEnvironment(Map.of()).debugLogPath().isPresent());
@@ -43,33 +42,33 @@ class AppVersionTest {
         assertEquals(" on ", new AppEnvironment(Map.of("MCDEV_MCP_DEBUG_LOG", " on ")).value("MCDEV_MCP_DEBUG_LOG").orElseThrow());
         assertEquals(Path.of("logs/mcdev.log"), new AppEnvironment(Map.of("MCDEV_MCP_DEBUG_LOG", "logs/mcdev.log")).debugLogPath().orElseThrow());
     }
-
+    
     @Test
     void truthyValuesAndIndexThreadLimitsAreDeterministic() {
         var environment = new AppEnvironment(Map.of("FLAG", "true", "MCDEV_INDEX_THREADS", "99"));
-
+        
         assertTrue(environment.isTruthy("FLAG"));
         assertFalse(new AppEnvironment(Map.of("FLAG", "yes")).isTruthy("FLAG"));
         assertFalse(new AppEnvironment(Map.of("FLAG", "on")).isTruthy("FLAG"));
         assertEquals(8, environment.indexThreads(8));
     }
-
+    
     @Test
     void debugLogWritesOnlyToItsConfiguredFileAndSwallowsFailures() throws Exception {
         Path directory = Files.createTempDirectory("mcdev-debug-log");
         Path logPath = directory.resolve("debug.log");
-
+        
         DebugLog.write(new AppEnvironment(Map.of("MCDEV_MCP_DEBUG_LOG", logPath.toString())), "diagnostic");
         DebugLog.write(new AppEnvironment(Map.of("MCDEV_MCP_DEBUG_LOG", directory.toString())), "ignored");
-
+        
         assertEquals("diagnostic" + System.lineSeparator(), Files.readString(logPath));
     }
-
+    
     @Test
     void debugLogSwallowsInvalidPathFailures() {
         DebugLog.write(new AppEnvironment(Map.of("MCDEV_MCP_DEBUG_LOG", "\u0000invalid")), "ignored");
     }
-
+    
     @Test
     void versionFallbackIsNotPackagedWithExplodedMainResources() {
         assertFalse(Files.exists(Path.of("build", "resources", "main", "version.properties")));

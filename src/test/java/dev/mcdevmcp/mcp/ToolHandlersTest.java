@@ -17,7 +17,7 @@ class ToolHandlersTest {
         var started = new CountDownLatch(1);
         var interrupted = new CountDownLatch(1);
         var virtualThread = new AtomicBoolean();
-
+        
         try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
             ToolHandler<TestEmptyArguments> handler = ToolHandlers.blocking(executor, (_, _) -> {
                 virtualThread.set(Thread.currentThread().isVirtual());
@@ -30,7 +30,7 @@ class ToolHandlersTest {
                     throw exception;
                 }
             });
-
+            
             var future = handler.handle(new TestEmptyArguments(), Cancellation.none()).toCompletableFuture();
             assertTrue(started.await(5, TimeUnit.SECONDS), "blocking handler did not start");
             assertTrue(future.cancel(true), "blocking handler future was not cancelled");

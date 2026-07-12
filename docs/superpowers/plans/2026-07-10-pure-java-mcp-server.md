@@ -604,11 +604,11 @@ Use these cross-task signatures:
 ```java
 public record PlatformPaths(Path cacheRoot) {
     public static PlatformPaths forEnvironment(String osName, Map<String, String> env, Path home);
-    public Path versionCache(String version);
-    public Path sourceRoot(String version);
-    public Path remappedJar(String version);
-    public Path symbolDatabase(String version);
-    public Path callgraphDatabase(String version);
+    public Path versionCache(MinecraftVersion version);
+    public Path sourceRoot(MinecraftVersion version);
+    public Path remappedJar(MinecraftVersion version);
+    public Path symbolDatabase(MinecraftVersion version);
+    public Path callgraphDatabase(MinecraftVersion version);
 }
 
 public final class AtomicH2Database {
@@ -635,11 +635,16 @@ and `Duration`; they do not accept string encodings of either value.
 Within that root preserve the current layout: Minecraft sources at
 `cache/<version>/client`, obfuscated/unobfuscated JARs at
 `cache/<version>/jars/`, the remapped callgraph input and database at
-`cache/<version>/callgraph/client-remapped.jar` and `callgraph.db`, Fabric
+`cache/<version>/callgraph/client-remapped.jar` and `callgraph.mv.db`, Fabric
 sources at `cache/fabric-api-<version>/`, and the new symbol database at
-`index/<minecraft-version>/symbols.db`.
+`index/<minecraft-version>/symbols.mv.db`.
 
-Tests assert the exact macOS, Linux/XDG, and Windows roots; `PRAGMA user_version=1`; `DELETE/FULL/ON`; a reader blocks an exclusive writer; timeout at 30 seconds is actionable; `.bak` is restored when target is absent; failed validation restores the old DB; successful replacement leaves no `-journal`, `-wal`, or `-shm`; and a target can be renamed immediately after a query closes on Windows.
+Tests assert exact macOS, Linux/XDG, and Windows roots; typed schema-v1
+metadata; complete H2 columns, constraints, indexes, and orphan validation;
+Minecraft/Fabric package/type identity; overlapping local and subprocess
+readers; actionable 30-second and injected short lock timeouts; stage-aware
+fallback restoration; fixed and numbered companion rejection; single-file
+close; and immediate Windows rename after a query closes.
 
 - [ ] **Step 2: Run storage tests and observe missing implementations**
 
@@ -661,11 +666,35 @@ Do not add `MCDEV_MCP_HOME`. Tests and parity processes inject `PlatformPaths` t
 
 - [ ] **Step 4: Implement schema version 1**
 
-Create normalized tables `metadata`, `packages`, `types`, `type_interfaces`, `fields`, `methods`, and `parameters`. Enforce unique binary type names, member ordinals, foreign keys, deterministic query indexes, and source offset/line columns. `types.kind` accepts `class`, `interface`, `enum`, `record`, and `annotation`. Store `PRAGMA user_version=1` and schema metadata keys `minecraft_version`, `source_root`, `remapped_jar_sha256`, and `built_at`.
+Create a typed single-row `metadata` table and normalized `packages`, `types`,
+`type_interfaces`, `fields`, `methods`, and `parameters`. Store schema version
+`1`, Minecraft version, source-root `Path`, remapped-JAR SHA-256, and a
+`TIMESTAMP WITH TIME ZONE` build instant. Use stable named primary, unique,
+check, and foreign-key constraints. A generated non-null normalized Fabric key
+backs package uniqueness and the composite package/type source-identity
+relationship while the public Fabric API version remains nullable. Minecraft
+must have no Fabric version; Fabric must have one. `types.kind` accepts
+`class`, `interface`, `enum`, `record`, and `annotation`. Reopened validation
+uses H2 `INFORMATION_SCHEMA` to check exact required columns and relevant
+types/nullability, generated expressions, constraints and key columns, check
+clauses, foreign-key rules, required secondary indexes, metadata, and every
+orphan relationship.
 
 - [ ] **Step 5: Implement lock and crash-safe promotion**
 
-Combine a process-local `ReentrantReadWriteLock` with sibling file locks. Reads acquire shared mode, open one `mode=ro` JDBC connection, execute, close, and unlock. Writers wait 30 seconds for exclusive mode. The writer uses same-directory `<target>.<pid>.tmp`, one explicit transaction, post-load indexes, `foreign_key_check`, close, sidecar check, then `ATOMIC_MOVE | REPLACE_EXISTING`. On unsupported atomic replacement, use target to `.bak`, temp to target, reopen/validate, delete backup; restore backup on any failure. Startup restores `.bak` only when target is absent.
+Combine a fair process-local `ReentrantReadWriteLock` with a sibling OS lock;
+same-process readers share one reference-counted OS lock. Readers use one
+short-lived H2 connection with `ACCESS_MODE_DATA=r;IFEXISTS=TRUE`. Writer URLs
+use `DB_CLOSE_ON_EXIT=FALSE;FILE_LOCK=FS;WRITE_DELAY=0;LOCK_TIMEOUT=30000;TRACE_LEVEL_FILE=0`.
+Build same-directory `<base>.<pid>.tmp.mv.db` in one transaction, create
+secondary indexes after load, validate, commit, run `CHECKPOINT SYNC`, close,
+and force the file. Reject fixed and numbered H2 companions before promotion.
+Try `ATOMIC_MOVE | REPLACE_EXISTING`; on unsupported atomic replacement, move
+target to `.bak`, move temp to target, reopen/validate, and delete backup.
+Track fallback stages so failure moving the old target never deletes it and
+only an actually promoted invalid target is removed. Preserve the original
+failure and suppress restoration failures. Startup restores `.bak` only when
+target is absent and validates target before deleting a coexisting backup.
 
 - [ ] **Step 6: Implement legacy detection and cleaning without implicit deletion**
 
@@ -960,7 +989,7 @@ For `invokedynamic`, follow bootstrap arguments only when a concrete method hand
 
 - [ ] **Step 4: Write the existing schema without whole-graph retention**
 
-Use the existing columns `id`, `caller_class`, `caller_method`, `caller_desc`, `callee_class`, `callee_method`, `callee_desc`, `line_number`. Bounded parser workers emit sorted batches to one writer connection. Insert in deterministic class/method/bytecode order, create `idx_caller` and `idx_callee` after loading, validate counts/foreign keys/integrity, and promote `callgraph.db.<pid>.tmp` with the common atomic/backup rules.
+Use the existing columns `id`, `caller_class`, `caller_method`, `caller_desc`, `callee_class`, `callee_method`, `callee_desc`, `line_number`. Bounded parser workers emit sorted batches to one writer connection. Insert in deterministic class/method/bytecode order, create `idx_caller` and `idx_callee` after loading, validate counts/foreign keys/integrity, and promote `callgraph.<pid>.tmp.mv.db` to `callgraph.mv.db` with the common checkpoint, force, companion-validation, and stage-aware atomic/backup rules.
 
 - [ ] **Step 5: Implement exact callers/callees queries and tool formatting**
 

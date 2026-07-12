@@ -1,12 +1,6 @@
 package dev.mcdevmcp.storage;
 
-import dev.mcdevmcp.storage.model.ClassSymbol;
-import dev.mcdevmcp.storage.model.ElementKindCodec;
-import dev.mcdevmcp.storage.model.FabricApiVersion;
-import dev.mcdevmcp.storage.model.FieldSymbol;
-import dev.mcdevmcp.storage.model.MethodSymbol;
-import dev.mcdevmcp.storage.model.ParameterSymbol;
-import dev.mcdevmcp.storage.model.SourceNamespace;
+import dev.mcdevmcp.storage.model.*;
 import org.junit.jupiter.api.Test;
 
 import javax.lang.model.element.ElementKind;
@@ -27,53 +21,25 @@ class ModelValueTest {
         assertEquals(ElementKind.RECORD, ElementKindCodec.fromWireName("record"));
         assertThrows(IllegalArgumentException.class, () -> ElementKindCodec.wireName(ElementKind.METHOD));
     }
-
+    
     @Test
     void classSymbolsKeepStructuredValuesAndImmutableCollections() {
         var interfaces = new java.util.ArrayList<>(List.of("java.io.Closeable"));
-        var symbol = new ClassSymbol(
-                1L,
-                SourceNamespace.FABRIC,
-                Optional.of(new FabricApiVersion("0.120.0")),
-                "net.fabricmc.Test",
-                "net.fabricmc",
-                "Test",
-                ElementKind.CLASS,
-                Optional.empty(),
-                interfaces,
-                Path.of("Test.java"),
-                0,
-                10,
-                1,
-                2);
-
+        var symbol = new ClassSymbol(1L, SourceNamespace.FABRIC, Optional.of(new FabricApiVersion("0.120.0")), "net.fabricmc.Test", "net.fabricmc", "Test", ElementKind.CLASS, Optional.empty(), interfaces, Path.of("Test.java"), 0, 10, 1, 2);
+        
         interfaces.add("java.lang.Runnable");
         assertEquals(List.of("java.io.Closeable"), symbol.interfaceBinaryNames());
         assertThrows(UnsupportedOperationException.class, () -> symbol.interfaceBinaryNames().add("x"));
-        assertThrows(IllegalArgumentException.class, () -> new ClassSymbol(
-                2L,
-                SourceNamespace.MINECRAFT,
-                Optional.of(new FabricApiVersion("0.120.0")),
-                "net.minecraft.Test",
-                "net.minecraft",
-                "Test",
-                ElementKind.CLASS,
-                Optional.empty(),
-                List.of(),
-                Path.of("Test.java"),
-                0,
-                1,
-                1,
-                1));
+        assertThrows(IllegalArgumentException.class, () -> new ClassSymbol(2L, SourceNamespace.MINECRAFT, Optional.of(new FabricApiVersion("0.120.0")), "net.minecraft.Test", "net.minecraft", "Test", ElementKind.CLASS, Optional.empty(), List.of(), Path.of("Test.java"), 0, 1, 1, 1));
         assertEquals(Set.of(Modifier.PUBLIC), Set.copyOf(Set.of(Modifier.PUBLIC)));
     }
-
+    
     @Test
     void memberSymbolsUseImmutableJdkModifierSets() {
         var field = new FieldSymbol(1L, 2L, 0, "field", "int", Set.of(Modifier.PRIVATE), 0, 1, 1, 1);
         var method = new MethodSymbol(3L, 2L, 0, "method", "()V", Optional.empty(), Set.of(Modifier.PUBLIC), false, 0, 1, 1, 1);
         var parameter = new ParameterSymbol(4L, 3L, 0, "parameter", "int", false, 0, 1, 1, 1);
-
+        
         assertEquals(Set.of(Modifier.PRIVATE), field.modifiers());
         assertEquals(Set.of(Modifier.PUBLIC), method.modifiers());
         assertEquals("parameter", parameter.name());

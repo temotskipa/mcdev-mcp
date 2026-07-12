@@ -11,7 +11,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 final class DatabaseLockProcessMain {
     private DatabaseLockProcessMain() {
     }
-
+    
     static void main(String[] arguments) throws Exception {
         Path database = Path.of(arguments[1]);
         switch (arguments[0]) {
@@ -44,14 +44,10 @@ final class DatabaseLockProcessMain {
             }
             case "recover-failing" -> {
                 try {
-                    new AtomicH2Database().rebuild(
-                            database,
-                            Duration.ofSeconds(1),
-                            _ -> {
-                                throw new java.sql.SQLException("intentional rebuild failure");
-                            },
-                            _ -> {
-                            });
+                    new AtomicH2Database().rebuild(database, Duration.ofSeconds(1), _ -> {
+                        throw new java.sql.SQLException("intentional rebuild failure");
+                    }, _ -> {
+                    });
                     throw new AssertionError("rebuild unexpectedly succeeded");
                 } catch (java.sql.SQLException expected) {
                     System.out.println("recovered");
@@ -61,7 +57,7 @@ final class DatabaseLockProcessMain {
             default -> throw new IllegalArgumentException("Unsupported process mode: " + arguments[0]);
         }
     }
-
+    
     private static void awaitParentExit() throws java.io.IOException {
         int input;
         do {
