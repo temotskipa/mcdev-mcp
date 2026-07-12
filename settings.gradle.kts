@@ -10,6 +10,14 @@ dependencyResolutionManagement {
     repositories {
         mavenCentral()
         maven("https://maven.fabricmc.net/")
+        maven("https://central.sonatype.com/repository/maven-snapshots/") {
+            mavenContent {
+                snapshotsOnly()
+            }
+            content {
+                includeGroup("io.modelcontextprotocol.sdk")
+            }
+        }
     }
 }
 

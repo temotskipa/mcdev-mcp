@@ -1,5 +1,5 @@
 [versions]
-mcp = "2.0.0"
+mcp = "2.0.1-SNAPSHOT"
 picocli = "4.7.7"
 sqlite = "3.53.2.0"
 vineflower = "1.11.2"

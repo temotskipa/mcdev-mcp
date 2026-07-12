@@ -8,7 +8,7 @@
 
 > **Early cutover amendment (2026-07-12):** The isolated Java worktree removes the retired server, worker, root Node metadata, and Node CI before the later parity/release tasks. `cutoverCheck` is the tracked-file guard for this state. The original clean `master` checkout remains the immutable Node oracle; later tasks must materialize or invoke it from ignored scratch and must not restore legacy source in this worktree.
 
-**Tech Stack:** Java 25 language/bytecode, Gradle Wrapper 9.6.1, Shadow 9.5.1, MCP Java SDK 2.0.0 with its Jackson 3-backed `McpJsonMapper`, Picocli 4.7.7, SQLite JDBC 3.53.2.0, Tiny Remapper 0.10.4, Vineflower 1.11.2, JUnit 6.1.0, Java Class-File API, Javac compiler APIs, JDK HttpClient/WebSocket.
+**Tech Stack:** Java 25 language/bytecode, Gradle Wrapper 9.6.1, Shadow 9.5.1, MCP Java SDK 2.0.1-SNAPSHOT with its Jackson 3-backed `McpJsonMapper`, Picocli 4.7.7, SQLite JDBC 3.53.2.0, Tiny Remapper 0.10.4, Vineflower 1.11.2, JUnit 6.1.0, Java Class-File API, Javac compiler APIs, JDK HttpClient/WebSocket.
 
 ## Global Constraints
 
@@ -25,7 +25,7 @@
 - Never serialize `Path` implicitly through a JSON mapper. Encode the exact contract-defined URI or path text explicitly and parse it at the boundary.
 - Preserve the current IntelliJ-established Java formatting and follow its surrounding code style in every new edit. Do not run broad reformatting, rewrite unrelated whitespace, or introduce a competing formatter as part of feature work.
 - Compile every Java source set with `-Xlint:all -Werror`. Before each task review, run IntelliJ MCP `build_project` and `get_file_problems` for every changed Java file, fix actionable errors and warnings, and keep any unavoidable suppression narrow and documented.
-- Use MCP Java SDK 2.0.0 over production STDIO. Do not add Spring, Ktor, Kotlin, GraalVM native-image, preview JDK APIs, or another production transport.
+- Use the official MCP Java SDK 2.0.1-SNAPSHOT over production STDIO. Do not add Spring, Ktor, Kotlin, GraalVM native-image, preview JDK APIs, or another production transport.
 - Production remains STDIO-only because the frozen TypeScript server has no SSE or Streamable HTTP surface. Task 13's URL-based HTTP server is a test-only conformance harness over the same registry, not a second production transport.
 - Use `McpServer.async(...)`. Internal handlers return JDK `CompletionStage`, Reactor remains confined to `McpSdkAdapter`, DebugBridge calls stay nonblocking, and SQLite/filesystem handlers use a Java 25 virtual-thread executor with cancellation propagation.
 - Javac compiler/tree APIs are the sole production source parser. No regex parser, `java-parser`, TypeScript AST parser, parser fallback, parser importer, or skip mode may remain. User-requested regex matching in `mc_search` is search behavior, not source parsing, and remains compatible.
@@ -305,7 +305,7 @@ Expected: FAIL because the root wrapper/build and Java classes do not exist.
 
 ```toml
 [versions]
-mcp = "2.0.0"
+mcp = "2.0.1-SNAPSHOT"
 picocli = "4.7.7"
 sqlite = "3.53.2.0"
 vineflower = "1.11.2"
@@ -556,6 +556,18 @@ fixing diagnostics; do not reformat unrelated files.
 git add build.gradle.kts gradle/libs.versions.toml src/main/java/dev/mcdevmcp/mcp src/main/java/dev/mcdevmcp/app src/main/java/dev/mcdevmcp/support src/main/resources/guides src/test/java/dev/mcdevmcp/mcp src/test/java/dev/mcdevmcp/packaging
 git commit -m "feat: add Java MCP STDIO shell"
 ```
+
+## Task 3 Amendment: Adopt And Verify MCP SDK 2.0.1-SNAPSHOT
+
+Before storage work, adopt the official `io.modelcontextprotocol.sdk` 2.0.1-SNAPSHOT from only `https://central.sonatype.com/repository/maven-snapshots/`. Configure that repository in `settings.gradle.kts` with `snapshotsOnly()` and an `includeGroup("io.modelcontextprotocol.sdk")` content filter; do not add a project repository or expose other dependency groups to snapshots.
+
+The last reviewed upstream source is commit `fd004989b9484c9b81be6b03463396797b354804`, and the verified publication is `2.0.1-20260710.155611-10`. Its runtime graph resolves Jackson core and databind 3.1.4 and NetworkNT JSON Schema Validator 3.0.6, removing the actionable Jackson 3.0.3 security warning without direct Jackson, NetworkNT, Gson, alternate JSON-engine, or stable-constraint declarations.
+
+Because the upstream snapshot is mutable, retain `mcpSdkSnapshotCheck` in Gradle `check` and make full CI run it. The task resolves `runtimeClasspath` and rejects any drift from all three official SDK modules at 2.0.1-SNAPSHOT, Jackson core/databind 3.1.4, NetworkNT 3.0.6, or the appearance of any Gson module. Refresh dependencies and review a changed upstream graph before accepting it; the tripwire is not a substitute for full Java 25/26 CI and shaded-JAR verification.
+
+No new typed argument abstraction is justified: `McpSchema.CallToolRequest.arguments()` remains `Map<String,Object>`, and `McpJsonMapper` is API-identical to SDK 2.0.0. Keep production and tests behind `McpJsonMapper`, retain the existing whole-map typed `ArgumentDecoder`/tool-record boundary, and do not import Jackson implementation APIs, annotations, or `JsonNode`.
+
+The snapshot also carries useful future Streamable HTTP/stateless parity fixes: stateless initialized and roots notifications are handled without warning, unregistered stateless methods return JSON-RPC method-not-found responses, Streamable HTTP responses close after method-not-found, and completions with no handler return an empty result. These benefits do not add a production transport in this amendment.
 
 ## Task 4: Build Cross-Platform Paths And Atomic SQLite Storage
 

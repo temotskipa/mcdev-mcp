@@ -1,10 +1,55 @@
 import com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar
 import groovy.json.JsonSlurper
+import org.gradle.api.DefaultTask
 import org.gradle.api.file.DuplicatesStrategy
+import org.gradle.api.provider.MapProperty
+import org.gradle.api.tasks.Input
+import org.gradle.api.tasks.TaskAction
 import org.gradle.api.tasks.WriteProperties
 import org.gradle.api.tasks.compile.JavaCompile
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
+
+abstract class McpSdkSnapshotCheck : DefaultTask() {
+    @get:Input
+    abstract val resolvedModules: MapProperty<String, String>
+
+    @TaskAction
+    fun verifyRuntimeClasspath() {
+        val gsonModuleName = String(charArrayOf('g', 's', 'o', 'n'))
+        val expectedVersions = mapOf(
+            "io.modelcontextprotocol.sdk:mcp" to "2.0.1-SNAPSHOT",
+            "io.modelcontextprotocol.sdk:mcp-core" to "2.0.1-SNAPSHOT",
+            "io.modelcontextprotocol.sdk:mcp-json-jackson3" to "2.0.1-SNAPSHOT",
+            "tools.jackson.core:jackson-core" to "3.1.4",
+            "tools.jackson.core:jackson-databind" to "3.1.4",
+            "com.networknt:json-schema-validator" to "3.0.6"
+        )
+        val runtimeModules = resolvedModules.get()
+        val mismatches = expectedVersions.mapNotNull { (module, expectedVersion) ->
+            val actualVersion = runtimeModules[module]
+            if (actualVersion == expectedVersion) {
+                null
+            } else {
+                "$module resolved $actualVersion, expected $expectedVersion"
+            }
+        }
+        val gsonModules = runtimeModules.filter { (module, _) ->
+            module.substringBefore(':').equals("com.google.code.$gsonModuleName", ignoreCase = true) ||
+                module.substringAfter(':').equals(gsonModuleName, ignoreCase = true)
+        }
+
+        check(mismatches.isEmpty() && gsonModules.isEmpty()) {
+            buildString {
+                appendLine("MCP SDK snapshot dependency verification failed.")
+                mismatches.forEach(::appendLine)
+                gsonModules.forEach { (module, version) ->
+                    appendLine("Unexpected ${gsonModuleName.replaceFirstChar { it.uppercase() }} module: $module:$version")
+                }
+            }
+        }
+    }
+}
 
 plugins {
     application
@@ -102,6 +147,18 @@ tasks.named<ShadowJar>("shadowJar") {
 
 tasks.named("build") {
     dependsOn(tasks.named("shadowJar"))
+}
+
+val runtimeModuleVersions = configurations.named("runtimeClasspath").map { configuration ->
+    configuration.incoming.resolutionResult.allComponents
+        .mapNotNull { component -> component.moduleVersion }
+        .associate { module -> "${module.group}:${module.name}" to module.version }
+}
+
+val mcpSdkSnapshotCheck = tasks.register<McpSdkSnapshotCheck>("mcpSdkSnapshotCheck") {
+    group = "verification"
+    description = "Verifies the reviewed MCP SDK snapshot runtime dependencies."
+    resolvedModules.set(runtimeModuleVersions)
 }
 
 val cutoverCheck = tasks.register("cutoverCheck") {
@@ -643,4 +700,5 @@ val cutoverCheck = tasks.register("cutoverCheck") {
 
 tasks.named("check") {
     dependsOn(cutoverCheck)
+    dependsOn(mcpSdkSnapshotCheck)
 }
