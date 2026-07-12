@@ -277,7 +277,7 @@ val cutoverCheck = tasks.register("cutoverCheck") {
                             value.trim().replace('\\', '/').substringAfterLast('/')
                                 .let { it.equals("node", ignoreCase = true) || it.equals("node.exe", ignoreCase = true) }
 
-                        fun hasForbiddenNodeCommandArguments(root: Any): Boolean {
+                        fun hasForbiddenStructuredNodeInvocation(root: Any): Boolean {
                             val pendingCommands = ArrayDeque<Any>()
                             pendingCommands.add(root)
                             while (pendingCommands.isNotEmpty()) {
@@ -311,11 +311,12 @@ val cutoverCheck = tasks.register("cutoverCheck") {
                                             }
                                             else -> null to emptyList()
                                         }
-                                        if (executable != null &&
-                                            isNodeCommand(executable) &&
-                                            arguments.any(::hasForbiddenJavaScriptEntrypoint)
-                                        ) {
-                                            return true
+                                        if (executable != null && isNodeCommand(executable) && arguments.isNotEmpty()) {
+                                            if (normalizedEntrypoint(arguments.first()) !in allowedEntrypoints ||
+                                                arguments.drop(1).any(::hasForbiddenJavaScriptEntrypoint)
+                                            ) {
+                                                return true
+                                            }
                                         }
                                         value.values.filterNotNull().forEach(pendingCommands::add)
                                     }
@@ -380,7 +381,7 @@ val cutoverCheck = tasks.register("cutoverCheck") {
                         if (isPackagingMetadata) {
                             javascriptMetadata ||
                                 nestedJavaScriptMetadata.any { it } ||
-                                parsedJson != null && hasForbiddenNodeCommandArguments(parsedJson)
+                                parsedJson != null && hasForbiddenStructuredNodeInvocation(parsedJson)
                         } else {
                             nodeRuntime || javascriptMetadata || nestedJavaScriptMetadata.any { it }
                         }
