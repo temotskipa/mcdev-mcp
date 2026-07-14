@@ -105,6 +105,31 @@ class SourceIndexerIntegrationTest {
     }
 
     @Test
+    void modularClasspathReadabilityFailureIsIndependentOfThreadCount() throws Exception {
+        Path priorSources = Files.createDirectories(temporaryDirectory.resolve("modular-prior/prior"));
+        Files.writeString(priorSources.resolve("Prior.java"), "package prior; public class Prior {}", StandardCharsets.UTF_8);
+        Path modularSources = Files.createDirectories(temporaryDirectory.resolve("modular-sources"));
+        Files.writeString(modularSources.resolve("module-info.java"), "module modular.index {}", StandardCharsets.UTF_8);
+        Path modularPackage = Files.createDirectories(modularSources.resolve("modular"));
+        Files.writeString(modularPackage.resolve("UsesDependency.java"), "package modular; public class UsesDependency { dependency.External value; }", StandardCharsets.UTF_8);
+        Path jar = IndexerTestSupport.fixtureDependency(temporaryDirectory.resolve("modular-dependency.jar"));
+        Path oneDatabase = temporaryDirectory.resolve("modular-one.mv.db");
+        Path fourDatabase = temporaryDirectory.resolve("modular-four.mv.db");
+        new SourceIndexer().build(IndexerTestSupport.request(priorSources.getParent(), jar, oneDatabase, 1));
+        new SourceIndexer().build(IndexerTestSupport.request(priorSources.getParent(), jar, fourDatabase, 1));
+        byte[] oneOriginal = IndexerTestSupport.bytes(oneDatabase);
+        byte[] fourOriginal = IndexerTestSupport.bytes(fourDatabase);
+
+        IndexBuildException oneFailure = assertThrows(IndexBuildException.class, () -> new SourceIndexer().build(IndexerTestSupport.request(modularSources, jar, oneDatabase, 1)));
+        assertEquals("Unable to resolve stored semantic type: dependency.External", oneFailure.getMessage());
+        assertArrayEquals(oneOriginal, IndexerTestSupport.bytes(oneDatabase));
+        IndexBuildException fourFailure = assertThrows(IndexBuildException.class, () -> new SourceIndexer().build(IndexerTestSupport.request(modularSources, jar, fourDatabase, 4)));
+
+        assertEquals(oneFailure.getMessage(), fourFailure.getMessage());
+        assertArrayEquals(fourOriginal, IndexerTestSupport.bytes(fourDatabase));
+    }
+
+    @Test
     void emptySourceCorpusProducesEmptyIndexWithoutStartingWorkers() throws Exception {
         Path sources = Files.createDirectories(temporaryDirectory.resolve("empty-sources"));
         Path jar = IndexerTestSupport.createJar(temporaryDirectory.resolve("empty-corpus.jar"), Map.of());

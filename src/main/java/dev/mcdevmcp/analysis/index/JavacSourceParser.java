@@ -282,7 +282,8 @@ public final class JavacSourceParser {
         }
         SourceCorpus corpus = preflight(request, classpath, discovered);
         List<DecodedSource> sources = corpus.sources();
-        int workerCount = Math.min(sources.size(), Math.min(request.threads(), Runtime.getRuntime().availableProcessors()));
+        boolean hasModuleDescriptor = sources.stream().map(DecodedSource::relativePath).map(Path::getFileName).anyMatch(Path.of("module-info.java")::equals);
+        int workerCount = hasModuleDescriptor ? 1 : Math.min(sources.size(), Math.min(request.threads(), Runtime.getRuntime().availableProcessors()));
         int batchSize = (sources.size() + workerCount - 1) / workerCount;
         ExecutorService executor = Executors.newFixedThreadPool(workerCount);
         List<Future<ParsedBatch>> futures = new ArrayList<>();
