@@ -376,7 +376,8 @@ them. `status` reports a legacy-only index as `needs rebuild`.
 whose values are each validated once by a shared package-private portable
 filename-component validator before they reach `Path.resolve`. The rule rejects
 blank, dot, rooted or drive-relative, separator-containing, control-character,
-Windows-reserved character/device-name, and trailing-dot/space values regardless
+Windows-reserved character/device-name (including legacy and superscript aliases
+after Win32 basename trimming), and trailing-dot/space values regardless
 of the host filesystem, while accepting ordinary Unicode and established
 Minecraft/Fabric version forms. Record tests and `PlatformPaths` containment
 tests keep this model boundary as the primary path-safety control.
