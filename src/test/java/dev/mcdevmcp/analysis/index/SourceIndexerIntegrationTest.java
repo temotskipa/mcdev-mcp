@@ -1,0 +1,147 @@
+package dev.mcdevmcp.analysis.index;
+
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+
+import static org.junit.jupiter.api.Assertions.*;
+
+class SourceIndexerIntegrationTest {
+    @TempDir
+    Path temporaryDirectory;
+
+    @Test
+    void threadCountsOneAndFourProduceIdenticalOrderedTables() throws Exception {
+        Path sources = IndexerTestSupport.copyFixture("main", temporaryDirectory.resolve("sources"));
+        Path jar = IndexerTestSupport.fixtureCatalog(temporaryDirectory.resolve("remapped.jar"));
+        Path dependency = IndexerTestSupport.fixtureDependency(temporaryDirectory.resolve("dependency.jar"));
+        Path one = temporaryDirectory.resolve("one.mv.db");
+        Path four = temporaryDirectory.resolve("four.mv.db");
+
+        List<SourceRoot> roots = List.of(new SourceRoot(dev.mcdevmcp.storage.model.SourceNamespace.MINECRAFT, Optional.empty(), sources));
+        IndexSummary oneSummary = new SourceIndexer().build(IndexerTestSupport.request(roots, jar, List.of(dependency), one, 1));
+        IndexSummary fourSummary = new SourceIndexer().build(IndexerTestSupport.request(roots, jar, List.of(dependency), four, 4));
+
+        assertEquals(oneSummary.packages(), fourSummary.packages());
+        assertEquals(oneSummary.types(), fourSummary.types());
+        assertEquals(oneSummary.fields(), fourSummary.fields());
+        assertEquals(oneSummary.methods(), fourSummary.methods());
+        assertEquals(oneSummary.parameters(), fourSummary.parameters());
+        assertEquals(IndexerTestSupport.dump(one), IndexerTestSupport.dump(four));
+    }
+
+    @Test
+    void persistsTypedMinecraftAndFabricSourceIdentities() throws Exception {
+        Path minecraft = Files.createDirectories(temporaryDirectory.resolve("minecraft/shared"));
+        Files.writeString(minecraft.resolve("MinecraftType.java"), "package shared; public class MinecraftType {}", StandardCharsets.UTF_8);
+        Path fabric = Files.createDirectories(temporaryDirectory.resolve("fabric/shared"));
+        Files.writeString(fabric.resolve("FabricType.java"), "package shared; public class FabricType {}", StandardCharsets.UTF_8);
+        Path jar = IndexerTestSupport.createJar(temporaryDirectory.resolve("empty.jar"), Map.of());
+        Path database = temporaryDirectory.resolve("identities.mv.db");
+        List<SourceRoot> roots = List.of(new SourceRoot(dev.mcdevmcp.storage.model.SourceNamespace.MINECRAFT, Optional.empty(), minecraft.getParent()), new SourceRoot(dev.mcdevmcp.storage.model.SourceNamespace.FABRIC, Optional.of(new dev.mcdevmcp.storage.model.FabricApiVersion("0.120.0")), fabric.getParent()));
+
+        new SourceIndexer().build(IndexerTestSupport.request(roots, jar, List.of(), database, 2));
+        List<String> dump = IndexerTestSupport.dump(database);
+
+        assertTrue(dump.stream().anyMatch(row -> row.startsWith("metadata|true|1|1.21.5|")));
+        assertTrue(dump.stream().anyMatch(row -> row.startsWith("packages|") && row.contains("|minecraft|null|shared")));
+        assertTrue(dump.stream().anyMatch(row -> row.startsWith("packages|") && row.contains("|fabric|0.120.0|shared")));
+        assertTrue(dump.stream().anyMatch(row -> row.startsWith("types|") && row.contains("|minecraft|null|shared.MinecraftType|")));
+        assertTrue(dump.stream().anyMatch(row -> row.startsWith("types|") && row.contains("|fabric|0.120.0|shared.FabricType|")));
+    }
+
+    @Test
+    void doesNotFollowLinkedSourceDirectories() throws Exception {
+        Path root = Files.createDirectories(temporaryDirectory.resolve("root/real"));
+        Files.writeString(root.resolve("Real.java"), "package real; public class Real {}", StandardCharsets.UTF_8);
+        Path outside = Files.createDirectories(temporaryDirectory.resolve("outside/linked"));
+        Files.writeString(outside.resolve("Linked.java"), "package linked; public class Linked {}", StandardCharsets.UTF_8);
+        try {
+            Files.createSymbolicLink(root.getParent().resolve("linked"), outside.getParent());
+        } catch (UnsupportedOperationException | java.io.IOException | SecurityException exception) {
+            org.junit.jupiter.api.Assumptions.abort("Symbolic links unavailable: " + exception.getMessage());
+        }
+        Path jar = IndexerTestSupport.createJar(temporaryDirectory.resolve("empty.jar"), Map.of());
+        Path database = temporaryDirectory.resolve("nofollow.mv.db");
+
+        new SourceIndexer().build(IndexerTestSupport.request(root.getParent(), jar, database, 1));
+        List<String> dump = IndexerTestSupport.dump(database);
+
+        assertTrue(dump.stream().anyMatch(row -> row.contains("|real.Real|")));
+        assertFalse(dump.stream().anyMatch(row -> row.contains("|linked.Linked|")));
+        assertTrue(dump.stream().anyMatch(row -> row.contains("|real/Real.java|")));
+    }
+
+    @Test
+    void packageAndModuleUnitsProduceNoTypeRows() throws Exception {
+        Path sources = IndexerTestSupport.copyFixture("modules", temporaryDirectory.resolve("modules"));
+        Path jar = IndexerTestSupport.createJar(temporaryDirectory.resolve("empty.jar"), Map.of());
+        Path database = temporaryDirectory.resolve("modules.mv.db");
+
+        IndexSummary summary = new SourceIndexer().build(IndexerTestSupport.request(sources, jar, database, 1));
+
+        assertEquals(0, summary.types());
+        assertTrue(IndexerTestSupport.dump(database).stream().noneMatch(row -> row.startsWith("types|")));
+    }
+
+    @Test
+    void allowsOnlyAnUnrelatedMethodBodyAttributionError() throws Exception {
+        Path sources = Files.createDirectories(temporaryDirectory.resolve("body/body"));
+        Files.writeString(sources.resolve("Allowed.java"), "package body; public class Allowed { java.util.List<String> values; int value() { return missingBodyName; } }", StandardCharsets.UTF_8);
+        Path root = sources.getParent();
+        Path jar = IndexerTestSupport.createJar(temporaryDirectory.resolve("empty.jar"), Map.of());
+        Path database = temporaryDirectory.resolve("body.mv.db");
+        var progress = new java.util.ArrayList<String>();
+        IndexRequest base = IndexerTestSupport.request(root, jar, database, 1);
+        IndexRequest request = new IndexRequest(base.minecraftVersion(), base.sourceRoots(), base.remappedJar(), base.classpath(), base.outputDatabase(), base.threads(), (_, _, message) -> progress.add(message), base.cancellation());
+
+        IndexSummary summary = new SourceIndexer().build(request);
+
+        assertEquals(1, summary.types());
+        assertTrue(progress.stream().anyMatch(message -> message.contains("missingBodyName")));
+    }
+
+    @Test
+    void rejectsUnresolvedStoredTypesAndAmbiguousImports() throws Exception {
+        Path jar = IndexerTestSupport.createJar(temporaryDirectory.resolve("empty.jar"), Map.of());
+        for (var source : List.of("package bad; class Missing { UnknownType value; }", "package bad; import java.util.*; import java.sql.*; class Ambiguous { Date value; }")) {
+            Path root = Files.createDirectories(temporaryDirectory.resolve("bad-" + Integer.toUnsignedString(source.hashCode())));
+            Files.writeString(root.resolve("Bad.java"), source, StandardCharsets.UTF_8);
+            IndexBuildException failure = assertThrows(IndexBuildException.class, () -> new SourceIndexer().build(IndexerTestSupport.request(root, jar, root.resolve("symbols.mv.db"), 1)));
+            assertTrue(failure.getMessage().contains("diagnostic") || failure.getMessage().contains("resolve"), failure.getMessage());
+        }
+    }
+
+    @Test
+    void releasesCompilerArchivesAndDatabaseAfterSuccessAndFailure() throws Exception {
+        Path sources = IndexerTestSupport.copyFixture("main", temporaryDirectory.resolve("sources"));
+        Path jar = IndexerTestSupport.fixtureCatalog(temporaryDirectory.resolve("remapped.jar"));
+        Path dependency = IndexerTestSupport.fixtureDependency(temporaryDirectory.resolve("dependency.jar"));
+        Path database = temporaryDirectory.resolve("symbols.mv.db");
+        IndexRequest request = IndexerTestSupport.request(List.of(new SourceRoot(dev.mcdevmcp.storage.model.SourceNamespace.MINECRAFT, Optional.empty(), sources)), jar, List.of(dependency), database, 4);
+
+        new SourceIndexer().build(request);
+        assertMovable(jar);
+        assertMovable(dependency);
+        assertMovable(database);
+
+        Path broken = Files.createDirectories(temporaryDirectory.resolve("broken"));
+        Files.writeString(broken.resolve("Broken.java"), "class Broken { Missing stored; }", StandardCharsets.UTF_8);
+        assertThrows(IndexBuildException.class, () -> new SourceIndexer().build(IndexerTestSupport.request(List.of(new SourceRoot(dev.mcdevmcp.storage.model.SourceNamespace.MINECRAFT, Optional.empty(), broken)), jar, List.of(dependency), database, 4)));
+        assertMovable(jar);
+        assertMovable(dependency);
+        assertMovable(database);
+    }
+
+    private static void assertMovable(Path path) throws Exception {
+        Path moved = path.resolveSibling(path.getFileName() + ".moved");
+        Files.move(path, moved);
+        Files.move(moved, path);
+    }
+}

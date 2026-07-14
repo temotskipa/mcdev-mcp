@@ -770,7 +770,7 @@ git commit -m "refactor: use pure Java H2 storage"
 - Create: `src/test/resources/indexer/sources/**`
 
 **Interfaces:**
-- Consumes: `AtomicH2Database`, `SymbolSchema`, a source root, the matching remapped JAR, optional source-only classpath, `MCDEV_INDEX_THREADS`, `ProgressSink`, `Cancellation`.
+- Consumes: `AtomicH2Database`, `SymbolSchema`, typed Minecraft/Fabric source roots, the matching remapped JAR, optional classpath JARs, `MCDEV_INDEX_THREADS`, `ProgressSink`, `Cancellation`.
 - Produces: schema-v1 `symbols.mv.db`; deterministic `IndexSummary`; exact stored declaration identities/ranges; no parser fallback.
 
 - [ ] **Step 1: Write failing syntax, semantic identity, declaration, and atomicity tests**
@@ -779,8 +779,7 @@ Define the public request/result API:
 
 ```java
 public record IndexRequest(
-        String minecraftVersion,
-        String fabricApiVersion,
+        MinecraftVersion minecraftVersion,
         List<SourceRoot> sourceRoots,
         Path remappedJar,
         List<Path> classpath,
@@ -789,10 +788,16 @@ public record IndexRequest(
         ProgressSink progress,
         Cancellation cancellation) {}
 
-public record SourceRoot(String namespace, Path path) {
+public record SourceRoot(
+        SourceNamespace namespace,
+        Optional<FabricApiVersion> fabricApiVersion,
+        Path path) {
     public SourceRoot {
-        if (!namespace.equals("minecraft") && !namespace.equals("fabric")) {
-            throw new IllegalArgumentException("Unsupported source namespace: " + namespace);
+        if (namespace == SourceNamespace.MINECRAFT && fabricApiVersion.isPresent()) {
+            throw new IllegalArgumentException("Minecraft source roots must not have a Fabric API version");
+        }
+        if (namespace == SourceNamespace.FABRIC && fabricApiVersion.isEmpty()) {
+            throw new IllegalArgumentException("Fabric source roots must have a Fabric API version");
         }
     }
 }
@@ -826,11 +831,11 @@ Expected: FAIL at compilation.
 
 - [ ] **Step 3: Build the authoritative class-file type catalog**
 
-Use `ZipFile` plus `ClassFile.of().parse(...)` over sorted `.class` entries. Store canonical dot-form binary names, superclass, direct interfaces, access flags, nesting metadata, and descriptors. Ignore `module-info.class`; retain nested names for resolver use. Reject duplicate binary entries. The remapped JAR catalog is authoritative for hierarchy identity whenever a source type has the same binary name.
+Use `ZipFile` plus Java 25's finalized `ClassFile.of().parse(...)` over sorted `.class` entries. Store canonical dot-form binary names, superclass, direct interfaces, access flags, nesting metadata, and JDK descriptor values where faithful. Ignore `module-info.class`; retain nested names for resolver use. Reject duplicate binary entries. The remapped JAR catalog is authoritative for hierarchy identity whenever a source type has the same binary name. Do not use ASM.
 
 - [ ] **Step 4: Parse strict UTF-8 with isolated Javac tasks**
 
-Decode each source with a `CharsetDecoder` configured with `CodingErrorAction.REPORT`. Sort by namespace and normalized relative path. Partition into bounded batches; each CPU-bound worker owns its `StandardJavaFileManager` and `JavacTask` and closes both. Use `-proc:none`, `-encoding UTF-8`, and the request classpath. Never share compiler state between threads. Persist each row's `minecraft` or `fabric` namespace and nullable Fabric API version so package/list behavior remains compatible when an optional Fabric source root is supplied.
+Discover without following links and strictly decode every source with a `CharsetDecoder` configured with `CodingErrorAction.REPORT` before any compiler task. Sort by complete typed source identity and normalized relative path. Supply explicit and on-demand sources only from that validated in-memory corpus. Partition into bounded batches; each CPU-bound worker owns and closes its `StandardJavaFileManager` and `JavacTask`, and no `Tree`, `Element`, or `TypeMirror` escapes. Configure every typed root as `SOURCE_PATH`; configure `CLASS_PATH` from the exact remapped JAR followed by the copied request classpath. Use `-proc:none`, `-implicit:none`, and `-encoding UTF-8`, with class output confined to memory. Persist each row's typed source namespace and nullable Fabric API version.
 
 `JavacSourceParser` visits only direct members of each top-level type, records `SourcePositions` start/end UTF-16 character offsets and line-map values, and emits one `ParsedType` per top-level declaration. Source reads decode the complete file and slice the Java `String`; they never treat Javac offsets as UTF-8 byte offsets. Nested types never become direct members of their owner. Package/module units emit no type row.
 
@@ -840,7 +845,7 @@ For catalog-backed types, join by fully qualified binary name and take superclas
 
 - [ ] **Step 6: Merge deterministically and write atomically**
 
-Merge worker results in normalized source-path order, then declaration offset. Check duplicate binary names before opening the output writer. `SymbolIndexWriter` inserts explicit JDBC batches in one transaction, creates secondary indexes afterward, validates counts and foreign keys, and delegates promotion to `AtomicH2Database`. Parse/attribution/cancellation failures leave the prior DB byte-for-byte unchanged.
+Merge worker results by typed source identity, normalized source path, and declaration offset. Check duplicate binary names before opening the output writer. `SymbolIndexWriter` inserts explicit deterministic JDBC batches in one transaction, creates secondary indexes afterward, and composes `SymbolSchema.validate` with exact count and identity checks through `AtomicH2Database`. Parse/attribution/cancellation failures leave the prior DB byte-for-byte unchanged.
 
 Parse `MCDEV_INDEX_THREADS` as a positive integer clamped to `1..availableProcessors`; invalid values fail with the variable name and supplied value. Default to available processors.
 
@@ -1083,17 +1088,17 @@ The pipeline contract is:
 
 ```java
 public final class AnalysisPipeline {
-    public PreparedSources prepareSources(String version, ProgressSink progress,
+    public PreparedSources prepareSources(MinecraftVersion version, ProgressSink progress,
                                           Cancellation cancellation);
-    public IndexSummary rebuildIndex(String version, ProgressSink progress,
+    public IndexSummary rebuildIndex(MinecraftVersion version, ProgressSink progress,
                                      Cancellation cancellation);
-    public CallgraphSummary rebuildCallgraph(String version, ProgressSink progress,
+    public CallgraphSummary rebuildCallgraph(MinecraftVersion version, ProgressSink progress,
                                              Cancellation cancellation);
 }
 
 public record PreparedSources(
-        String minecraftVersion, String fabricApiVersion,
-        List<SourceRoot> sourceRoots, Path obfuscatedJar,
+        MinecraftVersion minecraftVersion, List<SourceRoot> sourceRoots,
+        Path obfuscatedJar,
         Path unobfuscatedJar, Path remappedJar) {}
 ```
 

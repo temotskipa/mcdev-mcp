@@ -267,15 +267,25 @@ The production indexer uses only supported JDK APIs:
 - `com.sun.source.util.JavacTask`
 - `com.sun.source.util.SourcePositions`
 - `com.sun.source.tree.*`
+- Java 25's finalized `java.lang.classfile` API for the remapped-JAR catalog
 
 `ToolProvider.getSystemJavaCompiler()` must be present. A JRE-only environment
 or Java below 25 fails before downloads or index mutation begin.
 
-The indexer parses sorted source paths in bounded batches. Each parser task
-owns its compiler and file manager; compiler objects are never shared across
-threads. CPU concurrency is bounded by available processors and a documented
-configuration override. Results are merged in source-path order so repeated
-builds are deterministic.
+The request carries a typed `MinecraftVersion` and immutable typed
+`SourceRoot` values. Each root owns its `SourceNamespace`, optional typed
+`FabricApiVersion`, and normalized `Path`; the request has no raw Fabric
+version field. The indexer discovers sources without following links and
+strictly decodes the complete corpus before compiler or database work.
+
+The indexer parses sorted source paths in bounded batches. Explicit sources
+and every on-demand `SOURCE_PATH` dependency are in-memory overlays from the
+strictly decoded corpus; Javac never rereads source text from disk. The exact
+remapped JAR followed by the typed request classpath forms `CLASS_PATH`. Each
+parser task owns and closes its compiler and file manager; compiler objects
+never escape or cross threads. CPU concurrency is bounded by available
+processors and `MCDEV_INDEX_THREADS`. Results are merged by typed source
+identity, portable relative path, and declaration offset.
 
 Before parsing sources, the Class-File API builds a type catalog from the same
 remapped JAR. For every class present in that JAR, the catalog is authoritative
@@ -311,6 +321,8 @@ syntax errors, and stored-identity resolution failures fail the index build.
 Generated relative paths and row ordering are deterministic on Windows, Linux,
 and macOS. The old regex backend is not available as a flag, fallback,
 importer, or recovery path. There is no skip mode in the initial Java server.
+All validation happens before H2 opens; the atomic writer composes schema,
+exact row-count, and identity validation before promotion.
 
 ## Symbol Storage
 
