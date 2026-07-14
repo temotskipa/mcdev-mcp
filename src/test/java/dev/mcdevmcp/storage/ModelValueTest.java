@@ -31,7 +31,17 @@ class ModelValueTest {
         assertEquals(List.of("java.io.Closeable"), symbol.interfaceBinaryNames());
         assertThrows(UnsupportedOperationException.class, () -> symbol.interfaceBinaryNames().add("x"));
         assertThrows(IllegalArgumentException.class, () -> new ClassSymbol(2L, SourceNamespace.MINECRAFT, Optional.of(new FabricApiVersion("0.120.0")), "net.minecraft.Test", "net.minecraft", "Test", ElementKind.CLASS, Optional.empty(), List.of(), Path.of("Test.java"), 0, 1, 1, 1));
+        assertThrows(IllegalArgumentException.class, () -> new ClassSymbol(3L, SourceNamespace.FABRIC, Optional.empty(), "net.fabricmc.Missing", "net.fabricmc", "Missing", ElementKind.CLASS, Optional.empty(), List.of(), Path.of("Missing.java"), 0, 1, 1, 1));
         assertEquals(Set.of(Modifier.PUBLIC), Set.copyOf(Set.of(Modifier.PUBLIC)));
+    }
+
+    @Test
+    void fabricApiVersionsAreSafeSingleFilesystemComponents() {
+        assertEquals("0.120.0", new FabricApiVersion("0.120.0").value());
+        assertThrows(IllegalArgumentException.class, () -> new FabricApiVersion("."));
+        assertThrows(IllegalArgumentException.class, () -> new FabricApiVersion(".."));
+        assertThrows(IllegalArgumentException.class, () -> new FabricApiVersion("0.120.0/escape"));
+        assertThrows(IllegalArgumentException.class, () -> new FabricApiVersion("C:\\escape"));
     }
     
     @Test

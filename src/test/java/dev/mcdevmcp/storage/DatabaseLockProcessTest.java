@@ -13,6 +13,7 @@ import java.sql.DriverManager;
 import java.time.Duration;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -116,6 +117,44 @@ class DatabaseLockProcessTest {
             }
         } finally {
             stop(process);
+        }
+    }
+
+    @Test
+    void writerUsesOneDeadlineAcrossLocalAndOperatingSystemContention() throws Exception {
+        Path database = temporaryDirectory.resolve("symbols.mv.db");
+        Process externalReader = process("hold-read", database);
+        var localReaderAcquired = new CountDownLatch(1);
+        var releaseLocalReader = new CountDownLatch(1);
+        var writerStarted = new CountDownLatch(1);
+        try (var output = new BufferedReader(new InputStreamReader(externalReader.getInputStream(), StandardCharsets.UTF_8));
+             var executor = Executors.newVirtualThreadPerTaskExecutor();
+             ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor()) {
+            assertEquals("locked", output.readLine());
+            var localReader = executor.submit(() -> holdRead(database, localReaderAcquired, releaseLocalReader));
+            assertTrue(localReaderAcquired.await(2, TimeUnit.SECONDS));
+            long startedAt = System.nanoTime();
+            var writer = executor.submit(() -> {
+                writerStarted.countDown();
+                return assertThrows(java.io.IOException.class, () -> {
+                    try (var unexpected = DatabaseLock.write(database, Duration.ofMillis(300))) {
+                        assertTrue(unexpected.isHeld());
+                        throw new AssertionError("writer acquired while external reader held the operating-system lock");
+                    }
+                });
+            });
+            assertTrue(writerStarted.await(2, TimeUnit.SECONDS));
+            scheduler.schedule(releaseLocalReader::countDown, 180, TimeUnit.MILLISECONDS);
+
+            java.io.IOException timeout = writer.get(2, TimeUnit.SECONDS);
+            long elapsedMillis = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startedAt);
+            assertTrue(timeout.getMessage().contains("after 300 milliseconds"));
+            assertTrue(elapsedMillis < 430, "separate local and OS budgets took " + elapsedMillis + " milliseconds");
+            localReader.get(2, TimeUnit.SECONDS);
+        } finally {
+            releaseLocalReader.countDown();
+            externalReader.getOutputStream().close();
+            stop(externalReader);
         }
     }
     

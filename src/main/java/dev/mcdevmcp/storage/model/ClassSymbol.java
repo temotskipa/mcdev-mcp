@@ -13,6 +13,9 @@ public record ClassSymbol(long id, SourceNamespace namespace, Optional<FabricApi
         if (namespace == SourceNamespace.MINECRAFT && fabricApiVersion.isPresent()) {
             throw new IllegalArgumentException("Minecraft symbols must not have a Fabric API version");
         }
+        if (namespace == SourceNamespace.FABRIC && fabricApiVersion.isEmpty()) {
+            throw new IllegalArgumentException("Fabric symbols must have a Fabric API version");
+        }
         Objects.requireNonNull(binaryName, "binaryName");
         Objects.requireNonNull(packageName, "packageName");
         Objects.requireNonNull(simpleName, "simpleName");

@@ -50,8 +50,9 @@ public final class DatabaseLock implements AutoCloseable {
         Files.createDirectories(lockPath.getParent());
         DatabaseLockState state = LOCKS.computeIfAbsent(lockPath, ignored -> new DatabaseLockState());
         Lock localLock = shared ? state.lock.readLock() : state.lock.writeLock();
+        long deadline = deadlineAfter(timeout);
         try {
-            if (!localLock.tryLock(timeout.toNanos(), TimeUnit.NANOSECONDS)) {
+            if (!localLock.tryLock(remainingNanos(deadline), TimeUnit.NANOSECONDS)) {
                 throw timeoutFailure(shared, timeout);
             }
         } catch (InterruptedException exception) {
@@ -60,12 +61,15 @@ public final class DatabaseLock implements AutoCloseable {
         }
         try {
             if (shared) {
-                acquireSharedLock(state, lockPath, timeout);
+                acquireSharedLock(state, lockPath, deadline, timeout);
                 return new DatabaseLock(localLock, state, true, null, null);
+            }
+            if (remainingNanos(deadline) <= 0) {
+                throw timeoutFailure(false, timeout);
             }
             FileChannel channel = FileChannel.open(lockPath, StandardOpenOption.CREATE, StandardOpenOption.READ, StandardOpenOption.WRITE);
             try {
-                FileLock fileLock = acquireFileLock(channel, false, timeout);
+                FileLock fileLock = acquireFileLock(channel, false, deadline, timeout);
                 return new DatabaseLock(localLock, state, false, channel, fileLock);
             } catch (IOException | RuntimeException exception) {
                 try {
@@ -81,14 +85,22 @@ public final class DatabaseLock implements AutoCloseable {
         }
     }
     
-    private static void acquireSharedLock(DatabaseLockState state, Path lockPath, Duration timeout) throws IOException {
-        synchronized (state.sharedGuard) {
+    private static void acquireSharedLock(DatabaseLockState state, Path lockPath, long deadline, Duration timeout) throws IOException {
+        try {
+            if (!state.sharedGuard.tryLock(remainingNanos(deadline), TimeUnit.NANOSECONDS)) {
+                throw timeoutFailure(true, timeout);
+            }
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            throw new IOException("Interrupted while acquiring shared database lock", exception);
+        }
+        try {
             if (state.sharedReferences++ > 0) {
                 return;
             }
             try {
                 state.sharedChannel = FileChannel.open(lockPath, StandardOpenOption.CREATE, StandardOpenOption.READ, StandardOpenOption.WRITE);
-                state.sharedFileLock = acquireFileLock(state.sharedChannel, true, timeout);
+                state.sharedFileLock = acquireFileLock(state.sharedChannel, true, deadline, timeout);
             } catch (IOException | RuntimeException exception) {
                 state.sharedReferences = 0;
                 if (state.sharedChannel != null) {
@@ -101,11 +113,12 @@ public final class DatabaseLock implements AutoCloseable {
                 state.sharedChannel = null;
                 throw exception;
             }
+        } finally {
+            state.sharedGuard.unlock();
         }
     }
     
-    private static FileLock acquireFileLock(FileChannel channel, boolean shared, Duration timeout) throws IOException {
-        long deadline = System.nanoTime() + timeout.toNanos();
+    private static FileLock acquireFileLock(FileChannel channel, boolean shared, long deadline, Duration timeout) throws IOException {
         while (true) {
             try {
                 FileLock lock = channel.tryLock(0, Long.MAX_VALUE, shared);
@@ -115,16 +128,27 @@ public final class DatabaseLock implements AutoCloseable {
             } catch (OverlappingFileLockException ignored) {
                 // A competing process may release its lock before this timeout expires.
             }
-            if (System.nanoTime() >= deadline) {
+            long remaining = remainingNanos(deadline);
+            if (remaining <= 0) {
                 throw timeoutFailure(shared, timeout);
             }
             try {
-                Thread.sleep(RETRY_DELAY);
+                TimeUnit.NANOSECONDS.sleep(Math.min(RETRY_DELAY.toNanos(), remaining));
             } catch (InterruptedException exception) {
                 Thread.currentThread().interrupt();
                 throw new IOException("Interrupted while acquiring " + mode(shared) + " database lock", exception);
             }
         }
+    }
+
+    private static long deadlineAfter(Duration timeout) {
+        long timeoutNanos = timeout.toNanos();
+        long now = System.nanoTime();
+        return timeoutNanos > Long.MAX_VALUE - now ? Long.MAX_VALUE : now + timeoutNanos;
+    }
+
+    private static long remainingNanos(long deadline) {
+        return Math.max(0, deadline - System.nanoTime());
     }
     
     private static IOException timeoutFailure(boolean shared, Duration timeout) {
@@ -144,8 +168,11 @@ public final class DatabaseLock implements AutoCloseable {
     }
     
     public boolean isHeld() {
-        synchronized (state.sharedGuard) {
+        state.sharedGuard.lock();
+        try {
             return shared ? state.sharedFileLock != null && state.sharedFileLock.isValid() : fileLock.isValid();
+        } finally {
+            state.sharedGuard.unlock();
         }
     }
     
@@ -157,8 +184,21 @@ public final class DatabaseLock implements AutoCloseable {
                 releaseSharedLock();
             }
             else {
-                fileLock.release();
-                channel.close();
+                try {
+                    fileLock.release();
+                } catch (IOException exception) {
+                    failure = exception;
+                }
+                try {
+                    channel.close();
+                } catch (IOException exception) {
+                    if (failure == null) {
+                        failure = exception;
+                    }
+                    else {
+                        failure.addSuppressed(exception);
+                    }
+                }
             }
         } catch (IOException exception) {
             failure = exception;
@@ -171,7 +211,8 @@ public final class DatabaseLock implements AutoCloseable {
     }
     
     private void releaseSharedLock() throws IOException {
-        synchronized (state.sharedGuard) {
+        state.sharedGuard.lock();
+        try {
             if (--state.sharedReferences != 0) {
                 return;
             }
@@ -197,6 +238,8 @@ public final class DatabaseLock implements AutoCloseable {
             if (failure != null) {
                 throw failure;
             }
+        } finally {
+            state.sharedGuard.unlock();
         }
     }
 }

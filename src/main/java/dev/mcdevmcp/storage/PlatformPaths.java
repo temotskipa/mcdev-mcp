@@ -1,5 +1,6 @@
 package dev.mcdevmcp.storage;
 
+import dev.mcdevmcp.storage.model.FabricApiVersion;
 import dev.mcdevmcp.storage.model.MinecraftVersion;
 
 import java.nio.file.Path;
@@ -46,7 +47,7 @@ public record PlatformPaths(Path cacheRoot) {
         return versionCache(version).resolve("callgraph").resolve("client-remapped.jar");
     }
     
-    public Path fabricSourceRoot(MinecraftVersion version) {
+    public Path fabricSourceRoot(FabricApiVersion version) {
         return cacheRoot.resolve("cache").resolve("fabric-api-" + version.value());
     }
     

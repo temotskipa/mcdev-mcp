@@ -331,7 +331,9 @@ constraint names/columns/check clauses, foreign-key rules, secondary indexes,
 metadata, and explicit orphan queries through H2 `INFORMATION_SCHEMA`. Source
 text stays in the existing decompiled source tree and is read on demand.
 
-Each database has a sibling application lock file. Queries take a shared lock,
+Each database has a sibling application lock file. A configured lock timeout is
+one monotonic deadline across local fair-lock acquisition, shared-state
+coordination, OS-lock retries, and retry sleeps. Queries take a shared lock,
 open one short-lived H2 connection with `ACCESS_MODE_DATA=r` and
 `IFEXISTS=TRUE`, close it promptly, then release the lock so Windows retains no
 long-lived database handle. Writers wait up to 30 seconds for exclusive mode.
@@ -345,14 +347,20 @@ commits, runs `CHECKPOINT SYNC`, closes H2, and forces the closed `.mv.db` with
 `.lock.db`, `.trace.db`, `.trace.db.old`, and numbered `<base>.<n>.temp.db`
 companions before promotion.
 
-Promotion first uses `ATOMIC_MOVE` with `REPLACE_EXISTING`; no fallible work
+`AtomicH2Database` is schema-neutral: callers supply the complete
+`DatabaseValidator`; symbol builds explicitly compose `SymbolSchema.validate`,
+while callgraph builds supply their own validator. Promotion first uses
+`ATOMIC_MOVE` with `REPLACE_EXISTING`; no fallible work
 runs after a successful atomic replacement. If atomic replacement is
 unsupported, the fallback moves the current target to `symbols.mv.db.bak`,
 moves the completed temporary file into place, reopens and validates the new
-target, then deletes the backup. Rollback is stage-aware: failure moving the
-old target preserves it, while only an actually promoted invalid target is
-deleted before restoring a backup. Original failures are preserved and
-restoration failures are suppressed. Startup restores `symbols.mv.db.bak` only
+target, then deletes the backup. Rollback inspects the actual target, backup,
+and temporary paths after every failed fallback move. It preserves an old
+target whenever recoverable; when restoration cannot be established, it keeps
+the uncertain target and backup with an actionable error. Original failures
+remain primary and rollback or cleanup failures are suppressed. Temporary
+cleanup never deletes a `.lock.db` companion, because it may belong to an
+active H2 user. Startup restores `symbols.mv.db.bak` only
 when the target is absent; when both exist it deletes the stale backup only if
 the target validates, otherwise it preserves both with an actionable error.
 
@@ -361,7 +369,10 @@ package JSON indexes are detected but not imported because they may contain
 regex-derived inaccuracies. A successful rebuild leaves those legacy files
 untouched to avoid deleting user-modified cache data; the Java server ignores
 them. `status` reports a legacy-only index as `needs rebuild`, and
-`clean --index` removes both the H2 index and legacy package JSON indexes.
+`clean --index` takes the same exclusive application lock as rebuilds, refuses
+an H2 `.lock.db` companion, removes the H2 index and legacy package JSON
+indexes, and retains the application lock pathname so it is never unlinked
+while exclusion is active.
 If cached sources exist, the diagnostic instructs the user to run `rebuild`;
 no source redownload is required.
 
