@@ -119,7 +119,7 @@ public final class JavacSourceParser {
         }
         return new ParsedMethod(ordinal, name, resolver.methodDescriptor(executableType), returnType, element.getModifiers(), constructor, parameters, declaredRange(tree, declaredRanges));
     }
-
+    
     private static List<VariableTree> recordComponents(CompilationUnitTree unit, TypeElement element, List<? extends Tree> declaredMembers, Map<Tree, SourceRange> declaredRanges, Trees trees, TypeResolver resolver) throws IndexBuildException {
         List<VariableTree> result = new ArrayList<>();
         for (RecordComponentElement component : element.getRecordComponents()) {
@@ -139,7 +139,7 @@ public final class JavacSourceParser {
         }
         return List.copyOf(result);
     }
-
+    
     private static boolean matchesRecordComponents(List<? extends VariableElement> parameters, List<VariableTree> components, CompilationUnitTree unit, Trees trees, TypeResolver resolver) throws IndexBuildException {
         if (parameters.size() != components.size()) {
             return false;
@@ -180,7 +180,7 @@ public final class JavacSourceParser {
         }
         ranges.put(tree, new SourceRange((int) start, (int) end, (int) startLine, (int) endLine));
     }
-
+    
     private static List<IndexDiagnostic> classifyDiagnostics(List<Diagnostic<? extends JavaFileObject>> diagnostics, SourceCorpus corpus, Map<URI, List<OffsetRange>> executableBodies, Set<URI> ownedSources) throws IndexBuildException {
         List<IndexDiagnostic> retained = new ArrayList<>();
         List<IndexDiagnostic> fatal = new ArrayList<>();
@@ -231,20 +231,6 @@ public final class JavacSourceParser {
             failure.addSuppressed(cleanupFailure);
         }
     }
-
-    private void observeParsedUnits(JavacTask task, Map<URI, CompilationUnitTree> parsedUnits) {
-        task.addTaskListener(new TaskListener() {
-            @Override
-            public void finished(TaskEvent event) {
-                if (event.getKind() == TaskEvent.Kind.PARSE && event.getCompilationUnit() != null) {
-                    parsedUnits.putIfAbsent(event.getCompilationUnit().getSourceFile().toUri(), event.getCompilationUnit());
-                    if (compilerStartedNotified.compareAndSet(false, true)) {
-                        compilerStarted.run();
-                    }
-                }
-            }
-        });
-    }
     
     private static IndexDiagnostic diagnostic(Diagnostic<? extends JavaFileObject> diagnostic, SourceCorpus corpus) {
         Optional<DecodedSource> source = diagnostic.getSource() == null ? Optional.empty() : Optional.of(corpus.require(diagnostic.getSource().toUri()));
@@ -259,7 +245,7 @@ public final class JavacSourceParser {
         }
         return List.copyOf(result);
     }
-
+    
     private static JavaFileManager compilerFileManager(MemorySourceFileManager manager) {
         return new ForwardingJavaFileManager<>(manager) {
             @Override
@@ -274,6 +260,20 @@ public final class JavacSourceParser {
     
     private static void finish(JavacTask task) throws IOException {
         stream(task.generate());
+    }
+    
+    private void observeParsedUnits(JavacTask task, Map<URI, CompilationUnitTree> parsedUnits) {
+        task.addTaskListener(new TaskListener() {
+            @Override
+            public void finished(TaskEvent event) {
+                if (event.getKind() == TaskEvent.Kind.PARSE && event.getCompilationUnit() != null) {
+                    parsedUnits.putIfAbsent(event.getCompilationUnit().getSourceFile().toUri(), event.getCompilationUnit());
+                    if (compilerStartedNotified.compareAndSet(false, true)) {
+                        compilerStarted.run();
+                    }
+                }
+            }
+        });
     }
     
     ParsedIndex parse(IndexRequest request, ClassFileTypeCatalog catalog, CompilerClasspath classpath, SourceCorpus discovered) throws IndexBuildException, InterruptedException {

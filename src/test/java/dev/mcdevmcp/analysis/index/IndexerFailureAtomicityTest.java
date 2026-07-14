@@ -80,7 +80,7 @@ class IndexerFailureAtomicityTest {
         assertInstanceOf(InterruptedException.class, cancellation.getCause());
         assertFalse(Thread.currentThread().isInterrupted());
     }
-
+    
     @Test
     void unresolvedPackageAnnotationPreservesPriorDatabase() throws Exception {
         Path jar = IndexerTestSupport.createJar(temporaryDirectory.resolve("package-error-empty.jar"), java.util.Map.of());
@@ -91,12 +91,12 @@ class IndexerFailureAtomicityTest {
         byte[] original = IndexerTestSupport.bytes(database);
         Path broken = Files.createDirectories(temporaryDirectory.resolve("package-error-broken/broken"));
         Files.writeString(broken.resolve("package-info.java"), "@MissingAnnotation package broken;", StandardCharsets.UTF_8);
-
+        
         IndexBuildException failure = assertPreserved(original, database, IndexerTestSupport.request(broken.getParent(), jar, database, 1));
-
+        
         assertTrue(failure.getMessage().contains("diagnostic"), failure + ", cause=" + failure.getCause());
     }
-
+    
     @Test
     void unresolvedRequiredModulePreservesPriorDatabase() throws Exception {
         Path jar = IndexerTestSupport.createJar(temporaryDirectory.resolve("module-error-empty.jar"), java.util.Map.of());
@@ -107,12 +107,12 @@ class IndexerFailureAtomicityTest {
         byte[] original = IndexerTestSupport.bytes(database);
         Path broken = Files.createDirectories(temporaryDirectory.resolve("module-error-broken"));
         Files.writeString(broken.resolve("module-info.java"), "module broken.module { requires missing.required.module; }", StandardCharsets.UTF_8);
-
+        
         IndexBuildException failure = assertPreserved(original, database, IndexerTestSupport.request(broken, jar, database, 1));
-
+        
         assertTrue(failure.getMessage().contains("diagnostic"), failure + ", cause=" + failure.getCause());
     }
-
+    
     @Test
     void cancellationAfterCompilerWorkStartsTerminatesPromptlyAndPreservesPriorDatabase() throws Exception {
         Path jar = IndexerTestSupport.createJar(temporaryDirectory.resolve("compiler-cancel-empty.jar"), java.util.Map.of());

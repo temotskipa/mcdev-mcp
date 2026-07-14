@@ -27,7 +27,7 @@ class TypeResolutionTest {
     private static void assertHierarchy(List<String> dump, String type, String superclass) {
         assertTrue(dump.stream().anyMatch(row -> row.startsWith("types|") && row.contains("|" + type + "|") && row.contains("|" + superclass + "|")), dump.toString());
     }
-
+    
     private static void assertInterface(List<String> dump, String type, String interfaceName) {
         String typeRow = dump.stream().filter(row -> row.startsWith("types|") && row.contains("|" + type + "|")).findFirst().orElseThrow();
         String typeId = typeRow.split("\\|", -1)[1];

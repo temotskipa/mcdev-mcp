@@ -196,7 +196,7 @@ public final class AtomicH2Database {
     public <T> T rebuild(Path target, Duration lockTimeout, DatabaseBuilder<T> builder, DatabaseValidator validator) throws IOException, SQLException {
         return rebuild(target, lockTimeout, builder, validator, validator);
     }
-
+    
     public <T> T rebuild(Path target, Duration lockTimeout, DatabaseBuilder<T> builder, DatabaseValidator existingTargetValidator, DatabaseValidator candidateValidator) throws IOException, SQLException {
         Objects.requireNonNull(target, "target");
         Objects.requireNonNull(lockTimeout, "lockTimeout");

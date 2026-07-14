@@ -1,7 +1,7 @@
 package dev.mcdevmcp.analysis.index;
 
-import javax.lang.model.element.TypeElement;
 import javax.lang.model.element.Modifier;
+import javax.lang.model.element.TypeElement;
 import javax.lang.model.type.*;
 import javax.lang.model.util.Elements;
 import javax.lang.model.util.Types;

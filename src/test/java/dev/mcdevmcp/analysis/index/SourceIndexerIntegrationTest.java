@@ -103,7 +103,7 @@ class SourceIndexerIntegrationTest {
         assertEquals(IndexerTestSupport.dump(oneDatabase), IndexerTestSupport.dump(fourDatabase));
         assertTrue(IndexerTestSupport.dump(oneDatabase).stream().noneMatch(row -> row.startsWith("types|")));
     }
-
+    
     @Test
     void modularClasspathReadabilityFailureIsIndependentOfThreadCount() throws Exception {
         Path priorSources = Files.createDirectories(temporaryDirectory.resolve("modular-prior/prior"));
@@ -119,24 +119,24 @@ class SourceIndexerIntegrationTest {
         new SourceIndexer().build(IndexerTestSupport.request(priorSources.getParent(), jar, fourDatabase, 1));
         byte[] oneOriginal = IndexerTestSupport.bytes(oneDatabase);
         byte[] fourOriginal = IndexerTestSupport.bytes(fourDatabase);
-
+        
         IndexBuildException oneFailure = assertThrows(IndexBuildException.class, () -> new SourceIndexer().build(IndexerTestSupport.request(modularSources, jar, oneDatabase, 1)));
         assertEquals("Unable to resolve stored semantic type: dependency.External", oneFailure.getMessage());
         assertArrayEquals(oneOriginal, IndexerTestSupport.bytes(oneDatabase));
         IndexBuildException fourFailure = assertThrows(IndexBuildException.class, () -> new SourceIndexer().build(IndexerTestSupport.request(modularSources, jar, fourDatabase, 4)));
-
+        
         assertEquals(oneFailure.getMessage(), fourFailure.getMessage());
         assertArrayEquals(fourOriginal, IndexerTestSupport.bytes(fourDatabase));
     }
-
+    
     @Test
     void emptySourceCorpusProducesEmptyIndexWithoutStartingWorkers() throws Exception {
         Path sources = Files.createDirectories(temporaryDirectory.resolve("empty-sources"));
         Path jar = IndexerTestSupport.createJar(temporaryDirectory.resolve("empty-corpus.jar"), Map.of());
         Path database = temporaryDirectory.resolve("empty-corpus.mv.db");
-
+        
         IndexSummary summary = new SourceIndexer().build(IndexerTestSupport.request(sources, jar, database, 4));
-
+        
         assertEquals(0, summary.packages());
         assertEquals(0, summary.types());
         assertTrue(IndexerTestSupport.dump(database).stream().noneMatch(row -> row.startsWith("types|")));

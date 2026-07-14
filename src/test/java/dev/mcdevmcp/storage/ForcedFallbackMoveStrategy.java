@@ -9,9 +9,11 @@ final class ForcedFallbackMoveStrategy implements DatabaseFileOperations {
     private final DeleteFailure deleteFailure;
     private final Path companionBeforeFallback;
     private int fallbackMoves;
+    
     ForcedFallbackMoveStrategy() {
         this(0, null, FailureTiming.BEFORE_SIDE_EFFECT, DeleteFailure.NONE);
     }
+    
     ForcedFallbackMoveStrategy(int failingFallbackMove) {
         this(failingFallbackMove, null, FailureTiming.BEFORE_SIDE_EFFECT, DeleteFailure.NONE);
     }

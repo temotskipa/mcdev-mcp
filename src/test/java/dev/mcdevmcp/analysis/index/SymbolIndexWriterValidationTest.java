@@ -11,16 +11,13 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 
-import static org.junit.jupiter.api.Assertions.assertArrayEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.*;
 
 @SuppressWarnings({"SqlNoDataSourceInspection", "SqlResolve", "SqlWithoutWhere"})
 class SymbolIndexWriterValidationTest {
     @TempDir
     Path temporaryDirectory;
-
+    
     @Test
     void rejectsWrongMemberIdentityAndMetadataWhilePreservingPriorDatabase() throws Exception {
         Path sources = Files.createDirectories(temporaryDirectory.resolve("writer/source"));
@@ -31,25 +28,23 @@ class SymbolIndexWriterValidationTest {
         IndexRequest request = IndexerTestSupport.request(sources, jar, database, 1);
         new SourceIndexer().build(request);
         byte[] original = IndexerTestSupport.bytes(database);
-
-        List<DatabaseValidator> corruptions = List.of(
-                connection -> {
-                    try (var statement = connection.createStatement()) {
-                        statement.executeUpdate("UPDATE fields SET type_id = 2 WHERE id = 1");
-                    }
-                },
-                connection -> {
-                    try (var statement = connection.createStatement()) {
-                        statement.executeUpdate("UPDATE metadata SET minecraft_version = 'wrong-version'");
-                    }
-                });
+        
+        List<DatabaseValidator> corruptions = List.of(connection -> {
+            try (var statement = connection.createStatement()) {
+                statement.executeUpdate("UPDATE fields SET type_id = 2 WHERE id = 1");
+            }
+        }, connection -> {
+            try (var statement = connection.createStatement()) {
+                statement.executeUpdate("UPDATE metadata SET minecraft_version = 'wrong-version'");
+            }
+        });
         for (DatabaseValidator corruption : corruptions) {
             SymbolIndexWriter writer = new SymbolIndexWriter(new AtomicH2Database(), corruption);
             assertThrows(IndexBuildException.class, () -> new SourceIndexer(new JavacSourceParser(), writer).build(request));
             assertArrayEquals(original, IndexerTestSupport.bytes(database));
         }
     }
-
+    
     @Test
     void rebuildsExactSnapshotWhenValidPriorTargetHasStaleBackup() throws Exception {
         Path sources = Files.createDirectories(temporaryDirectory.resolve("stale-backup/source"));
@@ -62,9 +57,9 @@ class SymbolIndexWriterValidationTest {
         Path backup = database.resolveSibling(database.getFileName() + ".bak");
         Files.copy(database, backup);
         Files.writeString(source, "class Current { long changed; }", StandardCharsets.UTF_8);
-
+        
         new SourceIndexer().build(request);
-
+        
         List<String> dump = IndexerTestSupport.dump(database);
         assertFalse(Files.exists(backup));
         assertTrue(dump.stream().anyMatch(row -> row.startsWith("types|") && row.contains("|Current|")));

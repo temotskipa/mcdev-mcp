@@ -16,16 +16,16 @@ import java.util.Set;
 public final class SourceIndexer {
     private final JavacSourceParser parser;
     private final SymbolIndexWriter writer;
-
+    
     public SourceIndexer() {
         this(new JavacSourceParser(), new SymbolIndexWriter());
     }
-
+    
     SourceIndexer(JavacSourceParser parser, SymbolIndexWriter writer) {
         this.parser = Objects.requireNonNull(parser, "parser");
         this.writer = Objects.requireNonNull(writer, "writer");
     }
-
+    
     private static void validateInputs(IndexRequest request) throws IOException {
         requireRegularFile(request.remappedJar(), "Remapped JAR");
         for (Path entry : request.classpath()) {

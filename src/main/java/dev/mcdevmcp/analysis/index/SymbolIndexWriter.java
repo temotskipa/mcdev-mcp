@@ -7,7 +7,10 @@ import dev.mcdevmcp.storage.model.ElementKindCodec;
 import dev.mcdevmcp.storage.model.FabricApiVersion;
 
 import javax.lang.model.element.Modifier;
-import java.sql.*;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.SQLException;
+import java.sql.Types;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.*;
@@ -16,12 +19,12 @@ import java.util.*;
 final class SymbolIndexWriter {
     private final AtomicH2Database databases;
     private final DatabaseValidator beforeValidation;
-
+    
     SymbolIndexWriter() {
         this(new AtomicH2Database(), _ -> {
         });
     }
-
+    
     SymbolIndexWriter(AtomicH2Database databases, DatabaseValidator beforeValidation) {
         this.databases = Objects.requireNonNull(databases, "databases");
         this.beforeValidation = Objects.requireNonNull(beforeValidation, "beforeValidation");

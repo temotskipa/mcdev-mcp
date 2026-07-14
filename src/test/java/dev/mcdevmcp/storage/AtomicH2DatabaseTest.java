@@ -56,7 +56,7 @@ class AtomicH2DatabaseTest {
             }
         }
     }
-
+    
     private static void validateMarker(Connection connection, String expected) throws SQLException {
         try (var statement = connection.createStatement(); var results = statement.executeQuery(markerSelectSql())) {
             if (!results.next() || !expected.equals(results.getString(1))) {
@@ -498,17 +498,17 @@ class AtomicH2DatabaseTest {
         Path backup = target.resolveSibling("symbols.mv.db.bak");
         createDatabase(target);
         Files.copy(target, backup);
-
+        
         String result = new AtomicH2Database().rebuild(target, Duration.ofSeconds(1), connection -> {
             createMarker(connection, "new");
             return "built";
         }, connection -> validateMarker(connection, "old"), connection -> validateMarker(connection, "new"));
-
+        
         assertEquals("built", result);
         assertEquals("new", marker(target));
         assertFalse(Files.exists(backup));
     }
-
+    
     @Test
     void preservesTargetAndBackupWhenStartupTargetIsInvalid() throws Exception {
         Path target = temporaryDirectory.resolve("symbols.mv.db");
