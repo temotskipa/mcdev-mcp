@@ -259,26 +259,38 @@ public final class JavacSourceParser {
         }
         return List.copyOf(result);
     }
+
+    private static JavaFileManager compilerFileManager(MemorySourceFileManager manager) {
+        return new ForwardingJavaFileManager<>(manager) {
+            @Override
+            public boolean contains(Location location, FileObject file) throws IOException {
+                if (file instanceof MemorySourceFileObject) {
+                    return location == StandardLocation.SOURCE_PATH;
+                }
+                return super.contains(location, file);
+            }
+        };
+    }
     
     private static void finish(JavacTask task) throws IOException {
         stream(task.generate());
     }
     
     ParsedIndex parse(IndexRequest request, ClassFileTypeCatalog catalog, CompilerClasspath classpath, SourceCorpus discovered) throws IndexBuildException, InterruptedException {
-        SourceCorpus corpus = preflight(request, classpath, discovered);
-        List<DecodedSource> typeSources = corpus.sources().stream().filter(source -> !source.topLevelNames().isEmpty()).toList();
-        if (typeSources.isEmpty()) {
+        if (discovered.sources().isEmpty()) {
             return new ParsedIndex(List.of(), List.of());
         }
-        int workerCount = Math.min(typeSources.size(), Math.min(request.threads(), Runtime.getRuntime().availableProcessors()));
-        int batchSize = (typeSources.size() + workerCount - 1) / workerCount;
+        SourceCorpus corpus = preflight(request, classpath, discovered);
+        List<DecodedSource> sources = corpus.sources();
+        int workerCount = Math.min(sources.size(), Math.min(request.threads(), Runtime.getRuntime().availableProcessors()));
+        int batchSize = (sources.size() + workerCount - 1) / workerCount;
         ExecutorService executor = Executors.newFixedThreadPool(workerCount);
         List<Future<ParsedBatch>> futures = new ArrayList<>();
         ParsedIndex result;
         try {
-            for (int start = 0; start < typeSources.size(); start += batchSize) {
-                int end = Math.min(start + batchSize, typeSources.size());
-                List<DecodedSource> batch = List.copyOf(typeSources.subList(start, end));
+            for (int start = 0; start < sources.size(); start += batchSize) {
+                int end = Math.min(start + batchSize, sources.size());
+                List<DecodedSource> batch = List.copyOf(sources.subList(start, end));
                 futures.add(executor.submit(() -> parseBatch(request, catalog, classpath, corpus, batch)));
             }
             List<ParsedType> types = new ArrayList<>();
@@ -319,7 +331,7 @@ public final class JavacSourceParser {
             StandardJavaFileManager standard = CompilerConfiguration.fileManager(compiler);
             try (MemorySourceFileManager manager = new MemorySourceFileManager(standard, discovered, classpath, request)) {
                 List<JavaFileObject> explicit = discovered.sources().stream().map(manager::object).map(JavaFileObject.class::cast).toList();
-                JavacTask task = (JavacTask) compiler.getTask(null, manager, diagnostics, CompilerConfiguration.options(), null, explicit);
+                JavacTask task = (JavacTask) compiler.getTask(null, compilerFileManager(manager), diagnostics, CompilerConfiguration.options(), null, explicit);
                 observeParsedUnits(task, new LinkedHashMap<>());
                 List<? extends CompilationUnitTree> units = stream(task.parse());
                 failOnSyntaxErrors(diagnostics.getDiagnostics(), discovered);
@@ -361,7 +373,7 @@ public final class JavacSourceParser {
             StandardJavaFileManager standard = CompilerConfiguration.fileManager(compiler);
             try (MemorySourceFileManager manager = new MemorySourceFileManager(standard, corpus, classpath, request)) {
                 List<JavaFileObject> explicit = batch.stream().map(manager::object).map(JavaFileObject.class::cast).toList();
-                JavacTask task = (JavacTask) compiler.getTask(null, manager, diagnostics, CompilerConfiguration.options(), null, explicit);
+                JavacTask task = (JavacTask) compiler.getTask(null, compilerFileManager(manager), diagnostics, CompilerConfiguration.options(), null, explicit);
                 Map<URI, CompilationUnitTree> parsedUnits = new LinkedHashMap<>();
                 observeParsedUnits(task, parsedUnits);
                 boolean finishAttempted = false;

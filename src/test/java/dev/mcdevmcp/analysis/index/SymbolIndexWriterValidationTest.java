@@ -12,7 +12,9 @@ import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @SuppressWarnings({"SqlNoDataSourceInspection", "SqlResolve", "SqlWithoutWhere"})
 class SymbolIndexWriterValidationTest {
@@ -46,5 +48,27 @@ class SymbolIndexWriterValidationTest {
             assertThrows(IndexBuildException.class, () -> new SourceIndexer(new JavacSourceParser(), writer).build(request));
             assertArrayEquals(original, IndexerTestSupport.bytes(database));
         }
+    }
+
+    @Test
+    void rebuildsExactSnapshotWhenValidPriorTargetHasStaleBackup() throws Exception {
+        Path sources = Files.createDirectories(temporaryDirectory.resolve("stale-backup/source"));
+        Path source = sources.resolve("Current.java");
+        Files.writeString(source, "class Prior {}", StandardCharsets.UTF_8);
+        Path jar = IndexerTestSupport.createJar(temporaryDirectory.resolve("stale-backup-empty.jar"), Map.of());
+        Path database = temporaryDirectory.resolve("stale-backup.mv.db");
+        IndexRequest request = IndexerTestSupport.request(sources, jar, database, 1);
+        new SourceIndexer().build(request);
+        Path backup = database.resolveSibling(database.getFileName() + ".bak");
+        Files.copy(database, backup);
+        Files.writeString(source, "class Current { long changed; }", StandardCharsets.UTF_8);
+
+        new SourceIndexer().build(request);
+
+        List<String> dump = IndexerTestSupport.dump(database);
+        assertFalse(Files.exists(backup));
+        assertTrue(dump.stream().anyMatch(row -> row.startsWith("types|") && row.contains("|Current|")));
+        assertTrue(dump.stream().anyMatch(row -> row.startsWith("fields|") && row.contains("|changed|long|")));
+        assertFalse(dump.stream().anyMatch(row -> row.contains("|Prior|")));
     }
 }

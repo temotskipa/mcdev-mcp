@@ -92,10 +92,27 @@ class SourceIndexerIntegrationTest {
     void packageAndModuleUnitsProduceNoTypeRows() throws Exception {
         Path sources = IndexerTestSupport.copyFixture("modules", temporaryDirectory.resolve("modules"));
         Path jar = IndexerTestSupport.createJar(temporaryDirectory.resolve("empty.jar"), Map.of());
-        Path database = temporaryDirectory.resolve("modules.mv.db");
+        Path oneDatabase = temporaryDirectory.resolve("modules-one.mv.db");
+        Path fourDatabase = temporaryDirectory.resolve("modules-four.mv.db");
         
-        IndexSummary summary = new SourceIndexer().build(IndexerTestSupport.request(sources, jar, database, 1));
+        IndexSummary one = new SourceIndexer().build(IndexerTestSupport.request(sources, jar, oneDatabase, 1));
+        IndexSummary four = new SourceIndexer().build(IndexerTestSupport.request(sources, jar, fourDatabase, 4));
         
+        assertEquals(0, one.types());
+        assertEquals(0, four.types());
+        assertEquals(IndexerTestSupport.dump(oneDatabase), IndexerTestSupport.dump(fourDatabase));
+        assertTrue(IndexerTestSupport.dump(oneDatabase).stream().noneMatch(row -> row.startsWith("types|")));
+    }
+
+    @Test
+    void emptySourceCorpusProducesEmptyIndexWithoutStartingWorkers() throws Exception {
+        Path sources = Files.createDirectories(temporaryDirectory.resolve("empty-sources"));
+        Path jar = IndexerTestSupport.createJar(temporaryDirectory.resolve("empty-corpus.jar"), Map.of());
+        Path database = temporaryDirectory.resolve("empty-corpus.mv.db");
+
+        IndexSummary summary = new SourceIndexer().build(IndexerTestSupport.request(sources, jar, database, 4));
+
+        assertEquals(0, summary.packages());
         assertEquals(0, summary.types());
         assertTrue(IndexerTestSupport.dump(database).stream().noneMatch(row -> row.startsWith("types|")));
     }

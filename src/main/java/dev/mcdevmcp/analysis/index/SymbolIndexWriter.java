@@ -173,7 +173,7 @@ final class SymbolIndexWriter {
             SymbolSchema.createIndexes(connection);
             beforeValidation.validate(connection);
             return counts;
-        }, connection -> {
+        }, SymbolSchema::validate, connection -> {
             SymbolSchema.validate(connection);
             expected.validate(connection);
         });

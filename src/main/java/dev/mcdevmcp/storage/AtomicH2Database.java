@@ -194,10 +194,15 @@ public final class AtomicH2Database {
     }
     
     public <T> T rebuild(Path target, Duration lockTimeout, DatabaseBuilder<T> builder, DatabaseValidator validator) throws IOException, SQLException {
+        return rebuild(target, lockTimeout, builder, validator, validator);
+    }
+
+    public <T> T rebuild(Path target, Duration lockTimeout, DatabaseBuilder<T> builder, DatabaseValidator existingTargetValidator, DatabaseValidator candidateValidator) throws IOException, SQLException {
         Objects.requireNonNull(target, "target");
         Objects.requireNonNull(lockTimeout, "lockTimeout");
         Objects.requireNonNull(builder, "builder");
-        Objects.requireNonNull(validator, "validator");
+        Objects.requireNonNull(existingTargetValidator, "existingTargetValidator");
+        Objects.requireNonNull(candidateValidator, "candidateValidator");
         Path normalizedTarget = target.toAbsolutePath().normalize();
         H2DatabaseUrls.basePath(normalizedTarget);
         Files.createDirectories(normalizedTarget.getParent());
@@ -205,15 +210,15 @@ public final class AtomicH2Database {
             if (!databaseLock.isHeld()) {
                 throw new IOException("Failed to acquire exclusive database lock");
             }
-            resolveBackup(normalizedTarget, validator);
+            resolveBackup(normalizedTarget, existingTargetValidator);
             rejectActiveCompanion(normalizedTarget);
             clearStaleCompanions(normalizedTarget);
             Path temporary = temporaryPath(normalizedTarget);
             deleteTemporaryArtifacts(temporary);
             try {
-                T result = buildTemporaryDatabase(temporary, builder, validator);
-                verifyClosedDatabase(temporary, validator);
-                promote(temporary, normalizedTarget, validator);
+                T result = buildTemporaryDatabase(temporary, builder, candidateValidator);
+                verifyClosedDatabase(temporary, candidateValidator);
+                promote(temporary, normalizedTarget, candidateValidator);
                 return result;
             } catch (Exception exception) {
                 try {

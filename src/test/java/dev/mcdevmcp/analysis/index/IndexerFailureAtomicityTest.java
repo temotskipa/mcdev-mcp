@@ -82,6 +82,38 @@ class IndexerFailureAtomicityTest {
     }
 
     @Test
+    void unresolvedPackageAnnotationPreservesPriorDatabase() throws Exception {
+        Path jar = IndexerTestSupport.createJar(temporaryDirectory.resolve("package-error-empty.jar"), java.util.Map.of());
+        Path valid = Files.createDirectories(temporaryDirectory.resolve("package-error-valid/ok"));
+        Files.writeString(valid.resolve("Valid.java"), "package ok; public class Valid {}", StandardCharsets.UTF_8);
+        Path database = temporaryDirectory.resolve("package-error.mv.db");
+        new SourceIndexer().build(IndexerTestSupport.request(valid.getParent(), jar, database, 1));
+        byte[] original = IndexerTestSupport.bytes(database);
+        Path broken = Files.createDirectories(temporaryDirectory.resolve("package-error-broken/broken"));
+        Files.writeString(broken.resolve("package-info.java"), "@MissingAnnotation package broken;", StandardCharsets.UTF_8);
+
+        IndexBuildException failure = assertPreserved(original, database, IndexerTestSupport.request(broken.getParent(), jar, database, 1));
+
+        assertTrue(failure.getMessage().contains("diagnostic"), failure + ", cause=" + failure.getCause());
+    }
+
+    @Test
+    void unresolvedRequiredModulePreservesPriorDatabase() throws Exception {
+        Path jar = IndexerTestSupport.createJar(temporaryDirectory.resolve("module-error-empty.jar"), java.util.Map.of());
+        Path valid = Files.createDirectories(temporaryDirectory.resolve("module-error-valid/ok"));
+        Files.writeString(valid.resolve("Valid.java"), "package ok; public class Valid {}", StandardCharsets.UTF_8);
+        Path database = temporaryDirectory.resolve("module-error.mv.db");
+        new SourceIndexer().build(IndexerTestSupport.request(valid.getParent(), jar, database, 1));
+        byte[] original = IndexerTestSupport.bytes(database);
+        Path broken = Files.createDirectories(temporaryDirectory.resolve("module-error-broken"));
+        Files.writeString(broken.resolve("module-info.java"), "module broken.module { requires missing.required.module; }", StandardCharsets.UTF_8);
+
+        IndexBuildException failure = assertPreserved(original, database, IndexerTestSupport.request(broken, jar, database, 1));
+
+        assertTrue(failure.getMessage().contains("diagnostic"), failure + ", cause=" + failure.getCause());
+    }
+
+    @Test
     void cancellationAfterCompilerWorkStartsTerminatesPromptlyAndPreservesPriorDatabase() throws Exception {
         Path jar = IndexerTestSupport.createJar(temporaryDirectory.resolve("compiler-cancel-empty.jar"), java.util.Map.of());
         Path sourceRoot = Files.createDirectories(temporaryDirectory.resolve("compiler-cancel/source"));
