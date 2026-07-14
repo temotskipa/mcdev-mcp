@@ -4,37 +4,22 @@ import java.io.IOException;
 import java.nio.file.*;
 
 final class ForcedFallbackMoveStrategy implements DatabaseFileOperations {
-    enum FailureTiming {
-        BEFORE_SIDE_EFFECT,
-        AFTER_SIDE_EFFECT,
-        AFTER_PARTIAL_COPY,
-        AFTER_SOURCE_REMOVAL
-    }
-
-    enum DeleteFailure {
-        NONE,
-        ANY,
-        FAILED_PROMOTION
-    }
-
     private final int failingFallbackMove;
     private final FailureTiming failureTiming;
     private final DeleteFailure deleteFailure;
     private final Path companionBeforeFallback;
     private int fallbackMoves;
-    
     ForcedFallbackMoveStrategy() {
         this(0, null, FailureTiming.BEFORE_SIDE_EFFECT, DeleteFailure.NONE);
     }
-    
     ForcedFallbackMoveStrategy(int failingFallbackMove) {
         this(failingFallbackMove, null, FailureTiming.BEFORE_SIDE_EFFECT, DeleteFailure.NONE);
     }
-
+    
     ForcedFallbackMoveStrategy(int failingFallbackMove, FailureTiming failureTiming) {
         this(failingFallbackMove, null, failureTiming, DeleteFailure.NONE);
     }
-
+    
     ForcedFallbackMoveStrategy(int failingFallbackMove, FailureTiming failureTiming, DeleteFailure deleteFailure) {
         this(failingFallbackMove, null, failureTiming, deleteFailure);
     }
@@ -74,22 +59,30 @@ final class ForcedFallbackMoveStrategy implements DatabaseFileOperations {
         }
         Files.move(source, target, options);
     }
-
+    
     @Override
     public void delete(Path path) throws IOException {
         failDelete(path);
         DatabaseFileOperations.super.delete(path);
     }
-
+    
     @Override
     public boolean deleteIfExists(Path path) throws IOException {
         failDelete(path);
         return DatabaseFileOperations.super.deleteIfExists(path);
     }
-
+    
     private void failDelete(Path path) throws IOException {
         if (deleteFailure == DeleteFailure.ANY || deleteFailure == DeleteFailure.FAILED_PROMOTION && path.getFileName().toString().endsWith(".failed-promotion")) {
             throw new IOException("forced delete failure: " + path);
         }
+    }
+    
+    enum FailureTiming {
+        BEFORE_SIDE_EFFECT, AFTER_SIDE_EFFECT, AFTER_PARTIAL_COPY, AFTER_SOURCE_REMOVAL
+    }
+    
+    enum DeleteFailure {
+        NONE, ANY, FAILED_PROMOTION
     }
 }

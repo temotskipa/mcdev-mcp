@@ -9,7 +9,7 @@ record PackageIdentity(SourceNamespace namespace, Optional<FabricApiVersion> fab
     PackageIdentity(ParsedType type) {
         this(type.sourceRoot().namespace(), type.sourceRoot().fabricApiVersion(), type.packageName());
     }
-
+    
     @Override
     public int compareTo(PackageIdentity other) {
         int namespaceOrder = namespace.compareTo(other.namespace);

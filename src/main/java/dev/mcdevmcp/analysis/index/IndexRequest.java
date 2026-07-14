@@ -11,7 +11,7 @@ import java.util.*;
 
 public record IndexRequest(MinecraftVersion minecraftVersion, List<SourceRoot> sourceRoots, Path remappedJar, List<Path> classpath, Path outputDatabase, int threads, ProgressSink progress, Cancellation cancellation) {
     public static final String THREADS_ENVIRONMENT_VARIABLE = "MCDEV_INDEX_THREADS";
-
+    
     public IndexRequest {
         Objects.requireNonNull(minecraftVersion, "minecraftVersion");
         sourceRoots = normalizeSourceRoots(sourceRoots);
@@ -27,7 +27,7 @@ public record IndexRequest(MinecraftVersion minecraftVersion, List<SourceRoot> s
         Objects.requireNonNull(progress, "progress");
         Objects.requireNonNull(cancellation, "cancellation");
     }
-
+    
     public static int threadsFromEnvironment(Map<String, String> environment) {
         Objects.requireNonNull(environment, "environment");
         int available = Runtime.getRuntime().availableProcessors();
@@ -45,11 +45,11 @@ public record IndexRequest(MinecraftVersion minecraftVersion, List<SourceRoot> s
             throw invalidThreads(configured, exception);
         }
     }
-
+    
     private static IllegalArgumentException invalidThreads(String configured, Exception cause) {
         return new IllegalArgumentException(THREADS_ENVIRONMENT_VARIABLE + " must be a positive integer, got '" + configured + "'", cause);
     }
-
+    
     private static List<SourceRoot> normalizeSourceRoots(List<SourceRoot> roots) {
         Objects.requireNonNull(roots, "sourceRoots");
         if (roots.isEmpty()) {
@@ -72,7 +72,7 @@ public record IndexRequest(MinecraftVersion minecraftVersion, List<SourceRoot> s
         copy.sort(Comparator.naturalOrder());
         return List.copyOf(copy);
     }
-
+    
     private static List<Path> normalizeClasspath(List<Path> entries) {
         Objects.requireNonNull(entries, "classpath");
         List<Path> copy = new ArrayList<>(entries.size());
@@ -86,11 +86,11 @@ public record IndexRequest(MinecraftVersion minecraftVersion, List<SourceRoot> s
         }
         return List.copyOf(copy);
     }
-
+    
     private static Path normalize(Path path, String name) {
         return Objects.requireNonNull(path, name).toAbsolutePath().normalize();
     }
-
+    
     private record SourceIdentity(SourceNamespace namespace, Optional<FabricApiVersion> fabricApiVersion) {
     }
 }

@@ -71,7 +71,7 @@ final class DatabaseLockProcessMain {
             default -> throw new IllegalArgumentException("Unsupported process mode: " + arguments[0]);
         }
     }
-
+    
     private static void holdH2(String url) throws Exception {
         try (var connection = DriverManager.getConnection(url)) {
             if (connection.isClosed()) {
@@ -82,7 +82,7 @@ final class DatabaseLockProcessMain {
             awaitParentExit();
         }
     }
-
+    
     private static String shortLockTimeout(String url) {
         return url.replace("LOCK_TIMEOUT=30000", "LOCK_TIMEOUT=250");
     }

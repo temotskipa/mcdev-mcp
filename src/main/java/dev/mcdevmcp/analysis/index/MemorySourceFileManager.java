@@ -8,24 +8,28 @@ import java.util.*;
 
 final class MemorySourceFileManager extends ForwardingJavaFileManager<StandardJavaFileManager> implements StandardJavaFileManager {
     private final List<MemorySourceFileObject> sources;
+    private final List<MemorySourceFileObject> sourcePathTypes;
     private final Map<String, MemorySourceFileObject> primaryTypes;
     private final List<MemoryInputClassFileObject> classes;
     private final Map<String, MemoryInputClassFileObject> classesByBinaryName;
     private final Map<Location, List<Path>> configuredLocations = new HashMap<>();
-
+    
     MemorySourceFileManager(StandardJavaFileManager delegate, SourceCorpus corpus, CompilerClasspath classpath, IndexRequest request) {
         super(delegate);
         sources = corpus.sources().stream().map(MemorySourceFileObject::new).toList();
         Map<String, MemorySourceFileObject> indexed = new HashMap<>();
+        List<MemorySourceFileObject> listed = new ArrayList<>();
         for (MemorySourceFileObject source : sources) {
             DecodedSource decoded = source.source();
-            indexed.putIfAbsent(decoded.primaryBinaryName(), source);
             for (String simpleName : decoded.topLevelNames()) {
                 String binaryName = decoded.packageName().isEmpty() ? simpleName : decoded.packageName() + "." + simpleName;
-                indexed.putIfAbsent(binaryName, source);
+                MemorySourceFileObject alias = new MemorySourceFileObject(decoded, binaryName);
+                indexed.putIfAbsent(binaryName, alias);
+                listed.add(alias);
             }
         }
         primaryTypes = Map.copyOf(indexed);
+        sourcePathTypes = List.copyOf(listed);
         classes = classpath.classes().stream().map(MemoryInputClassFileObject::new).toList();
         Map<String, MemoryInputClassFileObject> indexedClasses = new HashMap<>();
         for (MemoryInputClassFileObject classFile : classes) {
@@ -38,16 +42,20 @@ final class MemorySourceFileManager extends ForwardingJavaFileManager<StandardJa
         classpathPaths.addAll(request.classpath());
         configuredLocations.put(StandardLocation.CLASS_PATH, List.copyOf(classpathPaths));
     }
-
+    
+    private static boolean matchesPackage(String candidate, String requested, boolean recurse) {
+        return candidate.equals(requested) || recurse && candidate.startsWith(requested.isEmpty() ? "" : requested + ".");
+    }
+    
     MemorySourceFileObject object(DecodedSource source) {
         return sources.stream().filter(object -> object.source().uri().equals(source.uri())).findFirst().orElseThrow();
     }
-
+    
     @Override
     public Iterable<JavaFileObject> list(Location location, String packageName, Set<JavaFileObject.Kind> kinds, boolean recurse) throws IOException {
         List<JavaFileObject> result = new ArrayList<>();
         if (location == StandardLocation.SOURCE_PATH && kinds.contains(JavaFileObject.Kind.SOURCE)) {
-            for (MemorySourceFileObject source : sources) {
+            for (MemorySourceFileObject source : sourcePathTypes) {
                 if (matchesPackage(source.source().packageName(), packageName, recurse)) {
                     result.add(source);
                 }
@@ -71,7 +79,7 @@ final class MemorySourceFileManager extends ForwardingJavaFileManager<StandardJa
         }
         return List.copyOf(result);
     }
-
+    
     @Override
     public JavaFileObject getJavaFileForInput(Location location, String className, JavaFileObject.Kind kind) throws IOException {
         if (location == StandardLocation.SOURCE_PATH && kind == JavaFileObject.Kind.SOURCE) {
@@ -82,28 +90,28 @@ final class MemorySourceFileManager extends ForwardingJavaFileManager<StandardJa
         }
         return super.getJavaFileForInput(location, className, kind);
     }
-
+    
     @Override
     public String inferBinaryName(Location location, JavaFileObject file) {
         if (file instanceof MemorySourceFileObject memorySource) {
-            return memorySource.source().primaryBinaryName();
+            return memorySource.binaryName();
         }
         if (file instanceof MemoryInputClassFileObject classFile) {
             return classFile.classFile().binaryName();
         }
         return super.inferBinaryName(location, file);
     }
-
+    
     @Override
     public boolean hasLocation(Location location) {
         return configuredLocations.containsKey(location) || super.hasLocation(location);
     }
-
+    
     @Override
     public ClassLoader getClassLoader(Location location) {
         return configuredLocations.containsKey(location) ? null : super.getClassLoader(location);
     }
-
+    
     @Override
     public FileObject getFileForInput(Location location, String packageName, String relativeName) throws IOException {
         if (configuredLocations.containsKey(location)) {
@@ -111,7 +119,7 @@ final class MemorySourceFileManager extends ForwardingJavaFileManager<StandardJa
         }
         return super.getFileForInput(location, packageName, relativeName);
     }
-
+    
     @Override
     public boolean isSameFile(FileObject first, FileObject second) {
         if (first instanceof MemorySourceFileObject || first instanceof MemoryInputClassFileObject || second instanceof MemorySourceFileObject || second instanceof MemoryInputClassFileObject) {
@@ -119,27 +127,27 @@ final class MemorySourceFileManager extends ForwardingJavaFileManager<StandardJa
         }
         return fileManager.isSameFile(first, second);
     }
-
+    
     @Override
     public Iterable<? extends JavaFileObject> getJavaFileObjectsFromFiles(Iterable<? extends File> files) {
         return fileManager.getJavaFileObjectsFromFiles(files);
     }
-
+    
     @Override
     public Iterable<? extends JavaFileObject> getJavaFileObjects(File... files) {
         return fileManager.getJavaFileObjects(files);
     }
-
+    
     @Override
     public Iterable<? extends JavaFileObject> getJavaFileObjectsFromStrings(Iterable<String> names) {
         return fileManager.getJavaFileObjectsFromStrings(names);
     }
-
+    
     @Override
     public Iterable<? extends JavaFileObject> getJavaFileObjects(String... names) {
         return fileManager.getJavaFileObjects(names);
     }
-
+    
     @Override
     public void setLocation(Location location, Iterable<? extends File> files) throws IOException {
         if (location == StandardLocation.SOURCE_PATH || location == StandardLocation.CLASS_PATH) {
@@ -151,7 +159,7 @@ final class MemorySourceFileManager extends ForwardingJavaFileManager<StandardJa
             fileManager.setLocation(location, files);
         }
     }
-
+    
     @Override
     public void setLocationFromPaths(Location location, Collection<? extends Path> paths) throws IOException {
         if (location == StandardLocation.SOURCE_PATH || location == StandardLocation.CLASS_PATH) {
@@ -161,28 +169,24 @@ final class MemorySourceFileManager extends ForwardingJavaFileManager<StandardJa
             fileManager.setLocationFromPaths(location, paths);
         }
     }
-
+    
     @Override
     public Iterable<? extends File> getLocation(Location location) {
         List<Path> paths = configuredLocations.get(location);
         return paths == null ? fileManager.getLocation(location) : paths.stream().map(Path::toFile).toList();
     }
-
+    
     @Override
     public Iterable<? extends Path> getLocationAsPaths(Location location) {
         List<Path> paths = configuredLocations.get(location);
         return paths == null ? fileManager.getLocationAsPaths(location) : paths;
     }
-
+    
     @Override
     public JavaFileObject getJavaFileForOutput(Location location, String className, JavaFileObject.Kind kind, FileObject sibling) throws IOException {
         if (kind == JavaFileObject.Kind.CLASS) {
             return new MemoryClassFileObject(className);
         }
         return super.getJavaFileForOutput(location, className, kind, sibling);
-    }
-
-    private static boolean matchesPackage(String candidate, String requested, boolean recurse) {
-        return candidate.equals(requested) || recurse && candidate.startsWith(requested.isEmpty() ? "" : requested + ".");
     }
 }

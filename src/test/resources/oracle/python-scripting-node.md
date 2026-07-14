@@ -46,10 +46,29 @@ anything below looks stale.
 
 ```json
 {
-  "id":   "req_1",
-  "type": "execute" | "snapshot" | "screenshot" | "search" | "runCommand" | "status"
-          | "disconnect" | "joinServer" | "quit" | ...,
-  "payload": { ... }
+  "id": "req_1",
+  "type": "execute"
+  |
+  "snapshot"
+  |
+  "screenshot"
+  |
+  "search"
+  |
+  "runCommand"
+  |
+  "status"
+  |
+  "disconnect"
+  |
+  "joinServer"
+  |
+  "quit"
+  |
+  ...,
+  "payload": {
+    ...
+  }
 }
 ```
 
@@ -91,11 +110,14 @@ Relaunching a closed client is necessarily external (e.g.
 
 ```json
 {
-  "id":      "req_1",
+  "id": "req_1",
   "success": true,
-  "result":  ...,         // arbitrary JSON; absent on errors
-  "output":  "...",       // optional, println/print captures
-  "error":   "..."        // only when success is false
+  "result": ...,
+  // arbitrary JSON; absent on errors
+  "output": "...",
+  // optional, println/print captures
+  "error": "..."
+  // only when success is false
 }
 ```
 

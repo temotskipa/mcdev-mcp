@@ -119,7 +119,7 @@ class DatabaseLockProcessTest {
             stop(process);
         }
     }
-
+    
     @Test
     void writerUsesOneDeadlineAcrossLocalAndOperatingSystemContention() throws Exception {
         Path database = temporaryDirectory.resolve("symbols.mv.db");
@@ -145,7 +145,7 @@ class DatabaseLockProcessTest {
             });
             assertTrue(writerStarted.await(2, TimeUnit.SECONDS));
             scheduler.schedule(releaseLocalReader::countDown, 180, TimeUnit.MILLISECONDS);
-
+            
             java.io.IOException timeout = writer.get(2, TimeUnit.SECONDS);
             long elapsedMillis = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startedAt);
             assertTrue(timeout.getMessage().contains("after 300 milliseconds"));

@@ -19,7 +19,7 @@ public record SourceRoot(SourceNamespace namespace, Optional<FabricApiVersion> f
             throw new IllegalArgumentException("Fabric source roots must have a Fabric API version");
         }
     }
-
+    
     @Override
     public int compareTo(SourceRoot other) {
         int namespaceOrder = namespace.compareTo(other.namespace);

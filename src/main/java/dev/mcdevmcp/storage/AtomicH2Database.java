@@ -74,69 +74,6 @@ public final class AtomicH2Database {
         }
     }
     
-    private void resolveBackup(Path target, DatabaseValidator validator) throws IOException {
-        Path backup = backupPath(target);
-        if (!Files.exists(backup)) {
-            return;
-        }
-        if (!Files.exists(target)) {
-            files.move(backup, target, StandardCopyOption.REPLACE_EXISTING);
-            return;
-        }
-        try {
-            validatePromotedDatabase(target, validator);
-        } catch (IOException | SQLException exception) {
-            throw new IOException("Both H2 target and backup exist and the target is invalid; preserve and inspect " + target + " and " + backup, exception);
-        }
-        Files.delete(backup);
-    }
-    
-    private void restorePrePromotionState(Path target, Path backup, DatabasePromotionPhase phase, boolean originalTargetExisted, Exception originalFailure) {
-        boolean targetExists = Files.exists(target);
-        boolean backupExists = Files.exists(backup);
-        if (phase == DatabasePromotionPhase.BACKING_UP_TARGET) {
-            if (targetExists) {
-                return;
-            }
-            if (backupExists) {
-                restoreBackup(target, backup, originalFailure);
-                return;
-            }
-            originalFailure.addSuppressed(new IOException("Neither target nor backup remains after failed backup move: " + target + " and " + backup));
-            return;
-        }
-
-        if (phase != DatabasePromotionPhase.PROMOTING_TEMPORARY) {
-            return;
-        }
-        if (targetExists) {
-            try {
-                files.delete(target);
-            } catch (IOException exception) {
-                originalFailure.addSuppressed(new IOException("Unable to remove uncertain promoted target; preserving observed state for " + target + " and " + backup, exception));
-                return;
-            }
-        }
-        if (backupExists) {
-            restoreBackup(target, backup, originalFailure);
-        }
-        else if (originalTargetExisted) {
-            originalFailure.addSuppressed(new IOException("Backup missing after failed temporary promotion: " + backup));
-        }
-    }
-
-    private void restoreBackup(Path target, Path backup, Exception originalFailure) {
-        DatabasePromotionPhase phase = DatabasePromotionPhase.RESTORING_BACKUP;
-        try {
-            files.move(backup, target, StandardCopyOption.REPLACE_EXISTING);
-        } catch (IOException exception) {
-            boolean targetExists = Files.exists(target);
-            boolean backupExists = Files.exists(backup);
-            String state = "target=" + targetExists + ", backup=" + backupExists + ", phase=" + phase;
-            originalFailure.addSuppressed(new IOException("Unable to restore backup; preserving observed state for " + target + " and " + backup + " (" + state + ")", exception));
-        }
-    }
-    
     private static Path temporaryPath(Path target) {
         Path base = H2DatabaseUrls.basePath(target);
         return base.resolveSibling(base.getFileName() + "." + ProcessHandle.current().pid() + ".tmp.mv.db");
@@ -190,6 +127,69 @@ public final class AtomicH2Database {
         String pattern = java.util.regex.Pattern.quote(base.getFileName().toString()) + "\\.\\d+\\.temp\\.db";
         try (var siblings = Files.list(base.getParent())) {
             return siblings.filter(path -> path.getFileName().toString().matches(pattern)).toList();
+        }
+    }
+    
+    private void resolveBackup(Path target, DatabaseValidator validator) throws IOException {
+        Path backup = backupPath(target);
+        if (!Files.exists(backup)) {
+            return;
+        }
+        if (!Files.exists(target)) {
+            files.move(backup, target, StandardCopyOption.REPLACE_EXISTING);
+            return;
+        }
+        try {
+            validatePromotedDatabase(target, validator);
+        } catch (IOException | SQLException exception) {
+            throw new IOException("Both H2 target and backup exist and the target is invalid; preserve and inspect " + target + " and " + backup, exception);
+        }
+        Files.delete(backup);
+    }
+    
+    private void restorePrePromotionState(Path target, Path backup, DatabasePromotionPhase phase, boolean originalTargetExisted, Exception originalFailure) {
+        boolean targetExists = Files.exists(target);
+        boolean backupExists = Files.exists(backup);
+        if (phase == DatabasePromotionPhase.BACKING_UP_TARGET) {
+            if (targetExists) {
+                return;
+            }
+            if (backupExists) {
+                restoreBackup(target, backup, originalFailure);
+                return;
+            }
+            originalFailure.addSuppressed(new IOException("Neither target nor backup remains after failed backup move: " + target + " and " + backup));
+            return;
+        }
+        
+        if (phase != DatabasePromotionPhase.PROMOTING_TEMPORARY) {
+            return;
+        }
+        if (targetExists) {
+            try {
+                files.delete(target);
+            } catch (IOException exception) {
+                originalFailure.addSuppressed(new IOException("Unable to remove uncertain promoted target; preserving observed state for " + target + " and " + backup, exception));
+                return;
+            }
+        }
+        if (backupExists) {
+            restoreBackup(target, backup, originalFailure);
+        }
+        else if (originalTargetExisted) {
+            originalFailure.addSuppressed(new IOException("Backup missing after failed temporary promotion: " + backup));
+        }
+    }
+    
+    private void restoreBackup(Path target, Path backup, Exception originalFailure) {
+        DatabasePromotionPhase phase = DatabasePromotionPhase.RESTORING_BACKUP;
+        try {
+            files.move(backup, target, StandardCopyOption.REPLACE_EXISTING);
+        } catch (IOException exception) {
+            boolean targetExists = Files.exists(target);
+            boolean backupExists = Files.exists(backup);
+            String state = "target=" + targetExists + ", backup=" + backupExists + ", phase=" + phase;
+            originalFailure.addSuppressed(new IOException("Unable to restore backup; preserving observed state for " + target + " and " + backup + " (" + state + ")", exception));
         }
     }
     

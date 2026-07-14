@@ -46,14 +46,14 @@ class PlatformPathsTest {
         assertEquals(Path.of("/cache/mcdev-mcp/cache/fabric-api-0.120.0"), paths.fabricSourceRoot(new FabricApiVersion("0.120.0")));
         assertEquals(Path.of("/cache/mcdev-mcp/index/1.21.5/symbols.mv.db"), paths.symbolDatabase(VERSION));
     }
-
+    
     @ParameterizedTest
     @ValueSource(strings = {"1.21.5", "0.120.0+1.21.5", "1.21.5-pre1", "1_21_5", "версия"})
     void acceptedVersionsRemainContainedByTheirCacheAndIndexRoots(String value) {
         var paths = new PlatformPaths(temporaryDirectory.resolve("mcdev-mcp"));
         var minecraftVersion = new MinecraftVersion(value);
         var fabricVersion = new FabricApiVersion(value);
-
+        
         assertTrue(paths.versionCache(minecraftVersion).startsWith(paths.cacheRoot()));
         assertTrue(paths.sourceRoot(minecraftVersion).startsWith(paths.versionCache(minecraftVersion)));
         assertTrue(paths.remappedJar(minecraftVersion).startsWith(paths.versionCache(minecraftVersion)));
@@ -102,7 +102,7 @@ class PlatformPathsTest {
         assertFalse(Files.exists(indexRoot.resolve("manifest.json")));
         assertTrue(Files.exists(outside));
     }
-
+    
     @Test
     void waitsForAnActiveReaderBeforeDeletingIndexArtifacts() throws Exception {
         var paths = new PlatformPaths(temporaryDirectory);
@@ -117,14 +117,14 @@ class PlatformPathsTest {
                     new IndexCleaner(paths).cleanIndex(VERSION);
                     return null;
                 });
-
+                
                 assertThrows(java.util.concurrent.TimeoutException.class, () -> clean.get(100, TimeUnit.MILLISECONDS));
             }
             clean.get(2, TimeUnit.SECONDS);
         }
         assertFalse(Files.exists(database));
     }
-
+    
     @Test
     void waitsForAnActiveWriterBeforeDeletingIndexArtifacts() throws Exception {
         var paths = new PlatformPaths(temporaryDirectory);
@@ -139,14 +139,14 @@ class PlatformPathsTest {
                     new IndexCleaner(paths).cleanIndex(VERSION);
                     return null;
                 });
-
+                
                 assertThrows(java.util.concurrent.TimeoutException.class, () -> clean.get(100, TimeUnit.MILLISECONDS));
             }
             clean.get(2, TimeUnit.SECONDS);
         }
         assertFalse(Files.exists(database));
     }
-
+    
     @Test
     void refusesToCleanWhenAnH2LockCompanionMakesExternalUseUncertain() throws Exception {
         var paths = new PlatformPaths(temporaryDirectory);
@@ -155,9 +155,9 @@ class PlatformPathsTest {
         Files.writeString(database.resolveSibling("manifest.json"), "keep");
         Path h2Lock = database.resolveSibling("symbols.lock.db");
         Files.writeString(h2Lock, "uncertain external H2 user");
-
+        
         IOException failure = assertThrows(IOException.class, () -> new IndexCleaner(paths).cleanIndex(VERSION));
-
+        
         assertTrue(failure.getMessage().contains(h2Lock.toString()));
         assertTrue(Files.exists(h2Lock));
         assertTrue(Files.exists(database.resolveSibling("manifest.json")));

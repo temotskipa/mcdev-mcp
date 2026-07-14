@@ -22,23 +22,23 @@ import static org.junit.jupiter.api.Assertions.*;
 //noinspection SqlNoDataSourceInspection,SqlResolve
 class IndexCleanerTest {
     private static final MinecraftVersion VERSION = new MinecraftVersion("1.21.5");
-
+    
     @TempDir
     Path temporaryDirectory;
-
+    
     private static Process process(String mode, Path database) throws Exception {
         String java = System.getProperty("mcdevMcpJava");
         String classpath = System.getProperty("java.class.path");
         return new ProcessBuilder(java, "-cp", classpath, DatabaseLockProcessMain.class.getName(), mode, database.toString()).start();
     }
-
+    
     private static void stop(Process process) throws Exception {
         if (process.isAlive()) {
             process.destroyForcibly();
             process.waitFor(5, TimeUnit.SECONDS);
         }
     }
-
+    
     private static void createDatabase(Path database) throws Exception {
         Files.createDirectories(database.getParent());
         try (var connection = DriverManager.getConnection(H2DatabaseUrls.writer(database));
@@ -48,7 +48,7 @@ class IndexCleanerTest {
             statement.execute("INSERT INTO marker(marker_value) VALUES ('old')");
         }
     }
-
+    
     private static String marker(Path database) throws Exception {
         //noinspection SqlNoDataSourceInspection,SqlResolve
         try (var connection = DriverManager.getConnection(H2DatabaseUrls.reader(database));
@@ -58,17 +58,17 @@ class IndexCleanerTest {
             return results.getString(1);
         }
     }
-
+    
     @Test
     void externalH2ReaderAppearingBeforeDatabaseGuardPreventsAnyDeletion() throws Exception {
         assertExternalH2UserAppearingBeforeDatabaseGuardPreventsAnyDeletion("hold-h2-read");
     }
-
+    
     @Test
     void externalH2WriterAppearingBeforeDatabaseGuardPreventsAnyDeletion() throws Exception {
         assertExternalH2UserAppearingBeforeDatabaseGuardPreventsAnyDeletion("hold-h2-write");
     }
-
+    
     private void assertExternalH2UserAppearingBeforeDatabaseGuardPreventsAnyDeletion(String mode) throws Exception {
         var paths = new PlatformPaths(temporaryDirectory);
         Path database = paths.symbolDatabase(VERSION);
@@ -109,7 +109,7 @@ class IndexCleanerTest {
             }
         }
     }
-
+    
     @Test
     void cleanerDatabaseGuardPreventsARealH2ProcessOpeningDuringDeletion() throws Exception {
         var paths = new PlatformPaths(temporaryDirectory);
@@ -142,7 +142,7 @@ class IndexCleanerTest {
         assertFalse(Files.exists(database));
         assertFalse(Files.exists(legacy));
     }
-
+    
     @Test
     void refusesAndPreservesAnH2LockCompanionEncounteredDuringTraversal() throws Exception {
         var paths = new PlatformPaths(temporaryDirectory);
@@ -169,21 +169,21 @@ class IndexCleanerTest {
         assertTrue(Files.exists(h2Lock));
         assertTrue(Files.exists(database));
     }
-
+    
     @Test
     void removesAnAbsentDatabaseReservationAfterCleaning() throws Exception {
         var paths = new PlatformPaths(temporaryDirectory);
         Path database = paths.symbolDatabase(VERSION);
         Files.createDirectories(database.getParent());
         Files.writeString(database.resolveSibling("legacy.json"), "delete");
-
+        
         new IndexCleaner(paths).cleanIndex(VERSION);
-
+        
         assertFalse(Files.exists(database));
         assertFalse(Files.exists(database.resolveSibling("legacy.json")));
         assertTrue(Files.exists(database.resolveSibling("symbols.mv.db.lock")));
     }
-
+    
     @Test
     void rejectsSymlinkedVersionIndexRootBeforeCreatingTheApplicationLock() throws Exception {
         var paths = new PlatformPaths(temporaryDirectory.resolve("cache-root"));
@@ -193,14 +193,14 @@ class IndexCleanerTest {
         Files.createDirectories(outside);
         Files.writeString(outside.resolve("keep.json"), "keep");
         Files.createSymbolicLink(root, outside);
-
+        
         IOException failure = assertThrows(IOException.class, () -> new IndexCleaner(paths).cleanIndex(VERSION));
-
+        
         assertTrue(failure.getMessage().contains("symbolic link"));
         assertEquals("keep", Files.readString(outside.resolve("keep.json")));
         assertFalse(Files.exists(outside.resolve("symbols.mv.db.lock")));
     }
-
+    
     @Test
     void rejectsSymlinkedSymbolDatabaseBeforeCreatingTheApplicationLock() throws Exception {
         var paths = new PlatformPaths(temporaryDirectory.resolve("cache-root"));
@@ -210,9 +210,9 @@ class IndexCleanerTest {
         Files.writeString(outside, "keep");
         Files.writeString(database.resolveSibling("legacy.json"), "keep");
         Files.createSymbolicLink(database, outside);
-
+        
         IOException failure = assertThrows(IOException.class, () -> new IndexCleaner(paths).cleanIndex(VERSION));
-
+        
         assertTrue(failure.getMessage().contains("symbolic link"));
         assertEquals("keep", Files.readString(outside));
         assertEquals("keep", Files.readString(database.resolveSibling("legacy.json")));

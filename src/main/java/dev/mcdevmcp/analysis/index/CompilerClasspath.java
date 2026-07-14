@@ -11,12 +11,12 @@ import java.util.zip.ZipFile;
 
 final class CompilerClasspath {
     private final List<CompilerClassFile> classes;
-
+    
     private CompilerClasspath(Map<String, CompilerClassFile> classes) {
         TreeMap<String, CompilerClassFile> sorted = new TreeMap<>(classes);
         this.classes = List.copyOf(sorted.values());
     }
-
+    
     static CompilerClasspath read(IndexRequest request) throws IOException, InterruptedException {
         Map<String, CompilerClassFile> classes = new LinkedHashMap<>();
         List<Path> entries = new ArrayList<>(request.classpath().size() + 1);
@@ -27,11 +27,7 @@ final class CompilerClasspath {
         }
         return new CompilerClasspath(classes);
     }
-
-    List<CompilerClassFile> classes() {
-        return classes;
-    }
-
+    
     private static void readJar(Path jar, Cancellation cancellation, Map<String, CompilerClassFile> classes) throws IOException, InterruptedException {
         ClassFile classFile = ClassFile.of();
         try (ZipFile zip = new ZipFile(jar.toFile())) {
@@ -53,5 +49,9 @@ final class CompilerClasspath {
         } catch (IllegalArgumentException exception) {
             throw new IOException("Unable to read compiler classpath entry " + jar, exception);
         }
+    }
+    
+    List<CompilerClassFile> classes() {
+        return classes;
     }
 }

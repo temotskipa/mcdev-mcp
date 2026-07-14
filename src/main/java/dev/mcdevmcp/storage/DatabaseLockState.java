@@ -2,8 +2,8 @@ package dev.mcdevmcp.storage;
 
 import java.nio.channels.FileChannel;
 import java.nio.channels.FileLock;
-import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.concurrent.locks.ReentrantLock;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 final class DatabaseLockState {
     final ReentrantReadWriteLock lock = new ReentrantReadWriteLock(true);

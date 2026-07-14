@@ -3,8 +3,11 @@ package dev.mcdevmcp.analysis.index;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -12,18 +15,41 @@ import static org.junit.jupiter.api.Assertions.*;
 class JavacSourceParserTest {
     @TempDir
     Path temporaryDirectory;
-
+    
+    private static long typeId(List<String> dump, String binaryName) {
+        String row = dump.stream().filter(candidate -> candidate.startsWith("types|") && candidate.contains("|" + binaryName + "|")).findFirst().orElseThrow();
+        return Long.parseLong(row.split("\\|", -1)[1]);
+    }
+    
+    private static boolean memberOf(String row, String table, long typeId) {
+        return row.startsWith(table + "|") && row.split("\\|", -1)[2].equals(Long.toString(typeId));
+    }
+    
+    private static void assertRecordRange(List<String> dump, String table, String name, String source, String declaration) {
+        String row = dump.stream().filter(candidate -> candidate.startsWith(table + "|") && candidate.split("\\|", -1)[4].equals(name)).findFirst().orElseThrow();
+        String[] columns = row.split("\\|", -1);
+        int start = source.indexOf(declaration);
+        int end = start + declaration.length();
+        int startLine = 1 + (int) source.substring(0, start).chars().filter(character -> character == '\n').count();
+        int endLine = startLine + (int) declaration.chars().filter(character -> character == '\n').count();
+        assertEquals(start, Integer.parseInt(columns[7]), row);
+        assertEquals(end, Integer.parseInt(columns[8]), row);
+        assertEquals(startLine, Integer.parseInt(columns[9]), row);
+        assertEquals(endLine, Integer.parseInt(columns[10]), row);
+        assertEquals(declaration, source.substring(Integer.parseInt(columns[7]), Integer.parseInt(columns[8])));
+    }
+    
     @Test
     void indexesEveryTopLevelDeclarationAndOnlySourceDeclaredDirectMembers() throws Exception {
         Path sources = IndexerTestSupport.copyFixture("main", temporaryDirectory.resolve("sources"));
         Path jar = IndexerTestSupport.fixtureCatalog(temporaryDirectory.resolve("remapped.jar"));
         Path dependency = IndexerTestSupport.fixtureDependency(temporaryDirectory.resolve("dependency.jar"));
         Path database = temporaryDirectory.resolve("symbols.mv.db");
-
+        
         IndexRequest request = IndexerTestSupport.request(List.of(new SourceRoot(dev.mcdevmcp.storage.model.SourceNamespace.MINECRAFT, Optional.empty(), sources)), jar, List.of(dependency), database, 1);
         IndexSummary summary = new SourceIndexer().build(request);
         List<String> dump = IndexerTestSupport.dump(database);
-
+        
         assertEquals(8, summary.types());
         assertTrue(dump.stream().anyMatch(row -> row.contains("|index.fixture.FeatureSet|FeatureSet|class|java.util.ArrayList|")));
         assertTrue(dump.stream().anyMatch(row -> row.startsWith("type_interfaces|") && row.endsWith("|java.lang.Runnable")));
@@ -48,7 +74,7 @@ class JavacSourceParserTest {
         assertFalse(dump.stream().anyMatch(row -> row.contains("|left|()Ljava/lang/Object;|") || row.contains("|right|()Ljava/lang/Object;|")));
         assertTrue(dump.stream().anyMatch(row -> row.contains("|left|T|")));
         assertTrue(dump.stream().anyMatch(row -> row.contains("|right|T|")));
-
+        
         long sourceBaseId = typeId(dump, "index.fixture.SourceBase");
         long defaultsId = typeId(dump, "index.fixture.Defaults");
         long markerId = typeId(dump, "index.fixture.Marker");
@@ -61,7 +87,7 @@ class JavacSourceParserTest {
         assertTrue(dump.stream().anyMatch(row -> memberOf(row, "fields", shadeId) && row.contains("|BLUE|index.fixture.Shade|public,static,final|")));
         assertTrue(dump.stream().anyMatch(row -> row.startsWith("types|") && row.contains("|index/fixture/FeatureSet.java|")));
     }
-
+    
     @Test
     void preservesUtf16ExclusiveOffsetsAndEndLines() throws Exception {
         Path sources = temporaryDirectory.resolve("unicode");
@@ -70,10 +96,10 @@ class JavacSourceParserTest {
         java.nio.file.Files.writeString(sources.resolve("unicode/Ranges.java"), source, java.nio.charset.StandardCharsets.UTF_8);
         Path jar = IndexerTestSupport.createJar(temporaryDirectory.resolve("empty.jar"), java.util.Map.of());
         Path database = temporaryDirectory.resolve("ranges.mv.db");
-
+        
         new SourceIndexer().build(IndexerTestSupport.request(sources, jar, database, 1));
         List<String> dump = IndexerTestSupport.dump(database);
-
+        
         String type = dump.stream().filter(row -> row.startsWith("types|")).findFirst().orElseThrow();
         String[] typeColumns = type.split("\\|", -1);
         assertEquals(source.indexOf("public class"), Integer.parseInt(typeColumns[10]));
@@ -84,13 +110,45 @@ class JavacSourceParserTest {
         assertTrue(first.endsWith("|4|5"), first);
         assertEquals(source.length(), source.codePoints().map(Character::charCount).sum());
     }
-
-    private static long typeId(List<String> dump, String binaryName) {
-        String row = dump.stream().filter(candidate -> candidate.startsWith("types|") && candidate.contains("|" + binaryName + "|")).findFirst().orElseThrow();
-        return Long.parseLong(row.split("\\|", -1)[1]);
-    }
-
-    private static boolean memberOf(String row, String table, long typeId) {
-        return row.startsWith(table + "|") && row.split("\\|", -1)[2].equals(Long.toString(typeId));
+    
+    @Test
+    void usesExactCompilerRangesForAnnotatedMultilineRecordComponentsAndCompactParameters() throws Exception {
+        Path sources = Files.createDirectories(temporaryDirectory.resolve("record-ranges/ranges"));
+        String source = """
+                        package ranges;
+                        import java.lang.annotation.ElementType;
+                        import java.lang.annotation.Target;
+                        @Target(ElementType.RECORD_COMPONENT)
+                        @interface Label { String value(); }
+                        public record ExactRecord(
+                                @Label("name)") String name,
+                                @Label("name,") java.util.List<
+                                        String
+                                    > values,
+                                String nameAgain
+                        ) {
+                            public ExactRecord {
+                            }
+                        }
+                        """;
+        Files.writeString(sources.resolve("ExactRecord.java"), source, StandardCharsets.UTF_8);
+        Path jar = IndexerTestSupport.createJar(temporaryDirectory.resolve("record-empty.jar"), Map.of());
+        Path database = temporaryDirectory.resolve("record-ranges.mv.db");
+        
+        new SourceIndexer().build(IndexerTestSupport.request(sources.getParent(), jar, database, 1));
+        List<String> dump = IndexerTestSupport.dump(database);
+        
+        assertRecordRange(dump, "fields", "name", source, "@Label(\"name)\") String name");
+        assertRecordRange(dump, "fields", "values", source, """
+                                                            @Label("name,") java.util.List<
+                                                                            String
+                                                                        > values""");
+        assertRecordRange(dump, "fields", "nameAgain", source, "String nameAgain");
+        assertRecordRange(dump, "parameters", "name", source, "@Label(\"name)\") String name");
+        assertRecordRange(dump, "parameters", "values", source, """
+                                                                @Label("name,") java.util.List<
+                                                                                String
+                                                                            > values""");
+        assertRecordRange(dump, "parameters", "nameAgain", source, "String nameAgain");
     }
 }

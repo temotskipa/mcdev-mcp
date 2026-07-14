@@ -138,7 +138,7 @@ public final class DatabaseLock implements AutoCloseable {
             }
         }
     }
-
+    
     private static IOException timeoutFailure(boolean shared, Duration timeout) {
         return new IOException("Timed out acquiring " + mode(shared) + " database lock after " + format(timeout) + "; close active queries and retry.");
     }

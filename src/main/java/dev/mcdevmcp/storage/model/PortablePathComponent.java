@@ -8,10 +8,10 @@ import java.util.Set;
 
 final class PortablePathComponent {
     private static final Set<String> WINDOWS_DEVICE_NAMES = Set.of("CON", "PRN", "AUX", "NUL", "CLOCK$", "CONIN$", "CONOUT$");
-
+    
     private PortablePathComponent() {
     }
-
+    
     static void requireValid(String value, String errorMessage) {
         Objects.requireNonNull(value, "value");
         if (value.isBlank() || value.endsWith(".") || value.endsWith(" ") || value.chars().anyMatch(character -> Character.isISOControl(character) || isWindowsReservedCharacter(character)) || hasWindowsDeviceBasename(value)) {
@@ -26,13 +26,13 @@ final class PortablePathComponent {
             throw new IllegalArgumentException(errorMessage + value, exception);
         }
     }
-
+    
     private static boolean hasWindowsDeviceBasename(String value) {
         int extensionSeparator = value.indexOf('.');
         String basename = trimTrailingWindowsDotsAndSpaces(value.substring(0, extensionSeparator < 0 ? value.length() : extensionSeparator)).toUpperCase(Locale.ROOT);
         return WINDOWS_DEVICE_NAMES.contains(basename) || isNumberedWindowsDeviceName(basename);
     }
-
+    
     private static boolean isNumberedWindowsDeviceName(String basename) {
         if (basename.length() != 4 || !basename.startsWith("COM") && !basename.startsWith("LPT")) {
             return false;
@@ -42,7 +42,7 @@ final class PortablePathComponent {
             default -> false;
         };
     }
-
+    
     private static String trimTrailingWindowsDotsAndSpaces(String value) {
         int length = value.length();
         while (length > 0 && (value.charAt(length - 1) == '.' || value.charAt(length - 1) == ' ')) {
@@ -50,7 +50,7 @@ final class PortablePathComponent {
         }
         return value.substring(0, length);
     }
-
+    
     private static boolean isWindowsReservedCharacter(int character) {
         return switch (character) {
             case '<', '>', ':', '"', '/', '\\', '|', '?', '*' -> true;

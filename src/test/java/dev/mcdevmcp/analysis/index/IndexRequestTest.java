@@ -18,26 +18,26 @@ import static org.junit.jupiter.api.Assertions.*;
 class IndexRequestTest {
     @TempDir
     Path temporaryDirectory;
-
+    
     @Test
     void sourceRootsEnforceTypedIdentityAndNormalizePaths() {
         Path relative = Path.of("sources", "..", "sources", "minecraft");
         var minecraft = new SourceRoot(SourceNamespace.MINECRAFT, Optional.empty(), relative);
         var fabric = new SourceRoot(SourceNamespace.FABRIC, Optional.of(new FabricApiVersion("0.120.0")), temporaryDirectory.resolve("fabric"));
-
+        
         assertEquals(relative.toAbsolutePath().normalize(), minecraft.path());
         assertEquals(SourceNamespace.FABRIC, fabric.namespace());
         assertThrows(IllegalArgumentException.class, () -> new SourceRoot(SourceNamespace.MINECRAFT, Optional.of(new FabricApiVersion("0.120.0")), relative));
         assertThrows(IllegalArgumentException.class, () -> new SourceRoot(SourceNamespace.FABRIC, Optional.empty(), relative));
     }
-
+    
     @Test
     void requestDeepCopiesPathsAndRejectsDuplicateOrInvalidState() {
         var roots = new ArrayList<>(List.of(new SourceRoot(SourceNamespace.MINECRAFT, Optional.empty(), temporaryDirectory.resolve("sources"))));
         var classpath = new ArrayList<>(List.of(temporaryDirectory.resolve("lib/../lib/dependency.jar")));
         var request = new IndexRequest(new MinecraftVersion("1.21.5"), roots, temporaryDirectory.resolve("game.jar"), classpath, temporaryDirectory.resolve("symbols.mv.db"), 4, (_, _, _) -> {
         }, Cancellation.none());
-
+        
         roots.clear();
         classpath.clear();
         assertEquals(1, request.sourceRoots().size());
@@ -50,11 +50,11 @@ class IndexRequestTest {
         assertThrows(IllegalArgumentException.class, () -> new IndexRequest(request.minecraftVersion(), request.sourceRoots(), request.remappedJar(), List.of(request.remappedJar()), request.outputDatabase(), 1, request.progress(), request.cancellation()));
         assertThrows(IllegalArgumentException.class, () -> new IndexRequest(request.minecraftVersion(), request.sourceRoots(), request.remappedJar(), List.of(), request.outputDatabase(), 0, request.progress(), request.cancellation()));
     }
-
+    
     @Test
     void parsesThreadEnvironmentAtTheTypedBoundary() {
         int available = Runtime.getRuntime().availableProcessors();
-
+        
         assertEquals(available, IndexRequest.threadsFromEnvironment(Map.of()));
         assertEquals(1, IndexRequest.threadsFromEnvironment(Map.of("MCDEV_INDEX_THREADS", "1")));
         assertEquals(available, IndexRequest.threadsFromEnvironment(Map.of("MCDEV_INDEX_THREADS", Integer.toString(Integer.MAX_VALUE))));

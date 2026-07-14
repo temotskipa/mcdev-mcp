@@ -8,7 +8,7 @@ import java.util.Optional;
 
 record IndexDiagnostic(Diagnostic.Kind kind, Optional<SourceRoot> sourceRoot, Path sourcePath, long startOffset, long endOffset, long line, long column, String code, String message) {
     static final Comparator<IndexDiagnostic> ORDERING = IndexDiagnostic::compare;
-
+    
     IndexDiagnostic {
         Objects.requireNonNull(kind, "kind");
         sourceRoot = Optional.ofNullable(sourceRoot).orElseThrow(() -> new NullPointerException("sourceRoot"));
@@ -16,7 +16,7 @@ record IndexDiagnostic(Diagnostic.Kind kind, Optional<SourceRoot> sourceRoot, Pa
         Objects.requireNonNull(code, "code");
         Objects.requireNonNull(message, "message");
     }
-
+    
     private static int compare(IndexDiagnostic first, IndexDiagnostic second) {
         int rootOrder;
         if (first.sourceRoot.isPresent() && second.sourceRoot.isPresent()) {
@@ -28,7 +28,7 @@ record IndexDiagnostic(Diagnostic.Kind kind, Optional<SourceRoot> sourceRoot, Pa
         if (rootOrder != 0) {
             return rootOrder;
         }
-        int sourceOrder = first.sourcePath.toString().compareTo(second.sourcePath.toString());
+        int sourceOrder = new PortablePath(first.sourcePath).compareTo(new PortablePath(second.sourcePath));
         if (sourceOrder != 0) {
             return sourceOrder;
         }
@@ -43,9 +43,9 @@ record IndexDiagnostic(Diagnostic.Kind kind, Optional<SourceRoot> sourceRoot, Pa
         int codeOrder = first.code.compareTo(second.code);
         return codeOrder != 0 ? codeOrder : first.message.compareTo(second.message);
     }
-
+    
     String display() {
-        return sourcePath.toString().replace('\\', '/') + ":" + line + ":" + column + ": " + message + " [" + code + "]";
+        return new PortablePath(sourcePath).value() + ":" + line + ":" + column + ": " + message + " [" + code + "]";
     }
-
+    
 }

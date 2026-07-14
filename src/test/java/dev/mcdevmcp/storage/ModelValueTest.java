@@ -36,7 +36,7 @@ class ModelValueTest {
         assertThrows(IllegalArgumentException.class, () -> new ClassSymbol(3L, SourceNamespace.FABRIC, Optional.empty(), "net.fabricmc.Missing", "net.fabricmc", "Missing", ElementKind.CLASS, Optional.empty(), List.of(), Path.of("Missing.java"), 0, 1, 1, 1));
         assertEquals(Set.of(Modifier.PUBLIC), Set.copyOf(Set.of(Modifier.PUBLIC)));
     }
-
+    
     @Test
     void fabricApiVersionsAreSafeSingleFilesystemComponents() {
         assertEquals("0.120.0", new FabricApiVersion("0.120.0").value());
@@ -45,19 +45,19 @@ class ModelValueTest {
         assertThrows(IllegalArgumentException.class, () -> new FabricApiVersion("0.120.0/escape"));
         assertThrows(IllegalArgumentException.class, () -> new FabricApiVersion("C:\\escape"));
     }
-
+    
     @ParameterizedTest
     @ValueSource(strings = {"", " ", ".", "..", "C:escape", "C:\\escape", "../escape", "..\\escape", "//server/share", "\\\\server\\share", "version<", "version>", "version:", "version\"", "version/", "version\\", "version|", "version?", "version*", "version.", "version ", "CON", "prn.txt", "AUX", "nul.log", "COM1", "com9.zip", "LPT1", "lpt9.data", "cOm¹", "cOm¹.txt", "CoM²", "CoM².log", "com³", "com³.zip", "lPt¹", "lPt¹.txt", "LpT²", "LpT².log", "lpt³", "lpt³.zip", "cLoCk$", "ClOcK$.txt", "cOnIn$", "ConIn$.log", "cOnOuT$", "ConOut$.zip", "CON .txt", "COM1 .zip", "control\u0001"})
     void minecraftVersionsRejectNonPortableFilesystemComponents(String value) {
         assertThrows(IllegalArgumentException.class, () -> new MinecraftVersion(value));
     }
-
+    
     @ParameterizedTest
     @ValueSource(strings = {"", " ", ".", "..", "C:escape", "C:\\escape", "../escape", "..\\escape", "//server/share", "\\\\server\\share", "version<", "version>", "version:", "version\"", "version/", "version\\", "version|", "version?", "version*", "version.", "version ", "CON", "prn.txt", "AUX", "nul.log", "COM1", "com9.zip", "LPT1", "lpt9.data", "cOm¹", "cOm¹.txt", "CoM²", "CoM².log", "com³", "com³.zip", "lPt¹", "lPt¹.txt", "LpT²", "LpT².log", "lpt³", "lpt³.zip", "cLoCk$", "ClOcK$.txt", "cOnIn$", "ConIn$.log", "cOnOuT$", "ConOut$.zip", "CON .txt", "COM1 .zip", "control\u0001"})
     void fabricApiVersionsRejectNonPortableFilesystemComponents(String value) {
         assertThrows(IllegalArgumentException.class, () -> new FabricApiVersion(value));
     }
-
+    
     @ParameterizedTest
     @ValueSource(strings = {"1.21.5", "0.120.0+1.21.5", "1.21.5-pre1", "1_21_5", "версия", "build$5", "version¹"})
     void versionValuesAcceptPortableMinecraftAndFabricForms(String value) {

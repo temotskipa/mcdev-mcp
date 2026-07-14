@@ -6,13 +6,7 @@ import java.io.IOException;
 import java.nio.channels.FileChannel;
 import java.nio.channels.FileLock;
 import java.nio.channels.OverlappingFileLockException;
-import java.nio.file.FileAlreadyExistsException;
-import java.nio.file.FileVisitResult;
-import java.nio.file.Files;
-import java.nio.file.LinkOption;
-import java.nio.file.Path;
-import java.nio.file.SimpleFileVisitor;
-import java.nio.file.StandardOpenOption;
+import java.nio.file.*;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.Objects;
 
@@ -23,18 +17,10 @@ public final class IndexCleaner {
     public IndexCleaner(PlatformPaths paths) {
         this(paths, Files::move);
     }
-
+    
     IndexCleaner(PlatformPaths paths, DatabaseFileOperations files) {
         this.paths = Objects.requireNonNull(paths, "paths");
         this.files = Objects.requireNonNull(files, "files");
-    }
-
-    private void deleteContained(Path root, Path candidate) throws IOException {
-        Path normalized = candidate.toAbsolutePath().normalize();
-        if (!normalized.startsWith(root)) {
-            throw new IOException("Refusing to delete path outside index root: " + candidate);
-        }
-        files.delete(normalized);
     }
     
     private static void rejectH2Locks(Path root) throws IOException {
@@ -45,16 +31,7 @@ public final class IndexCleaner {
             }
         }
     }
-
-    private DatabaseFileHandle openDatabaseFile(Path database) throws IOException {
-        try {
-            return new DatabaseFileHandle(files.open(database, StandardOpenOption.CREATE_NEW, StandardOpenOption.READ, StandardOpenOption.WRITE, LinkOption.NOFOLLOW_LINKS), true);
-        } catch (FileAlreadyExistsException exception) {
-            rejectSymbolicLink(database, "symbol database");
-            return new DatabaseFileHandle(files.open(database, StandardOpenOption.READ, StandardOpenOption.WRITE, LinkOption.NOFOLLOW_LINKS), false);
-        }
-    }
-
+    
     private static FileLock acquireDatabaseFileLock(FileChannel channel, Path database) throws IOException {
         try {
             FileLock lock = channel.tryLock();
@@ -66,13 +43,30 @@ public final class IndexCleaner {
             throw new IOException("Unable to acquire exclusive H2 database file lock for index cleanup: " + database, exception);
         }
     }
-
+    
     private static void rejectSymbolicLink(Path path, String description) throws IOException {
         if (Files.isSymbolicLink(path)) {
             throw new IOException("Refusing to clean a symbolic link " + description + ": " + path);
         }
     }
-
+    
+    private void deleteContained(Path root, Path candidate) throws IOException {
+        Path normalized = candidate.toAbsolutePath().normalize();
+        if (!normalized.startsWith(root)) {
+            throw new IOException("Refusing to delete path outside index root: " + candidate);
+        }
+        files.delete(normalized);
+    }
+    
+    private DatabaseFileHandle openDatabaseFile(Path database) throws IOException {
+        try {
+            return new DatabaseFileHandle(files.open(database, StandardOpenOption.CREATE_NEW, StandardOpenOption.READ, StandardOpenOption.WRITE, LinkOption.NOFOLLOW_LINKS), true);
+        } catch (FileAlreadyExistsException exception) {
+            rejectSymbolicLink(database, "symbol database");
+            return new DatabaseFileHandle(files.open(database, StandardOpenOption.READ, StandardOpenOption.WRITE, LinkOption.NOFOLLOW_LINKS), false);
+        }
+    }
+    
     private void deleteArtifacts(Path root, Path database, Path lockPath) throws IOException {
         Files.walkFileTree(root, new SimpleFileVisitor<>() {
             @Override
@@ -87,7 +81,7 @@ public final class IndexCleaner {
                 }
                 return FileVisitResult.CONTINUE;
             }
-
+            
             @Override
             @SuppressWarnings("NullableProblems")
             public FileVisitResult postVisitDirectory(Path directory, IOException exception) throws IOException {
@@ -101,7 +95,7 @@ public final class IndexCleaner {
             }
         });
     }
-
+    
     public void cleanIndex(MinecraftVersion version) throws IOException {
         Path root = paths.indexRoot(version).toAbsolutePath().normalize();
         if (!root.startsWith(paths.cacheRoot().toAbsolutePath().normalize())) {
