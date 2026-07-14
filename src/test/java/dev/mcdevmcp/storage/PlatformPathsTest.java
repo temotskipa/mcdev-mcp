@@ -5,6 +5,8 @@ import dev.mcdevmcp.storage.model.MinecraftVersion;
 import dev.mcdevmcp.storage.model.VersionState;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -43,6 +45,23 @@ class PlatformPathsTest {
         assertEquals(Path.of("/cache/mcdev-mcp/cache/1.21.5/callgraph/callgraph.mv.db"), paths.callgraphDatabase(VERSION));
         assertEquals(Path.of("/cache/mcdev-mcp/cache/fabric-api-0.120.0"), paths.fabricSourceRoot(new FabricApiVersion("0.120.0")));
         assertEquals(Path.of("/cache/mcdev-mcp/index/1.21.5/symbols.mv.db"), paths.symbolDatabase(VERSION));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"1.21.5", "0.120.0+1.21.5", "1.21.5-pre1", "1_21_5", "версия"})
+    void acceptedVersionsRemainContainedByTheirCacheAndIndexRoots(String value) {
+        var paths = new PlatformPaths(temporaryDirectory.resolve("mcdev-mcp"));
+        var minecraftVersion = new MinecraftVersion(value);
+        var fabricVersion = new FabricApiVersion(value);
+
+        assertTrue(paths.versionCache(minecraftVersion).startsWith(paths.cacheRoot()));
+        assertTrue(paths.sourceRoot(minecraftVersion).startsWith(paths.versionCache(minecraftVersion)));
+        assertTrue(paths.remappedJar(minecraftVersion).startsWith(paths.versionCache(minecraftVersion)));
+        assertTrue(paths.remappedCallgraphJar(minecraftVersion).startsWith(paths.versionCache(minecraftVersion)));
+        assertTrue(paths.callgraphDatabase(minecraftVersion).startsWith(paths.versionCache(minecraftVersion)));
+        assertTrue(paths.indexRoot(minecraftVersion).startsWith(paths.cacheRoot()));
+        assertTrue(paths.symbolDatabase(minecraftVersion).startsWith(paths.indexRoot(minecraftVersion)));
+        assertTrue(paths.fabricSourceRoot(fabricVersion).startsWith(paths.cacheRoot()));
     }
     
     @Test

@@ -2,6 +2,8 @@ package dev.mcdevmcp.storage;
 
 import dev.mcdevmcp.storage.model.*;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import javax.lang.model.element.ElementKind;
 import javax.lang.model.element.Modifier;
@@ -42,6 +44,25 @@ class ModelValueTest {
         assertThrows(IllegalArgumentException.class, () -> new FabricApiVersion(".."));
         assertThrows(IllegalArgumentException.class, () -> new FabricApiVersion("0.120.0/escape"));
         assertThrows(IllegalArgumentException.class, () -> new FabricApiVersion("C:\\escape"));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"", " ", ".", "..", "C:escape", "C:\\escape", "../escape", "..\\escape", "//server/share", "\\\\server\\share", "version<", "version>", "version:", "version\"", "version/", "version\\", "version|", "version?", "version*", "version.", "version ", "CON", "prn.txt", "AUX", "nul.log", "COM1", "com9.zip", "LPT1", "lpt9.data", "control\u0001"})
+    void minecraftVersionsRejectNonPortableFilesystemComponents(String value) {
+        assertThrows(IllegalArgumentException.class, () -> new MinecraftVersion(value));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"", " ", ".", "..", "C:escape", "C:\\escape", "../escape", "..\\escape", "//server/share", "\\\\server\\share", "version<", "version>", "version:", "version\"", "version/", "version\\", "version|", "version?", "version*", "version.", "version ", "CON", "prn.txt", "AUX", "nul.log", "COM1", "com9.zip", "LPT1", "lpt9.data", "control\u0001"})
+    void fabricApiVersionsRejectNonPortableFilesystemComponents(String value) {
+        assertThrows(IllegalArgumentException.class, () -> new FabricApiVersion(value));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"1.21.5", "0.120.0+1.21.5", "1.21.5-pre1", "1_21_5", "версия"})
+    void versionValuesAcceptPortableMinecraftAndFabricForms(String value) {
+        assertEquals(value, new MinecraftVersion(value).value());
+        assertEquals(value, new FabricApiVersion(value).value());
     }
     
     @Test

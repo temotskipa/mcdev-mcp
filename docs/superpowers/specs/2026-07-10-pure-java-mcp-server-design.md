@@ -371,7 +371,15 @@ Existing cache and source directories are retained. Legacy `manifest.json` and
 package JSON indexes are detected but not imported because they may contain
 regex-derived inaccuracies. A successful rebuild leaves those legacy files
 untouched to avoid deleting user-modified cache data; the Java server ignores
-them. `status` reports a legacy-only index as `needs rebuild`, and
+them. `status` reports a legacy-only index as `needs rebuild`.
+`MinecraftVersion` and `FabricApiVersion` remain public `String`-valued records
+whose values are each validated once by a shared package-private portable
+filename-component validator before they reach `Path.resolve`. The rule rejects
+blank, dot, rooted or drive-relative, separator-containing, control-character,
+Windows-reserved character/device-name, and trailing-dot/space values regardless
+of the host filesystem, while accepting ordinary Unicode and established
+Minecraft/Fabric version forms. Record tests and `PlatformPaths` containment
+tests keep this model boundary as the primary path-safety control.
 `clean --index` takes the same exclusive application lock as rebuilds, refuses
 an H2 `.lock.db` companion, and rejects a symlinked index root or symbol
 database before lock/open. While holding the application lock, it takes H2's

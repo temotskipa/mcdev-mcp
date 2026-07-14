@@ -639,6 +639,15 @@ Within that root preserve the current layout: Minecraft sources at
 sources at `cache/fabric-api-<fabric-api-version>/`, and the new symbol database at
 `index/<minecraft-version>/symbols.mv.db`.
 
+`MinecraftVersion` and `FabricApiVersion` remain public `String`-valued records,
+but each value must pass one shared, package-private portable filename-component
+validator before any `Path.resolve` call. Reject blank, dot, rooted or
+drive-relative, separator-containing, control-character, Windows-reserved
+character/device-name, and trailing-dot/space values independently of the host
+OS; retain ordinary Unicode and real version forms such as `1.21.5` and
+`0.120.0+1.21.5`. Tests cover both records and prove accepted values remain
+within the intended `PlatformPaths` cache and index roots.
+
 Tests assert exact macOS, Linux/XDG, and Windows roots; typed schema-v1
 metadata; complete H2 columns, constraints, indexes, and orphan validation;
 Minecraft/Fabric package/type identity; overlapping local and subprocess
