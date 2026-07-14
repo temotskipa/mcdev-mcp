@@ -9,15 +9,39 @@ import java.nio.channels.FileChannel;
 import java.nio.channels.FileLock;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.time.Duration;
 import java.util.concurrent.locks.ReentrantLock;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class DatabaseLockTest {
     @TempDir
     Path temporaryDirectory;
+
+    @Test
+    void zeroTimeoutMakesOneImmediateUncontendedAttempt() throws Exception {
+        Path database = temporaryDirectory.resolve("zero.mv.db");
+
+        try (var writer = DatabaseLock.write(database, Duration.ZERO)) {
+            assertTrue(writer.isHeld());
+        }
+        try (var reader = DatabaseLock.read(database, Duration.ZERO)) {
+            assertTrue(reader.isHeld());
+        }
+    }
+
+    @Test
+    void hugeTimeoutDoesNotOverflowDeadlineConversion() throws Exception {
+        Path database = temporaryDirectory.resolve("huge.mv.db");
+        Duration timeout = Duration.ofSeconds(Long.MAX_VALUE, 999_999_999);
+
+        try (var writer = DatabaseLock.write(database, timeout)) {
+            assertTrue(writer.isHeld());
+        }
+    }
 
     @Test
     void exclusiveCloseClosesTheChannelWhenFileLockReleaseFails() throws Exception {

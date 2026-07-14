@@ -1,6 +1,7 @@
 package dev.mcdevmcp.storage;
 
 import java.nio.file.Path;
+import java.sql.DriverManager;
 import java.time.Duration;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -54,8 +55,36 @@ final class DatabaseLockProcessMain {
                     System.out.flush();
                 }
             }
+            case "hold-h2-read" -> holdH2(H2DatabaseUrls.reader(database));
+            case "hold-h2-write" -> holdH2(H2DatabaseUrls.writer(database));
+            case "try-h2-write" -> {
+                try (var connection = DriverManager.getConnection(shortLockTimeout(H2DatabaseUrls.writer(database)))) {
+                    if (connection.isClosed()) {
+                        throw new AssertionError("H2 connection unexpectedly closed");
+                    }
+                    System.out.println("opened");
+                } catch (java.sql.SQLException expected) {
+                    System.out.println("blocked");
+                }
+                System.out.flush();
+            }
             default -> throw new IllegalArgumentException("Unsupported process mode: " + arguments[0]);
         }
+    }
+
+    private static void holdH2(String url) throws Exception {
+        try (var connection = DriverManager.getConnection(url)) {
+            if (connection.isClosed()) {
+                throw new AssertionError("H2 connection unexpectedly closed");
+            }
+            System.out.println("h2-open");
+            System.out.flush();
+            awaitParentExit();
+        }
+    }
+
+    private static String shortLockTimeout(String url) {
+        return url.replace("LOCK_TIMEOUT=30000", "LOCK_TIMEOUT=250");
     }
     
     private static void awaitParentExit() throws java.io.IOException {

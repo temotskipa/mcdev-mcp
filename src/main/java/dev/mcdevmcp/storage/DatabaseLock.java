@@ -16,6 +16,7 @@ import java.util.concurrent.locks.Lock;
 public final class DatabaseLock implements AutoCloseable {
     private static final ConcurrentHashMap<Path, DatabaseLockState> LOCKS = new ConcurrentHashMap<>();
     private static final Duration RETRY_DELAY = Duration.ofMillis(25);
+    private static final Duration MAX_MILLISECONDS = Duration.ofMillis(Long.MAX_VALUE);
     
     private final Lock localLock;
     private final DatabaseLockState state;
@@ -50,9 +51,9 @@ public final class DatabaseLock implements AutoCloseable {
         Files.createDirectories(lockPath.getParent());
         DatabaseLockState state = LOCKS.computeIfAbsent(lockPath, ignored -> new DatabaseLockState());
         Lock localLock = shared ? state.lock.readLock() : state.lock.writeLock();
-        long deadline = deadlineAfter(timeout);
+        DatabaseLockDeadline deadline = DatabaseLockDeadline.after(timeout);
         try {
-            if (!localLock.tryLock(remainingNanos(deadline), TimeUnit.NANOSECONDS)) {
+            if (!localLock.tryLock(deadline.remainingNanos(), TimeUnit.NANOSECONDS)) {
                 throw timeoutFailure(shared, timeout);
             }
         } catch (InterruptedException exception) {
@@ -63,9 +64,6 @@ public final class DatabaseLock implements AutoCloseable {
             if (shared) {
                 acquireSharedLock(state, lockPath, deadline, timeout);
                 return new DatabaseLock(localLock, state, true, null, null);
-            }
-            if (remainingNanos(deadline) <= 0) {
-                throw timeoutFailure(false, timeout);
             }
             FileChannel channel = FileChannel.open(lockPath, StandardOpenOption.CREATE, StandardOpenOption.READ, StandardOpenOption.WRITE);
             try {
@@ -85,9 +83,9 @@ public final class DatabaseLock implements AutoCloseable {
         }
     }
     
-    private static void acquireSharedLock(DatabaseLockState state, Path lockPath, long deadline, Duration timeout) throws IOException {
+    private static void acquireSharedLock(DatabaseLockState state, Path lockPath, DatabaseLockDeadline deadline, Duration timeout) throws IOException {
         try {
-            if (!state.sharedGuard.tryLock(remainingNanos(deadline), TimeUnit.NANOSECONDS)) {
+            if (!state.sharedGuard.tryLock(deadline.remainingNanos(), TimeUnit.NANOSECONDS)) {
                 throw timeoutFailure(true, timeout);
             }
         } catch (InterruptedException exception) {
@@ -118,7 +116,7 @@ public final class DatabaseLock implements AutoCloseable {
         }
     }
     
-    private static FileLock acquireFileLock(FileChannel channel, boolean shared, long deadline, Duration timeout) throws IOException {
+    private static FileLock acquireFileLock(FileChannel channel, boolean shared, DatabaseLockDeadline deadline, Duration timeout) throws IOException {
         while (true) {
             try {
                 FileLock lock = channel.tryLock(0, Long.MAX_VALUE, shared);
@@ -128,7 +126,7 @@ public final class DatabaseLock implements AutoCloseable {
             } catch (OverlappingFileLockException ignored) {
                 // A competing process may release its lock before this timeout expires.
             }
-            long remaining = remainingNanos(deadline);
+            long remaining = deadline.remainingNanos();
             if (remaining <= 0) {
                 throw timeoutFailure(shared, timeout);
             }
@@ -141,16 +139,6 @@ public final class DatabaseLock implements AutoCloseable {
         }
     }
 
-    private static long deadlineAfter(Duration timeout) {
-        long timeoutNanos = timeout.toNanos();
-        long now = System.nanoTime();
-        return timeoutNanos > Long.MAX_VALUE - now ? Long.MAX_VALUE : now + timeoutNanos;
-    }
-
-    private static long remainingNanos(long deadline) {
-        return Math.max(0, deadline - System.nanoTime());
-    }
-    
     private static IOException timeoutFailure(boolean shared, Duration timeout) {
         return new IOException("Timed out acquiring " + mode(shared) + " database lock after " + format(timeout) + "; close active queries and retry.");
     }
@@ -160,9 +148,12 @@ public final class DatabaseLock implements AutoCloseable {
     }
     
     private static String format(Duration duration) {
-        if (duration.toNanos() % TimeUnit.SECONDS.toNanos(1) == 0) {
+        if (duration.getNano() == 0) {
             long seconds = duration.toSeconds();
             return seconds + (seconds == 1 ? " second" : " seconds");
+        }
+        if (duration.compareTo(MAX_MILLISECONDS) > 0) {
+            return duration.toString();
         }
         return duration.toMillis() + " milliseconds";
     }

@@ -229,6 +229,59 @@ class AtomicH2DatabaseTest {
     }
 
     @Test
+    void preservesOldTargetAndPartialBackupWhenTheFirstFallbackMoveLeavesBoth() throws Exception {
+        Path target = temporaryDirectory.resolve("symbols.mv.db");
+        Path backup = target.resolveSibling("symbols.mv.db.bak");
+        createDatabase(target);
+        byte[] original = Files.readAllBytes(target);
+
+        IOException failure = assertThrows(IOException.class, () -> new AtomicH2Database(new ForcedFallbackMoveStrategy(1, ForcedFallbackMoveStrategy.FailureTiming.AFTER_PARTIAL_COPY)).rebuild(target, Duration.ofSeconds(1), connection -> {
+            createMarker(connection, "new");
+            return null;
+        }, AtomicH2DatabaseTest::validateMarker));
+
+        assertEquals("forced fallback move failure 1", failure.getMessage());
+        assertArrayEquals(original, Files.readAllBytes(target));
+        assertEquals("old", marker(target));
+        assertTrue(Files.exists(backup));
+        assertTrue(Files.size(backup) < original.length);
+    }
+
+    @Test
+    void reportsWhenTheFirstFallbackMoveLeavesNeitherTargetNorBackup() throws Exception {
+        Path target = temporaryDirectory.resolve("symbols.mv.db");
+        Path backup = target.resolveSibling("symbols.mv.db.bak");
+        createDatabase(target);
+
+        IOException failure = assertThrows(IOException.class, () -> new AtomicH2Database(new ForcedFallbackMoveStrategy(1, ForcedFallbackMoveStrategy.FailureTiming.AFTER_SOURCE_REMOVAL)).rebuild(target, Duration.ofSeconds(1), connection -> {
+            createMarker(connection, "new");
+            return null;
+        }, AtomicH2DatabaseTest::validateMarker));
+
+        assertEquals("forced fallback move failure 1", failure.getMessage());
+        assertFalse(Files.exists(target));
+        assertFalse(Files.exists(backup));
+        assertTrue(java.util.Arrays.stream(failure.getSuppressed()).anyMatch(suppressed -> suppressed.getMessage().contains("Neither target nor backup remains after failed backup move")));
+    }
+
+    @Test
+    void restoresOldTargetWhenTheSecondFallbackMoveFailsBeforeCreatingTheTarget() throws Exception {
+        Path target = temporaryDirectory.resolve("symbols.mv.db");
+        createDatabase(target);
+        byte[] original = Files.readAllBytes(target);
+
+        IOException failure = assertThrows(IOException.class, () -> new AtomicH2Database(new ForcedFallbackMoveStrategy(2)).rebuild(target, Duration.ofSeconds(1), connection -> {
+            createMarker(connection, "new");
+            return null;
+        }, AtomicH2DatabaseTest::validateMarker));
+
+        assertEquals("forced fallback move failure 2", failure.getMessage());
+        assertArrayEquals(original, Files.readAllBytes(target));
+        assertEquals("old", marker(target));
+        assertFalse(Files.exists(target.resolveSibling("symbols.mv.db.bak")));
+    }
+
+    @Test
     void restoresOldTargetWhenTheSecondFallbackMoveFailsAfterCreatingTheTarget() throws Exception {
         Path target = temporaryDirectory.resolve("symbols.mv.db");
         createDatabase(target);
@@ -274,6 +327,7 @@ class AtomicH2DatabaseTest {
     @Test
     void preservesThePromotionFailureWhenBackupRestorationFails() throws Exception {
         Path target = temporaryDirectory.resolve("symbols.mv.db");
+        Path backup = target.resolveSibling("symbols.mv.db.bak");
         createDatabase(target);
         var validations = new java.util.concurrent.atomic.AtomicInteger();
 
@@ -287,9 +341,78 @@ class AtomicH2DatabaseTest {
         }));
 
         assertEquals("promotion validation failed", failure.getMessage());
-        assertEquals("Unable to restore backup; preserving " + target + " and " + target.resolveSibling("symbols.mv.db.bak"), failure.getSuppressed()[0].getMessage());
-        assertTrue(Files.exists(target));
-        assertTrue(Files.exists(target.resolveSibling("symbols.mv.db.bak")));
+        assertTrue(java.util.Arrays.stream(failure.getSuppressed()).anyMatch(suppressed -> suppressed.getMessage().contains("Unable to restore backup")));
+        assertFalse(Files.exists(target));
+        assertTrue(Files.exists(backup));
+        Path preserved = temporaryDirectory.resolve("preserved.mv.db");
+        Files.copy(backup, preserved);
+        assertEquals("old", marker(preserved));
+    }
+
+    @Test
+    void keepsRestoredOldTargetAuthoritativeWhenBackupRestoreReportsFailureAfterMoving() throws Exception {
+        Path target = temporaryDirectory.resolve("symbols.mv.db");
+        Path backup = target.resolveSibling("symbols.mv.db.bak");
+        createDatabase(target);
+        byte[] original = Files.readAllBytes(target);
+        var validations = new java.util.concurrent.atomic.AtomicInteger();
+
+        SQLException failure = assertThrows(SQLException.class, () -> new AtomicH2Database(new ForcedFallbackMoveStrategy(3, ForcedFallbackMoveStrategy.FailureTiming.AFTER_SIDE_EFFECT)).rebuild(target, Duration.ofSeconds(1), connection -> {
+            createMarker(connection, "new");
+            return null;
+        }, _ -> {
+            if (validations.incrementAndGet() == 3) {
+                throw new SQLException("promotion validation failed");
+            }
+        }));
+
+        assertEquals("promotion validation failed", failure.getMessage());
+        assertArrayEquals(original, Files.readAllBytes(target));
+        assertEquals("old", marker(target));
+        assertFalse(Files.exists(backup));
+    }
+
+    @Test
+    void preservesUncertainTargetAndBackupWhenTargetRemovalFailsBeforeRestore() throws Exception {
+        Path target = temporaryDirectory.resolve("symbols.mv.db");
+        Path backup = target.resolveSibling("symbols.mv.db.bak");
+        createDatabase(target);
+        byte[] original = Files.readAllBytes(target);
+
+        IOException failure = assertThrows(IOException.class, () -> new AtomicH2Database(new ForcedFallbackMoveStrategy(2, ForcedFallbackMoveStrategy.FailureTiming.AFTER_SIDE_EFFECT, ForcedFallbackMoveStrategy.DeleteFailure.ANY)).rebuild(target, Duration.ofSeconds(1), connection -> {
+            createMarker(connection, "new");
+            return null;
+        }, AtomicH2DatabaseTest::validateMarker));
+
+        assertEquals("forced fallback move failure 2", failure.getMessage());
+        assertTrue(java.util.Arrays.stream(failure.getSuppressed()).anyMatch(suppressed -> suppressed.getMessage().contains("Unable to remove uncertain promoted target")));
+        assertEquals("new", marker(target));
+        assertArrayEquals(original, Files.readAllBytes(backup));
+    }
+
+    @Test
+    void neverOverwritesRestoredOldTargetAfterFormerPostRestoreCleanupFailure() throws Exception {
+        Path target = temporaryDirectory.resolve("symbols.mv.db");
+        Path backup = target.resolveSibling("symbols.mv.db.bak");
+        Path rejected = target.resolveSibling("symbols.mv.db.failed-promotion");
+        createDatabase(target);
+        byte[] original = Files.readAllBytes(target);
+        var validations = new java.util.concurrent.atomic.AtomicInteger();
+
+        SQLException failure = assertThrows(SQLException.class, () -> new AtomicH2Database(new ForcedFallbackMoveStrategy(0, ForcedFallbackMoveStrategy.FailureTiming.BEFORE_SIDE_EFFECT, ForcedFallbackMoveStrategy.DeleteFailure.FAILED_PROMOTION)).rebuild(target, Duration.ofSeconds(1), connection -> {
+            createMarker(connection, "new");
+            return null;
+        }, _ -> {
+            if (validations.incrementAndGet() == 3) {
+                throw new SQLException("promotion validation failed");
+            }
+        }));
+
+        assertEquals("promotion validation failed", failure.getMessage());
+        assertArrayEquals(original, Files.readAllBytes(target));
+        assertEquals("old", marker(target));
+        assertFalse(Files.exists(backup));
+        assertFalse(Files.exists(rejected));
     }
 
     @Test

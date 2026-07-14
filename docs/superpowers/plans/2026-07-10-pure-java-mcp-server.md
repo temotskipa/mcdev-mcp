@@ -687,16 +687,20 @@ same-process readers share one reference-counted OS lock. Readers use one
 short-lived H2 connection with `ACCESS_MODE_DATA=r;IFEXISTS=TRUE`. Writer URLs
 use `DB_CLOSE_ON_EXIT=FALSE;FILE_LOCK=FS;WRITE_DELAY=0;LOCK_TIMEOUT=30000;TRACE_LEVEL_FILE=0`.
 One configured duration is a monotonic deadline spanning local and shared-state
-locks, OS-lock retries, and retry sleeps.
+locks, OS-lock retries, and retry sleeps. Deadline conversion is overflow-safe,
+and zero makes one immediate nonblocking attempt.
 Build same-directory `<base>.<pid>.tmp.mv.db` in one transaction, create
 secondary indexes after load, validate, commit, run `CHECKPOINT SYNC`, close,
 and force the file. Reject fixed and numbered H2 companions before promotion.
 Try `ATOMIC_MOVE | REPLACE_EXISTING`; on unsupported atomic replacement, move
 target to `.bak`, move temp to target, reopen/validate, and delete backup.
-On every fallback failure inspect the actual target, backup, and temporary
-paths rather than trusting move-return flags; retain both target and backup
-with an actionable failure when safe recovery cannot be established. Preserve
-the original failure and suppress restoration and cleanup failures. Temporary
+Before each non-atomic fallback move, record its phase and recover from the
+observed target/backup state rather than trusting move-return flags. Preserve
+an original target if it remains, remove an uncertain promoted target before
+one-way backup restoration, and never write a rejected target over a restored
+old database. Retain the observed files with an actionable failure when safe
+recovery cannot be established. Preserve the original failure and suppress
+restoration and cleanup failures. Temporary
 cleanup refuses `.lock.db` rather than deleting an active or uncertain H2
 companion. `AtomicH2Database` invokes only its supplied validator; symbol
 builders explicitly compose `SymbolSchema.validate`. Startup restores `.bak` only when
@@ -704,7 +708,15 @@ target is absent and validates target before deleting a coexisting backup.
 
 - [ ] **Step 6: Implement legacy detection and cleaning without implicit deletion**
 
-`VersionStateRepository` reports H2-ready, legacy-only `needs rebuild`, source-only, and absent. A successful H2 rebuild leaves legacy JSON untouched. `IndexCleaner.cleanIndex(version)` takes the same exclusive application lock as rebuilds, refuses an H2 `.lock.db` companion without deleting anything, removes the H2 `.mv.db`, temp/backup companions, legacy manifest, namespace indexes, and legacy package JSON only after resolving every path beneath the version/index root, and never unlinks the active application lock pathname.
+`VersionStateRepository` reports H2-ready, legacy-only `needs rebuild`,
+source-only, and absent. A successful H2 rebuild leaves legacy JSON untouched.
+`IndexCleaner.cleanIndex(version)` rejects a symlinked version-index root or
+symbol database before lock/open, takes the same exclusive application lock as
+rebuilds, then takes H2's whole-file exclusive `FILE_LOCK=FS` guard. It never
+deletes an encountered `.lock.db`, removes other H2 and legacy artifacts,
+rescans, and deletes the `.mv.db` last while the guard remains held. It never
+unlinks the application lock pathname, which is retained permanently to
+preserve cross-process lock identity.
 
 - [ ] **Step 7: Run focused and full storage tests**
 

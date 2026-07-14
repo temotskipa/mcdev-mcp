@@ -13,14 +13,14 @@ import java.util.Objects;
 public final class AtomicH2Database {
     public static final Duration WRITE_LOCK_TIMEOUT = Duration.ofSeconds(30);
     
-    private final DatabaseMoveStrategy moves;
+    private final DatabaseFileOperations files;
     
     public AtomicH2Database() {
         this(Files::move);
     }
     
-    AtomicH2Database(DatabaseMoveStrategy moves) {
-        this.moves = Objects.requireNonNull(moves, "moves");
+    AtomicH2Database(DatabaseFileOperations files) {
+        this.files = Objects.requireNonNull(files, "files");
     }
     
     private static <T> T buildTemporaryDatabase(Path temporary, DatabaseBuilder<T> builder, DatabaseValidator validator) throws Exception {
@@ -80,7 +80,7 @@ public final class AtomicH2Database {
             return;
         }
         if (!Files.exists(target)) {
-            moves.move(backup, target, StandardCopyOption.REPLACE_EXISTING);
+            files.move(backup, target, StandardCopyOption.REPLACE_EXISTING);
             return;
         }
         try {
@@ -91,45 +91,49 @@ public final class AtomicH2Database {
         Files.delete(backup);
     }
     
-    private void restorePrePromotionState(Path target, Path backup, DatabasePromotionState state, Exception originalFailure) {
+    private void restorePrePromotionState(Path target, Path backup, DatabasePromotionPhase phase, boolean originalTargetExisted, Exception originalFailure) {
         boolean targetExists = Files.exists(target);
         boolean backupExists = Files.exists(backup);
-        if (backupExists) {
+        if (phase == DatabasePromotionPhase.BACKING_UP_TARGET) {
             if (targetExists) {
-                Path uncertainTarget = target.resolveSibling(target.getFileName() + ".failed-promotion");
-                try {
-                    Files.move(target, uncertainTarget, StandardCopyOption.REPLACE_EXISTING);
-                } catch (IOException exception) {
-                    originalFailure.addSuppressed(new IOException("Unable to isolate uncertain promoted target; preserving " + target + " and " + backup, exception));
-                    return;
-                }
-                try {
-                    moves.move(backup, target, StandardCopyOption.REPLACE_EXISTING);
-                    Files.deleteIfExists(uncertainTarget);
-                } catch (IOException exception) {
-                    try {
-                        Files.move(uncertainTarget, target, StandardCopyOption.REPLACE_EXISTING);
-                    } catch (IOException restoreUncertainTargetFailure) {
-                        exception.addSuppressed(restoreUncertainTargetFailure);
-                    }
-                    originalFailure.addSuppressed(new IOException("Unable to restore backup; preserving " + target + " and " + backup, exception));
-                }
+                return;
             }
-            else {
-                try {
-                    moves.move(backup, target, StandardCopyOption.REPLACE_EXISTING);
-                } catch (IOException exception) {
-                    originalFailure.addSuppressed(new IOException("Unable to restore backup; preserving " + target + " and " + backup, exception));
-                }
+            if (backupExists) {
+                restoreBackup(target, backup, originalFailure);
+                return;
             }
+            originalFailure.addSuppressed(new IOException("Neither target nor backup remains after failed backup move: " + target + " and " + backup));
             return;
         }
-        if (state.temporaryPromotionAttempted && targetExists) {
+
+        if (phase != DatabasePromotionPhase.PROMOTING_TEMPORARY) {
+            return;
+        }
+        if (targetExists) {
             try {
-                Files.delete(target);
+                files.delete(target);
             } catch (IOException exception) {
-                originalFailure.addSuppressed(new IOException("Unable to remove uncertain promoted target: " + target, exception));
+                originalFailure.addSuppressed(new IOException("Unable to remove uncertain promoted target; preserving observed state for " + target + " and " + backup, exception));
+                return;
             }
+        }
+        if (backupExists) {
+            restoreBackup(target, backup, originalFailure);
+        }
+        else if (originalTargetExisted) {
+            originalFailure.addSuppressed(new IOException("Backup missing after failed temporary promotion: " + backup));
+        }
+    }
+
+    private void restoreBackup(Path target, Path backup, Exception originalFailure) {
+        DatabasePromotionPhase phase = DatabasePromotionPhase.RESTORING_BACKUP;
+        try {
+            files.move(backup, target, StandardCopyOption.REPLACE_EXISTING);
+        } catch (IOException exception) {
+            boolean targetExists = Files.exists(target);
+            boolean backupExists = Files.exists(backup);
+            String state = "target=" + targetExists + ", backup=" + backupExists + ", phase=" + phase;
+            originalFailure.addSuppressed(new IOException("Unable to restore backup; preserving observed state for " + target + " and " + backup + " (" + state + ")", exception));
         }
     }
     
@@ -230,7 +234,7 @@ public final class AtomicH2Database {
     
     private void promote(Path temporary, Path target, DatabaseValidator validator) throws IOException, SQLException {
         try {
-            moves.move(temporary, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+            files.move(temporary, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
         } catch (AtomicMoveNotSupportedException exception) {
             verifyNoCompanions(temporary);
             promoteWithBackup(temporary, target, validator, exception);
@@ -239,20 +243,22 @@ public final class AtomicH2Database {
     
     private void promoteWithBackup(Path temporary, Path target, DatabaseValidator validator, AtomicMoveNotSupportedException atomicFailure) throws IOException, SQLException {
         Path backup = backupPath(target);
-        var state = new DatabasePromotionState();
+        boolean originalTargetExisted = Files.exists(target);
+        DatabasePromotionPhase phase = null;
         try {
             Files.deleteIfExists(backup);
-            if (Files.exists(target)) {
-                moves.move(target, backup, StandardCopyOption.REPLACE_EXISTING);
+            if (originalTargetExisted) {
+                phase = DatabasePromotionPhase.BACKING_UP_TARGET;
+                files.move(target, backup, StandardCopyOption.REPLACE_EXISTING);
             }
-            state.temporaryPromotionAttempted = true;
-            moves.move(temporary, target, StandardCopyOption.REPLACE_EXISTING);
+            phase = DatabasePromotionPhase.PROMOTING_TEMPORARY;
+            files.move(temporary, target, StandardCopyOption.REPLACE_EXISTING);
             validatePromotedDatabase(target, validator);
             if (Files.exists(backup)) {
                 Files.deleteIfExists(backup);
             }
         } catch (IOException | SQLException exception) {
-            restorePrePromotionState(target, backup, state, exception);
+            restorePrePromotionState(target, backup, phase, originalTargetExisted, exception);
             exception.addSuppressed(atomicFailure);
             throw exception;
         }
