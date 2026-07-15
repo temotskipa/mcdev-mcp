@@ -3,6 +3,7 @@
 # Build
 /.gradle/
 /build/
+/mcp-tool-binding/build/
 
 # IDE
 .vscode/

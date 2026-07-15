@@ -79,6 +79,7 @@ java {
 }
 
 dependencies {
+    implementation(project(":mcp-tool-binding"))
     implementation(libs.mcp)
     implementation(libs.picocli)
     implementation(libs.h2)

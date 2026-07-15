@@ -22,3 +22,5 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "mcdev-mcp"
+
+include("mcp-tool-binding")
