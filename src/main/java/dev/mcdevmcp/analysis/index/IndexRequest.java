@@ -1,8 +1,6 @@
 package dev.mcdevmcp.analysis.index;
 
-import dev.mcdevmcp.storage.model.FabricApiVersion;
 import dev.mcdevmcp.storage.model.MinecraftVersion;
-import dev.mcdevmcp.storage.model.SourceNamespace;
 import dev.mcdevmcp.support.Cancellation;
 import dev.mcdevmcp.support.ProgressSink;
 
@@ -91,6 +89,4 @@ public record IndexRequest(MinecraftVersion minecraftVersion, List<SourceRoot> s
         return Objects.requireNonNull(path, name).toAbsolutePath().normalize();
     }
     
-    private record SourceIdentity(SourceNamespace namespace, Optional<FabricApiVersion> fabricApiVersion) {
-    }
 }
