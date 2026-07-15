@@ -1,21 +1,17 @@
 package dev.mcdevmcp.mcp;
 
 import dev.mcdevmcp.support.AppEnvironment;
-import dev.mcdevmcp.support.AppVersion;
-import dev.mcdevmcp.support.JsonResourceReader;
+import dev.mcdevmcp.mcp.resource.ResourceCatalog;
+import dev.mcdevmcp.mcp.tool.ToolBinding;
+import dev.mcdevmcp.mcp.tool.ToolCatalog;
+import dev.mcdevmcp.mcp.transport.McpSdkAdapter;
+import dev.mcdevmcp.mcp.transport.StdioServer;
 import io.modelcontextprotocol.json.McpJsonDefaults;
 import io.modelcontextprotocol.json.McpJsonMapper;
-import io.modelcontextprotocol.server.McpAsyncServer;
-import io.modelcontextprotocol.server.McpServer;
-import io.modelcontextprotocol.server.transport.StdioServerTransportProvider;
-import io.modelcontextprotocol.spec.McpSchema;
-
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
-import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -30,7 +26,7 @@ public final class McpServerFactory {
     }
     
     McpServerFactory(AppEnvironment environment, Map<String, ToolBinding<?>> bindings, McpJsonMapper mapper) {
-        this(environment, bindings, new ResourceCatalog(new JsonResourceReader(mapper)), mapper);
+        this(environment, bindings, ResourceCatalog.withMapper(mapper), mapper);
     }
     
     McpServerFactory(AppEnvironment environment, Map<String, ToolBinding<?>> bindings, ResourceCatalog resourceCatalog, McpJsonMapper mapper) {
@@ -42,24 +38,17 @@ public final class McpServerFactory {
     
     ToolCatalog loadToolCatalog(ExecutorService blockingExecutor) {
         Objects.requireNonNull(blockingExecutor, "blockingExecutor");
-        var adaptedBindings = new LinkedHashMap<String, ToolBinding<?>>();
-        bindings.forEach((name, binding) -> adaptedBindings.put(name, binding.withBlockingExecutor(blockingExecutor)));
-        return ToolCatalog.load(environment, adaptedBindings, mapper);
+        return ToolCatalog.load(environment, bindings, mapper, blockingExecutor);
     }
     
     public StdioServer startStdio(InputStream input, OutputStream output) {
         Objects.requireNonNull(input, "input");
         Objects.requireNonNull(output, "output");
         
-        var inputClosed = new CountDownLatch(1);
-        McpJsonMapper transportMapper = new NodeParityJsonMapper(mapper);
-        var transport = new StdioServerTransportProvider(transportMapper, new EofTrackingInputStream(input, inputClosed), new NonClosingOutputStream(output));
         var blockingExecutor = Executors.newVirtualThreadPerTaskExecutor();
         try {
             ToolCatalog toolCatalog = loadToolCatalog(blockingExecutor);
-            var adapter = new McpSdkAdapter(mapper, blockingExecutor);
-            McpAsyncServer server = McpServer.async(transport).jsonMapper(transportMapper).serverInfo("mcdev-mcp", AppVersion.current()).instructions(ResourceCatalog.INSTRUCTIONS).capabilities(McpSchema.ServerCapabilities.builder().resources(null, null).tools(null).build()).validateToolInputs(true).tools(adapter.tools(toolCatalog)).resources(adapter.resources(resourceCatalog)).build();
-            return new StdioServer(server, blockingExecutor, inputClosed);
+            return McpSdkAdapter.startStdio(mapper, input, output, toolCatalog, resourceCatalog, blockingExecutor);
         } catch (RuntimeException | Error exception) {
             blockingExecutor.close();
             throw exception;
