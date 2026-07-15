@@ -1,4 +1,4 @@
-package dev.mcdevmcp.storage;
+package dev.mcdevmcp.storage.h2;
 
 import dev.mcdevmcp.storage.model.MinecraftVersion;
 

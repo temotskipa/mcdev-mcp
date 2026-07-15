@@ -1,5 +1,8 @@
 package dev.mcdevmcp.storage;
 
+import dev.mcdevmcp.storage.h2.DatabaseLock;
+import dev.mcdevmcp.storage.h2.IndexCleaner;
+import dev.mcdevmcp.storage.h2.VersionStateRepository;
 import dev.mcdevmcp.storage.model.FabricApiVersion;
 import dev.mcdevmcp.storage.model.MinecraftVersion;
 import dev.mcdevmcp.storage.model.VersionState;

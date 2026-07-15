@@ -1,8 +1,8 @@
 package dev.mcdevmcp.analysis.index;
 
-import dev.mcdevmcp.storage.AtomicH2Database;
-import dev.mcdevmcp.storage.DatabaseValidator;
-import dev.mcdevmcp.storage.SymbolSchema;
+import dev.mcdevmcp.storage.h2.AtomicH2Database;
+import dev.mcdevmcp.storage.h2.DatabaseValidator;
+import dev.mcdevmcp.storage.h2.SymbolSchema;
 import dev.mcdevmcp.storage.model.ElementKindCodec;
 import dev.mcdevmcp.storage.model.FabricApiVersion;
 

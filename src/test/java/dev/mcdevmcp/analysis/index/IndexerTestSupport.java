@@ -1,6 +1,6 @@
 package dev.mcdevmcp.analysis.index;
 
-import dev.mcdevmcp.storage.SymbolRepository;
+import dev.mcdevmcp.storage.h2.SymbolRepository;
 import dev.mcdevmcp.storage.model.MinecraftVersion;
 import dev.mcdevmcp.storage.model.SourceNamespace;
 import dev.mcdevmcp.support.Cancellation;

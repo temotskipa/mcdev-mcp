@@ -1,4 +1,4 @@
-package dev.mcdevmcp.storage;
+package dev.mcdevmcp.storage.h2;
 
 import java.io.IOException;
 import java.nio.file.*;

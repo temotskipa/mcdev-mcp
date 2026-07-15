@@ -1,7 +1,7 @@
 package dev.mcdevmcp.analysis.index;
 
-import dev.mcdevmcp.storage.AtomicH2Database;
-import dev.mcdevmcp.storage.DatabaseValidator;
+import dev.mcdevmcp.storage.h2.AtomicH2Database;
+import dev.mcdevmcp.storage.h2.DatabaseValidator;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 

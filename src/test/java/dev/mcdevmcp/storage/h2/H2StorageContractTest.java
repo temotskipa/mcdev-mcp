@@ -1,4 +1,6 @@
-package dev.mcdevmcp.storage;
+package dev.mcdevmcp.storage.h2;
+
+import dev.mcdevmcp.storage.PlatformPaths;
 
 import dev.mcdevmcp.storage.model.MinecraftVersion;
 import dev.mcdevmcp.storage.model.SourceNamespace;
