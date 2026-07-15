@@ -2,7 +2,7 @@
 
 **Date:** 2026-07-15
 
-**Status:** Approved
+**Status:** Implemented and independently reviewed, including the typed-binding/JPMS amendment
 
 ## Context
 
@@ -18,6 +18,9 @@ organization problem is narrower:
 
 - stable facades and implementation details are mixed in the same package;
 - MCP transport, tool binding, and resource metadata share one flat package;
+- the SDK-backed argument decoder is intended for later extraction, but its
+  current package does not enforce that boundary and the surrounding
+  `ToolBinding` still depends on mcdev cancellation and result types;
 - H2-specific lifecycle code is not visibly separated from storage values;
 - a few files contain several named top-level declarations;
 - `JavacSourceParser` and `AtomicH2Database` each coordinate several distinct
@@ -37,16 +40,23 @@ packaging, benchmark, and conformance work.
   fixtures and package-private records.
 - Reduce responsibility concentration in the Javac and atomic-H2 coordinators.
 - Make production and test package trees mirror each other.
+- Establish an internal Gradle library boundary for the extraction-ready MCP
+  argument-binding API without publishing a second artifact yet.
+- Keep that library ready for a future explicit JPMS descriptor while the
+  shaded application remains classpath-based.
 - Preserve IntelliJ-established formatting and every existing behavior.
 - Add a permanent JDK compiler-tree check for source layout rules.
 
 ## Non-Goals
 
 - Do not change MCP schemas, JSON, CLI behavior, errors, output, cancellation,
-  concurrency, indexing semantics, H2 durability, or artifact contents except
-  for Java class package names.
-- Do not introduce JPMS, ArchUnit, Spring, another dependency, or a custom
-  source parser.
+  concurrency, indexing semantics, H2 durability, or release-JAR behavior and
+  contents except for Java class package names.
+- Do not modularize the shaded application, patch third-party module metadata,
+  or add `--add-reads`, `--add-exports`, or another JPMS workaround while the
+  MCP SDK is not module-path-valid.
+- Do not introduce ArchUnit, Spring, another dependency, or a custom source
+  parser.
 - Do not create a package for every type category or impose an arbitrary file
   length limit.
 - Do not make an implementation type public solely so a cosmetic package move
@@ -70,26 +80,33 @@ packaging, benchmark, and conformance work.
    remain only when private, one-use, and inseparable from their owner.
 7. Files are split when they contain distinct responsibilities, not when they
    cross a line-count threshold.
+8. A package boundary documents ownership; a Gradle project boundary enforces
+   an independently buildable and publishable dependency direction. Use the
+   latter only for the deliberately extraction-ready MCP binding capsule.
 
 ## Target Package Map
 
 ```text
-dev.mcdevmcp
-|-- app
-|-- support
-|-- mcp
-|   |-- McpServerFactory
-|   |-- transport
-|   |-- tool
-|   `-- resource
-|-- analysis
-|   |-- classfile
-|   `-- index
-|       `-- pipeline
-`-- storage
-    |-- PlatformPaths
-    |-- h2
-    `-- model
+:mcp-tool-binding
+`-- dev.mcdevmcp.mcp.binding
+
+: (root application)
+`-- dev.mcdevmcp
+    |-- app
+    |-- support
+    |-- mcp
+    |   |-- McpServerFactory
+    |   |-- transport
+    |   |-- tool
+    |   `-- resource
+    |-- analysis
+    |   |-- classfile
+    |   `-- index
+    |       `-- pipeline
+    `-- storage
+        |-- PlatformPaths
+        |-- h2
+        `-- model
 ```
 
 Every package receives a concise `package-info.java` describing its ownership
@@ -119,16 +136,68 @@ this package move does not broaden that exception.
 - `EofTrackingInputStream`
 - `NonClosingOutputStream`
 
-`dev.mcdevmcp.mcp.tool` owns tool metadata, catalog, availability, binding,
-argument decoding, handlers, content, and results. This package is protocol
-binding infrastructure; concrete Minecraft tools continue to live under
-`dev.mcdevmcp.tools.*`.
+`dev.mcdevmcp.mcp.tool` owns the application-specific tool metadata, catalog,
+availability, handlers, content, results, cancellation integration, execution
+policy, and `ToolBinding`. It consumes the extraction-ready argument decoder
+but does not move mcdev-specific contracts into that library. Concrete
+Minecraft tools continue to live under `dev.mcdevmcp.tools.*`.
 
 `dev.mcdevmcp.mcp.resource` owns `ResourceCatalog`, `ResourceDefinition`, and
 `ResourceRead`.
 
 The factory and transport may depend on tool/resource contracts. Tool and
 resource packages must not depend on transport or the application package.
+
+Java has no friend-package visibility, so the split uses one deliberate public
+construction operation per MCP capsule rather than widening individual helper
+constructors. `ResourceCatalog.withMapper(...)`, the executor-aware
+`ToolCatalog.load(...)`, and `McpSdkAdapter.startStdio(...)` are the stable
+cross-package stage operations. `McpSdkAdapter.startStdio(...)` hides mapper
+wrapping, STDIO provider construction, SDK server construction, and
+`StdioServer` construction. Other adapter helpers and constructors remain
+package-private or private; the public `StdioServer` lifecycle type has no
+public constructor.
+
+### Typed Binding Library And JPMS
+
+The `mcp-tool-binding` Gradle subproject is a `java-library` extraction
+candidate. Its package `dev.mcdevmcp.mcp.binding` initially owns
+`ArgumentDecoder<A>` and its focused tests. The decoder converts one complete
+SDK argument map through `McpJsonMapper`, then may map a wire record into a
+domain record. It does not grow a field-by-field typed-getter facade. Further
+binding contracts move into this subproject only after multiple tool families
+prove that they are reusable without application-specific type parameters or
+policy.
+
+Production declares only the official SDK `mcp-core` module as an API
+dependency because `McpJsonMapper` appears in the public decoder signature.
+Tests may add the official Jackson 3 mapper module and JUnit. The subproject
+must not depend on the root application project or import `dev.mcdevmcp.app`,
+`support`, `mcp.tool`, analysis, storage, bridge, or concrete tool packages.
+The root application has the only project dependency direction and keeps
+`Cancellation`, `ToolResult`, executor selection, transport adaptation,
+catalogs, and Minecraft behavior outside the library. This Gradle boundary,
+rather than package naming alone, prevents the current accidental coupling from
+becoming part of a future public API.
+
+The library reserves `dev.mcdevmcp.mcp.binding` as both its future JPMS module
+name and its exported API package. Until the official MCP SDK publishes valid
+module metadata, its JAR declares that stable name with
+`Automatic-Module-Name` but contains no `module-info.java`. The build does not
+use a descriptor-patching plugin or hand-maintained descriptors for SDK
+artifacts. The reviewed SDK snapshot and current upstream source derive invalid
+names containing hyphens for `mcp-core` and `mcp-json-jackson3`; upstream tracks
+this as [MCP Java SDK issue #560](https://github.com/modelcontextprotocol/java-sdk/issues/560).
+Once the SDK is module-path-valid, a focused compatibility task may add an
+explicit descriptor, export only the public binding package, and keep
+implementation packages concealed. The root shaded executable remains a
+classpath application and incorporates the library as an ordinary dependency.
+
+Extraction to another repository, independent publication, and an upstream
+proposal remain deferred until static and runtime tool families have proven
+the API and error model. Extraction must preserve package and module identity;
+the project does not claim an `io.modelcontextprotocol` namespace unless the
+code is accepted upstream.
 
 ### Class-File Analysis
 
@@ -257,6 +326,8 @@ merely to reduce line count.
 ## Visibility Rules
 
 - Existing stable public facades and domain values remain public.
+- The three MCP capsule construction operations named above are deliberate
+  public stage facades; no other MCP helper is widened for package access.
 - `SourceIndexPipeline` is the only new public indexing boundary.
 - `ClassDescriptors` is public because it is a reusable class-file domain
   boundary shared with future callgraph work.
@@ -270,8 +341,9 @@ merely to reduce line count.
 ## Source Layout Enforcement
 
 A permanent Java test uses `JavaCompiler`/`JavacTask.parse()` and compiler-tree
-APIs over `src/main/java` and `src/test/java`. It does not use regex source
-parsing or add a third-party architecture dependency.
+APIs over every configured production and test Java source root in both Gradle
+projects. It does not use regex source parsing or add a third-party architecture
+dependency.
 
 For every ordinary Java source, the test verifies:
 
@@ -289,16 +361,20 @@ callbacks remain a review judgment.
 1. Inventory the dirty worktree and preserve every pre-existing user formatting
    change and PR-feedback amendment. Commit independent existing work
    logically before package moves; never reset, clean, or rewrite it.
-2. Move MCP production/tests mechanically and run MCP-focused tests.
-3. Move the complete H2 capsule and mirrored tests, then run all storage tests.
-4. Move the class-file catalog and add the index facade/pipeline boundary.
-5. Move remaining index internals/tests and run the complete indexer suite.
-6. Extract Javac, snapshot, H2, and test-file responsibilities in focused
+2. Convert the build to two Gradle projects, move `ArgumentDecoder` and its
+   mapper/record tests into `mcp-tool-binding`, and verify the one-way project
+   dependency before changing the remaining MCP packages.
+3. Move application MCP production/tests mechanically and run MCP-focused
+   tests.
+4. Move the complete H2 capsule and mirrored tests, then run all storage tests.
+5. Move the class-file catalog and add the index facade/pipeline boundary.
+6. Move remaining index internals/tests and run the complete indexer suite.
+7. Extract Javac, snapshot, H2, and test-file responsibilities in focused
    behavior-neutral commits.
-7. Add the compiler-tree layout invariant and package documentation.
-8. Update the approved rewrite design, implementation plan, and future target
+8. Add the compiler-tree layout invariant and package documentation.
+9. Update the approved rewrite design, implementation plan, and future target
    file map to use this taxonomy.
-9. Regenerate the Task 5 review package from its original base through the new
+10. Regenerate the Task 5 review package from its original base through the new
    head and repeat independent review before Task 6.
 
 Mechanical moves and responsibility extraction are not behavior changes and do
@@ -310,6 +386,11 @@ during the migration follows red-green-refactor in a separate focused commit.
 
 After each capsule move, run its focused tests. The final gate runs:
 
+- `:mcp-tool-binding:clean :mcp-tool-binding:test :mcp-tool-binding:jar` and
+  the root application test suite;
+- dependency inspection proving the library has no root-project dependency or
+  app-specific imports, and `jar --describe-module` proving its stable
+  automatic module name;
 - full Java 25 `clean test shadowJar cutoverCheck`;
 - full Java 26 `clean test shadowJar cutoverCheck`;
 - exact shaded-JAR startup/STDIO checks on Java 25 and 26;
@@ -327,6 +408,8 @@ reformatted.
 
 Future implementation follows the same feature-capsule taxonomy:
 
+- `mcp-tool-binding` for only SDK/JDK-based argument decoding and later-proven
+  generic binding contracts
 - `dev.mcdevmcp.analysis.callgraph`
 - `dev.mcdevmcp.analysis.decompile`
 - `dev.mcdevmcp.bridge` with subpackages only after real client/protocol seams
@@ -343,6 +426,16 @@ boundary and preserve narrow visibility. It must not create generic global
 ## Acceptance Criteria
 
 - The target package map is present in production and mirrored by tests.
+- `mcp-tool-binding` builds independently, exposes the stable automatic module
+  name `dev.mcdevmcp.mcp.binding`, and has no root-project or mcdev application
+  dependency.
+- The application-specific `ToolBinding`, cancellation, result, executor,
+  catalog, and transport types remain outside the extraction candidate.
+- MCP subpackages expose only the documented resource, tool, and transport
+  stage operations; adapter/helper and lifecycle constructors remain
+  non-public.
+- No SDK descriptor patching or explicit project `module-info.java` is added
+  before the MCP SDK becomes module-path-valid.
 - Every named top-level production/test declaration has its own matching file.
 - The compiler-tree source-layout check passes and runs under Gradle `check`.
 - No package move widens an existing implementation helper solely for access.

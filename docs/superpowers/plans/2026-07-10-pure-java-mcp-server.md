@@ -4,7 +4,7 @@
 
 **Goal:** Replace mcdev-mcp's TypeScript/Node server and Java worker processes with one Java 25 shaded executable JAR while preserving the complete MCP, CLI, static-analysis, DebugBridge, packaging, and release behavior.
 
-**Architecture:** A single Gradle application owns the official MCP Java SDK STDIO server, Picocli CLI, Javac source indexer, Class-File API callgraph scanner, H2 MVStore storage, embedded Tiny Remapper/Vineflower pipeline, and JDK WebSocket DebugBridge client. The untouched `master` checkout at commit `7b98bdb4a1d885d588cd141d8eb21e3c5c18b2b6` is the Node parity oracle; tests materialize that commit into ignored scratch inside the isolated Java worktree, so neither `master` nor its working tree is modified. The early worktree cutover removes all legacy server source, worker code, and root Node toolchain before parity completes; later differential tests use the pinned oracle rather than restoring those files. MCPB retains only a minimal JavaScript launcher around the exact release JAR when packaging work begins.
+**Architecture:** One Gradle multi-project build contains the root application and an internal `mcp-tool-binding` Java library; the root still produces the only shaded server and release JAR. The application owns the official MCP Java SDK STDIO server, Picocli CLI, Javac source indexer, Class-File API callgraph scanner, H2 MVStore storage, embedded Tiny Remapper/Vineflower pipeline, and JDK WebSocket DebugBridge client. The untouched `master` checkout at commit `7b98bdb4a1d885d588cd141d8eb21e3c5c18b2b6` is the Node parity oracle; tests materialize that commit into ignored scratch inside the isolated Java worktree, so neither `master` nor its working tree is modified. The early worktree cutover removes all legacy server source, worker code, and root Node toolchain before parity completes; later differential tests use the pinned oracle rather than restoring those files. MCPB retains only a minimal JavaScript launcher around the exact release JAR when packaging work begins.
 
 > **Early cutover amendment (2026-07-12):** The isolated Java worktree removes the retired server, worker, root Node metadata, and Node CI before the later parity/release tasks. `cutoverCheck` is the tracked-file guard for this state. The original clean `master` checkout remains the immutable Node oracle; later tasks must materialize or invoke it from ignored scratch and must not restore legacy source in this worktree.
 
@@ -21,11 +21,12 @@
 - Use designated Java/JDK domain types at boundaries: `URI`, `Path`, `Duration`, `Instant`, enums, or validated value records instead of unvalidated strings for URIs, paths, timeouts, timestamps, modes, and similar closed concepts. Protocol text, identifiers, MIME types, descriptors, and other open vocabularies remain strings.
 - Use `McpJsonDefaults.getMapper()` as the sole JSON implementation. Do not add Gson, direct Jackson APIs/annotations, `JsonNode`, or a second JSON engine. The MCP transport alone wraps the raw mapper in `NodeParityJsonMapper`; metadata, tool arguments, tests, and DebugBridge receive the raw SDK interface.
 - SDK 2.0 exposes `CallToolRequest.arguments()` as `Map<String,Object>` and typed conversion through `McpJsonMapper.convertValue`; do not build a parallel typed-getter facade. A thin generic `ToolBinding<A>` plus `ArgumentDecoder<A>` converts the complete map into a top-level per-tool record before `ToolHandler<A>` runs. Explicit decoders map wire-only primitives into `URI`, `Path`, `Duration`, `Instant`, enums, or validated domain records wherever structured alternatives exist. Raw maps/lists/primitives remain only for genuinely open JSON payloads.
-- Keep the typed-binding package extraction-ready and free of mcdev-specific dependencies, but do not create or publish a separate repository during this rewrite. Reconsider extraction or an upstream SDK proposal only after multiple static and runtime tool families prove the API and error model.
+- Put the extraction-ready SDK/JDK argument decoder in the internal `mcp-tool-binding` `java-library` subproject under `dev.mcdevmcp.mcp.binding`. The child has no root-project dependency and cannot import application types; `ToolBinding`, `Cancellation`, `ToolResult`, executor policy, catalogs, transport adaptation, and Minecraft behavior remain in the root application. Declare `Automatic-Module-Name: dev.mcdevmcp.mcp.binding`, but do not add `module-info.java`, patch MCP SDK descriptors, or add module-path workarounds until the SDK is module-path-valid. Do not create or publish a separate repository during this rewrite; reconsider extraction or an upstream SDK proposal only after multiple static and runtime tool families prove the API and error model.
 - Never serialize `Path` implicitly through a JSON mapper. Encode the exact contract-defined URI or path text explicitly and parse it at the boundary.
 - Preserve the current IntelliJ-established Java formatting and follow its surrounding code style in every new edit. Do not run broad reformatting, rewrite unrelated whitespace, or introduce a competing formatter as part of feature work.
 - Compile every Java source set with `-Xlint:all -Werror`. Before each task review, run IntelliJ MCP `build_project` and `get_file_problems` for every changed Java file, fix actionable errors and warnings, and keep any unavoidable suppression narrow and documented.
 - Use the official MCP Java SDK 2.0.1-SNAPSHOT over production STDIO. Do not add Spring, Ktor, Kotlin, GraalVM native-image, preview JDK APIs, or another production transport.
+- Declare dependencies only when a source set uses them. Keep exact reviewed versions so a commit resolves reproducibly, and let the existing daily Dependabot Gradle and GitHub Actions updates propose newer versions for review; do not use dynamic selectors, open version ranges, or stale unused catalog aliases. Any HTTP container remains test-only and must be absent from `runtimeClasspath` and `shadowJar`.
 - Production remains STDIO-only because the frozen TypeScript server has no SSE or Streamable HTTP surface. Task 13's URL-based HTTP server is a test-only conformance harness over the same registry, not a second production transport.
 - Use `McpServer.async(...)`. Internal handlers return JDK `CompletionStage`, Reactor remains confined to `McpSdkAdapter`, DebugBridge calls stay nonblocking, and H2/filesystem handlers use a Java 25 virtual-thread executor with cancellation propagation.
 - Javac compiler/tree APIs are the sole production source parser. No regex parser, `java-parser`, TypeScript AST parser, parser fallback, parser importer, or skip mode may remain. User-requested regex matching in `mc_search` is search behavior, not source parsing, and remains compatible.
@@ -52,32 +53,47 @@ build.gradle.kts
 settings.gradle.kts
 gradle.properties
 gradle/libs.versions.toml
+mcp-tool-binding/build.gradle.kts
+mcp-tool-binding/src/main/java/dev/mcdevmcp/mcp/binding/
+  ArgumentDecoder.java, package-info.java
+mcp-tool-binding/src/test/java/dev/mcdevmcp/mcp/binding/
+  ArgumentDecoderTest.java
 src/main/java/dev/mcdevmcp/
   app/Main.java, McdevCommand.java, McdevVersionProvider.java,
       ServeCommand.java, InitCommand.java, CallgraphCommand.java,
       RebuildCommand.java, StatusCommand.java, CleanCommand.java,
       AnalysisPipeline.java
-  mcp/McpServerFactory.java, McpSdkAdapter.java, ToolCatalog.java,
-      ToolDefinition.java, ToolAvailability.java, ToolHandler.java,
-      BlockingToolHandler.java, ToolHandlers.java, ToolBinding.java,
-      ArgumentDecoder.java, ToolMetadata.java, ToolResult.java,
-      ToolContent.java, ToolContentType.java, ResourceCatalog.java,
-      ResourceDefinition.java, ResourceRead.java, StdioServer.java,
+  mcp/McpServerFactory.java
+  mcp/transport/McpSdkAdapter.java, StdioServer.java,
       NodeParityJsonMapper.java, EofTrackingInputStream.java,
       NonClosingOutputStream.java
+  mcp/tool/ToolCatalog.java, ToolDefinition.java, ToolAvailability.java,
+      ToolHandler.java, BlockingToolHandler.java, ToolHandlers.java,
+      ToolBinding.java, ToolMetadata.java, ToolResult.java,
+      ToolContent.java, ToolContentType.java
+  mcp/resource/ResourceCatalog.java, ResourceDefinition.java,
+      ResourceRead.java
+  analysis/classfile/ClassFileType.java, ClassFileTypeCatalog.java,
+      ClassDescriptors.java
   analysis/index/SourceIndexer.java, IndexRequest.java, IndexSummary.java,
-      ClassFileTypeCatalog.java, JavacSourceParser.java, TypeResolver.java,
-      ParsedType.java, ParsedField.java, ParsedMethod.java, ParsedParameter.java,
-      SymbolIndexWriter.java
+      IndexBuildException.java, SourceRoot.java, SourceIdentity.java
+  analysis/index/pipeline/SourceIndexPipeline.java, JavacSourceParser.java,
+      JavacPreflight.java, JavacBatchParser.java, JavacDeclarationReader.java,
+      JavacDiagnostics.java, JavacTaskExecutor.java, TypeResolver.java,
+      ParsedType.java, ParsedField.java, ParsedMethod.java,
+      ParsedParameter.java, SymbolIndexWriter.java
   analysis/callgraph/CallgraphScanner.java, CallgraphRequest.java,
       CallgraphSummary.java, InvocationExtractor.java, CallEdge.java,
       CallgraphWriter.java
   analysis/decompile/VersionManifestClient.java, DownloadService.java,
       MappingConverter.java, MinecraftRemapper.java, MinecraftDecompiler.java
-  storage/PlatformPaths.java, DatabaseLock.java, AtomicH2Database.java,
-      DatabaseBuilder.java, DatabaseQuery.java, DatabaseValidator.java, SymbolSchema.java,
+  storage/PlatformPaths.java
+  storage/h2/DatabaseLock.java, AtomicH2Database.java, DatabaseBuilder.java,
+      H2DatabaseArtifacts.java, H2DatabasePromotion.java, DatabaseQuery.java,
+      DatabaseValidator.java, SymbolSchema.java,
       SymbolRepository.java, CallgraphSchema.java, CallgraphRepository.java,
       VersionStateRepository.java, IndexCleaner.java
+  storage/model/*.java
   bridge/BridgeRequest.java, BridgeResponse.java, BridgeJson.java,
       BridgeClient.java, BridgeSession.java, BridgeProbe.java,
       BridgePayloadValidator.java
@@ -313,8 +329,6 @@ tiny-remapper = "0.10.4"
 junit = "6.1.0"
 shadow = "9.5.1"
 slf4j = "2.0.16"
-tomcat = "11.0.2"
-servlet = "6.1.0"
 ```
 
 Use `io.modelcontextprotocol.sdk:mcp`, `info.picocli:picocli`, `com.h2database:h2`, `org.vineflower:vineflower`, `net.fabricmc:tiny-remapper`, and `org.slf4j:slf4j-nop`. The SDK's transitive Jackson 3-backed `McpJsonMapper` is the sole JSON engine; do not declare Gson or Jackson directly. Configure Java toolchain 25, `options.release = 25`, UTF-8, JUnit Platform, application main class, and Shadow. Shadow must call `mergeServiceFiles()`, exclude `META-INF/*.SF`, `META-INF/*.RSA`, and `META-INF/*.DSA`, emit no classifier, and set manifest entries from `project.version` without native-access grants.
@@ -565,7 +579,7 @@ The last reviewed upstream source is commit `fd004989b9484c9b81be6b03463396797b3
 
 Because the upstream snapshot is mutable, retain `mcpSdkSnapshotCheck` in Gradle `check` and make full CI run it. The task resolves `runtimeClasspath` and rejects any drift from all three official SDK modules at 2.0.1-SNAPSHOT, Jackson core/databind 3.1.4, NetworkNT 3.0.6, or the appearance of any Gson module. Refresh dependencies and review a changed upstream graph before accepting it; the tripwire is not a substitute for full Java 25/26 CI and shaded-JAR verification.
 
-No new typed argument abstraction is justified: `McpSchema.CallToolRequest.arguments()` remains `Map<String,Object>`, and `McpJsonMapper` is API-identical to SDK 2.0.0. Keep production and tests behind `McpJsonMapper`, retain the existing whole-map typed `ArgumentDecoder`/tool-record boundary, and do not import Jackson implementation APIs, annotations, or `JsonNode`.
+No broader typed-getter abstraction is justified: `McpSchema.CallToolRequest.arguments()` remains `Map<String,Object>`, and `McpJsonMapper` is API-identical to SDK 2.0.0. Keep production and tests behind `McpJsonMapper`, retain the existing whole-map typed `ArgumentDecoder`/tool-record boundary, and do not import Jackson implementation APIs, annotations, or `JsonNode`. The package-organization amendment moves that existing decoder into the internal `mcp-tool-binding` Gradle library so its dependency direction is enforced; this is extraction preparation, not a second argument model.
 
 The snapshot also carries useful future Streamable HTTP/stateless parity fixes: stateless initialized and roots notifications are handled without warning, unregistered stateless methods return JSON-RPC method-not-found responses, Streamable HTTP responses close after method-not-found, and completions with no handler return an empty result. These benefits do not add a production transport in this amendment.
 
@@ -837,6 +851,13 @@ Use `ZipFile` plus Java 25's finalized `ClassFile.of().parse(...)` over sorted `
 
 Discover without following links and strictly decode every source with a `CharsetDecoder` configured with `CodingErrorAction.REPORT` before any compiler task. Sort by complete typed source identity and normalized relative path. Supply explicit and on-demand sources only from that validated in-memory corpus. Partition into bounded batches; each CPU-bound worker owns and closes its `StandardJavaFileManager` and `JavacTask`, and no `Tree`, `Element`, or `TypeMirror` escapes. Configure every typed root as `SOURCE_PATH`; configure `CLASS_PATH` from the exact remapped JAR followed by the copied request classpath. Use `-proc:none`, `-implicit:none`, and `-encoding UTF-8`, with class output confined to memory. Persist each row's typed source namespace and nullable Fabric API version.
 
+Own each decoded source `String` once in the immutable corpus. Every worker's
+file objects and binary-name aliases reference that shared text; worker count
+must not multiply corpus text. Submit no more batches than the bounded worker
+count, so active Javac state and queued/completed results have an explicit
+upper bound. Modular corpora use one stable Javac task so `module-info.java`
+cannot change ordinary-unit attribution according to batch placement.
+
 `JavacSourceParser` visits only direct members of each top-level type, records `SourcePositions` start/end UTF-16 character offsets and line-map values, and emits one `ParsedType` per top-level declaration. Source reads decode the complete file and slice the Java `String`; they never treat Javac offsets as UTF-8 byte offsets. Nested types never become direct members of their owner. Package/module units emit no type row.
 
 - [ ] **Step 5: Resolve stored semantic identities without guessing**
@@ -852,6 +873,12 @@ Parse `MCDEV_INDEX_THREADS` as a positive integer clamped to `1..availableProces
 - [ ] **Step 7: Prove determinism and absence of fallback**
 
 Run the same fixture with thread counts 1 and 4, dump every table with explicit ordering, and assert identical content excluding `built_at`. Add a source that the old regex parser accepted incorrectly and assert the Javac build fails rather than producing a partial row. Search production Java for forbidden parser selectors.
+
+Add regression coverage proving independent worker file objects return the
+same decoded `CharSequence` instances, batch admission never exceeds the
+effective worker count, and package/module-only units are accounted for even
+when they emit no rows. Full Minecraft 1.21.11 and 26.1 corpus qualification is
+the pre-release gate in Tasks 15 and 17 rather than a networked unit test.
 
 Run:
 
@@ -869,12 +896,27 @@ git add src/main/java/dev/mcdevmcp/analysis/index src/test/java/dev/mcdevmcp/ana
 git commit -m "feat: index Java sources with Javac"
 ```
 
+## Task 5A Amendment: Reorganize Java Packages And Files
+
+The approved
+[`2026-07-15-java-package-organization.md`](2026-07-15-java-package-organization.md)
+plan is implemented and independently reviewed. It creates the internal
+`mcp-tool-binding` library, moves the current application into shallow
+MCP/H2/class-file/index capsules, splits named top-level declarations and
+concentrated coordinators, and adds the compiler-tree source-layout invariant.
+
+This amendment is behavior-neutral. The root project remains the sole shaded
+server/release artifact and a classpath application. The child JAR reserves
+`dev.mcdevmcp.mcp.binding` through `Automatic-Module-Name`; neither project
+adds `module-info.java` or patches the MCP SDK's invalid automatic module
+metadata. Task 6 and every later task use the amended target file map above.
+
 ## Task 6: Port Symbol Queries And All Static MCP Tools
 
 **Recommended agent:** `gpt-5.6-terra`, medium reasoning. The database boundary is defined; this is broad but contract-driven formatting and query work.
 
 **Files:**
-- Modify: `src/main/java/dev/mcdevmcp/storage/SymbolRepository.java`
+- Modify: `src/main/java/dev/mcdevmcp/storage/h2/SymbolRepository.java`
 - Create: `src/main/java/dev/mcdevmcp/tools/statictool/StaticToolModule.java`
 - Create: `src/main/java/dev/mcdevmcp/tools/statictool/StaticToolSupport.java`
 - Create: `src/main/java/dev/mcdevmcp/tools/statictool/McVersionTool.java`
@@ -887,7 +929,7 @@ git commit -m "feat: index Java sources with Javac"
 - Create: `src/test/java/dev/mcdevmcp/tools/statictool/StaticToolContractTest.java`
 - Create: `src/test/resources/contracts/static-tools/requests.jsonl`
 - Create: `src/test/resources/contracts/static-tools/responses.jsonl`
-- Modify: `src/main/java/dev/mcdevmcp/mcp/ToolCatalog.java`
+- Modify: `src/main/java/dev/mcdevmcp/mcp/tool/ToolCatalog.java`
 
 **Interfaces:**
 - Consumes: schema-v1 symbol DB, decompiled source files, active/explicit version rules, baseline tool schemas and output corpus.
@@ -945,7 +987,7 @@ that regex to infer declarations.
 Run:
 
 ```powershell
-.\gradlew.bat test --tests "dev.mcdevmcp.tools.statictool.*" --tests "dev.mcdevmcp.mcp.McpStdioIntegrationTest" --console=plain
+.\gradlew.bat test --tests "dev.mcdevmcp.tools.statictool.*" --tests "dev.mcdevmcp.mcp.transport.McpStdioIntegrationTest" --console=plain
 ```
 
 Expected: static golden corpus and MCP dispatch tests PASS.
@@ -953,7 +995,7 @@ Expected: static golden corpus and MCP dispatch tests PASS.
 - [ ] **Step 6: Commit static tools**
 
 ```powershell
-git add src/main/java/dev/mcdevmcp/storage/SymbolRepository.java src/main/java/dev/mcdevmcp/tools/statictool src/main/java/dev/mcdevmcp/mcp/ToolCatalog.java src/test/java/dev/mcdevmcp/tools/statictool src/test/resources/contracts/static-tools
+git add src/main/java/dev/mcdevmcp/storage/h2/SymbolRepository.java src/main/java/dev/mcdevmcp/tools/statictool src/main/java/dev/mcdevmcp/mcp/tool/ToolCatalog.java src/test/java/dev/mcdevmcp/tools/statictool src/test/resources/contracts/static-tools
 git commit -m "feat: port static analysis tools to Java"
 ```
 
@@ -968,13 +1010,13 @@ git commit -m "feat: port static analysis tools to Java"
 - Create: `src/main/java/dev/mcdevmcp/analysis/callgraph/InvocationExtractor.java`
 - Create: `src/main/java/dev/mcdevmcp/analysis/callgraph/CallgraphScanner.java`
 - Create: `src/main/java/dev/mcdevmcp/analysis/callgraph/CallgraphWriter.java`
-- Create: `src/main/java/dev/mcdevmcp/storage/CallgraphSchema.java`
-- Create: `src/main/java/dev/mcdevmcp/storage/CallgraphRepository.java`
-- Create: `src/main/java/dev/mcdevmcp/storage/MethodReference.java`
+- Create: `src/main/java/dev/mcdevmcp/storage/h2/CallgraphSchema.java`
+- Create: `src/main/java/dev/mcdevmcp/storage/h2/CallgraphRepository.java`
+- Create: `src/main/java/dev/mcdevmcp/storage/model/MethodReference.java`
 - Create: `src/main/java/dev/mcdevmcp/tools/statictool/McFindRefsTool.java`
 - Create: `src/test/java/dev/mcdevmcp/analysis/callgraph/InvocationExtractorTest.java`
 - Create: `src/test/java/dev/mcdevmcp/analysis/callgraph/CallgraphScannerIntegrationTest.java`
-- Create: `src/test/java/dev/mcdevmcp/storage/CallgraphRepositoryTest.java`
+- Create: `src/test/java/dev/mcdevmcp/storage/h2/CallgraphRepositoryTest.java`
 - Create: `src/test/java/dev/mcdevmcp/tools/statictool/McFindRefsContractTest.java`
 - Create: `src/test/resources/callgraph/**`
 - Modify: `src/main/java/dev/mcdevmcp/tools/statictool/StaticToolModule.java`
@@ -1010,7 +1052,7 @@ Compile fixture classes that emit `invokevirtual`, `invokeinterface`, `invokesta
 
 - [ ] **Step 2: Run callgraph tests and observe missing implementation**
 
-Run: `.\gradlew.bat test --tests "dev.mcdevmcp.analysis.callgraph.*" --tests "dev.mcdevmcp.storage.CallgraphRepositoryTest" --console=plain`
+Run: `.\gradlew.bat test --tests "dev.mcdevmcp.analysis.callgraph.*" --tests "dev.mcdevmcp.storage.h2.CallgraphRepositoryTest" --console=plain`
 
 Expected: FAIL at compilation.
 
@@ -1033,7 +1075,7 @@ Filter callers by callee class+method and callees by caller class+method; becaus
 Run:
 
 ```powershell
-.\gradlew.bat test --tests "dev.mcdevmcp.analysis.callgraph.*" --tests "dev.mcdevmcp.storage.CallgraphRepositoryTest" --tests "dev.mcdevmcp.tools.statictool.McFindRefsContractTest" --console=plain
+.\gradlew.bat test --tests "dev.mcdevmcp.analysis.callgraph.*" --tests "dev.mcdevmcp.storage.h2.CallgraphRepositoryTest" --tests "dev.mcdevmcp.tools.statictool.McFindRefsContractTest" --console=plain
 ```
 
 Expected: all callgraph/ref tests PASS, including 5001-row truncation and missing-line cases.
@@ -1047,7 +1089,7 @@ Expected: no matches.
 - [ ] **Step 8: Commit callgraph and `mc_find_refs`**
 
 ```powershell
-git add src/main/java/dev/mcdevmcp/analysis/callgraph src/main/java/dev/mcdevmcp/storage src/main/java/dev/mcdevmcp/tools/statictool src/test/java/dev/mcdevmcp/analysis/callgraph src/test/java/dev/mcdevmcp/storage/CallgraphRepositoryTest.java src/test/java/dev/mcdevmcp/tools/statictool/McFindRefsContractTest.java src/test/resources/callgraph
+git add src/main/java/dev/mcdevmcp/analysis/callgraph src/main/java/dev/mcdevmcp/storage/h2 src/main/java/dev/mcdevmcp/storage/model/MethodReference.java src/main/java/dev/mcdevmcp/tools/statictool src/test/java/dev/mcdevmcp/analysis/callgraph src/test/java/dev/mcdevmcp/storage/h2/CallgraphRepositoryTest.java src/test/java/dev/mcdevmcp/tools/statictool/McFindRefsContractTest.java src/test/resources/callgraph
 git commit -m "feat: generate callgraph with Class-File API"
 ```
 
@@ -1268,7 +1310,7 @@ git commit -m "feat: add Java DebugBridge session"
 - Create: `src/test/resources/contracts/runtime-tools/core-requests.jsonl`
 - Create: `src/test/resources/contracts/runtime-tools/core-bridge-responses.jsonl`
 - Create: `src/test/resources/contracts/runtime-tools/core-tool-results.jsonl`
-- Modify: `src/main/java/dev/mcdevmcp/mcp/ToolCatalog.java`
+- Modify: `src/main/java/dev/mcdevmcp/mcp/tool/ToolCatalog.java`
 
 **Interfaces:**
 - Consumes: BridgeSession, payload validator, exact metadata and Node golden corpus.
@@ -1313,7 +1355,7 @@ or block a virtual thread while waiting for DebugBridge.
 Run:
 
 ```powershell
-.\gradlew.bat test --tests "dev.mcdevmcp.tools.runtime.CoreRuntimeToolContractTest" --tests "dev.mcdevmcp.mcp.McpStdioIntegrationTest" --console=plain
+.\gradlew.bat test --tests "dev.mcdevmcp.tools.runtime.CoreRuntimeToolContractTest" --tests "dev.mcdevmcp.mcp.transport.McpStdioIntegrationTest" --console=plain
 ```
 
 Expected: all selected tests PASS.
@@ -1321,7 +1363,7 @@ Expected: all selected tests PASS.
 - [ ] **Step 5: Commit core runtime tools**
 
 ```powershell
-git add src/main/java/dev/mcdevmcp/tools/runtime src/main/java/dev/mcdevmcp/mcp/ToolCatalog.java src/test/java/dev/mcdevmcp/tools/runtime src/test/resources/contracts/runtime-tools
+git add src/main/java/dev/mcdevmcp/tools/runtime src/main/java/dev/mcdevmcp/mcp/tool/ToolCatalog.java src/test/java/dev/mcdevmcp/tools/runtime src/test/resources/contracts/runtime-tools
 git commit -m "feat: port core DebugBridge tools"
 ```
 
@@ -1479,7 +1521,7 @@ logger interface.
 Run:
 
 ```powershell
-.\gradlew.bat test --tests "dev.mcdevmcp.tools.runtime.*" --tests "dev.mcdevmcp.mcp.ToolCatalogContractTest" --console=plain
+.\gradlew.bat test --tests "dev.mcdevmcp.tools.runtime.*" --tests "dev.mcdevmcp.mcp.tool.ToolCatalogContractTest" --console=plain
 ```
 
 Expected: all runtime groups and both default/dev catalogs PASS.
@@ -1508,7 +1550,7 @@ git commit -m "feat: port DebugBridge session tools"
 - Create: `scripts/run-conformance.ps1`
 - Modify: `build.gradle.kts`
 - Modify: `src/main/java/dev/mcdevmcp/mcp/McpServerFactory.java`
-- Modify: `src/main/java/dev/mcdevmcp/mcp/ToolCatalog.java`
+- Modify: `src/main/java/dev/mcdevmcp/mcp/tool/ToolCatalog.java`
 
 **Interfaces:**
 - Consumes: pinned Node oracle materializer, complete Java handler registry, shared MCP server definition.
@@ -1553,7 +1595,17 @@ public record ServerDefinition(
         ToolCatalog tools, ResourceCatalog resources) {}
 ```
 
-Add a `conformance` Gradle source set with test-only Jakarta Servlet 6.1.0 and Tomcat 11.0.2 dependencies. `ConformanceServerMain` mounts the SDK's Streamable HTTP servlet at `http://127.0.0.1:3000/mcp`; none of its classes or Tomcat dependencies enter `shadowJar`.
+Add a `conformance` Gradle source set. Prefer a supported container-free JDK
+Streamable HTTP provider if the SDK exposes one when this task is implemented;
+do not write a custom transport merely to avoid a test dependency. Otherwise
+mount the SDK's built-in Streamable HTTP servlet with its upstream-tested
+embedded container at `http://127.0.0.1:3000/mcp`. Add the Servlet/container
+aliases only when this source set uses them, select the then-current supported
+and non-vulnerable release, commit the exact reviewed versions, and let the
+existing daily Dependabot configuration maintain them. Dynamic version
+selectors are forbidden. A dependency/archive test proves the container is
+confined to the conformance configuration and absent from `runtimeClasspath`
+and `shadowJar`.
 
 - [ ] **Step 6: Run official conformance 0.1.16 and production STDIO integration**
 
@@ -1654,7 +1706,9 @@ git commit -m "build: package Java server for MCPB"
 - Create: `src/benchmark/java/dev/mcdevmcp/benchmark/BenchmarkDecision.java`
 - Create: `src/benchmark/java/dev/mcdevmcp/benchmark/BenchmarkComparisonRun.java`
 - Create: `src/benchmark/java/dev/mcdevmcp/benchmark/BenchmarkPolicy.java`
+- Create: `src/benchmark/java/dev/mcdevmcp/benchmark/CorpusQualificationMain.java`
 - Create: `src/test/java/dev/mcdevmcp/benchmark/BenchmarkPolicyTest.java`
+- Create: `src/test/resources/contracts/indexer/corpus-probes.json`
 - Create: `scripts/verify-release-assets.ps1`
 - Create: `.github/workflows/benchmark.yml`
 - Create: `.github/workflows/release.yml`
@@ -1663,8 +1717,8 @@ git commit -m "build: package Java server for MCPB"
 - Modify: `build.gradle.kts`
 
 **Interfaces:**
-- Consumes: one Java-25-built JAR/test runtime bundle, cached source/remapped JAR benchmark input, version property, MCPB artifact.
-- Produces: correctness on Java 25 and 26; JSON benchmark artifacts; three-run preference evaluator; release JAR/checksum/MCPB assembled without rebuild.
+- Consumes: one Java-25-built JAR/test runtime bundle, complete immutable Minecraft 1.21.11 and 26.1 source/remapped-JAR inputs, Node-oracle comparison data, version property, MCPB artifact.
+- Produces: correctness on Java 25 and 26; complete-corpus accounting and logical hashes; bounded-memory evidence; JSON benchmark artifacts; three-run preference evaluator; release JAR/checksum/MCPB assembled without rebuild.
 
 - [ ] **Step 1: Write failing benchmark-policy and release-verifier tests**
 
@@ -1705,6 +1759,16 @@ Expected: FAIL at compilation.
 
 Add a Gradle `benchmark` source set compiled with release 25. `AnalysisBenchmarkMain` accepts immutable source root/remapped JAR and separate output root, runs one warmup then five measured index builds and callgraph builds, alternates Java-version order at workflow level, and writes one JSON record containing medians, class/edge throughput, peak RSS, GC, vendor/version, flags, input hashes, machine ID, and run ID. It never changes production caches.
 
+`CorpusQualificationMain` uses the same process runner and accepts a typed
+Minecraft version, immutable source/remapped-JAR inputs, Node baseline, probe
+manifest, worker count, and separate output root. For complete 1.21.11 and 26.1
+corpora it records every discovered Java unit, type-free package/module units,
+logical table counts and ordered hash, probe signatures, diagnostics, peak live
+heap, and peak RSS. It fails on any unaccounted/skipped unit, partial build,
+probe mismatch, or `-Xmx4g` exhaustion. Count/signature differences from the
+Node oracle require an explicit reviewed explanation; legacy inaccuracy is not
+made normative.
+
 - [ ] **Step 4: Make CI build once and execute the same bits on 25 and 26**
 
 `ci.yml` jobs:
@@ -1722,7 +1786,15 @@ absent; class loading must produce no signed-archive verification failure.
 
 - [ ] **Step 5: Add scheduled/manual Java 25 versus 26 macrobenchmark**
 
-`benchmark.yml` runs weekly and by dispatch on one runner. It downloads/prepares inputs once, runs both JDKs with default G1 in counterbalanced order, uploads raw JSON, and uses GitHub API with least-privilege `actions: read` to download the preceding two successful same-machine comparison artifacts. `BenchmarkPolicy` evaluates all three. A Parallel-GC job is manual/advisory and never changes the decision. Workflow summaries state either threshold pass or no preference; they do not edit README automatically.
+`benchmark.yml` runs weekly and by dispatch on one runner. It downloads/prepares the complete 1.21.11 and 26.1 inputs once and verifies their hashes. Before timing, it runs `CorpusQualificationMain` under Java 25 and 26 with one and up to four workers; all four runs for each corpus must have identical ordered logical hashes and complete unit accounting under `-Xmx4g`. It materializes the untouched Node oracle only in ignored scratch, captures baseline counts and representative signatures, and requires reviewed explanations for intentional Java corrections.
+
+The workflow then runs both JDKs with default G1 in counterbalanced order, uploads raw JSON and corpus reports, and uses GitHub API with least-privilege `actions: read` to download the preceding two successful same-machine comparison artifacts. `BenchmarkPolicy` evaluates all three. A Parallel-GC job is manual/advisory and never changes the decision. Workflow summaries state either threshold pass or no preference; they do not edit README automatically.
+
+Keep daily Dependabot version updates for Gradle and GitHub Actions. Dependency
+coordinates remain exact and reviewable; dynamic selectors are rejected. The
+CI dependency policy fails when an unused catalog alias remains or when a
+test-only HTTP container appears in production `runtimeClasspath` or the
+shaded JAR.
 
 - [ ] **Step 6: Build release assets once and verify provenance**
 
@@ -1750,7 +1822,7 @@ Expected: Gradle PASS; dry-run verifier either PASS with locally built three ass
 - [ ] **Step 8: Commit CI, benchmark, and release workflows**
 
 ```powershell
-git add src/benchmark src/test/java/dev/mcdevmcp/benchmark scripts/verify-release-assets.ps1 .github build.gradle.kts
+git add src/benchmark src/test/java/dev/mcdevmcp/benchmark src/test/resources/contracts/indexer scripts/verify-release-assets.ps1 .github build.gradle.kts
 git commit -m "ci: test and release Java artifacts"
 ```
 
@@ -1864,7 +1936,7 @@ git commit -m "docs: audit the early Java cutover"
 
 - [ ] **Step 1: Build an acceptance evidence matrix from the approved design**
 
-Record each requirement and its authoritative command/artifact: production STDIO, full tool/resource catalog, CLI, environment inventory, Javac-only parser, parse-failure atomicity, Class-File callgraph, 5000 refs, no java-callgraph2, DebugBridge fixtures/live smoke, Java 25/26, benchmark outputs/policy, shaded services/native resources, exact JAR checksum in MCPB, release dry run, no TypeScript runtime, and original master cleanliness. Mark missing evidence as incomplete, not assumed.
+Record each requirement and its authoritative command/artifact: production STDIO, full tool/resource catalog, CLI, environment inventory, Javac-only parser, parse-failure atomicity, complete Minecraft 1.21.11/26.1 corpus accounting and memory bounds, Class-File callgraph, 5000 refs, no java-callgraph2, DebugBridge fixtures/live smoke, Java 25/26, benchmark outputs/policy, shaded services/native resources, exact JAR checksum in MCPB, release dry run, automatic dependency-update policy, no unused or production-scoped test container, no TypeScript runtime, and original master cleanliness. Mark missing evidence as incomplete, not assumed.
 
 - [ ] **Step 2: Run the complete local verification from a clean build directory**
 
@@ -1891,13 +1963,21 @@ warnings. Inspection must not trigger or justify reformatting unrelated code.
 
 Use CI or local installed JDKs to run the uploaded `runtimeTestBundle` and exact SHA-checked JAR under both versions. Capture feature/vendor, test counts, failures, JAR SHA, H2 smoke, Tiny Remapper/Vineflower fixture, STDIO initialize, and MCPB launch. A test rebuilt under the second JDK is not acceptable evidence for exact-artifact runtime parity.
 
+Run the latest successful or manually dispatched full-corpus qualification on
+the complete, hash-verified Minecraft 1.21.11 and 26.1 inputs. Require Java 25
+and 26, one and up to four workers, identical ordered logical database hashes,
+complete compilation-unit accounting, no fallback/skips/partial rows, all
+representative probes, and success under `-Xmx4g`. Record peak live heap/RSS
+and every reviewed Node-baseline delta. Missing corpus artifacts or an
+unexplained delta leaves acceptance incomplete.
+
 - [ ] **Step 4: Run a live DebugBridge v2.0.0 smoke test**
 
 Against a user-launched compatible Minecraft instance, run non-mutating `mc_connect`, snapshot, entity/block query, screen inspect, screenshot or texture, and wait-state checks; run session-control, command, or video only when their bridge/server gates are explicitly enabled. Record mod release/commit, Minecraft version, port, tool names, and pass/fail without retaining game paths or payload secrets. If no live instance is available, this acceptance item remains incomplete and the branch is not represented as release-ready.
 
 - [ ] **Step 5: Commit the sanitized acceptance evidence**
 
-Write the matrix, exact commands, artifact hashes, Java runtime identities, test counts, conformance result, MCPB inner-JAR comparison, benchmark-policy state, live-smoke state, and known residual risks to `docs/verification/2026-07-10-pure-java-acceptance.md`. Exclude machine-specific game paths, secrets, raw bridge payloads, and usernames.
+Write the matrix, exact commands, artifact hashes, Java runtime identities, test counts, conformance result, full-corpus unit/count/hash/probe and memory reports, reviewed Node-baseline deltas, MCPB inner-JAR comparison, dependency-update/isolation evidence, benchmark-policy state, live-smoke state, and known residual risks to `docs/verification/2026-07-10-pure-java-acceptance.md`. Exclude machine-specific game paths, secrets, raw bridge payloads, and usernames.
 
 ```powershell
 git add docs/verification/2026-07-10-pure-java-acceptance.md
@@ -1937,9 +2017,9 @@ Expected: remote codex branch updates successfully. Do not merge, tag, create a 
 | Java 25 instance entry point, top-level production types, semantic Java values, preserved IntelliJ style, and warning-clean Gradle/IDE diagnostics | Tasks 2 through 17, audited in Task 17 |
 | SDK-only JSON mapping, generic typed tool bindings, explicit wire/domain conversion, and Gson absence | Tasks 3, 9 through 13, 16, and 17 |
 | Official MCP protocol via the Java SDK STDIO server, tools/resources, errors, STDOUT hygiene | Tasks 3 and 13 |
-| Frozen STDIO-only production transport, with Streamable HTTP confined to the test conformance harness | Tasks 3 and 13 |
+| Frozen STDIO-only production transport, with Streamable HTTP and any container confined to the test conformance harness | Tasks 3, 13, 15, and 17 |
 | CLI and cache lifecycle | Tasks 4 and 8 |
-| Javac-only accurate source indexing and semantic type identity | Task 5 |
+| Javac-only accurate source indexing, bounded shared-corpus memory, semantic type identity, and complete 1.21.11/26.1 qualification | Tasks 5, 15, and 17 |
 | Normalized H2 symbols, locks, atomic promotion, legacy detection/cleaning | Tasks 4, 5, and 6 |
 | Static tools and intentional user search regex | Task 6 |
 | Class-File API callgraph and full `mc_find_refs` behavior | Task 7 |
@@ -1947,6 +2027,6 @@ Expected: remote codex branch updates successfully. Do not merge, tag, create a 
 | Versioned DebugBridge envelopes, fixtures, session, and every runtime tool | Tasks 9 through 12 |
 | Production STDIO integration plus official URL-based conformance 0.1.16 harness | Task 13 |
 | MCPB minimal Node launcher containing the exact release JAR | Task 14 |
-| Java 25/26 correctness, same-runner benchmark policy, build-once release provenance | Task 15 |
+| Java 25/26 correctness, same-runner benchmark policy, reproducible dependencies with daily update PRs, and build-once release provenance | Task 15 |
 | Environment preservation/removal inventory, TypeScript/worker deletion, docs transition | Task 16 |
 | Live DebugBridge smoke, full acceptance evidence, independent whole-branch review, guarded push | Task 17 |

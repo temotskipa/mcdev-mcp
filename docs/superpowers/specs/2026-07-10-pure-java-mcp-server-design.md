@@ -48,6 +48,9 @@ boundaries. Internal indexer and callgraph worker protocols disappear.
   still cannot launch Java directly.
 - Keep DebugBridge independent while testing its real JSON wire contract from
   versioned fixtures.
+- Prove a small SDK-backed typed argument-binding extension inside an
+  independently buildable Gradle library before considering separate
+  publication or an upstream proposal.
 
 ## Non-Goals
 
@@ -64,16 +67,25 @@ boundaries. Internal indexer and callgraph worker protocols disappear.
   calls that are absent from bytecode invocation instructions.
 - Do not publish a DebugBridge protocol artifact before the fixture-backed wire
   boundary has remained stable across two independent releases.
+- Do not publish the typed argument-binding library or claim an upstream MCP
+  SDK namespace before multiple static and runtime tool families prove its API
+  and error model.
 
 ## Architecture
 
-The repository becomes one Gradle application project with Java package
-boundaries rather than multiple runtime workers:
+The repository becomes one Gradle multi-project build with one root application
+and one internal Java library rather than multiple runtime workers. The root
+still produces the only server and release JAR:
 
 ```text
+:mcp-tool-binding       SDK/JDK-only typed argument decoding
+
 dev.mcdevmcp
 |-- app              executable entry point, CLI, lifecycle
-|-- mcp              MCP SDK adapter, tool registry, resources
+|-- mcp
+|   |-- transport    MCP SDK/STDIO adaptation
+|   |-- tool         application tool registry and execution policy
+|   `-- resource     MCP resource registry
 |-- analysis
 |   |-- decompile    downloads, mappings, Tiny Remapper, Vineflower
 |   |-- index        Javac parser and symbol database writer
@@ -221,12 +233,41 @@ at the MCP transport boundary to adapt SDK-specific typed responses required by
 the frozen Node contract; DebugBridge and other application code always receive
 the unwrapped mapper.
 
-The typed-binding adapter remains an extraction-ready internal package during
-the rewrite. It gains no mcdev-specific dependencies, but it is not split into
-a repository, published, or proposed upstream until several static and runtime
-tool families have proven the API and its error model. This avoids committing
-to an independent release and compatibility surface before real usage
-stabilizes the abstraction.
+The SDK/JDK-only argument decoder lives in the internal `mcp-tool-binding`
+`java-library` subproject under `dev.mcdevmcp.mcp.binding`. Its first public
+contract is `ArgumentDecoder<A>`; it may gain further generic binding contracts
+only after several static and runtime tool families prove that those contracts
+do not require application policy. The root application retains
+`ToolBinding`, `Cancellation`, `ToolResult`, executor selection, catalogs,
+transport adaptation, and Minecraft behavior. The child cannot depend on or
+import those root-project types, while the application has the only project
+dependency direction. Production declares only the official SDK `mcp-core`
+module as an API dependency because `McpJsonMapper` appears in the public
+signature; the official Jackson 3 mapper module is test-only in the child.
+
+This enforced Gradle boundary is the rehearsal for possible extraction to a
+separate repository. The library reserves `dev.mcdevmcp.mcp.binding` as its
+future JPMS name and declares it through `Automatic-Module-Name`, but it does
+not yet contain `module-info.java`. The reviewed MCP SDK snapshot and current
+upstream source derive invalid automatic names containing hyphens for
+`mcp-core` and `mcp-json-jackson3`, tracked by
+[MCP Java SDK issue #560](https://github.com/modelcontextprotocol/java-sdk/issues/560).
+The build does not patch those descriptors or add module-path workarounds.
+Once the SDK becomes module-path-valid, a focused compatibility task may add an
+explicit descriptor that exports only the binding API package. The shaded
+application remains classpath-based throughout.
+
+The library is not split into another repository, published, or proposed
+upstream until real tool usage stabilizes the abstraction and its error model.
+This avoids committing to a compatibility surface prematurely.
+
+Within the root application, Java's lack of friend packages requires explicit
+MCP capsule operations. Resource creation with the process mapper,
+executor-aware tool-catalog creation, and complete STDIO/SDK server creation
+are the only public construction operations across the resource, tool, and
+transport packages. The transport operation hides all lower-level adapter and
+lifecycle constructors. These are deliberate stage facades rather than public
+implementation helpers.
 
 STDOUT is reserved exclusively for MCP JSON-RPC while `serve` is running.
 Diagnostics use STDERR or the existing opt-in debug log file. No logging
@@ -239,6 +280,13 @@ test-only Streamable HTTP harness that uses the exact same server metadata,
 tool registry, resource registry, handlers, and JSON mapper as production.
 Passing that harness is an additional acceptance gate; it does not replace the
 project's STDIO integration tests or add an HTTP transport to the release JAR.
+The harness prefers an SDK-supported container-free JDK provider if one exists;
+otherwise it uses the SDK's built-in Servlet provider with an upstream-tested
+embedded container. Servlet/container dependencies are declared only in the
+conformance source set when it exists and are absent from production runtime
+and shaded artifacts. Dependency versions resolve reproducibly from exact
+reviewed coordinates while daily Dependabot updates keep them current; dynamic
+selectors and unused catalog aliases are not permitted.
 
 ## CLI Surface
 
@@ -286,6 +334,13 @@ parser task owns and closes its compiler and file manager; compiler objects
 never escape or cross threads. CPU concurrency is bounded by available
 processors and `MCDEV_INDEX_THREADS`. Results are merged by typed source
 identity, portable relative path, and declaration offset.
+
+The immutable corpus owns exactly one strictly decoded `String` per source
+file. Per-worker file objects and binary-name aliases reference that shared
+text rather than copying it. The executor admits at most the configured worker
+count, so queued and completed batch results are also bounded by that count.
+Increasing the worker count may multiply active Javac state, but it must not
+multiply the decoded corpus or create an unbounded task/result queue.
 
 Before parsing sources, the Class-File API builds a type catalog from the same
 remapped JAR. For every class present in that JAR, the catalog is authoritative
@@ -662,6 +717,18 @@ resolvable and unresolvable `invokedynamic`, overloaded methods, constructor
 calls, missing `LineNumberTable`, legacy empty descriptors, both directions,
 limit 100, limit 5000, and limit-plus-one truncation.
 
+Full-corpus qualification indexes complete Minecraft 1.21.11 and 26.1 source
+trees against their matching remapped JARs. It accounts for every discovered
+Java compilation unit, including type-free `package-info.java` and
+`module-info.java`, and permits no skipped or partially indexed files. Runs on
+Java 25 and 26 with one and up to four workers must produce the same ordered
+logical database hash. The qualification records immutable input hashes,
+source/unit/type/member counts, peak live heap, peak RSS, and diagnostics while
+running under a fixed 4 GiB maximum heap. The untouched Node oracle supplies
+baseline counts and representative signatures, but Java corrections are
+reviewed and documented rather than rejected merely because an inaccurate
+legacy count differs.
+
 Every migrated behavior starts with a failing Java test. The early cutover
 removes legacy source before parity is complete, so later differential checks
 must use the immutable original checkout as their oracle. Every task also
@@ -689,6 +756,10 @@ serialization.
 - Java compiler APIs are the only production source parser; no regex parser,
   TypeScript AST parser, or parser fallback remains.
 - A parse error fails atomically and leaves the prior symbol database intact.
+- Complete Minecraft 1.21.11 and 26.1 corpus qualification passes without
+  fallback, skipped files, worker-count drift, Java-version drift, or exceeding
+  the fixed qualification heap cap; reviewed legacy-count corrections are
+  recorded in the acceptance evidence.
 - The Class-File API generator fully satisfies `mc_find_refs` callers and
   callees, including descriptors and best-effort line numbers.
 - java-callgraph2 and its clone/build/output parser are absent.
@@ -698,6 +769,9 @@ serialization.
   CI artifacts, and preferred-runtime guidance follows the three-run threshold
   rather than a single favorable result.
 - GitHub Releases attach the shaded JAR, checksum, and packed MCPB.
+- Daily Gradle and GitHub Actions dependency updates remain enabled; builds use
+  exact reviewed coordinates, contain no unused dependency aliases, and keep
+  any conformance HTTP container out of production and release artifacts.
 - Every release surface derives its version from `gradle.properties`, and the
   MCPB contains the checksum-verified JAR built once on Java 25.
 - The MCPB contains only a minimal Node bootstrap plus the same Java JAR and
