@@ -13,17 +13,13 @@ import javax.tools.JavaFileObject;
 import javax.tools.StandardJavaFileManager;
 import java.io.IOException;
 import java.net.URI;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.function.BiConsumer;
 
 final class JavacPreflight {
     private JavacPreflight() {
     }
-
+    
     static SourceCorpus preflight(IndexRequest request, CompilerClasspath classpath, SourceCorpus discovered, BiConsumer<JavacTask, Map<URI, CompilationUnitTree>> parsedUnitObserver) throws IndexBuildException, InterruptedException {
         request.cancellation().throwIfCancelled();
         JavaCompiler compiler = CompilerConfiguration.compiler();
@@ -65,7 +61,7 @@ final class JavacPreflight {
             throw new IndexBuildException("Unable to configure Javac source preflight", exception);
         }
     }
-
+    
     private static <T> List<T> stream(Iterable<? extends T> values) {
         List<T> result = new ArrayList<>();
         for (T value : values) {

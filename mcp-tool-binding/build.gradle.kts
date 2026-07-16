@@ -1,5 +1,3 @@
-import org.gradle.api.tasks.compile.JavaCompile
-
 plugins {
     `java-library`
 }

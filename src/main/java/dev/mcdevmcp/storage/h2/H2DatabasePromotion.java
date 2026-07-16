@@ -11,11 +11,23 @@ import java.sql.SQLException;
 
 final class H2DatabasePromotion {
     private final DatabaseFileOperations files;
-
+    
     H2DatabasePromotion(DatabaseFileOperations files) {
         this.files = files;
     }
-
+    
+    static void validatePromotedDatabase(Path target, DatabaseValidator validator) throws IOException, SQLException {
+        try (Connection connection = DriverManager.getConnection(H2DatabaseUrls.reader(target))) {
+            try {
+                validator.validate(connection);
+            } catch (SQLException exception) {
+                throw exception;
+            } catch (Exception exception) {
+                throw new SQLException("Promoted H2 database validation failed", exception);
+            }
+        }
+    }
+    
     void resolveBackup(H2DatabaseArtifacts artifacts, DatabaseValidator validator) throws IOException {
         Path target = artifacts.target;
         Path backup = artifacts.backup;
@@ -33,7 +45,7 @@ final class H2DatabasePromotion {
         }
         Files.delete(backup);
     }
-
+    
     void promote(H2DatabaseArtifacts artifacts, DatabaseValidator validator) throws IOException, SQLException {
         try {
             files.move(artifacts.temporary, artifacts.target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
@@ -42,19 +54,7 @@ final class H2DatabasePromotion {
             promoteWithBackup(artifacts, validator, exception);
         }
     }
-
-    static void validatePromotedDatabase(Path target, DatabaseValidator validator) throws IOException, SQLException {
-        try (Connection connection = DriverManager.getConnection(H2DatabaseUrls.reader(target))) {
-            try {
-                validator.validate(connection);
-            } catch (SQLException exception) {
-                throw exception;
-            } catch (Exception exception) {
-                throw new SQLException("Promoted H2 database validation failed", exception);
-            }
-        }
-    }
-
+    
     private void promoteWithBackup(H2DatabaseArtifacts artifacts, DatabaseValidator validator, AtomicMoveNotSupportedException atomicFailure) throws IOException, SQLException {
         Path temporary = artifacts.temporary;
         Path target = artifacts.target;
@@ -79,7 +79,7 @@ final class H2DatabasePromotion {
             throw exception;
         }
     }
-
+    
     private void restorePrePromotionState(Path target, Path backup, DatabasePromotionPhase phase, boolean originalTargetExisted, Exception originalFailure) {
         boolean targetExists = Files.exists(target);
         boolean backupExists = Files.exists(backup);
@@ -94,7 +94,7 @@ final class H2DatabasePromotion {
             originalFailure.addSuppressed(new IOException("Neither target nor backup remains after failed backup move: " + target + " and " + backup));
             return;
         }
-
+        
         if (phase != DatabasePromotionPhase.PROMOTING_TEMPORARY) {
             return;
         }
@@ -113,7 +113,7 @@ final class H2DatabasePromotion {
             originalFailure.addSuppressed(new IOException("Backup missing after failed temporary promotion: " + backup));
         }
     }
-
+    
     private void restoreBackup(Path target, Path backup, Exception originalFailure) {
         DatabasePromotionPhase phase = DatabasePromotionPhase.RESTORING_BACKUP;
         try {

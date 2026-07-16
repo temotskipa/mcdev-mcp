@@ -2,19 +2,14 @@ package dev.mcdevmcp.mcp.transport;
 
 import dev.mcdevmcp.mcp.McpContractTestSupport;
 import dev.mcdevmcp.mcp.binding.ArgumentDecoder;
-import dev.mcdevmcp.mcp.tool.TestEmptyArguments;
-import dev.mcdevmcp.mcp.tool.ToolAvailability;
-import dev.mcdevmcp.mcp.tool.ToolBinding;
-import dev.mcdevmcp.mcp.tool.ToolDefinition;
-import dev.mcdevmcp.mcp.tool.ToolHandler;
-import dev.mcdevmcp.mcp.tool.ToolHandlers;
-import dev.mcdevmcp.mcp.tool.ToolResult;
+import dev.mcdevmcp.mcp.tool.*;
 import dev.mcdevmcp.support.Cancellation;
 import io.modelcontextprotocol.json.McpJsonDefaults;
 import io.modelcontextprotocol.json.McpJsonMapper;
 import io.modelcontextprotocol.json.TypeRef;
 import io.modelcontextprotocol.spec.McpSchema;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -41,6 +36,9 @@ class McpStdioIntegrationTest {
     };
     private static final TypeRef<List<Map<String, Object>>> LIST_OF_MAPS_TYPE = new TypeRef<>() {
     };
+    
+    @TempDir
+    Path temporaryDirectory;
     
     private static void assertProtocolMatches(String contractName, Map<String, Object> actual, boolean normalizeVersion) throws IOException {
         var expected = new LinkedHashMap<>(McpContractTestSupport.readContract(contractName));
@@ -91,7 +89,10 @@ class McpStdioIntegrationTest {
     
     @Test
     void shadedJarServesOnlyJsonRpcOverStdio() throws Exception {
-        var process = new ProcessBuilder(JAVA.toString(), "-jar", JAR.toString(), "serve").start();
+        var processBuilder = new ProcessBuilder(JAVA.toString(), "-Duser.home=" + temporaryDirectory, "-jar", JAR.toString(), "serve");
+        processBuilder.environment().put("LOCALAPPDATA", temporaryDirectory.toString());
+        processBuilder.environment().put("XDG_CACHE_HOME", temporaryDirectory.toString());
+        var process = processBuilder.start();
         try {
             var writer = new OutputStreamWriter(process.getOutputStream(), StandardCharsets.UTF_8);
             try (var reader = new BufferedReader(new java.io.InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
@@ -107,9 +108,15 @@ class McpStdioIntegrationTest {
                     var resource = readJsonLine(reader);
                     write(writer, request(5, "tools/call", Map.of("name", "not_a_tool")));
                     var unknownTool = readJsonLine(reader);
+                    write(writer, request(6, "tools/call", Map.of("name", "mc_version", "arguments", Map.of("action", "list"))));
+                    var versionList = readJsonLine(reader);
                     
                     assertProtocolMatches("initialize.json", initialize, true);
                     assertProtocolMatches("tools-list-default.json", tools, false);
+                    var versionResult = MAPPER.convertValue(versionList.get("result"), MAP_TYPE);
+                    var versionContent = MAPPER.convertValue(versionResult.get("content"), LIST_OF_MAPS_TYPE);
+                    assertEquals("No Minecraft versions found.\n\nRun this command to initialize a version:\n  npx mcdev-mcp init -v <version>\n\nExample:\n  npx mcdev-mcp init -v 1.21.11", versionContent.getFirst().get("text"));
+                    assertNotEquals(Boolean.TRUE, versionResult.get("isError"));
                     assertProtocolMatches("resources-list.json", resources, false);
                     assertProtocolMatches("resource-python-scripting.json", resource, false);
                     var unknownResult = MAPPER.convertValue(unknownTool.get("result"), MAP_TYPE);

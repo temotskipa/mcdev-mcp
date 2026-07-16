@@ -1,15 +1,19 @@
 package dev.mcdevmcp.mcp;
 
-import dev.mcdevmcp.support.AppEnvironment;
 import dev.mcdevmcp.mcp.resource.ResourceCatalog;
 import dev.mcdevmcp.mcp.tool.ToolBinding;
 import dev.mcdevmcp.mcp.tool.ToolCatalog;
 import dev.mcdevmcp.mcp.transport.McpSdkAdapter;
 import dev.mcdevmcp.mcp.transport.StdioServer;
+import dev.mcdevmcp.storage.PlatformPaths;
+import dev.mcdevmcp.support.AppEnvironment;
+import dev.mcdevmcp.tools.statictool.StaticToolModule;
 import io.modelcontextprotocol.json.McpJsonDefaults;
 import io.modelcontextprotocol.json.McpJsonMapper;
+
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.nio.file.Path;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ExecutorService;
@@ -22,7 +26,7 @@ public final class McpServerFactory {
     private final McpJsonMapper mapper;
     
     public McpServerFactory(AppEnvironment environment) {
-        this(environment, Map.of(), McpJsonDefaults.getMapper());
+        this(environment, staticBindings(environment), McpJsonDefaults.getMapper());
     }
     
     McpServerFactory(AppEnvironment environment, Map<String, ToolBinding<?>> bindings, McpJsonMapper mapper) {
@@ -34,6 +38,11 @@ public final class McpServerFactory {
         this.bindings = Map.copyOf(bindings);
         this.resourceCatalog = Objects.requireNonNull(resourceCatalog, "resourceCatalog");
         this.mapper = Objects.requireNonNull(mapper, "mapper");
+    }
+    
+    private static Map<String, ToolBinding<?>> staticBindings(AppEnvironment environment) {
+        PlatformPaths paths = PlatformPaths.forEnvironment(System.getProperty("os.name"), environment.values(), Path.of(System.getProperty("user.home")));
+        return StaticToolModule.handlers(paths);
     }
     
     ToolCatalog loadToolCatalog(ExecutorService blockingExecutor) {

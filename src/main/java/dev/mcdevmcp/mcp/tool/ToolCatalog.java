@@ -38,7 +38,7 @@ public final class ToolCatalog {
         ToolMetadata[] metadata = new JsonResourceReader(mapper).read("/mcp/tools.json", ToolMetadata[].class);
         return fromMetadata(environment, mapper, metadata, Objects.requireNonNull(bindings, "bindings").entrySet());
     }
-
+    
     public static ToolCatalog load(AppEnvironment environment, Map<String, ToolBinding<?>> bindings, McpJsonMapper mapper, ExecutorService blockingExecutor) {
         Objects.requireNonNull(blockingExecutor, "blockingExecutor");
         var adaptedBindings = new LinkedHashMap<String, ToolBinding<?>>();

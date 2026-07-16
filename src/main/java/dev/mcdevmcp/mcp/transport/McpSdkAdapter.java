@@ -10,8 +10,8 @@ import dev.mcdevmcp.support.AppVersion;
 import io.modelcontextprotocol.json.McpJsonMapper;
 import io.modelcontextprotocol.server.McpAsyncServer;
 import io.modelcontextprotocol.server.McpAsyncServerExchange;
-import io.modelcontextprotocol.server.McpServerFeatures;
 import io.modelcontextprotocol.server.McpServer;
+import io.modelcontextprotocol.server.McpServerFeatures;
 import io.modelcontextprotocol.server.transport.StdioServerTransportProvider;
 import io.modelcontextprotocol.spec.McpSchema;
 import reactor.core.publisher.Mono;
@@ -22,11 +22,7 @@ import java.net.URI;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionStage;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Future;
+import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BiFunction;
 
@@ -41,12 +37,12 @@ public final class McpSdkAdapter {
         this.mapper = Objects.requireNonNull(mapper, "mapper");
         this.blockingExecutor = Objects.requireNonNull(blockingExecutor, "blockingExecutor");
     }
-
+    
     static McpJsonMapper nodeParityMapper(McpJsonMapper mapper) {
         Objects.requireNonNull(mapper, "mapper");
         return new NodeParityJsonMapper(mapper);
     }
-
+    
     static StdioServerTransportProvider stdioTransport(McpJsonMapper mapper, InputStream input, OutputStream output, CountDownLatch inputClosed) {
         Objects.requireNonNull(mapper, "mapper");
         Objects.requireNonNull(input, "input");
@@ -62,7 +58,7 @@ public final class McpSdkAdapter {
         Objects.requireNonNull(toolCatalog, "toolCatalog");
         Objects.requireNonNull(resourceCatalog, "resourceCatalog");
         Objects.requireNonNull(blockingExecutor, "blockingExecutor");
-
+        
         var inputClosed = new CountDownLatch(1);
         McpJsonMapper transportMapper = nodeParityMapper(mapper);
         var transport = stdioTransport(transportMapper, input, output, inputClosed);
@@ -70,7 +66,7 @@ public final class McpSdkAdapter {
         McpAsyncServer server = McpServer.async(transport).jsonMapper(transportMapper).serverInfo("mcdev-mcp", AppVersion.current()).instructions(ResourceCatalog.INSTRUCTIONS).capabilities(McpSchema.ServerCapabilities.builder().resources(null, null).tools(null).build()).validateToolInputs(true).tools(adapter.tools(toolCatalog)).resources(adapter.resources(resourceCatalog)).build();
         return new StdioServer(server, blockingExecutor, inputClosed);
     }
-
+    
     List<McpServerFeatures.AsyncToolSpecification> tools(ToolCatalog catalog) {
         return catalog.enabledDefinitions().stream().map(definition -> McpServerFeatures.AsyncToolSpecification.builder().tool(toSdkTool(definition)).callHandler(callHandler(definition)).build()).toList();
     }

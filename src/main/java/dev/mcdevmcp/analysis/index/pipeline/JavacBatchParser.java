@@ -1,10 +1,6 @@
 package dev.mcdevmcp.analysis.index.pipeline;
 
-import com.sun.source.tree.ClassTree;
-import com.sun.source.tree.CompilationUnitTree;
-import com.sun.source.tree.MethodTree;
-import com.sun.source.tree.Tree;
-import com.sun.source.tree.VariableTree;
+import com.sun.source.tree.*;
 import com.sun.source.util.JavacTask;
 import com.sun.source.util.SourcePositions;
 import com.sun.source.util.Trees;
@@ -12,30 +8,17 @@ import dev.mcdevmcp.analysis.classfile.ClassFileTypeCatalog;
 import dev.mcdevmcp.analysis.index.IndexBuildException;
 import dev.mcdevmcp.analysis.index.IndexRequest;
 
-import javax.tools.DiagnosticCollector;
-import javax.tools.FileObject;
-import javax.tools.ForwardingJavaFileManager;
-import javax.tools.JavaCompiler;
-import javax.tools.JavaFileManager;
-import javax.tools.JavaFileObject;
-import javax.tools.StandardJavaFileManager;
-import javax.tools.StandardLocation;
+import javax.tools.*;
 import java.io.IOException;
 import java.net.URI;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.IdentityHashMap;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 import java.util.function.BiConsumer;
 import java.util.stream.Collectors;
 
 final class JavacBatchParser {
     private JavacBatchParser() {
     }
-
+    
     static ParsedBatch parse(IndexRequest request, ClassFileTypeCatalog catalog, CompilerClasspath classpath, SourceCorpus corpus, List<DecodedSource> batch, BiConsumer<JavacTask, Map<URI, CompilationUnitTree>> parsedUnitObserver) throws IndexBuildException, InterruptedException {
         request.cancellation().throwIfCancelled();
         JavaCompiler compiler = CompilerConfiguration.compiler();
@@ -105,7 +88,7 @@ final class JavacBatchParser {
             throw new IndexBuildException("Unable to configure isolated Javac worker", exception);
         }
     }
-
+    
     static JavaFileManager compilerFileManager(MemorySourceFileManager manager) {
         return new ForwardingJavaFileManager<>(manager) {
             @Override
@@ -117,11 +100,11 @@ final class JavacBatchParser {
             }
         };
     }
-
+    
     private static void finish(JavacTask task) throws IOException {
         stream(task.generate());
     }
-
+    
     private static <T> List<T> stream(Iterable<? extends T> values) {
         List<T> result = new ArrayList<>();
         for (T value : values) {

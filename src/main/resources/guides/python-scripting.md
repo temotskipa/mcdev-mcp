@@ -30,8 +30,12 @@ Groovy snippets sent through the `execute` request type.
 
 ## Wire protocol
 
-Source of truth: [`src/tools/runtime/session.ts`](https://github.com/use-ai-for-mc/mcdev-mcp/blob/7b98bdb4a1d885d588cd141d8eb21e3c5c18b2b6/src/tools/runtime/session.ts) and
-[`src/tools/runtime/types.ts`](https://github.com/use-ai-for-mc/mcdev-mcp/blob/7b98bdb4a1d885d588cd141d8eb21e3c5c18b2b6/src/tools/runtime/types.ts). Re‑read those if
+Source of truth: [
+`src/tools/runtime/session.ts`](https://github.com/use-ai-for-mc/mcdev-mcp/blob/7b98bdb4a1d885d588cd141d8eb21e3c5c18b2b6/src/tools/runtime/session.ts)
+and
+[
+`src/tools/runtime/types.ts`](https://github.com/use-ai-for-mc/mcdev-mcp/blob/7b98bdb4a1d885d588cd141d8eb21e3c5c18b2b6/src/tools/runtime/types.ts).
+Re‑read those if
 anything below looks stale.
 
 - **Transport:** plain WebSocket, `ws://127.0.0.1:<port>`, no TLS, no auth. The
@@ -229,14 +233,18 @@ if __name__ == "__main__":
 This is intentionally ~70 lines: one socket, one reader task, response
 correlation by id, port scan, timeouts. If you need more (auto‑reconnect,
 session‑info verification across reconnects, etc.) lift the patterns from
-[`src/tools/runtime/session.ts`](https://github.com/use-ai-for-mc/mcdev-mcp/blob/7b98bdb4a1d885d588cd141d8eb21e3c5c18b2b6/src/tools/runtime/session.ts) — it has all
+[
+`src/tools/runtime/session.ts`](https://github.com/use-ai-for-mc/mcdev-mcp/blob/7b98bdb4a1d885d588cd141d8eb21e3c5c18b2b6/src/tools/runtime/session.ts) —
+it has all
 been thought through there.
 
 ## What Groovy you can send
 
 The Groovy environment exposed by the bridge is documented in the
 `mc_execute` tool description in
-[`src/tools/runtime/execute.ts`](https://github.com/use-ai-for-mc/mcdev-mcp/blob/7b98bdb4a1d885d588cd141d8eb21e3c5c18b2b6/src/tools/runtime/execute.ts). Highlights:
+[
+`src/tools/runtime/execute.ts`](https://github.com/use-ai-for-mc/mcdev-mcp/blob/7b98bdb4a1d885d588cd141d8eb21e3c5c18b2b6/src/tools/runtime/execute.ts).
+Highlights:
 
 - `mc`, `player`, `level` are pre-bound; the binding persists across calls
   (`x = 5` survives, `def x` is script-local).
@@ -281,7 +289,8 @@ runtime hierarchy); `io.open(...)` → `new File(...)`; `os.time()` →
 3. **Connection drops on world reload.** Some Minecraft state changes close
    and reopen the WebSocket. Production scripts need reconnect logic. Use the
    `status` reply's `gameDir` to detect "different game instance now" — see
-   [`expectedGameDir` in `session.ts`](https://github.com/use-ai-for-mc/mcdev-mcp/blob/7b98bdb4a1d885d588cd141d8eb21e3c5c18b2b6/src/tools/runtime/session.ts).
+   [`expectedGameDir` in
+   `session.ts`](https://github.com/use-ai-for-mc/mcdev-mcp/blob/7b98bdb4a1d885d588cd141d8eb21e3c5c18b2b6/src/tools/runtime/session.ts).
 4. **`runCommand` and session control are dev-only.** `runCommand` needs both
    this MCP server (`MCDEV_RUN_COMMAND=1`) and the mod (`run_command_enabled`)
    to opt in; `disconnect`/`joinServer`/`quit` need `session_control_enabled`

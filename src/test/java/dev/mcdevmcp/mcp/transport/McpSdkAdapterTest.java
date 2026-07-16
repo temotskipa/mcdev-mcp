@@ -2,12 +2,7 @@ package dev.mcdevmcp.mcp.transport;
 
 import dev.mcdevmcp.mcp.binding.ArgumentDecoder;
 import dev.mcdevmcp.mcp.resource.ResourceCatalog;
-import dev.mcdevmcp.mcp.tool.TestEmptyArguments;
-import dev.mcdevmcp.mcp.tool.ToolAvailability;
-import dev.mcdevmcp.mcp.tool.ToolBinding;
-import dev.mcdevmcp.mcp.tool.ToolDefinition;
-import dev.mcdevmcp.mcp.tool.ToolHandlers;
-import dev.mcdevmcp.mcp.tool.ToolResult;
+import dev.mcdevmcp.mcp.tool.*;
 import io.modelcontextprotocol.json.McpJsonDefaults;
 import io.modelcontextprotocol.json.McpJsonMapper;
 import io.modelcontextprotocol.server.McpServerFeatures;
@@ -15,7 +10,10 @@ import io.modelcontextprotocol.spec.McpSchema;
 import org.junit.jupiter.api.Test;
 
 import java.util.Map;
-import java.util.concurrent.*;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.*;

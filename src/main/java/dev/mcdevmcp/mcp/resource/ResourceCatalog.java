@@ -20,13 +20,13 @@ public final class ResourceCatalog {
     public ResourceCatalog() {
         this(new JsonResourceReader(McpJsonDefaults.getMapper()));
     }
-
-    public static ResourceCatalog withMapper(McpJsonMapper mapper) {
-        return new ResourceCatalog(new JsonResourceReader(mapper));
-    }
     
     ResourceCatalog(JsonResourceReader resourceReader) {
         this.resourceReader = Objects.requireNonNull(resourceReader, "resourceReader");
+    }
+    
+    public static ResourceCatalog withMapper(McpJsonMapper mapper) {
+        return new ResourceCatalog(new JsonResourceReader(mapper));
     }
     
     private static String nodeLineEndings(String text) {

@@ -20,16 +20,16 @@ import java.util.concurrent.atomic.AtomicBoolean;
 final class JavacSourceParser {
     private final Runnable compilerStarted;
     private final AtomicBoolean compilerStartedNotified = new AtomicBoolean();
-
+    
     JavacSourceParser() {
         this(() -> {
         });
     }
-
+    
     JavacSourceParser(Runnable compilerStarted) {
         this.compilerStarted = Objects.requireNonNull(compilerStarted, "compilerStarted");
     }
-
+    
     ParsedIndex parse(IndexRequest request, ClassFileTypeCatalog catalog, CompilerClasspath classpath, SourceCorpus discovered) throws IndexBuildException, InterruptedException {
         if (discovered.sources().isEmpty()) {
             return new ParsedIndex(List.of(), List.of());
@@ -47,7 +47,7 @@ final class JavacSourceParser {
         }
         return JavacTaskExecutor.executeAll(request, workerCount, tasks, this::assembleParsedIndex);
     }
-
+    
     private ParsedIndex assembleParsedIndex(List<ParsedBatch> batches) {
         List<ParsedType> types = new ArrayList<>();
         List<IndexDiagnostic> diagnostics = new ArrayList<>();
@@ -57,11 +57,11 @@ final class JavacSourceParser {
         }
         return new ParsedIndex(types, diagnostics);
     }
-
+    
     private SourceCorpus preflight(IndexRequest request, CompilerClasspath classpath, SourceCorpus discovered) throws IndexBuildException, InterruptedException {
         return JavacTaskExecutor.executeSingle(request, () -> JavacPreflight.preflight(request, classpath, discovered, this::observeParsedUnits));
     }
-
+    
     private void observeParsedUnits(JavacTask task, Map<URI, CompilationUnitTree> parsedUnits) {
         task.addTaskListener(new TaskListener() {
             @Override

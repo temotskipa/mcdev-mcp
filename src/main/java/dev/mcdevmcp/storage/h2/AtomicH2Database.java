@@ -12,17 +12,17 @@ import java.util.Objects;
 
 public final class AtomicH2Database {
     public static final Duration WRITE_LOCK_TIMEOUT = Duration.ofSeconds(30);
-
+    
     private final H2DatabasePromotion promotion;
-
+    
     public AtomicH2Database() {
         this(Files::move);
     }
-
+    
     AtomicH2Database(DatabaseFileOperations files) {
         promotion = new H2DatabasePromotion(Objects.requireNonNull(files, "files"));
     }
-
+    
     private static <T> T buildTemporaryDatabase(Path temporary, DatabaseBuilder<T> builder, DatabaseValidator validator) throws Exception {
         try (Connection connection = DriverManager.getConnection(H2DatabaseUrls.writer(temporary))) {
             connection.setAutoCommit(false);
@@ -44,15 +44,15 @@ public final class AtomicH2Database {
             }
         }
     }
-
+    
     private static String checkpointSql() {
         return "CHECKPOINT SYNC";
     }
-
+    
     public <T> T rebuild(Path target, Duration lockTimeout, DatabaseBuilder<T> builder, DatabaseValidator validator) throws IOException, SQLException {
         return rebuild(target, lockTimeout, builder, validator, validator);
     }
-
+    
     public <T> T rebuild(Path target, Duration lockTimeout, DatabaseBuilder<T> builder, DatabaseValidator existingTargetValidator, DatabaseValidator candidateValidator) throws IOException, SQLException {
         Objects.requireNonNull(target, "target");
         Objects.requireNonNull(lockTimeout, "lockTimeout");
@@ -91,5 +91,5 @@ public final class AtomicH2Database {
             }
         }
     }
-
+    
 }

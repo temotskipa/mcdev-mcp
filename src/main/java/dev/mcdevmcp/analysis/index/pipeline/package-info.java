@@ -1,2 +1,4 @@
-/** Internal compiler-backed source-index pipeline implementation. */
+/**
+ * Internal compiler-backed source-index pipeline implementation.
+ */
 package dev.mcdevmcp.analysis.index.pipeline;

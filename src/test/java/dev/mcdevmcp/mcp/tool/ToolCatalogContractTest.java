@@ -9,12 +9,16 @@ import io.modelcontextprotocol.json.McpJsonMapper;
 import io.modelcontextprotocol.json.TypeRef;
 import org.junit.jupiter.api.Test;
 
-import java.util.*;
+import java.util.AbstractMap;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 class ToolCatalogContractTest {
     private static final McpJsonMapper MAPPER = McpJsonDefaults.getMapper();
+    
     private static List<Map<String, Object>> contractTools(String name) throws Exception {
         return MAPPER.convertValue(McpContractTestSupport.readContract(name).get("result"), new TypeRef<Map<String, List<Map<String, Object>>>>() {
         }).get("tools");

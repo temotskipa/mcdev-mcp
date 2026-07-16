@@ -1,10 +1,6 @@
 package dev.mcdevmcp.analysis.index.pipeline;
 
-import com.sun.source.tree.ClassTree;
-import com.sun.source.tree.CompilationUnitTree;
-import com.sun.source.tree.MethodTree;
-import com.sun.source.tree.Tree;
-import com.sun.source.tree.VariableTree;
+import com.sun.source.tree.*;
 import com.sun.source.util.SourcePositions;
 import com.sun.source.util.TreePath;
 import com.sun.source.util.Trees;
@@ -12,25 +8,16 @@ import dev.mcdevmcp.analysis.classfile.ClassFileType;
 import dev.mcdevmcp.analysis.classfile.ClassFileTypeCatalog;
 import dev.mcdevmcp.analysis.index.IndexBuildException;
 
-import javax.lang.model.element.Element;
-import javax.lang.model.element.ElementKind;
-import javax.lang.model.element.ExecutableElement;
-import javax.lang.model.element.RecordComponentElement;
-import javax.lang.model.element.TypeElement;
-import javax.lang.model.element.VariableElement;
+import javax.lang.model.element.*;
 import javax.lang.model.type.ExecutableType;
 import javax.lang.model.type.TypeKind;
 import java.lang.constant.ClassDesc;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
-import java.util.Set;
+import java.util.*;
 
 final class JavacDeclarationReader {
     private JavacDeclarationReader() {
     }
-
+    
     static ParsedType parseType(CompilationUnitTree unit, ClassTree tree, List<? extends Tree> declaredMembers, Map<MethodTree, List<? extends VariableTree>> declaredMethodParameters, Map<Tree, SourceRange> declaredRanges, DecodedSource source, ClassFileTypeCatalog catalog, Trees trees, TypeResolver resolver) throws IndexBuildException {
         TreePath typePath = TreePath.getPath(unit, tree);
         if (!(trees.getElement(typePath) instanceof TypeElement element)) {
@@ -72,7 +59,7 @@ final class JavacDeclarationReader {
         }
         return new ParsedType(source.root(), source.relativePath(), source.packageName(), binaryName, element.getSimpleName().toString(), kind, superclass, interfaces, fields, methods, declaredRange(tree, declaredRanges));
     }
-
+    
     static void captureRange(CompilationUnitTree unit, Tree tree, SourcePositions positions, Map<Tree, SourceRange> ranges) throws IndexBuildException {
         long start = positions.getStartPosition(unit, tree);
         long end = positions.getEndPosition(unit, tree);
@@ -90,7 +77,7 @@ final class JavacDeclarationReader {
         }
         ranges.put(tree, new SourceRange((int) start, (int) end, (int) startLine, (int) endLine));
     }
-
+    
     private static ParsedMethod parseMethod(CompilationUnitTree unit, MethodTree tree, List<? extends VariableTree> declaredParameters, List<VariableTree> recordComponents, Map<Tree, SourceRange> declaredRanges, int ordinal, Trees trees, TypeResolver resolver) throws IndexBuildException {
         if (!(trees.getElement(TreePath.getPath(unit, tree)) instanceof ExecutableElement element)) {
             throw new IndexBuildException("Unable to resolve method declaration " + tree.getName());
@@ -118,7 +105,7 @@ final class JavacDeclarationReader {
         }
         return new ParsedMethod(ordinal, name, resolver.methodDescriptor(executableType), returnType, element.getModifiers(), constructor, parameters, declaredRange(tree, declaredRanges));
     }
-
+    
     private static List<VariableTree> recordComponents(CompilationUnitTree unit, TypeElement element, List<? extends Tree> declaredMembers, Map<Tree, SourceRange> declaredRanges, Trees trees, TypeResolver resolver) throws IndexBuildException {
         List<VariableTree> result = new ArrayList<>();
         for (RecordComponentElement component : element.getRecordComponents()) {
@@ -138,7 +125,7 @@ final class JavacDeclarationReader {
         }
         return List.copyOf(result);
     }
-
+    
     private static boolean matchesRecordComponents(List<? extends VariableElement> parameters, List<VariableTree> components, CompilationUnitTree unit, Trees trees, TypeResolver resolver) throws IndexBuildException {
         if (parameters.size() != components.size()) {
             return false;
@@ -153,7 +140,7 @@ final class JavacDeclarationReader {
         }
         return true;
     }
-
+    
     private static SourceRange declaredRange(Tree tree, Map<Tree, SourceRange> ranges) throws IndexBuildException {
         SourceRange range = ranges.get(tree);
         if (range == null) {
