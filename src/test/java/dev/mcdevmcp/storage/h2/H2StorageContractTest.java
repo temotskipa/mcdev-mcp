@@ -19,7 +19,7 @@ class H2StorageContractTest {
         var paths = new PlatformPaths(Path.of("/cache/mcdev-mcp"));
         
         assertEquals(Path.of("/cache/mcdev-mcp/index/1.21.5/symbols.mv.db"), paths.symbolDatabase(version));
-        assertEquals(Path.of("/cache/mcdev-mcp/cache/1.21.5/callgraph/callgraph.mv.db"), paths.callgraphDatabase(version));
+        assertEquals(Path.of("/cache/mcdev-mcp/cache/1.21.5/indexes/callgraph"), paths.callgraphBundle(version));
         assertEquals("minecraft", SourceNamespace.MINECRAFT.wireName());
         assertEquals(SourceNamespace.FABRIC, SourceNamespace.fromWireName("fabric"));
         assertThrows(IllegalArgumentException.class, () -> new MinecraftVersion("../unsafe"));

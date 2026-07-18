@@ -45,7 +45,7 @@ class PlatformPathsTest {
         assertEquals(Path.of("/cache/mcdev-mcp/cache/1.21.5/client"), paths.sourceRoot(VERSION));
         assertEquals(Path.of("/cache/mcdev-mcp/cache/1.21.5/jars/1.21.5_unobfuscated.jar"), paths.remappedJar(VERSION));
         assertEquals(Path.of("/cache/mcdev-mcp/cache/1.21.5/callgraph/client-remapped.jar"), paths.remappedCallgraphJar(VERSION));
-        assertEquals(Path.of("/cache/mcdev-mcp/cache/1.21.5/callgraph/callgraph.mv.db"), paths.callgraphDatabase(VERSION));
+        assertEquals(Path.of("/cache/mcdev-mcp/cache/1.21.5/indexes/callgraph"), paths.callgraphBundle(VERSION));
         assertEquals(Path.of("/cache/mcdev-mcp/cache/fabric-api-0.120.0"), paths.fabricSourceRoot(new FabricApiVersion("0.120.0")));
         assertEquals(Path.of("/cache/mcdev-mcp/index/1.21.5/symbols.mv.db"), paths.symbolDatabase(VERSION));
     }
@@ -61,7 +61,7 @@ class PlatformPathsTest {
         assertTrue(paths.sourceRoot(minecraftVersion).startsWith(paths.versionCache(minecraftVersion)));
         assertTrue(paths.remappedJar(minecraftVersion).startsWith(paths.versionCache(minecraftVersion)));
         assertTrue(paths.remappedCallgraphJar(minecraftVersion).startsWith(paths.versionCache(minecraftVersion)));
-        assertTrue(paths.callgraphDatabase(minecraftVersion).startsWith(paths.versionCache(minecraftVersion)));
+        assertTrue(paths.callgraphBundle(minecraftVersion).startsWith(paths.versionCache(minecraftVersion)));
         assertTrue(paths.indexRoot(minecraftVersion).startsWith(paths.cacheRoot()));
         assertTrue(paths.symbolDatabase(minecraftVersion).startsWith(paths.indexRoot(minecraftVersion)));
         assertTrue(paths.fabricSourceRoot(fabricVersion).startsWith(paths.cacheRoot()));

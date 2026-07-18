@@ -37,14 +37,57 @@ class StaticToolContractTest {
     
     private static List<Map<String, Object>> jsonLines(String resource) throws Exception {
         try (var input = StaticToolContractTest.class.getClassLoader().getResourceAsStream(resource)) {
-            return new java.io.BufferedReader(new java.io.InputStreamReader(java.util.Objects.requireNonNull(input), java.nio.charset.StandardCharsets.UTF_8)).lines().filter(line -> !line.isBlank()).map(line -> {
-                try {
-                    return McpJsonDefaults.getMapper().readValue(line, new TypeRef<Map<String, Object>>() {
-                    });
-                } catch (java.io.IOException exception) {
-                    throw new java.io.UncheckedIOException(exception);
+            String contents = new String(Objects.requireNonNull(input).readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+            List<Map<String, Object>> documents = new ArrayList<>();
+            int start = -1;
+            int depth = 0;
+            boolean quoted = false;
+            boolean escaped = false;
+            for (int index = 0; index < contents.length(); index++) {
+                char character = contents.charAt(index);
+                if (start < 0) {
+                    if (Character.isWhitespace(character)) {
+                        continue;
+                    }
+                    if (character != '{') {
+                        throw new java.io.IOException("Expected a JSON object at offset " + index + " in " + resource);
+                    }
+                    start = index;
                 }
-            }).toList();
+                if (quoted) {
+                    if (escaped) {
+                        escaped = false;
+                    }
+                    else if (character == '\\') {
+                        escaped = true;
+                    }
+                    else if (character == '"') {
+                        quoted = false;
+                    }
+                    continue;
+                }
+                if (character == '"') {
+                    quoted = true;
+                }
+                else if (character == '{' || character == '[') {
+                    depth++;
+                }
+                else if (character == '}' || character == ']') {
+                    depth--;
+                    if (depth == 0) {
+                        documents.add(McpJsonDefaults.getMapper().readValue(contents.substring(start, index + 1), new TypeRef<>() {
+                        }));
+                        start = -1;
+                    }
+                    else if (depth < 0) {
+                        throw new java.io.IOException("Unbalanced JSON at offset " + index + " in " + resource);
+                    }
+                }
+            }
+            if (start >= 0) {
+                throw new java.io.IOException("Incomplete JSON document in " + resource);
+            }
+            return List.copyOf(documents);
         }
     }
     
@@ -165,8 +208,8 @@ class StaticToolContractTest {
     }
     
     @Test
-    void exposesOnlyTheSevenStaticToolsAndNormalizesLargeLimitsWithoutOverflow() throws Exception {
-        assertEquals(Set.of("mc_version", "mc_search", "mc_get_class", "mc_get_method", "mc_list_classes", "mc_list_packages", "mc_find_hierarchy"), StaticToolModule.handlers(fixture()).keySet());
+    void exposesOnlyTheEightStaticToolsAndNormalizesLargeLimitsWithoutOverflow() throws Exception {
+        assertEquals(Set.of("mc_version", "mc_search", "mc_get_class", "mc_get_method", "mc_list_classes", "mc_list_packages", "mc_find_hierarchy", "mc_find_refs"), StaticToolModule.handlers(fixture()).keySet());
         LimitSpec limits = new LimitSpec(50, 1000);
         assertEquals(new NormalizedLimit(50, false, true), limits.normalize(new java.math.BigInteger("-999999999999999999999999999")));
         assertEquals(new NormalizedLimit(1000, true, false), limits.normalize(new java.math.BigInteger("999999999999999999999999999")));

@@ -3,6 +3,7 @@ package dev.mcdevmcp.tools.statictool;
 import dev.mcdevmcp.mcp.binding.ArgumentDecoder;
 import dev.mcdevmcp.mcp.tool.ToolBinding;
 import dev.mcdevmcp.mcp.tool.ToolResult;
+import dev.mcdevmcp.storage.callgraph.CallgraphRepository;
 import dev.mcdevmcp.storage.model.MinecraftVersion;
 
 import java.nio.file.Files;
@@ -38,7 +39,7 @@ final class McVersionTool {
             return ToolResult.text("Version " + arguments.version() + " not indexed.\n\n" + "STOP and ask the USER to run this command in their terminal:\n" + "  npx mcdev-mcp init -v " + arguments.version() + "\n\n" + "This will index Minecraft " + arguments.version() + " sources.");
         }
         support.activate(version);
-        String callgraph = Files.isRegularFile(support.paths().callgraphDatabase(version)) ? "yes" : "no";
+        String callgraph = CallgraphRepository.isPublished(support.paths().callgraphBundle(version)) ? "yes" : "no";
         return ToolResult.text("Active version set to " + arguments.version() + ".\nIndexed: yes\nCallgraph: " + callgraph);
     }
     
@@ -61,7 +62,7 @@ final class McVersionTool {
             MinecraftVersion version = new MinecraftVersion(value);
             String decompiled = PathWalker.isDecompiled(support.paths().sourceRoot(version)) ? "decompiled" : "not decompiled";
             String indexed = support.indexed(version) ? "indexed" : "not indexed";
-            String callgraph = Files.isRegularFile(support.paths().callgraphDatabase(version)) ? "callgraph" : "no callgraph";
+            String callgraph = CallgraphRepository.isPublished(support.paths().callgraphBundle(version)) ? "callgraph" : "no callgraph";
             return value + ": " + decompiled + ", " + indexed + ", " + callgraph;
         }).collect(Collectors.joining("\n"));
         String active = support.active().map(version -> "\n\nActive version: " + version.value()).orElse("\n\nNo active version set. Use mc_version with action=\"set\".");

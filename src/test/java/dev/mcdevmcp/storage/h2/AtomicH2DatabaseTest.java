@@ -187,7 +187,7 @@ class AtomicH2DatabaseTest {
     
     @Test
     void commonInfrastructurePromotesANonSymbolH2Schema() throws Exception {
-        Path target = temporaryDirectory.resolve("callgraph.mv.db");
+        Path target = temporaryDirectory.resolve("generic.mv.db");
         
         String result = new AtomicH2Database().rebuild(target, Duration.ofSeconds(1), connection -> {
             createGenericMarker(connection);

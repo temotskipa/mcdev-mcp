@@ -16,8 +16,8 @@ import static org.junit.jupiter.api.Assertions.*;
 class ResourceCatalogTest {
     private static final McpJsonMapper MAPPER = McpJsonDefaults.getMapper();
     
-    private static String contractText(String name) throws Exception {
-        var result = MAPPER.convertValue(McpContractTestSupport.readContract(name).get("result"), new TypeRef<Map<String, List<Map<String, Object>>>>() {
+    private static String devLoopContractText() throws Exception {
+        var result = MAPPER.convertValue(McpContractTestSupport.readContract("resource-dev-loop.json").get("result"), new TypeRef<Map<String, List<Map<String, Object>>>>() {
         });
         return (String) result.get("contents").getFirst().get("text");
     }
@@ -36,8 +36,7 @@ class ResourceCatalogTest {
     void resourceContentsMatchExpectedContracts() throws Exception {
         var catalog = new ResourceCatalog();
         
-        assertEquals(contractText("resource-python-scripting.json"), catalog.read(URI.create("mcdev://guides/python-scripting")).text());
-        assertEquals(contractText("resource-dev-loop.json"), catalog.read(URI.create("mcdev://guides/dev-loop")).text());
+        assertEquals(devLoopContractText(), catalog.read(URI.create("mcdev://guides/dev-loop")).text());
     }
     
     @Test

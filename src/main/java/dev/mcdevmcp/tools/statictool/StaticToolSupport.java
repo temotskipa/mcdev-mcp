@@ -2,6 +2,7 @@ package dev.mcdevmcp.tools.statictool;
 
 import dev.mcdevmcp.mcp.tool.ToolResult;
 import dev.mcdevmcp.storage.PlatformPaths;
+import dev.mcdevmcp.storage.callgraph.CallgraphRepository;
 import dev.mcdevmcp.storage.h2.SymbolRepository;
 import dev.mcdevmcp.storage.h2.VersionStateRepository;
 import dev.mcdevmcp.storage.model.ClassSymbol;
@@ -18,11 +19,13 @@ import java.util.Comparator;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
 final class StaticToolSupport {
     private final PlatformPaths paths;
     private final VersionStateRepository states;
+    private final ConcurrentHashMap<MinecraftVersion, CallgraphRepository> callgraphs = new ConcurrentHashMap<>();
     private volatile MinecraftVersion activeVersion;
     
     StaticToolSupport(PlatformPaths paths) {
@@ -85,6 +88,10 @@ final class StaticToolSupport {
     
     SymbolRepository repository(MinecraftVersion version) {
         return new SymbolRepository(paths.symbolDatabase(version));
+    }
+    
+    CallgraphRepository callgraphRepository(MinecraftVersion version) {
+        return callgraphs.computeIfAbsent(version, value -> new CallgraphRepository(paths.callgraphBundle(value), value));
     }
     
     boolean indexed(MinecraftVersion version) {

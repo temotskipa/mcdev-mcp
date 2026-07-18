@@ -11,12 +11,10 @@ import java.util.*;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 
-final class CompilerClasspath {
-    private final List<CompilerClassFile> classes;
-    
+record CompilerClasspath(List<CompilerClassFile> classes) {
     private CompilerClasspath(Map<String, CompilerClassFile> classes) {
         TreeMap<String, CompilerClassFile> sorted = new TreeMap<>(classes);
-        this.classes = List.copyOf(sorted.values());
+        this(List.copyOf(sorted.values()));
     }
     
     static CompilerClasspath read(IndexRequest request) throws IOException, InterruptedException {
@@ -51,9 +49,5 @@ final class CompilerClasspath {
         } catch (IllegalArgumentException exception) {
             throw new IOException("Unable to read compiler classpath entry " + jar, exception);
         }
-    }
-    
-    List<CompilerClassFile> classes() {
-        return classes;
     }
 }

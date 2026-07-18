@@ -55,8 +55,8 @@ public record PlatformPaths(Path cacheRoot) {
         return indexRoot(version).resolve("symbols.mv.db");
     }
     
-    public Path callgraphDatabase(MinecraftVersion version) {
-        return versionCache(version).resolve("callgraph").resolve("callgraph.mv.db");
+    public Path callgraphBundle(MinecraftVersion version) {
+        return versionCache(version).resolve("indexes").resolve("callgraph");
     }
     
     public Path indexRoot(MinecraftVersion version) {
