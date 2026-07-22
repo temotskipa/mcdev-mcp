@@ -18,7 +18,7 @@ import java.util.stream.Collectors;
 final class JavacBatchParser {
     private JavacBatchParser() {
     }
-    
+
     static ParsedBatch parse(IndexRequest request, ClassFileTypeCatalog catalog, CompilerClasspath classpath, SourceCorpus corpus, List<DecodedSource> batch, BiConsumer<JavacTask, Map<URI, CompilationUnitTree>> parsedUnitObserver) throws IndexBuildException, InterruptedException {
         request.cancellation().throwIfCancelled();
         JavaCompiler compiler = CompilerConfiguration.compiler();
@@ -88,7 +88,7 @@ final class JavacBatchParser {
             throw new IndexBuildException("Unable to configure isolated Javac worker", exception);
         }
     }
-    
+
     static JavaFileManager compilerFileManager(MemorySourceFileManager manager) {
         return new ForwardingJavaFileManager<>(manager) {
             @Override
@@ -100,11 +100,11 @@ final class JavacBatchParser {
             }
         };
     }
-    
+
     private static void finish(JavacTask task) throws IOException {
         stream(task.generate());
     }
-    
+
     private static <T> List<T> stream(Iterable<? extends T> values) {
         List<T> result = new ArrayList<>();
         for (T value : values) {

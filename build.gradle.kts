@@ -85,6 +85,7 @@ dependencies {
     implementation(libs.h2)
     implementation(libs.vineflower)
     implementation(libs.tiny.remapper)
+    implementation(libs.mapping.io)
     implementation(libs.slf4j.nop)
 
     testImplementation(platform(libs.junit.bom))

@@ -9,7 +9,7 @@ record LimitSpec(int defaultValue, int maximum) {
             throw new IllegalArgumentException("Invalid limit specification");
         }
     }
-    
+
     NormalizedLimit normalize(Number requestedLimit) {
         return switch (requestedLimit) {
             case null -> new NormalizedLimit(defaultValue, false, true);
@@ -18,13 +18,13 @@ record LimitSpec(int defaultValue, int maximum) {
             default -> normalizeFloating(requestedLimit.doubleValue());
         };
     }
-    
+
     private NormalizedLimit normalizeDecimal(BigDecimal value) {
         if (value.signum() <= 0) return new NormalizedLimit(defaultValue, false, true);
         BigInteger floored = value.toBigInteger();
         return floored.signum() == 0 ? new NormalizedLimit(0, false, false) : normalizeIntegral(floored);
     }
-    
+
     private NormalizedLimit normalizeFloating(double requested) {
         if (!Double.isFinite(requested) || requested <= 0) {
             return new NormalizedLimit(defaultValue, false, true);
@@ -33,7 +33,7 @@ record LimitSpec(int defaultValue, int maximum) {
         long floored = (long) Math.floor(requested);
         return floored == 0 ? new NormalizedLimit(0, false, false) : normalizeIntegral(BigInteger.valueOf(floored));
     }
-    
+
     private NormalizedLimit normalizeIntegral(BigInteger value) {
         if (value.signum() <= 0) {
             return new NormalizedLimit(defaultValue, false, true);

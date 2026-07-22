@@ -15,7 +15,7 @@ import java.util.stream.Collectors;
 final class McGetClassTool {
     private McGetClassTool() {
     }
-    
+
     static ToolBinding<GetClassArguments> binding(StaticToolSupport support) {
         var decoder = ArgumentDecoder.sdk(GetClassWireArguments.class).map(GetClassArguments::from);
         return ToolBinding.blocking(decoder, (arguments, _) -> support.execute("mc_get_class", () -> {
@@ -53,13 +53,13 @@ final class McGetClassTool {
             return ToolResult.text(header + body);
         }));
     }
-    
+
     private static String header(ClassSymbol type, String className, int fieldCount, int methodCount) {
         String extendsLine = type.superclassBinaryName().map(value -> "// Extends: " + value + "\n").orElse("");
         String implementsLine = type.interfaceBinaryNames().isEmpty() ? "" : "// Implements: " + String.join(", ", type.interfaceBinaryNames()) + "\n";
         return "// " + ElementKindCodec.wireName(type.kind()) + " " + className + "\n" + extendsLine + implementsLine + "// Fields: " + fieldCount + ", Methods: " + methodCount + "\n\n";
     }
-    
+
     private static String fields(List<FieldSymbol> fields) {
         if (fields.isEmpty()) {
             return "// (no fields)\n";
@@ -67,7 +67,7 @@ final class McGetClassTool {
         String declarations = fields.stream().map(field -> StaticToolSupport.modifiers(field.modifiers()) + field.type() + " " + field.name() + ";").collect(Collectors.joining("\n"));
         return "// Fields:\n" + declarations + "\n";
     }
-    
+
     private static String methods(SymbolRepository repository, List<MethodSymbol> methods) throws java.io.IOException, java.sql.SQLException {
         if (methods.isEmpty()) {
             return "// (no methods)\n";

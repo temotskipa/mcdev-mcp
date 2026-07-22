@@ -30,11 +30,11 @@ class StaticToolContractTest {
     private final List<ExecutorService> catalogExecutors = new ArrayList<>();
     @TempDir
     Path temporaryDirectory;
-    
+
     private static ClassSymbol symbol(Path sourcePath) {
         return new ClassSymbol(1, SourceNamespace.MINECRAFT, Optional.empty(), "alpha.Alpha", "alpha", "Alpha", javax.lang.model.element.ElementKind.CLASS, Optional.empty(), List.of(), sourcePath, 0, 0, 1, 1);
     }
-    
+
     private static List<Map<String, Object>> jsonLines(String resource) throws Exception {
         try (var input = StaticToolContractTest.class.getClassLoader().getResourceAsStream(resource)) {
             String contents = new String(Objects.requireNonNull(input).readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
@@ -90,12 +90,12 @@ class StaticToolContractTest {
             return List.copyOf(documents);
         }
     }
-    
+
     private static String text(ToolCatalog catalog, String name, Map<String, Object> arguments) {
         ToolResult result = catalog.dispatch(name, arguments, Cancellation.none()).toCompletableFuture().join();
         return result.content().getFirst().text();
     }
-    
+
     private static void createPrimaryDatabase(PlatformPaths paths, Path sourceRoot) throws Exception {
         Files.createDirectories(paths.indexRoot(VERSION));
         Path database = paths.symbolDatabase(VERSION);
@@ -135,7 +135,7 @@ class StaticToolContractTest {
             SymbolSchema.createIndexes(connection);
         }
     }
-    
+
     private static void createOtherDatabase(PlatformPaths paths) throws Exception {
         MinecraftVersion otherVersion = new MinecraftVersion("1.21.6");
         Files.createDirectories(paths.indexRoot(otherVersion));
@@ -148,7 +148,7 @@ class StaticToolContractTest {
             SymbolSchema.createIndexes(connection);
         }
     }
-    
+
     private static void type(java.sql.PreparedStatement statement, long id, long packageId, String namespace, String fabricVersion, String binaryName, String simpleName, String kind, String superclass, String sourcePath, int startLine, int endLine) throws Exception {
         statement.setLong(1, id);
         statement.setLong(2, packageId);
@@ -165,22 +165,22 @@ class StaticToolContractTest {
         statement.setInt(13, endLine);
         statement.addBatch();
     }
-    
+
     private static void insert(java.sql.Connection connection, String sql) throws Exception {
         try (var statement = connection.createStatement()) {
             statement.executeUpdate(sql);
         }
     }
-    
+
     @AfterEach
     void closeCatalogExecutors() {
         catalogExecutors.forEach(ExecutorService::close);
     }
-    
+
     @Test
     void preservesFrozenStaticToolTextsForSuccessEmptyLimitsAndVersions() throws Exception {
         ToolCatalog catalog = catalog(fixture());
-        
+
         assertEquals("No Minecraft version is currently set.\n\nSTOP and ask the USER which version they want to use, then call mc_version with action=\"set\".\nOr, provide a 'version' parameter in your tool call.\n\nTo see available versions, call mc_version with action=\"list\".", text(catalog, "mc_search", Map.of("query", "needle")));
         assertEquals("Active version set to 1.21.5.\nIndexed: yes\nCallgraph: no", text(catalog, "mc_version", Map.of("action", "set", "version", "1.21.5")));
         assertEquals("Found 3 result(s):\n[field] alpha.Alpha#Needle: private int Needle\n[method] alpha.Alpha#needle: public void needle(String arg) (line 4)\n[method] alpha.Alpha#Needle: public void Needle() (line 5)\nTotal: 3 result(s)", text(catalog, "mc_search", Map.of("query", "needle")));
@@ -192,21 +192,21 @@ class StaticToolContractTest {
         assertTrue(text(catalog, "mc_get_method", Map.of("className", "alpha.Alpha", "methodName", "NEEDLE")).startsWith("// Method: alpha.Alpha#needle\n"));
         assertTrue(text(catalog, "mc_get_class", Map.of("className", "alpha.Alpha", "view", "full")).endsWith("public void Needle() { }\n}\n"));
         assertEquals("Class not found: Alpha", text(catalog, "mc_get_class", Map.of("className", "Alpha")));
-        assertEquals("Version 9.9.9 not initialized. STOP and ask the USER to run this command in their terminal:\n  node dist/cli.js init -v 9.9.9\n\nThis will download, decompile, and index Minecraft 9.9.9 sources (including callgraph).", text(catalog, "mc_search", Map.of("query", "needle", "version", "9.9.9")));
+        assertEquals("Version 9.9.9 not initialized. STOP and ask the USER to run this command in their terminal:\n  java -jar mcdev-mcp-3.0.0.jar init -v 9.9.9\n\nThis will download, decompile, and index Minecraft 9.9.9 sources (including callgraph).", text(catalog, "mc_search", Map.of("query", "needle", "version", "9.9.9")));
     }
-    
+
     @Test
     void acceptsNumbersFromDifferentWireNumberImplementationsAndReportsCapping() throws Exception {
         ToolCatalog catalog = catalog(fixture());
         text(catalog, "mc_version", Map.of("action", "set", "version", "1.21.5"));
-        
+
         assertEquals("Found 3 result(s):\n[field] alpha.Alpha#Needle: private int Needle\n[method] alpha.Alpha#needle: public void needle(String arg) (line 4)\n[method] alpha.Alpha#Needle: public void Needle() (line 5)\n... and possibly more result(s) (showing first 3; pass a larger `limit` to see more)", text(catalog, "mc_search", Map.of("query", "needle", "limit", new java.math.BigDecimal("3.9"))));
         String capped = text(catalog, "mc_search", Map.of("query", "needle", "limit", new java.math.BigInteger("1001")));
         assertTrue(capped.endsWith("Total: 3 result(s)"));
         assertFalse(capped.contains("capped"));
         assertEquals("No results found for \"absent\"", text(catalog, "mc_search", Map.of("query", "absent", "limit", -1d)));
     }
-    
+
     @Test
     void exposesOnlyTheEightStaticToolsAndNormalizesLargeLimitsWithoutOverflow() throws Exception {
         assertEquals(Set.of("mc_version", "mc_search", "mc_get_class", "mc_get_method", "mc_list_classes", "mc_list_packages", "mc_find_hierarchy", "mc_find_refs"), StaticToolModule.handlers(fixture()).keySet());
@@ -215,7 +215,7 @@ class StaticToolContractTest {
         assertEquals(new NormalizedLimit(1000, true, false), limits.normalize(new java.math.BigInteger("999999999999999999999999999")));
         assertEquals(new NormalizedLimit(1000, false, false), limits.normalize(new java.math.BigDecimal("1000.999")));
     }
-    
+
     @Test
     void rejectsUnsafeIndexedSourcePathsBeforeReadingThem() throws Exception {
         PlatformPaths paths = fixture();
@@ -224,7 +224,7 @@ class StaticToolContractTest {
         assertTrue(support.fullSource(VERSION, valid).startsWith("package alpha;"));
         assertUnsafeSource(support, symbol(Path.of("..", "outside.java")));
         assertUnsafeSource(support, symbol(temporaryDirectory.resolve("outside.java").toAbsolutePath()));
-        
+
         Path outside = temporaryDirectory.resolve("outside.java");
         Files.writeString(outside, "outside");
         Path link = paths.sourceRoot(VERSION).resolve("alpha/escape.java");
@@ -235,7 +235,7 @@ class StaticToolContractTest {
             // Windows developer-mode policy can disallow symlink creation in test environments.
         }
     }
-    
+
     @Test
     void treatsMissingSourcesAsMissingSymbolsAndUnsafeIndexedPathsAsErrors() throws Exception {
         PlatformPaths paths = fixture();
@@ -246,11 +246,11 @@ class StaticToolContractTest {
             assertEquals("Class not found: alpha.Alpha", text(catalog, "mc_get_class", Map.of("className", "alpha.Alpha", "view", view)));
         }
         assertEquals("Method \"needle\" not found in class alpha.Alpha", text(catalog, "mc_get_method", Map.of("className", "alpha.Alpha", "methodName", "needle")));
-        
+
         Files.writeString(paths.sourceRoot(VERSION).resolve("alpha/Alpha.java"), "");
         assertEquals("Class not found: alpha.Alpha", text(catalog, "mc_get_class", Map.of("className", "alpha.Alpha")));
         assertEquals("Method \"needle\" not found in class alpha.Alpha", text(catalog, "mc_get_method", Map.of("className", "alpha.Alpha", "methodName", "needle")));
-        
+
         Files.writeString(paths.sourceRoot(VERSION).resolve("alpha/Alpha.java"), "package alpha;\npublic class Alpha { }\n");
         String base = paths.symbolDatabase(VERSION).toAbsolutePath().toString().replaceFirst("\\.mv\\.db$", "");
         try (var connection = DriverManager.getConnection("jdbc:h2:file:" + base + ";DB_CLOSE_ON_EXIT=FALSE");
@@ -261,7 +261,7 @@ class StaticToolContractTest {
         assertTrue(result.isError());
         assertEquals("Error executing mc_get_class: Unsafe indexed source path: " + Path.of("..", "escape.java"), result.content().getFirst().text());
     }
-    
+
     @Test
     void publishesActivatedVersionToConcurrentReaders() throws Exception {
         StaticToolSupport support = new StaticToolSupport(fixture());
@@ -270,29 +270,29 @@ class StaticToolContractTest {
             assertEquals(VERSION, executor.submit(() -> support.active().orElseThrow()).get());
         }
     }
-    
+
     @Test
     void returnsUnexpectedStorageFailuresAsToolErrors() {
         StaticToolSupport support = new StaticToolSupport(new PlatformPaths(temporaryDirectory));
-        
+
         ToolResult ioFailure = support.execute("mc_get_class", () -> {
             throw new java.io.IOException("source denied");
         });
         ToolResult sqlFailure = support.execute("mc_search", () -> {
             throw new java.sql.SQLException("index corrupt");
         });
-        
+
         assertTrue(ioFailure.isError());
         assertEquals("Error executing mc_get_class: source denied", ioFailure.content().getFirst().text());
         assertTrue(sqlFailure.isError());
         assertEquals("Error executing mc_search: index corrupt", sqlFailure.content().getFirst().text());
     }
-    
+
     private void assertUnsafeSource(StaticToolSupport support, ClassSymbol symbol) {
         StaticToolException exception = assertThrows(StaticToolException.class, () -> support.fullSource(VERSION, symbol));
         assertEquals("Unsafe indexed source path: " + symbol.sourcePath(), exception.getMessage());
     }
-    
+
     /**
      * Captured by the frozen Node process; provenance and hashes live in ignored task6-node-oracle evidence.
      */
@@ -320,13 +320,13 @@ class StaticToolContractTest {
             assertEquals(Boolean.TRUE.equals(result.get("isError")), actual.isError(), "corpus line " + index + " " + request.get("label"));
         }
     }
-    
+
     private ToolCatalog catalog(PlatformPaths paths) {
         ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
         catalogExecutors.add(executor);
         return ToolCatalog.load(new AppEnvironment(Map.of()), StaticToolModule.handlers(paths), McpJsonDefaults.getMapper(), executor);
     }
-    
+
     private PlatformPaths fixture() throws Exception {
         PlatformPaths paths = new PlatformPaths(temporaryDirectory);
         Path sourceRoot = paths.sourceRoot(VERSION);

@@ -14,7 +14,7 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 class MemorySourceFileObjectTest {
     @TempDir
     Path temporaryDirectory;
-    
+
     @Test
     void sharesDecodedTextAcrossDeclarationMetadataAndWorkerFileObjects() {
         Path sourcePath = temporaryDirectory.resolve("Example.java").toAbsolutePath();
@@ -25,7 +25,7 @@ class MemorySourceFileObjectTest {
         MemorySourceFileObject firstWorker = new MemorySourceFileObject(attributed);
         MemorySourceFileObject secondWorker = new MemorySourceFileObject(attributed);
         MemorySourceFileObject alias = new MemorySourceFileObject(attributed, "example.Alias");
-        
+
         assertSame(content, attributed.content());
         assertSame(content, firstWorker.getCharContent(false));
         assertSame(content, secondWorker.getCharContent(false));

@@ -18,7 +18,7 @@ public record ResourceDefinition(URI uri, String name, String title, String desc
             throw new IllegalArgumentException("Resource classpath location must be absolute: " + classpathResource);
         }
     }
-    
+
     private static String requireText(String value, String label) {
         if (value == null || value.isBlank()) {
             throw new IllegalArgumentException(label + " must not be blank");

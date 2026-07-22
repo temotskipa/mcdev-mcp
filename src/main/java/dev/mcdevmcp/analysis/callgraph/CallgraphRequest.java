@@ -18,7 +18,7 @@ public record CallgraphRequest(MinecraftVersion minecraftVersion, Path remappedJ
         Objects.requireNonNull(progress, "progress");
         Objects.requireNonNull(cancellation, "cancellation");
     }
-    
+
     private static Path normalize(Path path, String name) {
         return Objects.requireNonNull(path, name).toAbsolutePath().normalize();
     }

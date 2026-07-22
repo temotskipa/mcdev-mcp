@@ -5,7 +5,7 @@ import java.lang.constant.ClassDesc;
 public final class ClassDescriptors {
     private ClassDescriptors() {
     }
-    
+
     public static String binaryName(ClassDesc descriptor) {
         String value = descriptor.descriptorString();
         if (!value.startsWith("L") || !value.endsWith(";")) {

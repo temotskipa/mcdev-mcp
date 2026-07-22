@@ -9,34 +9,34 @@ final class ForcedFallbackMoveStrategy implements DatabaseFileOperations {
     private final DeleteFailure deleteFailure;
     private final Path companionBeforeFallback;
     private int fallbackMoves;
-    
+
     ForcedFallbackMoveStrategy() {
         this(0, null, FailureTiming.BEFORE_SIDE_EFFECT, DeleteFailure.NONE);
     }
-    
+
     ForcedFallbackMoveStrategy(int failingFallbackMove) {
         this(failingFallbackMove, null, FailureTiming.BEFORE_SIDE_EFFECT, DeleteFailure.NONE);
     }
-    
+
     ForcedFallbackMoveStrategy(int failingFallbackMove, FailureTiming failureTiming) {
         this(failingFallbackMove, null, failureTiming, DeleteFailure.NONE);
     }
-    
+
     ForcedFallbackMoveStrategy(int failingFallbackMove, FailureTiming failureTiming, DeleteFailure deleteFailure) {
         this(failingFallbackMove, null, failureTiming, deleteFailure);
     }
-    
+
     ForcedFallbackMoveStrategy(Path companionBeforeFallback) {
         this(0, companionBeforeFallback, FailureTiming.BEFORE_SIDE_EFFECT, DeleteFailure.NONE);
     }
-    
+
     private ForcedFallbackMoveStrategy(int failingFallbackMove, Path companionBeforeFallback, FailureTiming failureTiming, DeleteFailure deleteFailure) {
         this.failingFallbackMove = failingFallbackMove;
         this.companionBeforeFallback = companionBeforeFallback;
         this.failureTiming = failureTiming;
         this.deleteFailure = deleteFailure;
     }
-    
+
     @Override
     public void move(Path source, Path target, CopyOption... options) throws IOException {
         if (java.util.Arrays.asList(options).contains(StandardCopyOption.ATOMIC_MOVE)) {
@@ -61,29 +61,29 @@ final class ForcedFallbackMoveStrategy implements DatabaseFileOperations {
         }
         Files.move(source, target, options);
     }
-    
+
     @Override
     public void delete(Path path) throws IOException {
         failDelete(path);
         DatabaseFileOperations.super.delete(path);
     }
-    
+
     @Override
     public boolean deleteIfExists(Path path) throws IOException {
         failDelete(path);
         return DatabaseFileOperations.super.deleteIfExists(path);
     }
-    
+
     private void failDelete(Path path) throws IOException {
         if (deleteFailure == DeleteFailure.ANY || deleteFailure == DeleteFailure.FAILED_PROMOTION && path.getFileName().toString().endsWith(".failed-promotion")) {
             throw new IOException("forced delete failure: " + path);
         }
     }
-    
+
     enum FailureTiming {
         BEFORE_SIDE_EFFECT, AFTER_SIDE_EFFECT, AFTER_PARTIAL_COPY, AFTER_SOURCE_REMOVAL
     }
-    
+
     enum DeleteFailure {
         NONE, ANY, FAILED_PROMOTION
     }

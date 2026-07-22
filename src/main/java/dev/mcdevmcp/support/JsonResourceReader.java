@@ -9,11 +9,11 @@ import java.util.Objects;
 
 public final class JsonResourceReader {
     private final McpJsonMapper mapper;
-    
+
     public JsonResourceReader(McpJsonMapper mapper) {
         this.mapper = Objects.requireNonNull(mapper, "mapper");
     }
-    
+
     public <T> T read(String resource, Class<T> type) {
         Objects.requireNonNull(type, "type");
         try (InputStream input = resource(resource)) {
@@ -22,7 +22,7 @@ public final class JsonResourceReader {
             throw new IllegalStateException("Unable to read JSON resource: " + resource, exception);
         }
     }
-    
+
     public String readText(String resource) {
         try (InputStream input = resource(resource)) {
             return new String(input.readAllBytes(), StandardCharsets.UTF_8);
@@ -30,7 +30,7 @@ public final class JsonResourceReader {
             throw new IllegalStateException("Unable to read resource: " + resource, exception);
         }
     }
-    
+
     private InputStream resource(String resource) {
         Objects.requireNonNull(resource, "resource");
         InputStream input = JsonResourceReader.class.getResourceAsStream(resource);

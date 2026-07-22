@@ -24,36 +24,36 @@ public final class McpServerFactory {
     private final Map<String, ToolBinding<?>> bindings;
     private final ResourceCatalog resourceCatalog;
     private final McpJsonMapper mapper;
-    
+
     public McpServerFactory(AppEnvironment environment) {
         this(environment, staticBindings(environment), McpJsonDefaults.getMapper());
     }
-    
+
     McpServerFactory(AppEnvironment environment, Map<String, ToolBinding<?>> bindings, McpJsonMapper mapper) {
         this(environment, bindings, ResourceCatalog.withMapper(mapper), mapper);
     }
-    
+
     McpServerFactory(AppEnvironment environment, Map<String, ToolBinding<?>> bindings, ResourceCatalog resourceCatalog, McpJsonMapper mapper) {
         this.environment = Objects.requireNonNull(environment, "environment");
         this.bindings = Map.copyOf(bindings);
         this.resourceCatalog = Objects.requireNonNull(resourceCatalog, "resourceCatalog");
         this.mapper = Objects.requireNonNull(mapper, "mapper");
     }
-    
+
     private static Map<String, ToolBinding<?>> staticBindings(AppEnvironment environment) {
         PlatformPaths paths = PlatformPaths.forEnvironment(System.getProperty("os.name"), environment.values(), Path.of(System.getProperty("user.home")));
         return StaticToolModule.handlers(paths);
     }
-    
+
     ToolCatalog loadToolCatalog(ExecutorService blockingExecutor) {
         Objects.requireNonNull(blockingExecutor, "blockingExecutor");
         return ToolCatalog.load(environment, bindings, mapper, blockingExecutor);
     }
-    
+
     public StdioServer startStdio(InputStream input, OutputStream output) {
         Objects.requireNonNull(input, "input");
         Objects.requireNonNull(output, "output");
-        
+
         var blockingExecutor = Executors.newVirtualThreadPerTaskExecutor();
         try {
             ToolCatalog toolCatalog = loadToolCatalog(blockingExecutor);
@@ -63,5 +63,5 @@ public final class McpServerFactory {
             throw exception;
         }
     }
-    
+
 }

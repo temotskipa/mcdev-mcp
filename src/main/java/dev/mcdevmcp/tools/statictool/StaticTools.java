@@ -3,11 +3,11 @@ package dev.mcdevmcp.tools.statictool;
 final class StaticTools {
     private StaticTools() {
     }
-    
+
     static String truncationNote(int shown, boolean truncated, NormalizedLimit limit, String noun) {
         return truncationNote(shown, shown, truncated, limit, noun);
     }
-    
+
     static String truncationNote(int shown, int total, boolean truncated, NormalizedLimit limit, String noun) {
         if (!truncated) {
             return "\nTotal: " + total + " " + noun;

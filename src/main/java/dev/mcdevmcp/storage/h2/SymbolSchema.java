@@ -18,10 +18,10 @@ public final class SymbolSchema {
     private static final Map<String, String> GENERATED_EXPRESSIONS = Map.of("PACKAGES|FABRIC_API_VERSION_KEY", "COALESCEFABRIC_API_VERSION,''", "TYPES|FABRIC_API_VERSION_KEY", "COALESCEFABRIC_API_VERSION,''");
     private static final Set<String> FOREIGN_KEY_SIGNATURES = Set.of("FK_TYPES_PACKAGE_IDENTITY|UQ_PACKAGES_IDENTITY_REFERENCE|NO ACTION|NO ACTION", "FK_TYPE_INTERFACES_TYPE|PK_TYPES|NO ACTION|CASCADE", "FK_FIELDS_TYPE|PK_TYPES|NO ACTION|CASCADE", "FK_METHODS_TYPE|PK_TYPES|NO ACTION|CASCADE", "FK_PARAMETERS_METHOD|PK_METHODS|NO ACTION|CASCADE");
     private static final Set<String> INDEX_COLUMN_SIGNATURES = Set.of("IDX_TYPE_BINARY_NAME|1|BINARY_NAME|false", "IDX_TYPES_PACKAGE_NAME|1|PACKAGE_ID|false", "IDX_TYPES_PACKAGE_NAME|2|SIMPLE_NAME|false", "IDX_FIELDS_TYPE_NAME|1|TYPE_ID|false", "IDX_FIELDS_TYPE_NAME|2|NAME|false", "IDX_FIELDS_TYPE_NAME|3|ORDINAL|false", "IDX_METHODS_TYPE_NAME|1|TYPE_ID|false", "IDX_METHODS_TYPE_NAME|2|NAME|false", "IDX_METHODS_TYPE_NAME|3|ORDINAL|false", "IDX_TYPE_INTERFACES_BINARY_NAME|1|INTERFACE_BINARY_NAME|false", "IDX_TYPE_INTERFACES_BINARY_NAME|2|TYPE_ID|false");
-    
+
     private SymbolSchema() {
     }
-    
+
     public static void create(Connection connection, MinecraftVersion minecraftVersion, Path sourceRoot, String remappedJarSha256, Instant builtAt) throws SQLException {
         Objects.requireNonNull(connection, "connection");
         Objects.requireNonNull(minecraftVersion, "minecraftVersion");
@@ -46,7 +46,7 @@ public final class SymbolSchema {
             statement.executeUpdate();
         }
     }
-    
+
     public static void createIndexes(Connection connection) throws SQLException {
         try (Statement statement = connection.createStatement()) {
             execute(statement, "CREATE INDEX idx_type_binary_name ON types(binary_name)");
@@ -56,7 +56,7 @@ public final class SymbolSchema {
             execute(statement, "CREATE INDEX idx_type_interfaces_binary_name ON type_interfaces(interface_binary_name, type_id)");
         }
     }
-    
+
     public static void validate(Connection connection) throws SQLException {
         validateTables(connection);
         validateColumns(connection);
@@ -73,7 +73,7 @@ public final class SymbolSchema {
         verifyNoOrphans(connection, "SELECT 1 FROM methods m LEFT JOIN types t ON t.id = m.type_id WHERE t.id IS NULL", "methods.type_id");
         verifyNoOrphans(connection, "SELECT 1 FROM parameters p LEFT JOIN methods m ON m.id = p.method_id WHERE m.id IS NULL", "parameters.method_id");
     }
-    
+
     private static void validateTables(Connection connection) throws SQLException {
         Set<String> tables = new HashSet<>();
         try (Statement statement = connection.createStatement();
@@ -86,7 +86,7 @@ public final class SymbolSchema {
             throw new SQLException("Missing required H2 symbol tables: expected " + TABLES + ", found " + tables);
         }
     }
-    
+
     private static void validateColumns(Connection connection) throws SQLException {
         Set<String> actual = new HashSet<>();
         try (Statement statement = connection.createStatement();
@@ -99,7 +99,7 @@ public final class SymbolSchema {
         }
         requireExact("column contract", COLUMN_SIGNATURES, actual);
     }
-    
+
     private static void validateGeneratedExpressions(Connection connection) throws SQLException {
         Map<String, String> actual = new HashMap<>();
         try (Statement statement = connection.createStatement();
@@ -112,7 +112,7 @@ public final class SymbolSchema {
         }
         requireExact("generated-column contract", GENERATED_EXPRESSIONS, actual);
     }
-    
+
     private static void validateConstraints(Connection connection) throws SQLException {
         Set<String> actual = new HashSet<>();
         try (Statement statement = connection.createStatement();
@@ -125,7 +125,7 @@ public final class SymbolSchema {
         }
         requireExact("constraint contract", CONSTRAINT_SIGNATURES, actual);
     }
-    
+
     private static void validateKeyColumns(Connection connection) throws SQLException {
         Set<String> actual = new HashSet<>();
         try (Statement statement = connection.createStatement();
@@ -138,7 +138,7 @@ public final class SymbolSchema {
         }
         requireExact("constraint-column contract", KEY_COLUMN_SIGNATURES, actual);
     }
-    
+
     private static void validateCheckClauses(Connection connection) throws SQLException {
         Map<String, String> actual = new HashMap<>();
         try (Statement statement = connection.createStatement();
@@ -151,7 +151,7 @@ public final class SymbolSchema {
         }
         requireExact("check-constraint contract", CHECK_CLAUSES, actual);
     }
-    
+
     private static void validateForeignKeys(Connection connection) throws SQLException {
         Set<String> actual = new HashSet<>();
         try (Statement statement = connection.createStatement();
@@ -164,7 +164,7 @@ public final class SymbolSchema {
         }
         requireExact("foreign-key contract", FOREIGN_KEY_SIGNATURES, actual);
     }
-    
+
     private static void validateSecondaryIndexes(Connection connection) throws SQLException {
         Set<String> actual = new HashSet<>();
         try (Statement statement = connection.createStatement();
@@ -175,7 +175,7 @@ public final class SymbolSchema {
         }
         requireExact("secondary-index contract", INDEX_COLUMN_SIGNATURES, actual);
     }
-    
+
     private static void validateMetadata(Connection connection) throws SQLException {
         try (Statement statement = connection.createStatement();
              ResultSet results = statement.executeQuery(sql("SELECT singleton, schema_version, minecraft_version, source_root, remapped_jar_sha256, built_at FROM metadata"))) {
@@ -184,11 +184,11 @@ public final class SymbolSchema {
             }
         }
     }
-    
+
     private static boolean isRequiredConstraint(String constraintName) {
         return CONSTRAINT_SIGNATURES.stream().anyMatch(signature -> signature.contains("|" + constraintName + "|"));
     }
-    
+
     private static void verifyNoOrphans(Connection connection, String query, String relationship) throws SQLException {
         try (Statement statement = connection.createStatement(); ResultSet results = statement.executeQuery(query)) {
             if (results.next()) {
@@ -196,21 +196,21 @@ public final class SymbolSchema {
             }
         }
     }
-    
+
     private static String normalizeExpression(String expression) {
         return expression.toUpperCase(Locale.ROOT).replaceAll("[\\s\"()]", "");
     }
-    
+
     private static void requireExact(String contract, Object expected, Object actual) throws SQLException {
         if (!expected.equals(actual)) {
             throw new SQLException("Invalid H2 symbol " + contract + ": expected " + expected + ", found " + actual);
         }
     }
-    
+
     private static void execute(Statement statement, String sql) throws SQLException {
         statement.execute(sql);
     }
-    
+
     private static String sql(String statement) {
         return statement;
     }

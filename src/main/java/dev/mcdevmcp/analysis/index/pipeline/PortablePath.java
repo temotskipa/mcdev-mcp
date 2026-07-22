@@ -7,7 +7,7 @@ record PortablePath(Path path) implements Comparable<PortablePath> {
     PortablePath {
         path = Objects.requireNonNull(path, "path").normalize();
     }
-    
+
     String value() {
         StringBuilder value = new StringBuilder();
         for (Path part : path) {
@@ -18,7 +18,7 @@ record PortablePath(Path path) implements Comparable<PortablePath> {
         }
         return value.toString();
     }
-    
+
     @Override
     public int compareTo(PortablePath other) {
         return value().compareTo(other.value());

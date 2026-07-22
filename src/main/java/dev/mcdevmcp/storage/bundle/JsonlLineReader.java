@@ -13,7 +13,7 @@ public final class JsonlLineReader implements AutoCloseable {
     private int limit;
     private long bytesRead;
     private boolean finished;
-    
+
     public JsonlLineReader(InputStream input, int maximumLineBytes) {
         this.input = Objects.requireNonNull(input, "input");
         if (maximumLineBytes < 1) {
@@ -21,7 +21,7 @@ public final class JsonlLineReader implements AutoCloseable {
         }
         this.maximumLineBytes = maximumLineBytes;
     }
-    
+
     public byte[] next() throws IOException {
         if (finished) {
             return null;
@@ -56,11 +56,11 @@ public final class JsonlLineReader implements AutoCloseable {
             line.write(value);
         }
     }
-    
+
     public long bytesRead() {
         return bytesRead;
     }
-    
+
     private int readByte() throws IOException {
         if (offset == limit) {
             limit = input.read(buffer);
@@ -71,7 +71,7 @@ public final class JsonlLineReader implements AutoCloseable {
         }
         return Byte.toUnsignedInt(buffer[offset++]);
     }
-    
+
     @Override
     public void close() throws IOException {
         input.close();

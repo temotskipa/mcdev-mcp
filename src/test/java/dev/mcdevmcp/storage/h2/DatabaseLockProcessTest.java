@@ -22,13 +22,13 @@ import static org.junit.jupiter.api.Assertions.*;
 class DatabaseLockProcessTest {
     @TempDir
     Path temporaryDirectory;
-    
+
     private static Process process(String mode, Path database) throws Exception {
         String java = System.getProperty("mcdevMcpJava");
         String classpath = System.getProperty("java.class.path");
         return new ProcessBuilder(java, "-cp", classpath, DatabaseLockProcessMain.class.getName(), mode, database.toString()).start();
     }
-    
+
     private static Void holdRead(Path database, CountDownLatch acquired, CountDownLatch release) throws Exception {
         try (var lock = DatabaseLock.read(database, Duration.ofSeconds(1))) {
             assertTrue(lock.isHeld());
@@ -39,14 +39,14 @@ class DatabaseLockProcessTest {
         }
         return null;
     }
-    
+
     private static void stop(Process process) throws Exception {
         if (process.isAlive()) {
             process.destroyForcibly();
             process.waitFor(5, TimeUnit.SECONDS);
         }
     }
-    
+
     @Test
     void sameJvmReadersOverlapAndReleaseTheSharedOperatingSystemLock() throws Exception {
         Path database = temporaryDirectory.resolve("symbols.mv.db");
@@ -70,7 +70,7 @@ class DatabaseLockProcessTest {
             assertTrue(writer.isHeld());
         }
     }
-    
+
     @Test
     void twoReaderProcessesOverlapBeforeEitherBlocksAWritingProcess() throws Exception {
         Path database = temporaryDirectory.resolve("symbols.mv.db");
@@ -95,7 +95,7 @@ class DatabaseLockProcessTest {
             stop(second);
         }
     }
-    
+
     @Test
     void aRealReaderProcessBlocksAnExclusiveWriterUntilItExits() throws Exception {
         Path database = temporaryDirectory.resolve("symbols.mv.db");
@@ -108,7 +108,7 @@ class DatabaseLockProcessTest {
             } catch (java.io.IOException expected) {
                 assertTrue(expected.getMessage().contains("exclusive database lock"));
             }
-            
+
             process.getOutputStream().close();
             assertTrue(process.waitFor(5, TimeUnit.SECONDS));
             try (var lock = DatabaseLock.write(database, Duration.ofSeconds(1))) {
@@ -119,7 +119,7 @@ class DatabaseLockProcessTest {
             stop(process);
         }
     }
-    
+
     @Test
     void writerUsesOneDeadlineAcrossLocalAndOperatingSystemContention() throws Exception {
         Path database = temporaryDirectory.resolve("symbols.mv.db");
@@ -145,7 +145,7 @@ class DatabaseLockProcessTest {
             });
             assertTrue(writerStarted.await(2, TimeUnit.SECONDS));
             scheduler.schedule(releaseLocalReader::countDown, 180, TimeUnit.MILLISECONDS);
-            
+
             java.io.IOException timeout = writer.get(2, TimeUnit.SECONDS);
             long elapsedMillis = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startedAt);
             assertTrue(timeout.getMessage().contains("after 300 milliseconds"));
@@ -157,7 +157,7 @@ class DatabaseLockProcessTest {
             stop(externalReader);
         }
     }
-    
+
     @Test
     void aRealQueryProcessReleasesAllWindowsHandlesBeforeRename() throws Exception {
         Path database = temporaryDirectory.resolve("symbols.mv.db");
@@ -179,7 +179,7 @@ class DatabaseLockProcessTest {
             stop(process);
         }
     }
-    
+
     @Test
     void aRealRecoveryProcessRestoresTheBackupWhenTheTargetIsMissing() throws Exception {
         Path database = temporaryDirectory.resolve("symbols.mv.db");
@@ -191,7 +191,7 @@ class DatabaseLockProcessTest {
             statement.execute("INSERT INTO marker(marker_value) VALUES ('old')");
         }
         Files.move(database, backup);
-        
+
         Process process = process("recover-failing", database);
         try (var reader = new BufferedReader(new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
             assertEquals("recovered", reader.readLine());

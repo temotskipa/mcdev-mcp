@@ -16,10 +16,10 @@ final class CallgraphBundleLayout {
     static final int MAXIMUM_POINTER_BYTES = 16 * 1024;
     static final int MAXIMUM_JSONL_LINE_BYTES = 1024 * 1024;
     static final List<CallgraphArtifact> ARTIFACTS = List.of(CallgraphArtifact.CALLERS_DATA, CallgraphArtifact.CALLERS_INDEX, CallgraphArtifact.CALLEES_DATA, CallgraphArtifact.CALLEES_INDEX);
-    
+
     private CallgraphBundleLayout() {
     }
-    
+
     static ResolvedGeneration resolve(Path bundle) throws IOException {
         Path root = bundle.toAbsolutePath().normalize();
         BundleFiles.requireDirectory(root, root);
@@ -46,7 +46,7 @@ final class CallgraphBundleLayout {
         validateManifestShape(manifest);
         return new ResolvedGeneration(pointer.generation(), generation, manifest);
     }
-    
+
     static void validateManifestShape(CallgraphManifest manifest) throws IOException {
         if (!FORMAT.equals(manifest.format()) || manifest.schemaVersion() != SCHEMA_VERSION || isInvalidSha256(manifest.remappedJarSha256())) {
             throw new IOException("Unsupported callgraph manifest format or schema");
@@ -64,7 +64,7 @@ final class CallgraphBundleLayout {
             }
         }
     }
-    
+
     static CallgraphFileMetadata metadata(CallgraphManifest manifest, CallgraphArtifact artifact) throws IOException {
         for (CallgraphFileMetadata metadata : manifest.files()) {
             if (metadata.artifact() == artifact) {
@@ -73,7 +73,7 @@ final class CallgraphBundleLayout {
         }
         throw new IOException("Callgraph manifest does not describe " + artifact);
     }
-    
+
     static boolean isInvalidSha256(String value) {
         if (value == null || value.length() != 64) {
             return true;
@@ -86,7 +86,7 @@ final class CallgraphBundleLayout {
         }
         return false;
     }
-    
+
     private static byte[] readSmall(Path file, int maximumBytes, String label) throws IOException {
         long size = Files.size(file);
         if (size < 1 || size > maximumBytes) {
@@ -94,7 +94,7 @@ final class CallgraphBundleLayout {
         }
         return Files.readAllBytes(file);
     }
-    
+
     record ResolvedGeneration(String identity, Path path, CallgraphManifest manifest) {
     }
 }

@@ -8,16 +8,16 @@ import java.util.Objects;
 
 final class CallgraphWriter {
     private final PublicationHook beforePublication;
-    
+
     CallgraphWriter() {
         this(() -> {
         });
     }
-    
+
     CallgraphWriter(PublicationHook beforePublication) {
         this.beforePublication = Objects.requireNonNull(beforePublication, "beforePublication");
     }
-    
+
     Counts write(CallgraphRequest request, BatchSource source) throws Exception {
         Objects.requireNonNull(request, "request");
         Objects.requireNonNull(source, "source");
@@ -50,16 +50,16 @@ final class CallgraphWriter {
             return counts;
         }
     }
-    
+
     interface BatchSource {
         InvocationExtractor.Extraction next() throws Exception;
     }
-    
+
     @FunctionalInterface
     interface PublicationHook {
         void run() throws Exception;
     }
-    
+
     record Counts(int classes, int methods, long edges) {
     }
 }

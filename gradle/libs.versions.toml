@@ -4,6 +4,7 @@ picocli = "4.7.7"
 h2 = "2.4.240"
 vineflower = "1.11.2"
 tiny-remapper = "0.10.4"
+mapping-io = "0.8.0"
 junit = "6.1.0"
 shadow = "9.5.1"
 slf4j = "2.0.16"
@@ -14,6 +15,7 @@ picocli = { module = "info.picocli:picocli", version.ref = "picocli" }
 h2 = { module = "com.h2database:h2", version.ref = "h2" }
 vineflower = { module = "org.vineflower:vineflower", version.ref = "vineflower" }
 tiny-remapper = { module = "net.fabricmc:tiny-remapper", version.ref = "tiny-remapper" }
+mapping-io = { module = "net.fabricmc:mapping-io", version.ref = "mapping-io" }
 slf4j-nop = { module = "org.slf4j:slf4j-nop", version.ref = "slf4j" }
 junit-bom = { module = "org.junit:junit-bom", version.ref = "junit" }
 junit-jupiter = { module = "org.junit.jupiter:junit-jupiter" }

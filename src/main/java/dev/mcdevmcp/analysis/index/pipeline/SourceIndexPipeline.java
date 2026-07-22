@@ -21,29 +21,29 @@ import java.util.Set;
 public final class SourceIndexPipeline {
     private final JavacSourceParser parser;
     private final SymbolIndexWriter writer;
-    
+
     public SourceIndexPipeline() {
         this(new JavacSourceParser(), new SymbolIndexWriter());
     }
-    
+
     SourceIndexPipeline(JavacSourceParser parser, SymbolIndexWriter writer) {
         this.parser = Objects.requireNonNull(parser, "parser");
         this.writer = Objects.requireNonNull(writer, "writer");
     }
-    
+
     private static void validateInputs(IndexRequest request) throws IOException {
         requireRegularFile(request.remappedJar(), "Remapped JAR");
         for (Path entry : request.classpath()) {
             requireRegularFile(entry, "Classpath entry");
         }
     }
-    
+
     private static void requireRegularFile(Path path, String description) throws IOException {
         if (!Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS)) {
             throw new IOException(description + " is not a regular file: " + path);
         }
     }
-    
+
     private static void rejectDuplicateBinaryNames(ParsedIndex parsed) throws IndexBuildException {
         Set<String> names = new HashSet<>();
         for (ParsedType type : parsed.types()) {
@@ -52,7 +52,7 @@ public final class SourceIndexPipeline {
             }
         }
     }
-    
+
     private static String sha256(Path path) throws IOException, NoSuchAlgorithmException {
         MessageDigest digest = MessageDigest.getInstance("SHA-256");
         try (var input = Files.newInputStream(path)) {
@@ -64,7 +64,7 @@ public final class SourceIndexPipeline {
         }
         return HexFormat.of().formatHex(digest.digest());
     }
-    
+
     public IndexSummary build(IndexRequest request) throws IndexBuildException {
         Objects.requireNonNull(request, "request");
         long started = System.nanoTime();

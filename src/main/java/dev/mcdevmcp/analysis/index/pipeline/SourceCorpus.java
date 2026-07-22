@@ -18,7 +18,7 @@ import java.util.*;
 final class SourceCorpus {
     private final List<DecodedSource> sources;
     private final Map<URI, DecodedSource> byUri;
-    
+
     SourceCorpus(List<DecodedSource> sources) {
         List<DecodedSource> sorted = new ArrayList<>(sources);
         sorted.sort(Comparator.naturalOrder());
@@ -32,7 +32,7 @@ final class SourceCorpus {
         }
         byUri = Map.copyOf(indexed);
     }
-    
+
     static SourceCorpus discover(List<SourceRoot> roots, Cancellation cancellation) throws IOException, InterruptedException {
         List<DecodedSource> discovered = new ArrayList<>();
         int rootOrdinal = 0;
@@ -56,7 +56,7 @@ final class SourceCorpus {
         }
         return new SourceCorpus(discovered);
     }
-    
+
     private static String decode(Path source) throws IOException {
         var decoder = StandardCharsets.UTF_8.newDecoder().onMalformedInput(CodingErrorAction.REPORT).onUnmappableCharacter(CodingErrorAction.REPORT);
         try {
@@ -65,7 +65,7 @@ final class SourceCorpus {
             throw new IOException("Source is not strict UTF-8: " + source, exception);
         }
     }
-    
+
     private static URI sourceUri(int rootOrdinal, String relativeName) {
         try {
             return new URI("memory", null, "/" + rootOrdinal + "/" + relativeName, null);
@@ -73,11 +73,11 @@ final class SourceCorpus {
             throw new IllegalArgumentException("Unable to create source URI for " + relativeName, exception);
         }
     }
-    
+
     List<DecodedSource> sources() {
         return sources;
     }
-    
+
     DecodedSource require(URI uri) {
         DecodedSource source = byUri.get(uri);
         if (source == null) {

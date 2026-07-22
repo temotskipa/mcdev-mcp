@@ -19,7 +19,7 @@ import java.util.function.BiConsumer;
 final class JavacPreflight {
     private JavacPreflight() {
     }
-    
+
     static SourceCorpus preflight(IndexRequest request, CompilerClasspath classpath, SourceCorpus discovered, BiConsumer<JavacTask, Map<URI, CompilationUnitTree>> parsedUnitObserver) throws IndexBuildException, InterruptedException {
         request.cancellation().throwIfCancelled();
         JavaCompiler compiler = CompilerConfiguration.compiler();
@@ -61,7 +61,7 @@ final class JavacPreflight {
             throw new IndexBuildException("Unable to configure Javac source preflight", exception);
         }
     }
-    
+
     private static <T> List<T> stream(Iterable<? extends T> values) {
         List<T> result = new ArrayList<>();
         for (T value : values) {

@@ -22,7 +22,7 @@ public final class BundleLock implements AutoCloseable {
     private final boolean shared;
     private final FileChannel channel;
     private final FileLock fileLock;
-    
+
     private BundleLock(Lock localLock, BundleLockState state, boolean shared, FileChannel channel, FileLock fileLock) {
         this.localLock = localLock;
         this.state = state;
@@ -30,15 +30,15 @@ public final class BundleLock implements AutoCloseable {
         this.channel = channel;
         this.fileLock = fileLock;
     }
-    
+
     public static BundleLock read(Path bundle, Duration timeout) throws IOException {
         return acquire(bundle, timeout, true);
     }
-    
+
     public static BundleLock write(Path bundle, Duration timeout) throws IOException {
         return acquire(bundle, timeout, false);
     }
-    
+
     private static BundleLock acquire(Path bundle, Duration timeout, boolean shared) throws IOException {
         Objects.requireNonNull(bundle, "bundle");
         Objects.requireNonNull(timeout, "timeout");
@@ -83,7 +83,7 @@ public final class BundleLock implements AutoCloseable {
             throw exception;
         }
     }
-    
+
     private static void acquireSharedLock(BundleLockState state, Path lockPath, BundleLockDeadline deadline, Duration timeout) throws IOException {
         try {
             if (!state.sharedGuard.tryLock(deadline.remainingNanos(), TimeUnit.NANOSECONDS)) {
@@ -116,7 +116,7 @@ public final class BundleLock implements AutoCloseable {
             state.sharedGuard.unlock();
         }
     }
-    
+
     private static FileLock acquireFileLock(FileChannel channel, boolean shared, BundleLockDeadline deadline, Duration timeout) throws IOException {
         while (true) {
             try {
@@ -139,15 +139,15 @@ public final class BundleLock implements AutoCloseable {
             }
         }
     }
-    
+
     private static IOException timeoutFailure(boolean shared, Duration timeout) {
         return new IOException("Timed out acquiring " + mode(shared) + " bundle lock after " + format(timeout) + "; close active queries and retry.");
     }
-    
+
     private static String mode(boolean shared) {
         return shared ? "shared" : "exclusive";
     }
-    
+
     private static String format(Duration duration) {
         if (duration.getNano() == 0) {
             long seconds = duration.toSeconds();
@@ -155,7 +155,7 @@ public final class BundleLock implements AutoCloseable {
         }
         return duration.compareTo(MAX_MILLISECONDS) > 0 ? duration.toString() : duration.toMillis() + " milliseconds";
     }
-    
+
     public boolean isHeld() {
         state.sharedGuard.lock();
         try {
@@ -164,7 +164,7 @@ public final class BundleLock implements AutoCloseable {
             state.sharedGuard.unlock();
         }
     }
-    
+
     @Override
     public void close() throws IOException {
         IOException failure = null;
@@ -198,7 +198,7 @@ public final class BundleLock implements AutoCloseable {
             throw failure;
         }
     }
-    
+
     private void releaseSharedLock() throws IOException {
         state.sharedGuard.lock();
         try {

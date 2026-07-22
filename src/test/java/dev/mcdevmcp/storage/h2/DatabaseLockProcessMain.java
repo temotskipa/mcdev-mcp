@@ -12,7 +12,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 final class DatabaseLockProcessMain {
     private DatabaseLockProcessMain() {
     }
-    
+
     static void main(String[] arguments) throws Exception {
         Path database = Path.of(arguments[1]);
         switch (arguments[0]) {
@@ -71,7 +71,7 @@ final class DatabaseLockProcessMain {
             default -> throw new IllegalArgumentException("Unsupported process mode: " + arguments[0]);
         }
     }
-    
+
     private static void holdH2(String url) throws Exception {
         try (var connection = DriverManager.getConnection(url)) {
             if (connection.isClosed()) {
@@ -82,11 +82,11 @@ final class DatabaseLockProcessMain {
             awaitParentExit();
         }
     }
-    
+
     private static String shortLockTimeout(String url) {
         return url.replace("LOCK_TIMEOUT=30000", "LOCK_TIMEOUT=250");
     }
-    
+
     private static void awaitParentExit() throws java.io.IOException {
         int input;
         do {

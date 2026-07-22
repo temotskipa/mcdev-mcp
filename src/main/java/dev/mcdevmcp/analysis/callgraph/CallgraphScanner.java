@@ -19,22 +19,22 @@ public final class CallgraphScanner {
     private static final int MAX_BATCH_WINDOW = 256;
     private static final long MAXIMUM_IN_FLIGHT_CLASS_BYTES = 64L * 1024 * 1024;
     private final CallgraphWriter writer;
-    
+
     public CallgraphScanner() {
         this(new CallgraphWriter());
     }
-    
+
     CallgraphScanner(CallgraphWriter writer) {
         this.writer = Objects.requireNonNull(writer, "writer");
     }
-    
+
     private static void requireRegularFile(CallgraphRequest request) throws IOException, InterruptedException {
         request.cancellation().throwIfCancelled();
         if (!Files.isRegularFile(request.remappedJar(), LinkOption.NOFOLLOW_LINKS)) {
             throw new IOException("Remapped JAR is not a regular file: " + request.remappedJar());
         }
     }
-    
+
     private static List<String> discover(ZipFile jar, CallgraphRequest request) throws IOException, InterruptedException {
         List<String> entries = new ArrayList<>();
         Map<String, Integer> occurrences = new TreeMap<>();
@@ -56,7 +56,7 @@ public final class CallgraphScanner {
         entries.sort(Comparator.naturalOrder());
         return List.copyOf(entries);
     }
-    
+
     private static boolean hasInterruptedCause(Throwable throwable) {
         Throwable current = throwable;
         while (current != null) {
@@ -67,16 +67,16 @@ public final class CallgraphScanner {
         }
         return false;
     }
-    
+
     private static String message(Throwable throwable) {
         String message = throwable.getMessage();
         return message == null ? throwable.toString() : message;
     }
-    
+
     static int parserWindow(int threads) {
         return threads >= MAX_BATCH_WINDOW / 2 ? MAX_BATCH_WINDOW : Math.max(1, threads * 2);
     }
-    
+
     public CallgraphSummary scan(CallgraphRequest request) throws IOException {
         Objects.requireNonNull(request, "request");
         long started = System.nanoTime();
@@ -117,7 +117,7 @@ public final class CallgraphScanner {
             throw new IOException("Callgraph scan failed: " + message(exception), exception);
         }
     }
-    
+
     private static final class OrderedBatchSource implements CallgraphWriter.BatchSource {
         private final ZipFile jar;
         private final List<String> entries;
@@ -129,7 +129,7 @@ public final class CallgraphScanner {
         private int submitted;
         private int completed;
         private long inFlightClassBytes;
-        
+
         private OrderedBatchSource(ZipFile jar, List<String> entries, ExecutorService executor, CallgraphRequest request) {
             this.jar = jar;
             this.entries = entries;
@@ -137,7 +137,7 @@ public final class CallgraphScanner {
             this.request = request;
             window = parserWindow(request.threads());
         }
-        
+
         private static byte[] readClassBytes(InputStream input, CallgraphRequest request, String entryName) throws IOException, InterruptedException {
             var output = new ByteArrayOutputStream();
             byte[] buffer = new byte[16 * 1024];
@@ -152,7 +152,7 @@ public final class CallgraphScanner {
             request.cancellation().throwIfCancelled();
             return output.toByteArray();
         }
-        
+
         @Override
         public InvocationExtractor.Extraction next() throws Exception {
             fillWindow();
@@ -184,7 +184,7 @@ public final class CallgraphScanner {
                 inFlightClassBytes -= pending.byteLength();
             }
         }
-        
+
         private void fillWindow() throws IOException, InterruptedException {
             while (futures.size() < window && submitted < entries.size()) {
                 request.cancellation().throwIfCancelled();
@@ -217,12 +217,12 @@ public final class CallgraphScanner {
                 futures.addLast(new PendingExtraction(name, bytes.length, future));
             }
         }
-        
+
         private void cancelOutstanding() {
             futures.forEach(pending -> pending.future().cancel(true));
             executor.shutdownNow();
         }
-        
+
         private record PendingExtraction(String entryName, int byteLength, Future<InvocationExtractor.Extraction> future) {
         }
     }

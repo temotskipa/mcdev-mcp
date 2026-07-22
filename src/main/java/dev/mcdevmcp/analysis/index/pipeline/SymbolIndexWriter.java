@@ -21,17 +21,17 @@ import java.util.*;
 final class SymbolIndexWriter {
     private final AtomicH2Database databases;
     private final DatabaseValidator beforeValidation;
-    
+
     SymbolIndexWriter() {
         this(new AtomicH2Database(), _ -> {
         });
     }
-    
+
     SymbolIndexWriter(AtomicH2Database databases, DatabaseValidator beforeValidation) {
         this.databases = Objects.requireNonNull(databases, "databases");
         this.beforeValidation = Objects.requireNonNull(beforeValidation, "beforeValidation");
     }
-    
+
     private static List<IndexedPackage> packages(List<ParsedType> types) {
         SortedSet<PackageIdentity> identities = new TreeSet<>();
         types.stream().map(PackageIdentity::new).forEach(identities::add);
@@ -42,14 +42,14 @@ final class SymbolIndexWriter {
         }
         return List.copyOf(packages);
     }
-    
+
     private static IndexCounts counts(List<IndexedPackage> packages, List<ParsedType> types) {
         int fields = types.stream().mapToInt(type -> type.fields().size()).sum();
         int methods = types.stream().mapToInt(type -> type.methods().size()).sum();
         int parameters = types.stream().flatMap(type -> type.methods().stream()).mapToInt(method -> method.parameters().size()).sum();
         return new IndexCounts(packages.size(), types.size(), fields, methods, parameters);
     }
-    
+
     private static void insertPackages(Connection connection, List<IndexedPackage> packages) throws SQLException {
         try (PreparedStatement statement = connection.prepareStatement(sql("INSERT INTO packages(id, source_namespace, fabric_api_version, name) VALUES (?, ?, ?, ?)"))) {
             for (IndexedPackage indexedPackage : packages) {
@@ -62,7 +62,7 @@ final class SymbolIndexWriter {
             statement.executeBatch();
         }
     }
-    
+
     private static void insertTypesAndMembers(Connection connection, List<IndexedPackage> packages, List<ParsedType> types, IndexRequest request) throws Exception {
         Map<PackageIdentity, Long> packageIds = new HashMap<>();
         packages.forEach(indexedPackage -> packageIds.put(new PackageIdentity(indexedPackage.namespace(), indexedPackage.fabricApiVersion(), indexedPackage.name()), indexedPackage.id()));
@@ -140,14 +140,14 @@ final class SymbolIndexWriter {
             parameterStatement.executeBatch();
         }
     }
-    
+
     private static void setRange(PreparedStatement statement, int firstColumn, SourceRange range) throws SQLException {
         statement.setInt(firstColumn, range.startOffset());
         statement.setInt(firstColumn + 1, range.endOffset());
         statement.setInt(firstColumn + 2, range.startLine());
         statement.setInt(firstColumn + 3, range.endLine());
     }
-    
+
     private static void setOptional(PreparedStatement statement, int column, String value) throws SQLException {
         if (value != null) {
             statement.setString(column, value);
@@ -156,15 +156,15 @@ final class SymbolIndexWriter {
             statement.setNull(column, Types.VARCHAR);
         }
     }
-    
+
     private static String modifiers(Set<Modifier> modifiers) {
         return Arrays.stream(Modifier.values()).filter(modifiers::contains).map(modifier -> modifier.name().toLowerCase(Locale.ROOT)).collect(java.util.stream.Collectors.joining(","));
     }
-    
+
     private static String sql(String statement) {
         return statement;
     }
-    
+
     IndexCounts write(IndexRequest request, ParsedIndex index, String remappedJarSha256, Instant builtAt) throws Exception {
         List<IndexedPackage> packages = packages(index.types());
         IndexCounts counts = counts(packages, index.types());

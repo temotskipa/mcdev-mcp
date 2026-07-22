@@ -12,7 +12,7 @@ import java.util.List;
 final class CompilerConfiguration {
     private CompilerConfiguration() {
     }
-    
+
     static JavaCompiler compiler() throws IndexBuildException {
         JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
         if (compiler == null) {
@@ -20,11 +20,11 @@ final class CompilerConfiguration {
         }
         return compiler;
     }
-    
+
     static StandardJavaFileManager fileManager(JavaCompiler compiler) throws IOException {
         return compiler.getStandardFileManager(null, java.util.Locale.ROOT, StandardCharsets.UTF_8);
     }
-    
+
     static List<String> options() {
         return List.of("--release", "25", "-proc:none", "-implicit:none", "-encoding", "UTF-8");
     }

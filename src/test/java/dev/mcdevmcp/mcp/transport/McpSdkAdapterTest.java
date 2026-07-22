@@ -20,7 +20,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class McpSdkAdapterTest {
     private static final McpJsonMapper MAPPER = McpJsonDefaults.getMapper();
-    
+
     @Test
     void resourceReadRunsOnTheSuppliedVirtualExecutorInsteadOfTheSubscribingThread() throws Exception {
         var executingThread = new AtomicReference<Thread>();
@@ -28,19 +28,19 @@ class McpSdkAdapterTest {
             executingThread.set(Thread.currentThread());
             runnable.run();
         });
-        
+
         try (var executor = Executors.newThreadPerTaskExecutor(recordingFactory)) {
             var adapter = new McpSdkAdapter(MAPPER, executor);
             McpServerFeatures.AsyncResourceSpecification resource = adapter.resources(new ResourceCatalog()).getFirst();
             var subscribingThread = Thread.currentThread();
             var result = resource.readHandler().apply(null, McpSchema.ReadResourceRequest.builder("mcdev://guides/python-scripting").build()).toFuture().get(5, TimeUnit.SECONDS);
-            
+
             assertEquals("mcdev://guides/python-scripting", result.contents().getFirst().uri());
             assertTrue(executingThread.get().isVirtual());
             assertNotEquals(subscribingThread, executingThread.get());
         }
     }
-    
+
     @Test
     void nullableSdkArgumentsReachTheTypedBindingAsAnEmptyRecord() throws Exception {
         var received = new CompletableFuture<TestEmptyArguments>();
@@ -48,14 +48,14 @@ class McpSdkAdapterTest {
             received.complete(arguments);
             return ToolHandlers.completed(ToolResult.text("legacy packages"));
         }), ToolAvailability.ALWAYS);
-        
+
         try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
             var result = new McpSdkAdapter(MAPPER, executor).callHandler(definition).apply(null, McpSchema.CallToolRequest.builder("mc_list_packages").build()).toFuture().get(5, TimeUnit.SECONDS);
-            
+
             assertEquals(new TestEmptyArguments(), received.get(5, TimeUnit.SECONDS));
             assertFalse(result.isError());
             assertEquals("legacy packages", assertInstanceOf(McpSchema.TextContent.class, result.content().getFirst()).text());
         }
     }
-    
+
 }

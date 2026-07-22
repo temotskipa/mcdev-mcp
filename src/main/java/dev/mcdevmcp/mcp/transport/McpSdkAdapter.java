@@ -32,17 +32,17 @@ import java.util.function.BiFunction;
 public final class McpSdkAdapter {
     private final McpJsonMapper mapper;
     private final ExecutorService blockingExecutor;
-    
+
     McpSdkAdapter(McpJsonMapper mapper, ExecutorService blockingExecutor) {
         this.mapper = Objects.requireNonNull(mapper, "mapper");
         this.blockingExecutor = Objects.requireNonNull(blockingExecutor, "blockingExecutor");
     }
-    
+
     static McpJsonMapper nodeParityMapper(McpJsonMapper mapper) {
         Objects.requireNonNull(mapper, "mapper");
         return new NodeParityJsonMapper(mapper);
     }
-    
+
     static StdioServerTransportProvider stdioTransport(McpJsonMapper mapper, InputStream input, OutputStream output, CountDownLatch inputClosed) {
         Objects.requireNonNull(mapper, "mapper");
         Objects.requireNonNull(input, "input");
@@ -50,7 +50,7 @@ public final class McpSdkAdapter {
         Objects.requireNonNull(inputClosed, "inputClosed");
         return new StdioServerTransportProvider(mapper, new EofTrackingInputStream(input, inputClosed), new NonClosingOutputStream(output));
     }
-    
+
     public static StdioServer startStdio(McpJsonMapper mapper, InputStream input, OutputStream output, ToolCatalog toolCatalog, ResourceCatalog resourceCatalog, ExecutorService blockingExecutor) {
         Objects.requireNonNull(mapper, "mapper");
         Objects.requireNonNull(input, "input");
@@ -58,7 +58,7 @@ public final class McpSdkAdapter {
         Objects.requireNonNull(toolCatalog, "toolCatalog");
         Objects.requireNonNull(resourceCatalog, "resourceCatalog");
         Objects.requireNonNull(blockingExecutor, "blockingExecutor");
-        
+
         var inputClosed = new CountDownLatch(1);
         McpJsonMapper transportMapper = nodeParityMapper(mapper);
         var transport = stdioTransport(transportMapper, input, output, inputClosed);
@@ -66,19 +66,19 @@ public final class McpSdkAdapter {
         McpAsyncServer server = McpServer.async(transport).jsonMapper(transportMapper).serverInfo("mcdev-mcp", AppVersion.current()).instructions(ResourceCatalog.INSTRUCTIONS).capabilities(McpSchema.ServerCapabilities.builder().resources(null, null).tools(null).build()).validateToolInputs(true).tools(adapter.tools(toolCatalog)).resources(adapter.resources(resourceCatalog)).build();
         return new StdioServer(server, blockingExecutor, inputClosed);
     }
-    
+
     List<McpServerFeatures.AsyncToolSpecification> tools(ToolCatalog catalog) {
         return catalog.enabledDefinitions().stream().map(definition -> McpServerFeatures.AsyncToolSpecification.builder().tool(toSdkTool(definition)).callHandler(callHandler(definition)).build()).toList();
     }
-    
+
     List<McpServerFeatures.AsyncResourceSpecification> resources(ResourceCatalog catalog) {
         return catalog.definitions().stream().map(definition -> new McpServerFeatures.AsyncResourceSpecification(McpSchema.Resource.builder(definition.uri().toString(), definition.name()).title(definition.title()).description(definition.description()).mimeType(definition.mimeType()).build(), (_, request) -> readResource(catalog, URI.create(request.uri())))).toList();
     }
-    
+
     BiFunction<McpAsyncServerExchange, McpSchema.CallToolRequest, Mono<McpSchema.CallToolResult>> callHandler(ToolDefinition definition) {
         return (_, request) -> invoke(definition, request);
     }
-    
+
     private Mono<McpSchema.ReadResourceResult> readResource(ResourceCatalog catalog, URI uri) {
         return Mono.defer(() -> {
             var result = new CompletableFuture<McpSchema.ReadResourceResult>();
@@ -107,7 +107,7 @@ public final class McpSdkAdapter {
             return Mono.fromFuture(result);
         });
     }
-    
+
     private Mono<McpSchema.CallToolResult> invoke(ToolDefinition definition, McpSchema.CallToolRequest request) {
         return Mono.defer(() -> {
             var cancelled = new AtomicBoolean();
@@ -118,29 +118,29 @@ public final class McpSdkAdapter {
             } catch (RuntimeException exception) {
                 return Mono.just(error(definition.name(), exception));
             }
-            
+
             CompletableFuture<ToolResult> future;
             try {
                 future = stage.toCompletableFuture();
             } catch (RuntimeException exception) {
                 return Mono.just(error(definition.name(), exception));
             }
-            
+
             return Mono.fromFuture(future).map(this::toSdkResult).onErrorResume(exception -> Mono.just(error(definition.name(), exception))).doOnCancel(() -> {
                 cancelled.set(true);
                 future.cancel(true);
             });
         });
     }
-    
+
     private McpSchema.Tool toSdkTool(ToolDefinition definition) {
         return McpSchema.Tool.builder(definition.name(), definition.inputSchema()).description(definition.description()).build();
     }
-    
+
     private McpSchema.CallToolResult toSdkResult(ToolResult result) {
         return McpSchema.CallToolResult.builder(result.content().stream().map(this::toSdkContent).toList()).isError(result.isError()).build();
     }
-    
+
     private McpSchema.Content toSdkContent(ToolContent content) {
         return switch (content.type()) {
             case TEXT -> McpSchema.TextContent.builder(content.text()).build();
@@ -148,7 +148,7 @@ public final class McpSdkAdapter {
             case AUDIO -> McpSchema.AudioContent.builder(content.data(), content.mimeType()).build();
         };
     }
-    
+
     private McpSchema.CallToolResult error(String name, Throwable exception) {
         return toSdkResult(ToolResult.error(ToolCatalog.errorText(name, exception)));
     }

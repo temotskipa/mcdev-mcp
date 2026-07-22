@@ -34,25 +34,25 @@ class McFindRefsContractTest {
     private final List<ExecutorService> executors = new ArrayList<>();
     @TempDir
     Path temporaryDirectory;
-    
+
     private static Map<String, Object> withLimit(Map<String, Object> base, Number limit) {
         var copy = new java.util.HashMap<>(base);
         copy.put("limit", limit);
         return Map.copyOf(copy);
     }
-    
+
     private static String text(ToolCatalog catalog, String tool, Map<String, Object> arguments) {
         return result(catalog, arguments, tool).content().getFirst().text();
     }
-    
+
     private static ToolResult result(ToolCatalog catalog, Map<String, Object> arguments) {
         return result(catalog, arguments, "mc_find_refs");
     }
-    
+
     private static ToolResult result(ToolCatalog catalog, Map<String, Object> arguments, String tool) {
         return catalog.dispatch(tool, arguments, Cancellation.none()).toCompletableFuture().join();
     }
-    
+
     private static void createSymbolDatabase(PlatformPaths paths, MinecraftVersion version) throws Exception {
         Files.createDirectories(paths.sourceRoot(version));
         Files.createDirectories(paths.symbolDatabase(version).getParent());
@@ -61,7 +61,7 @@ class McFindRefsContractTest {
             SymbolSchema.createIndexes(connection);
         }
     }
-    
+
     private static void createPrimaryCallgraph(Path bundle) throws Exception {
         List<CallgraphDataRecord> records = new ArrayList<>();
         records.add(edge(1, "caller.Alpha", "entry", null, "target.Target", "hit", "()V", null));
@@ -77,36 +77,36 @@ class McFindRefsContractTest {
         }
         CallgraphBundleTestSupport.publish(bundle, PRIMARY, records);
     }
-    
+
     private static void createSecondaryCallgraph(Path bundle) throws Exception {
         CallgraphBundleTestSupport.publish(bundle, SECONDARY, List.of(edge(1, "secondary.Caller", "run", "()V", "secondary.Target", "hit", "()V", 42)));
     }
-    
+
     private static CallgraphDataRecord edge(long id, String callerClass, String callerMethod, String callerDescriptor, String calleeClass, String calleeMethod, String calleeDescriptor, Integer line) {
         return new CallgraphDataRecord(id, callerClass, callerMethod, callerDescriptor, calleeClass, calleeMethod, calleeDescriptor, line);
     }
-    
+
     private static String writerUrl(Path database) {
         String path = database.toAbsolutePath().normalize().toString();
         return "jdbc:h2:file:" + path.substring(0, path.length() - ".mv.db".length()) + ";DB_CLOSE_ON_EXIT=FALSE";
     }
-    
+
     @AfterEach
     void closeExecutors() {
         executors.forEach(ExecutorService::close);
     }
-    
+
     @Test
     void usesTheFrozenLimitContract() {
         assertEquals(new NormalizedLimit(100, false, true), McFindRefsTool.LIMIT.normalize(null));
         assertEquals(new NormalizedLimit(5000, true, false), McFindRefsTool.LIMIT.normalize(5001));
     }
-    
+
     @Test
     void rendersDescriptorsDuplicatesAndLegacyLinesInDeterministicOrder() throws Exception {
         ToolCatalog catalog = catalog(fixture());
         text(catalog, "mc_version", Map.of("action", "set", "version", PRIMARY.value()));
-        
+
         assertEquals("""
                      Found 5 callers:
                      caller.Alpha.entry
@@ -128,17 +128,17 @@ class McFindRefsContractTest {
                      callee.Overload.work()V (line 7)
                      Total: 3 undefined""", text(catalog, "mc_find_refs", Map.of("className", "origin.Origin", "methodName", "dispatch")));
     }
-    
+
     @Test
     void honorsDefaultFractionalSubunitNonpositiveExactAndCappedLimits() throws Exception {
         ToolCatalog catalog = catalog(fixture());
         text(catalog, "mc_version", Map.of("action", "set", "version", PRIMARY.value()));
         Map<String, Object> base = Map.of("className", "many.Target", "methodName", "hit", "direction", "callers");
-        
+
         String defaulted = text(catalog, "mc_find_refs", base);
         assertTrue(defaulted.startsWith("Found 101 callers:\nmany.Caller0000.call()V (line 1)\n"));
         assertTrue(defaulted.endsWith("... and 1+ more callers (showing first 100; pass a larger `limit` to see more)"));
-        
+
         String fractional = text(catalog, "mc_find_refs", withLimit(base, 3.9d));
         assertTrue(fractional.startsWith("""
                                          Found 4 callers:
@@ -147,24 +147,24 @@ class McFindRefsContractTest {
                                          many.Caller0002.call()V (line 3)
                                          """));
         assertTrue(fractional.endsWith("... and 1+ more callers (showing first 3; pass a larger `limit` to see more)"));
-        
+
         assertEquals("Found 1 callers:\n\n... and 1+ more callers (showing first 0; pass a larger `limit` to see more)", text(catalog, "mc_find_refs", withLimit(base, 0.9d)));
         assertEquals(defaulted, text(catalog, "mc_find_refs", withLimit(base, -1)));
-        
+
         String exact = text(catalog, "mc_find_refs", withLimit(base, 5000));
         assertTrue(exact.startsWith("Found 5001 callers:\n"));
         assertTrue(exact.contains("many.Caller4999.call()V (line 5000)"));
         assertFalse(exact.contains("many.Caller5000.call()V (line 5001)"));
         assertTrue(exact.endsWith("... and 1+ more callers (showing first 5000; pass a larger `limit` to see more)"));
-        
+
         String capped = text(catalog, "mc_find_refs", withLimit(base, 5001));
         assertTrue(capped.endsWith("... and 1+ more callers (showing first 5000; pass a larger `limit` to see more)" + " (limit was capped to 5000 by the server)"));
     }
-    
+
     @Test
     void preservesVersionPrecedenceMissingGraphEmptyAndMalformedArgumentBehavior() throws Exception {
         ToolCatalog catalog = catalog(fixture());
-        
+
         assertEquals("""
                      No Minecraft version is currently set.
                      
@@ -180,11 +180,11 @@ class McFindRefsContractTest {
                      Version 1.21.nocg does not have callgraph data.
                      
                      STOP and ask the USER to run this command in their terminal:
-                       node dist/cli.js callgraph -v 1.21.nocg
+                       java -jar mcdev-mcp-3.0.0.jar callgraph -v 1.21.nocg
                      
                      Or for full reinitialization:
-                       node dist/cli.js init -v 1.21.nocg""", text(catalog, "mc_find_refs", Map.of("className", "x.Y", "methodName", "z", "direction", "callers", "version", NO_GRAPH.value())));
-        
+                       java -jar mcdev-mcp-3.0.0.jar init -v 1.21.nocg""", text(catalog, "mc_find_refs", Map.of("className", "x.Y", "methodName", "z", "direction", "callers", "version", NO_GRAPH.value())));
+
         ToolResult missingClass = result(catalog, Map.of("methodName", "hit", "direction", "callers"));
         assertTrue(missingClass.isError());
         assertEquals("Failed to query callgraph for undefined#hit (callers): Wrong API use : tried to bind a value " + "of an unknown type (undefined).", missingClass.content().getFirst().text());
@@ -192,13 +192,14 @@ class McFindRefsContractTest {
         assertTrue(missingAll.isError());
         assertEquals("Failed to query callgraph for undefined#undefined (undefined): Wrong API use : tried to bind a " + "value of an unknown type (undefined).", missingAll.content().getFirst().text());
         assertEquals("No callers found for 42#hit", text(catalog, "mc_find_refs", Map.of("className", 42, "methodName", "hit", "direction", "callers")));
-        
+
+        assertEquals("Active version set to 1.21.bad.\nIndexed: yes\nCallgraph: corrupt\n\nSTOP and ask the USER to run this command in their terminal:\n  java -jar mcdev-mcp-3.0.0.jar callgraph -v 1.21.bad\n\nOr for full reinitialization:\n  java -jar mcdev-mcp-3.0.0.jar init -v 1.21.bad", text(catalog, "mc_version", Map.of("action", "set", "version", BAD_GRAPH.value())));
+
         ToolResult corrupt = result(catalog, Map.of("className", "x.Y", "methodName", "z", "direction", "callers", "version", BAD_GRAPH.value()));
-        assertTrue(corrupt.isError());
-        assertTrue(corrupt.content().getFirst().text().startsWith("Failed to query callgraph for x.Y#z (callers): "));
-        assertTrue(corrupt.content().getFirst().text().length() <= 560);
+        assertFalse(corrupt.isError());
+        assertEquals("Version 1.21.bad has corrupt callgraph data.\n\nSTOP and ask the USER to run this command in their terminal:\n  java -jar mcdev-mcp-3.0.0.jar callgraph -v 1.21.bad\n\nOr for full reinitialization:\n  java -jar mcdev-mcp-3.0.0.jar init -v 1.21.bad", corrupt.content().getFirst().text());
     }
-    
+
     @Test
     void registersTheEighthHandlerForBlockingExecution() throws Exception {
         PlatformPaths paths = fixture();
@@ -209,13 +210,13 @@ class McFindRefsContractTest {
         assertFalse(result.isError());
         assertTrue(result.content().getFirst().text().startsWith("Found 5 callers:"));
     }
-    
+
     private ToolCatalog catalog(PlatformPaths paths) {
         ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
         executors.add(executor);
         return ToolCatalog.load(new AppEnvironment(Map.of()), StaticToolModule.handlers(paths), McpJsonDefaults.getMapper(), executor);
     }
-    
+
     private PlatformPaths fixture() throws Exception {
         PlatformPaths paths = new PlatformPaths(temporaryDirectory);
         for (MinecraftVersion version : List.of(PRIMARY, SECONDARY, NO_GRAPH, BAD_GRAPH)) {

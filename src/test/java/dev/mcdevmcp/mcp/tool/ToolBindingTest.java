@@ -23,7 +23,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class ToolBindingTest {
     private static final McpJsonMapper MAPPER = McpJsonDefaults.getMapper();
-    
+
     @Test
     void decodesTheWholeArgumentMapOnceAndConvertsWireValuesToDomainValues() {
         var options = new LinkedHashMap<String, Object>();
@@ -43,10 +43,10 @@ class ToolBindingTest {
             received.complete(domain);
             return ToolHandlers.completed(ToolResult.text("ok"));
         });
-        
+
         var result = binding.invoke(mapper, arguments, Cancellation.none()).toCompletableFuture().resultNow();
         var domain = received.resultNow();
-        
+
         assertFalse(result.isError());
         assertEquals(1, mapper.convertValueCalls());
         assertEquals(URI.create("https://example.test/tool"), domain.uri());
@@ -58,7 +58,7 @@ class ToolBindingTest {
         assertThrows(UnsupportedOperationException.class, () -> domain.options().put("later", false));
         assertThrows(UnsupportedOperationException.class, () -> ((List<?>) domain.options().get("values")).clear());
     }
-    
+
     @Test
     void propagatesSynchronousDecoderFailureBeforeCallingTheHandler() {
         var handlerCalled = new CompletableFuture<Void>();
@@ -68,22 +68,22 @@ class ToolBindingTest {
             handlerCalled.complete(null);
             return ToolHandlers.completed(ToolResult.text("unexpected"));
         });
-        
+
         var exception = assertThrows(IllegalArgumentException.class, () -> binding.invoke(MAPPER, Map.of(), Cancellation.none()));
-        
+
         assertEquals("bad arguments", exception.getMessage());
         assertFalse(handlerCalled.isDone());
     }
-    
+
     @Test
     void preservesAsynchronousHandlerFailure() {
         var binding = new ToolBinding<>(ArgumentDecoder.sdk(TestEmptyArguments.class), (_, _) -> CompletableFuture.failedFuture(new IllegalStateException("async failure")));
-        
+
         var exception = assertThrows(CompletionException.class, () -> binding.invoke(MAPPER, Map.of(), Cancellation.none()).toCompletableFuture().join());
-        
+
         assertEquals("async failure", exception.getCause().getMessage());
     }
-    
+
     @Test
     void blockingBindingRunsOnItsAssignedVirtualExecutorAndCancellationInterruptsIt() throws Exception {
         var started = new CountDownLatch(1);
@@ -100,10 +100,10 @@ class ToolBindingTest {
                 throw exception;
             }
         });
-        
+
         try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
             var future = binding.withBlockingExecutor(executor).invoke(MAPPER, Map.of(), Cancellation.none()).toCompletableFuture();
-            
+
             assertTrue(started.await(5, TimeUnit.SECONDS), "blocking binding did not start");
             assertTrue(future.cancel(true), "blocking binding future was not cancelled");
             assertTrue(interrupted.await(5, TimeUnit.SECONDS), "cancellation did not interrupt the virtual thread");

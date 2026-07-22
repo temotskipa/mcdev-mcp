@@ -10,7 +10,7 @@ public record CallgraphIndexRecord(String className, String methodName, long byt
             throw new IllegalArgumentException("Callgraph index ranges and row counts must be positive");
         }
     }
-    
+
     private static String requireIdentity(String value, String name) {
         Objects.requireNonNull(value, name);
         if (value.isBlank()) {

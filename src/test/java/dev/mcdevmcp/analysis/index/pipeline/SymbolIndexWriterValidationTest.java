@@ -20,7 +20,7 @@ import static org.junit.jupiter.api.Assertions.*;
 class SymbolIndexWriterValidationTest {
     @TempDir
     Path temporaryDirectory;
-    
+
     @Test
     void rejectsWrongMemberIdentityAndMetadataWhilePreservingPriorDatabase() throws Exception {
         Path sources = Files.createDirectories(temporaryDirectory.resolve("writer/source"));
@@ -31,7 +31,7 @@ class SymbolIndexWriterValidationTest {
         IndexRequest request = IndexerTestSupport.request(sources, jar, database, 1);
         new SourceIndexer().build(request);
         byte[] original = IndexerTestSupport.bytes(database);
-        
+
         List<DatabaseValidator> corruptions = List.of(connection -> {
             try (var statement = connection.createStatement()) {
                 statement.executeUpdate("UPDATE fields SET type_id = 2 WHERE id = 1");
@@ -47,7 +47,7 @@ class SymbolIndexWriterValidationTest {
             assertArrayEquals(original, IndexerTestSupport.bytes(database));
         }
     }
-    
+
     @Test
     void rebuildsExactSnapshotWhenValidPriorTargetHasStaleBackup() throws Exception {
         Path sources = Files.createDirectories(temporaryDirectory.resolve("stale-backup/source"));
@@ -60,9 +60,9 @@ class SymbolIndexWriterValidationTest {
         Path backup = database.resolveSibling(database.getFileName() + ".bak");
         Files.copy(database, backup);
         Files.writeString(source, "class Current { long changed; }", StandardCharsets.UTF_8);
-        
+
         new SourceIndexer().build(request);
-        
+
         List<String> dump = IndexerTestSupport.dump(database);
         assertFalse(Files.exists(backup));
         assertTrue(dump.stream().anyMatch(row -> row.startsWith("types|") && row.contains("|Current|")));

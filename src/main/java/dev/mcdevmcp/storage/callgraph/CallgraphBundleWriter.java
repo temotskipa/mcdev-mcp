@@ -22,7 +22,7 @@ public final class CallgraphBundleWriter implements AutoCloseable {
     private static final int DEFAULT_RUN_RECORDS = 2048;
     private static final int DEFAULT_MERGE_FAN_IN = 32;
     private static final long MAXIMUM_BUFFER_BYTES = 8L * 1024 * 1024;
-    
+
     private final Path root;
     private final Path staging;
     private final Path work;
@@ -39,15 +39,15 @@ public final class CallgraphBundleWriter implements AutoCloseable {
     private long bufferBytes;
     private boolean published;
     private boolean closed;
-    
+
     public CallgraphBundleWriter(Path bundle, MinecraftVersion minecraftVersion, String remappedJarSha256, Cancellation cancellation) throws IOException {
         this(bundle, minecraftVersion, remappedJarSha256, cancellation, DEFAULT_RUN_RECORDS, DEFAULT_MERGE_FAN_IN);
     }
-    
+
     CallgraphBundleWriter(Path bundle, MinecraftVersion minecraftVersion, String remappedJarSha256, Cancellation cancellation, int runRecords, int mergeFanIn) throws IOException {
         this(bundle, minecraftVersion, remappedJarSha256, cancellation, runRecords, mergeFanIn, BundleFiles::atomicReplace);
     }
-    
+
     CallgraphBundleWriter(Path bundle, MinecraftVersion minecraftVersion, String remappedJarSha256, Cancellation cancellation, int runRecords, int mergeFanIn, PointerPublisher pointerPublisher) throws IOException {
         root = Objects.requireNonNull(bundle, "bundle").toAbsolutePath().normalize();
         this.minecraftVersion = Objects.requireNonNull(minecraftVersion, "minecraftVersion");
@@ -89,11 +89,11 @@ public final class CallgraphBundleWriter implements AutoCloseable {
             throw exception;
         }
     }
-    
+
     private static boolean isStagingMarkerName(String name) {
         return name.endsWith(".lock") && isStagingDirectoryName(name.substring(0, name.length() - ".lock".length()));
     }
-    
+
     private static boolean isStagingDirectoryName(String name) {
         String prefix = ".staging-";
         if (!name.startsWith(prefix)) {
@@ -106,7 +106,7 @@ public final class CallgraphBundleWriter implements AutoCloseable {
             return false;
         }
     }
-    
+
     private static void requireCanonicalDescriptor(String descriptor, String name) {
         Objects.requireNonNull(descriptor, name);
         try {
@@ -115,7 +115,7 @@ public final class CallgraphBundleWriter implements AutoCloseable {
             throw new IllegalArgumentException("Invalid " + name + ": " + descriptor, exception);
         }
     }
-    
+
     private static long add(long left, long right) throws IOException {
         try {
             return Math.addExact(left, right);
@@ -123,11 +123,11 @@ public final class CallgraphBundleWriter implements AutoCloseable {
             throw new IOException("Callgraph external-sort byte count overflow", exception);
         }
     }
-    
+
     private static void writeIndex(FileChannel channel, CallgraphDirection.LookupKey key, long offset, long length, long rows) throws IOException {
         write(channel, CallgraphJson.line(new CallgraphIndexRecord(key.className(), key.methodName(), offset, length, rows)));
     }
-    
+
     private static void write(FileChannel channel, byte[] bytes) throws IOException {
         ByteBuffer buffer = ByteBuffer.wrap(bytes);
         while (buffer.hasRemaining()) {
@@ -137,15 +137,15 @@ public final class CallgraphBundleWriter implements AutoCloseable {
             }
         }
     }
-    
+
     public void accept(CallgraphDataRecord record) throws IOException, InterruptedException {
         accept(record, true);
     }
-    
+
     void acceptLegacy(CallgraphDataRecord record) throws IOException, InterruptedException {
         accept(record, false);
     }
-    
+
     private void accept(CallgraphDataRecord record, boolean generated) throws IOException, InterruptedException {
         requireOpen();
         cancellation.throwIfCancelled();
@@ -167,7 +167,7 @@ public final class CallgraphBundleWriter implements AutoCloseable {
             spill();
         }
     }
-    
+
     public String publish(int classCount, int methodCount, long edgeCount) throws IOException, InterruptedException {
         requireOpen();
         if (classCount < 0 || methodCount < 0 || edgeCount < 0) {
@@ -193,11 +193,11 @@ public final class CallgraphBundleWriter implements AutoCloseable {
         cancellation.throwIfCancelled();
         return promoteAndPublish(identity, manifest);
     }
-    
+
     private CallgraphFileMetadata metadata(CallgraphArtifact artifact, long records) throws IOException, InterruptedException {
         return CallgraphBundleValidator.metadata(artifact.resolve(staging), artifact, records, cancellation);
     }
-    
+
     private String promoteAndPublish(String identity, CallgraphManifest manifest) throws IOException, InterruptedException {
         BundleLock publicationLock = BundleLock.write(root, WRITE_LOCK_TIMEOUT);
         try {
@@ -243,7 +243,7 @@ public final class CallgraphBundleWriter implements AutoCloseable {
         }
         return identity;
     }
-    
+
     private void publishPointer(String identity) throws IOException {
         Path current = BundleFiles.safeChild(root, "current.json");
         Path temporary = BundleFiles.safeChild(root, "current.tmp");
@@ -260,7 +260,7 @@ public final class CallgraphBundleWriter implements AutoCloseable {
             throw exception;
         }
     }
-    
+
     private void spill() throws IOException, InterruptedException {
         if (buffer.isEmpty()) {
             return;
@@ -278,7 +278,7 @@ public final class CallgraphBundleWriter implements AutoCloseable {
         }
         nextRun++;
     }
-    
+
     private DirectionCounts mergeDirection(CallgraphDirection direction) throws IOException, InterruptedException {
         List<Path> current = List.copyOf(runs.get(direction));
         int pass = 0;
@@ -305,7 +305,7 @@ public final class CallgraphBundleWriter implements AutoCloseable {
         }
         return counts;
     }
-    
+
     private DirectionCounts mergeRuns(CallgraphDirection direction, List<Path> inputs, Path output, Path index) throws IOException, InterruptedException {
         List<RunCursor> cursors = new ArrayList<>();
         var queue = new PriorityQueue<>(Comparator.comparing(RunCursor::record, direction.comparator()).thenComparingInt(RunCursor::ordinal));
@@ -382,7 +382,7 @@ public final class CallgraphBundleWriter implements AutoCloseable {
             }
         }
     }
-    
+
     private String publishedGeneration() throws IOException {
         Path current = BundleFiles.safeChild(root, "current.json");
         if (!Files.exists(current, java.nio.file.LinkOption.NOFOLLOW_LINKS)) {
@@ -390,7 +390,7 @@ public final class CallgraphBundleWriter implements AutoCloseable {
         }
         return CallgraphBundleLayout.resolve(root).identity();
     }
-    
+
     private void cleanupOrphanStaging() throws IOException, InterruptedException {
         List<Path> children;
         try (var paths = Files.list(root)) {
@@ -417,7 +417,7 @@ public final class CallgraphBundleWriter implements AutoCloseable {
             BundleFiles.deleteTree(child);
         }
     }
-    
+
     private void cleanupStagingLease(Path marker) throws IOException {
         try {
             BundleFiles.requireRegularFile(root, marker);
@@ -445,7 +445,7 @@ public final class CallgraphBundleWriter implements AutoCloseable {
             // A concurrently closing writer already removed its lease.
         }
     }
-    
+
     private void cleanupGenerations(String previousGeneration, String newGeneration) throws IOException, InterruptedException {
         Path generations = BundleFiles.safeChild(root, "generations");
         BundleFiles.requireDirectory(root, generations);
@@ -465,7 +465,7 @@ public final class CallgraphBundleWriter implements AutoCloseable {
             }
         }
     }
-    
+
     private void writeRecords(Path output, List<CallgraphDataRecord> records) throws IOException, InterruptedException {
         try (FileChannel channel = FileChannel.open(output, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE)) {
             for (CallgraphDataRecord record : records) {
@@ -475,13 +475,13 @@ public final class CallgraphBundleWriter implements AutoCloseable {
             channel.force(true);
         }
     }
-    
+
     private void requireOpen() {
         if (closed || published) {
             throw new IllegalStateException("Callgraph bundle writer is no longer open");
         }
     }
-    
+
     @Override
     public void close() throws IOException {
         if (closed) {
@@ -510,22 +510,22 @@ public final class CallgraphBundleWriter implements AutoCloseable {
             throw failure;
         }
     }
-    
+
     @FunctionalInterface
     interface PointerPublisher {
         void replace(Path source, Path target) throws IOException;
     }
-    
+
     private static final class RunCursor implements AutoCloseable {
         private final JsonlLineReader lines;
         private final int ordinal;
         private CallgraphDataRecord record;
-        
+
         private RunCursor(Path path, int ordinal) throws IOException {
             lines = new JsonlLineReader(Files.newInputStream(path), CallgraphBundleLayout.MAXIMUM_JSONL_LINE_BYTES);
             this.ordinal = ordinal;
         }
-        
+
         private boolean advance() throws IOException {
             byte[] line = lines.next();
             if (line == null) {
@@ -539,35 +539,35 @@ public final class CallgraphBundleWriter implements AutoCloseable {
                 throw new IOException("Invalid external-sort callgraph run", exception);
             }
         }
-        
+
         private CallgraphDataRecord record() {
             return record;
         }
-        
+
         private int ordinal() {
             return ordinal;
         }
-        
+
         @Override
         public void close() throws IOException {
             lines.close();
         }
     }
-    
+
     private static final class StagingLease implements AutoCloseable {
         private final Path staging;
         private final Path marker;
         private final FileChannel channel;
         private final FileLock lock;
         private boolean closed;
-        
+
         private StagingLease(Path staging, Path marker, FileChannel channel, FileLock lock) {
             this.staging = staging;
             this.marker = marker;
             this.channel = channel;
             this.lock = lock;
         }
-        
+
         private static StagingLease create(Path root) throws IOException {
             String name = ".staging-" + UUID.randomUUID();
             Path staging = BundleFiles.safeChild(root, name);
@@ -589,15 +589,15 @@ public final class CallgraphBundleWriter implements AutoCloseable {
                 throw exception;
             }
         }
-        
+
         private Path staging() {
             return staging;
         }
-        
+
         private Path marker() {
             return marker;
         }
-        
+
         @Override
         public void close() throws IOException {
             if (closed) {
@@ -635,7 +635,7 @@ public final class CallgraphBundleWriter implements AutoCloseable {
             }
         }
     }
-    
+
     private record DirectionCounts(long dataRows, long indexRows) {
     }
 }

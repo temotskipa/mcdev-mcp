@@ -25,16 +25,16 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 final class IndexerTestSupport {
     private IndexerTestSupport() {
     }
-    
+
     static IndexRequest request(Path sourceRoot, Path remappedJar, Path outputDatabase, int threads) {
         return request(List.of(new SourceRoot(SourceNamespace.MINECRAFT, Optional.empty(), sourceRoot)), remappedJar, List.of(), outputDatabase, threads);
     }
-    
+
     static IndexRequest request(List<SourceRoot> sourceRoots, Path remappedJar, List<Path> classpath, Path outputDatabase, int threads) {
         return new IndexRequest(new MinecraftVersion("1.21.5"), sourceRoots, remappedJar, classpath, outputDatabase, threads, (_, _, _) -> {
         }, Cancellation.none());
     }
-    
+
     static Path copyFixture(String name, Path target) throws Exception {
         URI resource = Objects.requireNonNull(IndexerTestSupport.class.getResource("/indexer/sources/" + name), "Missing indexer fixture " + name).toURI();
         Path source = Path.of(resource);
@@ -51,7 +51,7 @@ final class IndexerTestSupport {
         }
         return target;
     }
-    
+
     static Path createJar(Path jar, Map<String, String> sources) throws Exception {
         Path workspace = Files.createDirectories(jar.resolveSibling(jar.getFileName() + ".sources"));
         Path classes = Files.createDirectories(jar.resolveSibling(jar.getFileName() + ".classes"));
@@ -85,19 +85,19 @@ final class IndexerTestSupport {
         }
         return jar;
     }
-    
+
     static Path fixtureCatalog(Path jar) throws Exception {
         return createJar(jar, Map.of("index/fixture/FeatureSet.java", "package index.fixture; public class FeatureSet extends java.util.ArrayList<String> implements Runnable { public void run() {} }"));
     }
-    
+
     static Path fixtureDependency(Path jar) throws Exception {
         return createJar(jar, Map.of("dependency/External.java", "package dependency; public final class External {}"));
     }
-    
+
     static List<String> dump(Path database) throws Exception {
         return new SymbolRepository(database).query(IndexerTestSupport::dump);
     }
-    
+
     private static List<String> dump(Connection connection) throws Exception {
         List<String> rows = new ArrayList<>();
         rows.addAll(query(connection, "metadata", "SELECT singleton, schema_version, minecraft_version, source_root, remapped_jar_sha256 FROM metadata ORDER BY singleton"));
@@ -109,7 +109,7 @@ final class IndexerTestSupport {
         rows.addAll(query(connection, "parameters", "SELECT id, method_id, ordinal, name, type, varargs, start_offset, end_offset, start_line, end_line FROM parameters ORDER BY id"));
         return List.copyOf(rows);
     }
-    
+
     private static List<String> query(Connection connection, String table, String sql) throws Exception {
         List<String> rows = new ArrayList<>();
         try (var statement = connection.createStatement(); var results = statement.executeQuery(sql)) {
@@ -124,7 +124,7 @@ final class IndexerTestSupport {
         }
         return rows;
     }
-    
+
     static byte[] bytes(Path path) {
         try {
             return Files.readAllBytes(path);

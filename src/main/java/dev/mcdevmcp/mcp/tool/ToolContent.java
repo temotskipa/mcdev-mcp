@@ -5,7 +5,7 @@ import java.util.Objects;
 public record ToolContent(ToolContentType type, String text, String mimeType, String data) {
     public ToolContent {
         Objects.requireNonNull(type, "Content type");
-        
+
         switch (type) {
             case TEXT -> {
                 Objects.requireNonNull(text, "Text content");
@@ -22,7 +22,7 @@ public record ToolContent(ToolContentType type, String text, String mimeType, St
             }
         }
     }
-    
+
     public static ToolContent text(String text) {
         return new ToolContent(ToolContentType.TEXT, text, null, null);
     }

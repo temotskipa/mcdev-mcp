@@ -5,7 +5,7 @@ import java.util.*;
 public final class JsonValues {
     private JsonValues() {
     }
-    
+
     public static Object freeze(Object value) {
         return switch (value) {
             case null -> null;
@@ -36,12 +36,12 @@ public final class JsonValues {
             default -> throw new IllegalArgumentException("Unsupported JSON value type: " + value.getClass().getName());
         };
     }
-    
+
     public static Map<String, Object> freezeMap(Map<String, ?> values) {
         Objects.requireNonNull(values, "JSON object");
         return asMap(freeze(values));
     }
-    
+
     private static Map<String, Object> asMap(Object value) {
         if (value instanceof Map<?, ?> map) {
             var result = new LinkedHashMap<String, Object>();
@@ -52,5 +52,5 @@ public final class JsonValues {
         }
         throw new IllegalStateException("Frozen JSON object is not a map");
     }
-    
+
 }

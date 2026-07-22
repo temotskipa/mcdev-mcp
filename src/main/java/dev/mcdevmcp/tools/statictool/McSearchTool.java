@@ -12,10 +12,10 @@ import java.util.stream.Collectors;
 
 final class McSearchTool {
     private static final LimitSpec LIMIT = new LimitSpec(50, 1000);
-    
+
     private McSearchTool() {
     }
-    
+
     static ToolBinding<SearchArguments> binding(StaticToolSupport support) {
         var decoder = ArgumentDecoder.sdk(SearchWireArguments.class).map(SearchArguments::from);
         return ToolBinding.blocking(decoder, (arguments, _) -> support.execute("mc_search", () -> {
@@ -43,7 +43,7 @@ final class McSearchTool {
             return ToolResult.text("Found " + rows.size() + " result(s):\n" + renderedRows + StaticTools.truncationNote(rows.size(), truncated, limit, "result(s)"));
         }));
     }
-    
+
     private static String render(SearchHit hit) {
         ClassSymbol owner = hit.owner();
         if (hit.kind() == SearchHitKind.CLASS) {
@@ -57,7 +57,7 @@ final class McSearchTool {
         String parameters = hit.parameters().stream().map(parameter -> parameter.type() + " " + parameter.name()).collect(Collectors.joining(", "));
         return "[method] " + owner.binaryName() + "#" + method.name() + ": " + StaticToolSupport.modifiers(method.modifiers()) + StaticToolSupport.returnType(method.returnType().orElse(null)) + " " + method.name() + "(" + parameters + ") (line " + method.startLine() + ")";
     }
-    
+
     private static String renderClass(SearchHit hit, ClassSymbol owner) {
         String superclass = owner.superclassBinaryName().map(value -> " extends " + value).orElse("");
         String interfaces = "";

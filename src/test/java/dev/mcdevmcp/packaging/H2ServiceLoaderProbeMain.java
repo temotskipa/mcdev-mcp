@@ -10,7 +10,7 @@ import java.util.ServiceLoader;
 final class H2ServiceLoaderProbeMain {
     private H2ServiceLoaderProbeMain() {
     }
-    
+
     static void main(String[] arguments) throws Exception {
         Path databaseBase = Path.of(arguments[0]).toAbsolutePath().normalize();
         Path expectedJar = Path.of(arguments[1]).toRealPath();
@@ -22,7 +22,7 @@ final class H2ServiceLoaderProbeMain {
         if (!driverJar.equals(expectedJar)) {
             throw new AssertionError("H2 JDBC service loaded from " + driverJar + " instead of " + expectedJar);
         }
-        
+
         String url = "jdbc:h2:file:" + databaseBase + ";DB_CLOSE_ON_EXIT=FALSE;FILE_LOCK=FS;WRITE_DELAY=0;LOCK_TIMEOUT=30000;TRACE_LEVEL_FILE=0";
         try (var connection = DriverManager.getConnection(url); var statement = connection.createStatement()) {
             statement.execute("CREATE TABLE smoke (id INTEGER PRIMARY KEY)");
@@ -34,22 +34,22 @@ final class H2ServiceLoaderProbeMain {
             }
             statement.execute(checkpointSql());
         }
-        
+
         Path database = databaseBase.resolveSibling(databaseBase.getFileName() + ".mv.db");
         Path renamed = database.resolveSibling(database.getFileName() + ".renamed");
         Files.move(database, renamed, StandardCopyOption.ATOMIC_MOVE);
         Files.move(renamed, database, StandardCopyOption.ATOMIC_MOVE);
         System.out.println("H2_SERVICE_OK");
     }
-    
+
     private static String insertSql() {
         return "INSERT INTO smoke(id) VALUES (1)";
     }
-    
+
     private static String selectSql() {
         return "SELECT id FROM smoke";
     }
-    
+
     private static String checkpointSql() {
         return "CHECKPOINT SYNC";
     }

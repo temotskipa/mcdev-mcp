@@ -15,7 +15,7 @@ public record CallEdge(String callerClass, String callerMethod, String callerDes
             throw new IllegalArgumentException("encounterOrder must not be negative");
         }
     }
-    
+
     private static String requireIdentity(String value, String name) {
         Objects.requireNonNull(value, name);
         if (value.isBlank()) {
@@ -23,7 +23,7 @@ public record CallEdge(String callerClass, String callerMethod, String callerDes
         }
         return value;
     }
-    
+
     private static String requireDescriptor(String value, String name) {
         Objects.requireNonNull(value, name);
         try {

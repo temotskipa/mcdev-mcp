@@ -13,10 +13,10 @@ public final class McpContractTestSupport {
     private static final McpJsonMapper MAPPER = McpJsonDefaults.getMapper();
     private static final TypeRef<Map<String, Object>> MAP_TYPE = new TypeRef<>() {
     };
-    
+
     private McpContractTestSupport() {
     }
-    
+
     public static Map<String, Object> readContract(String name) throws IOException {
         try (var input = McpContractTestSupport.class.getResourceAsStream("/contracts/mcp/" + name)) {
             if (input == null) {
@@ -25,11 +25,11 @@ public final class McpContractTestSupport {
             return MAPPER.readValue(input.readAllBytes(), MAP_TYPE);
         }
     }
-    
+
     public static String normalize(Object value) throws IOException {
         return MAPPER.writeValueAsString(normalizeValue(value));
     }
-    
+
     private static Object normalizeValue(Object value) {
         if (value instanceof Map<?, ?> map) {
             var normalized = new TreeMap<String, Object>();

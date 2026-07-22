@@ -11,6 +11,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.channels.FileChannel;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.time.Duration;
@@ -25,27 +26,45 @@ public final class CallgraphRepository {
     private final MinecraftVersion expectedVersion;
     private final Duration lockTimeout;
     private volatile GenerationCache cache;
-    
+
     public CallgraphRepository(Path bundle) {
         this(bundle, null, READ_LOCK_TIMEOUT);
     }
-    
+
     public CallgraphRepository(Path bundle, MinecraftVersion expectedVersion) {
         this(bundle, Objects.requireNonNull(expectedVersion, "expectedVersion"), READ_LOCK_TIMEOUT);
     }
-    
+
     CallgraphRepository(Path bundle, MinecraftVersion expectedVersion, Duration lockTimeout) {
         this.bundle = Objects.requireNonNull(bundle, "bundle").toAbsolutePath().normalize();
         this.expectedVersion = expectedVersion;
         this.lockTimeout = Objects.requireNonNull(lockTimeout, "lockTimeout");
     }
-    
+
     public static boolean isPublished(Path bundle) {
-        Path root = Objects.requireNonNull(bundle, "bundle").toAbsolutePath().normalize();
-        Path pointer = root.resolve("current.json");
-        return Files.exists(pointer, java.nio.file.LinkOption.NOFOLLOW_LINKS);
+        return publicationStatus(bundle) != PublicationStatus.ABSENT;
     }
-    
+
+    public static PublicationStatus publicationStatus(Path bundle) {
+        Path root = Objects.requireNonNull(bundle, "bundle").toAbsolutePath().normalize();
+        if (!Files.exists(root, LinkOption.NOFOLLOW_LINKS)) {
+            return PublicationStatus.ABSENT;
+        }
+        if (Files.isSymbolicLink(root) || !Files.isDirectory(root, LinkOption.NOFOLLOW_LINKS)) {
+            return PublicationStatus.CORRUPT;
+        }
+        Path pointer = root.resolve("current.json");
+        if (!Files.exists(pointer, LinkOption.NOFOLLOW_LINKS)) {
+            return PublicationStatus.ABSENT;
+        }
+        try {
+            CallgraphBundleValidator.validateArtifacts(root);
+            return PublicationStatus.PUBLISHED;
+        } catch (IOException | RuntimeException exception) {
+            return PublicationStatus.CORRUPT;
+        }
+    }
+
     private static long add(long left, long right, String message) throws IOException {
         try {
             return Math.addExact(left, right);
@@ -53,7 +72,7 @@ public final class CallgraphRepository {
             throw new IOException(message, exception);
         }
     }
-    
+
     private static <T> T parse(byte[] bytes, String file, Class<T> type) throws IOException {
         try {
             return CallgraphJson.readCanonical(bytes, type, file);
@@ -61,15 +80,15 @@ public final class CallgraphRepository {
             throw new IOException("Invalid typed JSON record in " + file, exception);
         }
     }
-    
+
     public List<MethodReference> callers(String className, String methodName, int limitPlusOne) throws IOException {
         return references(className, methodName, limitPlusOne, CallgraphDirection.CALLERS);
     }
-    
+
     public List<MethodReference> callees(String className, String methodName, int limitPlusOne) throws IOException {
         return references(className, methodName, limitPlusOne, CallgraphDirection.CALLEES);
     }
-    
+
     private List<MethodReference> references(String className, String methodName, int limitPlusOne, CallgraphDirection direction) throws IOException {
         Objects.requireNonNull(className, "className");
         Objects.requireNonNull(methodName, "methodName");
@@ -92,7 +111,7 @@ public final class CallgraphRepository {
             return readRange(generation, direction, range, limitPlusOne);
         }
     }
-    
+
     private GenerationCache generation(CallgraphBundleLayout.ResolvedGeneration resolved) {
         GenerationCache current = cache;
         if (current != null && current.identity().equals(resolved.identity())) {
@@ -107,7 +126,7 @@ public final class CallgraphRepository {
             return current;
         }
     }
-    
+
     private List<MethodReference> readRange(GenerationCache generation, CallgraphDirection direction, CallgraphIndexRecord range, int limitPlusOne) throws IOException {
         CallgraphFileMetadata metadata = CallgraphBundleLayout.metadata(generation.manifest(), direction.dataArtifact());
         Path data = direction.dataArtifact().resolve(generation.path());
@@ -146,32 +165,36 @@ public final class CallgraphRepository {
         }
         return List.copyOf(references);
     }
-    
+
+    public enum PublicationStatus {
+        ABSENT, PUBLISHED, CORRUPT
+    }
+
     private final class GenerationCache {
         private final String identity;
         private final Path path;
         private final CallgraphManifest manifest;
         private volatile NavigableMap<CallgraphDirection.LookupKey, CallgraphIndexRecord> callers;
         private volatile NavigableMap<CallgraphDirection.LookupKey, CallgraphIndexRecord> callees;
-        
+
         private GenerationCache(String identity, Path path, CallgraphManifest manifest) {
             this.identity = identity;
             this.path = path;
             this.manifest = manifest;
         }
-        
+
         private String identity() {
             return identity;
         }
-        
+
         private Path path() {
             return path;
         }
-        
+
         private CallgraphManifest manifest() {
             return manifest;
         }
-        
+
         private NavigableMap<CallgraphDirection.LookupKey, CallgraphIndexRecord> index(CallgraphDirection direction) throws IOException {
             NavigableMap<CallgraphDirection.LookupKey, CallgraphIndexRecord> current = direction == CallgraphDirection.CALLERS ? callers : callees;
             if (current != null) {
@@ -191,7 +214,7 @@ public final class CallgraphRepository {
                 return current;
             }
         }
-        
+
         private NavigableMap<CallgraphDirection.LookupKey, CallgraphIndexRecord> loadIndex(CallgraphDirection direction) throws IOException {
             CallgraphFileMetadata indexMetadata = CallgraphBundleLayout.metadata(manifest, direction.indexArtifact());
             CallgraphFileMetadata dataMetadata = CallgraphBundleLayout.metadata(manifest, direction.dataArtifact());

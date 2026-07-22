@@ -9,10 +9,10 @@ import java.util.Properties;
 
 public final class AppVersion {
     public static final String TEST_FALLBACK_PROPERTY = "dev.mcdevmcp.test.versionFallback";
-    
+
     private AppVersion() {
     }
-    
+
     public static String current() {
         String manifestVersion = Main.class.getPackage().getImplementationVersion();
         if (manifestVersion != null && !manifestVersion.isBlank()) {

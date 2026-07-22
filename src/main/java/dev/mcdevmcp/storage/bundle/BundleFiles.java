@@ -9,7 +9,7 @@ import java.util.Objects;
 public final class BundleFiles {
     private BundleFiles() {
     }
-    
+
     public static Path safeChild(Path root, String fileName) throws IOException {
         Objects.requireNonNull(root, "root");
         Objects.requireNonNull(fileName, "fileName");
@@ -23,21 +23,21 @@ public final class BundleFiles {
         }
         return child;
     }
-    
+
     public static void requireRegularFile(Path root, Path file) throws IOException {
         requireContained(root, file);
         if (Files.isSymbolicLink(file) || !Files.isRegularFile(file, java.nio.file.LinkOption.NOFOLLOW_LINKS)) {
             throw new IOException("Bundle artifact is not a regular file: " + file);
         }
     }
-    
+
     public static void requireDirectory(Path root, Path directory) throws IOException {
         requireContained(root, directory);
         if (Files.isSymbolicLink(directory) || !Files.isDirectory(directory, java.nio.file.LinkOption.NOFOLLOW_LINKS)) {
             throw new IOException("Bundle path is not a directory: " + directory);
         }
     }
-    
+
     public static void requireContained(Path root, Path path) throws IOException {
         Path normalizedRoot = root.toAbsolutePath().normalize();
         Path normalizedPath = path.toAbsolutePath().normalize();
@@ -55,7 +55,7 @@ public final class BundleFiles {
             }
         }
     }
-    
+
     public static void writeForced(Path file, byte[] bytes) throws IOException {
         Objects.requireNonNull(bytes, "bytes");
         try (FileChannel channel = FileChannel.open(file, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE)) {
@@ -69,17 +69,17 @@ public final class BundleFiles {
             channel.force(true);
         }
     }
-    
+
     public static void force(Path file) throws IOException {
         try (FileChannel channel = FileChannel.open(file, StandardOpenOption.WRITE)) {
             channel.force(true);
         }
     }
-    
+
     public static void atomicReplace(Path source, Path target) throws IOException {
         Files.move(source, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
     }
-    
+
     public static void moveNewDirectory(Path source, Path target) throws IOException {
         try {
             Files.move(source, target, StandardCopyOption.ATOMIC_MOVE);
@@ -87,7 +87,7 @@ public final class BundleFiles {
             Files.move(source, target);
         }
     }
-    
+
     @SuppressWarnings("NullableProblems")
     public static void deleteTree(Path root) throws IOException {
         if (!Files.exists(root, java.nio.file.LinkOption.NOFOLLOW_LINKS)) {
@@ -99,7 +99,7 @@ public final class BundleFiles {
                 Files.delete(file);
                 return FileVisitResult.CONTINUE;
             }
-            
+
             @Override
             public FileVisitResult postVisitDirectory(Path directory, IOException failure) throws IOException {
                 if (failure != null) {

@@ -10,10 +10,10 @@ import java.util.function.Function;
 
 final class JavacTaskExecutor {
     private static final long CANCELLATION_POLL_MILLIS = 25;
-    
+
     private JavacTaskExecutor() {
     }
-    
+
     static <T> T executeSingle(IndexRequest request, Callable<T> task) throws IndexBuildException, InterruptedException {
         ExecutorService executor = Executors.newSingleThreadExecutor();
         Future<T> future = executor.submit(task);
@@ -26,7 +26,7 @@ final class JavacTaskExecutor {
             throw failure;
         }
     }
-    
+
     static <T, R> R executeAll(IndexRequest request, int workerCount, List<? extends Callable<T>> tasks, Function<List<T>, R> resultAssembler) throws IndexBuildException, InterruptedException {
         ExecutorService executor = Executors.newFixedThreadPool(workerCount);
         List<Future<T>> futures = new ArrayList<>();
@@ -48,7 +48,7 @@ final class JavacTaskExecutor {
         terminate(executor, futures);
         return result;
     }
-    
+
     private static <T> T get(Future<T> future, IndexRequest request) throws IndexBuildException, InterruptedException {
         while (true) {
             request.cancellation().throwIfCancelled();
@@ -69,7 +69,7 @@ final class JavacTaskExecutor {
             }
         }
     }
-    
+
     private static void terminate(ExecutorService executor, List<? extends Future<?>> futures) throws IndexBuildException, InterruptedException {
         futures.forEach(future -> future.cancel(true));
         executor.shutdownNow();
@@ -77,7 +77,7 @@ final class JavacTaskExecutor {
             throw new IndexBuildException("Javac index workers did not terminate");
         }
     }
-    
+
     private static void terminateSuppressing(ExecutorService executor, List<? extends Future<?>> futures, Throwable failure) {
         try {
             terminate(executor, futures);

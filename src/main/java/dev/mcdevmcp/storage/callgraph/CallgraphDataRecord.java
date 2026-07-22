@@ -12,7 +12,7 @@ public record CallgraphDataRecord(long edgeId, String callerClass, String caller
         calleeClass = requireIdentity(calleeClass, "calleeClass");
         calleeMethod = requireIdentity(calleeMethod, "calleeMethod");
     }
-    
+
     private static String requireIdentity(String value, String name) {
         Objects.requireNonNull(value, name);
         if (value.isBlank()) {

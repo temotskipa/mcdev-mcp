@@ -8,13 +8,13 @@ import java.util.Objects;
 
 enum Shade {
     RED, BLUE;
-    
+
     int code;
 }
 
 interface Defaults {
     int CONSTANT = 1;
-    
+
     default int value() {
         return CONSTANT;
     }
@@ -28,24 +28,24 @@ public sealed class FeatureSet<T extends Number & Comparable<T>> extends SourceB
     public static final int FIRST = 1, SECOND = 2;
     External external;
     private List<? super T[]> values;
-    
+
     public FeatureSet() {
     }
-    
+
     public <U extends CharSequence> List<? extends U> transform(U value, String... rest) {
         return List.of(value);
     }
-    
+
     public void execute() {
         class Local {
             int ignored;
         }
         new Local();
     }
-    
+
     static class Nested {
         int hidden;
-        
+
         void hiddenMethod() {
         }
     }

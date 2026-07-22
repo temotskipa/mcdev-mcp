@@ -13,25 +13,25 @@ import java.util.*;
  */
 public final class SymbolRepository {
     private final Path database;
-    
+
     public SymbolRepository(Path database) {
         this.database = Objects.requireNonNull(database, "database").toAbsolutePath().normalize();
     }
-    
+
     private static String classesSelect() {
         return "SELECT t.id, t.source_namespace, t.fabric_api_version, t.binary_name, " + "p.name, t.simple_name, t.kind, t.superclass_binary_name, t.source_path, " + "t.start_offset, t.end_offset, t.start_line, t.end_line " + "FROM types t JOIN packages p ON p.id=t.package_id";
     }
-    
+
     private static String classesSelectWithCounts() {
         String base = classesSelect();
         int from = base.indexOf(" FROM ");
         return base.substring(0, from) + ", (SELECT COUNT(*) FROM fields f WHERE f.type_id=t.id)" + ", (SELECT COUNT(*) FROM methods m WHERE m.type_id=t.id)" + base.substring(from);
     }
-    
+
     private static String classesOrder() {
         return " ORDER BY CASE t.source_namespace WHEN 'minecraft' THEN 0 ELSE 1 END, p.id, t.id";
     }
-    
+
     private static int countPackages(Connection connection, String namespace, String where) throws SQLException {
         try (PreparedStatement statement = connection.prepareStatement("SELECT COUNT(*) FROM packages" + where)) {
             if (namespace != null) statement.setString(1, namespace);
@@ -41,7 +41,7 @@ public final class SymbolRepository {
             }
         }
     }
-    
+
     private static List<ClassSymbol> classes(Connection connection, String sql, StatementArguments arguments) throws Exception {
         List<ClassSymbol> values = new ArrayList<>();
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
@@ -52,7 +52,7 @@ public final class SymbolRepository {
         }
         return List.copyOf(values);
     }
-    
+
     private static ClassSymbol classSymbol(Connection connection, ResultSet result) throws SQLException {
         long id = result.getLong(1);
         String fabric = result.getString(3);
@@ -60,7 +60,7 @@ public final class SymbolRepository {
         Optional<FabricApiVersion> fabricVersion = fabric == null ? Optional.empty() : Optional.of(new FabricApiVersion(fabric));
         return new ClassSymbol(id, namespace, fabricVersion, result.getString(4), result.getString(5), result.getString(6), ElementKindCodec.fromWireName(result.getString(7)), Optional.ofNullable(result.getString(8)), interfaces(connection, id), Path.of(result.getString(9)), result.getInt(10), result.getInt(11), result.getInt(12), result.getInt(13));
     }
-    
+
     private static List<String> interfaces(Connection connection, long typeId) throws SQLException {
         List<String> values = new ArrayList<>();
         try (PreparedStatement statement = connection.prepareStatement("SELECT interface_binary_name FROM type_interfaces WHERE type_id=? ORDER BY ordinal")) {
@@ -71,7 +71,7 @@ public final class SymbolRepository {
         }
         return List.copyOf(values);
     }
-    
+
     private static List<FieldSymbol> fields(Connection connection, long typeId, String match) throws SQLException {
         String sql = "SELECT id,type_id,ordinal,name,type,modifiers," + "start_offset,end_offset,start_line,end_line FROM fields WHERE type_id=?" + (match == null ? "" : " AND LOWER(name) LIKE ? ESCAPE '\\'") + " ORDER BY ordinal,id";
         List<FieldSymbol> values = new ArrayList<>();
@@ -84,7 +84,7 @@ public final class SymbolRepository {
         }
         return List.copyOf(values);
     }
-    
+
     private static List<MethodSymbol> methods(Connection connection, long typeId, String match) throws SQLException {
         String sql = "SELECT id,type_id,ordinal,name,descriptor,return_type,modifiers,constructor," + "start_offset,end_offset,start_line,end_line FROM methods WHERE type_id=?" + (match == null ? "" : " AND LOWER(name) LIKE ? ESCAPE '\\'") + " ORDER BY ordinal,id";
         List<MethodSymbol> values = new ArrayList<>();
@@ -97,15 +97,15 @@ public final class SymbolRepository {
         }
         return List.copyOf(values);
     }
-    
+
     private static FieldSymbol field(ResultSet r) throws SQLException {
         return new FieldSymbol(r.getLong(1), r.getLong(2), r.getInt(3), r.getString(4), r.getString(5), modifiers(r.getString(6)), r.getInt(7), r.getInt(8), r.getInt(9), r.getInt(10));
     }
-    
+
     private static MethodSymbol method(ResultSet r) throws SQLException {
         return new MethodSymbol(r.getLong(1), r.getLong(2), r.getInt(3), r.getString(4), r.getString(5), Optional.ofNullable(r.getString(6)), modifiers(r.getString(7)), r.getBoolean(8), r.getInt(9), r.getInt(10), r.getInt(11), r.getInt(12));
     }
-    
+
     private static List<ParameterSymbol> parameterValues(Connection connection, long methodId) throws SQLException {
         List<ParameterSymbol> values = new ArrayList<>();
         String sql = "SELECT id, method_id, ordinal, name, type, varargs, " + "start_offset, end_offset, start_line, end_line " + "FROM parameters WHERE method_id=? ORDER BY ordinal,id";
@@ -117,11 +117,11 @@ public final class SymbolRepository {
         }
         return List.copyOf(values);
     }
-    
+
     private static ParameterSymbol parameter(ResultSet r) throws SQLException {
         return new ParameterSymbol(r.getLong(1), r.getLong(2), r.getInt(3), r.getString(4), r.getString(5), r.getBoolean(6), r.getInt(7), r.getInt(8), r.getInt(9), r.getInt(10));
     }
-    
+
     private static EnumSet<Modifier> modifiers(String text) {
         EnumSet<Modifier> values = EnumSet.noneOf(Modifier.class);
         if (text != null && !text.isEmpty()) {
@@ -129,11 +129,11 @@ public final class SymbolRepository {
         }
         return values;
     }
-    
+
     private static String escapeLike(String value) {
         return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_");
     }
-    
+
     public <T> T query(DatabaseQuery<T> query) throws IOException, SQLException {
         Objects.requireNonNull(query, "query");
         try (var databaseLock = DatabaseLock.read(database, AtomicH2Database.WRITE_LOCK_TIMEOUT);
@@ -148,7 +148,7 @@ public final class SymbolRepository {
             }
         }
     }
-    
+
     public List<ClassSymbol> classesUnder(String packagePath, int limitPlusOne) throws IOException, SQLException {
         String sql = classesSelect() + " WHERE LOWER(p.name) = LOWER(?) OR LOWER(p.name) LIKE LOWER(?) ESCAPE '\\'" + classesOrder() + " LIMIT ?";
         return query(connection -> classes(connection, sql, statement -> {
@@ -157,7 +157,7 @@ public final class SymbolRepository {
             statement.setInt(3, limitPlusOne);
         }));
     }
-    
+
     public PackageListing packages(String namespace, int limitPlusOne) throws IOException, SQLException {
         String where = namespace == null ? "" : " WHERE source_namespace = ?";
         return query(connection -> {
@@ -175,21 +175,21 @@ public final class SymbolRepository {
             return new PackageListing(values, total);
         });
     }
-    
+
     public ClassSymbol classByName(String binaryName) throws IOException, SQLException {
         String sql = classesSelect() + " WHERE t.binary_name = ? ORDER BY t.id LIMIT 1";
         List<ClassSymbol> values = query(connection -> classes(connection, sql, statement -> statement.setString(1, binaryName)));
         return values.isEmpty() ? null : values.getFirst();
     }
-    
+
     public List<FieldSymbol> fields(long typeId) throws IOException, SQLException {
         return query(connection -> fields(connection, typeId, null));
     }
-    
+
     public List<MethodSymbol> methods(long typeId) throws IOException, SQLException {
         return query(connection -> methods(connection, typeId, null));
     }
-    
+
     public MethodSymbol methodNamed(long typeId, String name) throws IOException, SQLException {
         return query(connection -> {
             String sql = "SELECT id, type_id, ordinal, name, descriptor, return_type, modifiers, constructor, " + "start_offset, end_offset, start_line, end_line FROM methods " + "WHERE type_id = ? AND (name = ? OR LOWER(name) = LOWER(?)) " + "ORDER BY CASE WHEN name = ? THEN 0 ELSE 1 END, ordinal, id LIMIT 1";
@@ -204,7 +204,7 @@ public final class SymbolRepository {
             }
         });
     }
-    
+
     public List<ParameterSymbol> parameters(long methodId) throws IOException, SQLException {
         return query(connection -> {
             List<ParameterSymbol> values = new ArrayList<>();
@@ -218,7 +218,7 @@ public final class SymbolRepository {
             return List.copyOf(values);
         });
     }
-    
+
     public List<ClassSymbol> hierarchy(String binaryName, boolean subclasses, int limitPlusOne) throws IOException, SQLException {
         String join = subclasses ? "" : " JOIN type_interfaces i ON i.type_id = t.id";
         String predicate = subclasses ? "t.superclass_binary_name = ?" : "i.interface_binary_name = ?";
@@ -227,7 +227,7 @@ public final class SymbolRepository {
             statement.setInt(2, limitPlusOne);
         }));
     }
-    
+
     /**
      * Literal, case-insensitive matching in Node's namespace/package/type/member order.
      */

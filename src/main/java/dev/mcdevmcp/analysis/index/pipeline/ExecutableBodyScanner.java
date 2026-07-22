@@ -12,17 +12,17 @@ final class ExecutableBodyScanner extends TreeScanner<Void, Void> {
     private final CompilationUnitTree unit;
     private final SourcePositions positions;
     private final List<OffsetRange> ranges = new ArrayList<>();
-    
+
     ExecutableBodyScanner(CompilationUnitTree unit, SourcePositions positions) {
         this.unit = unit;
         this.positions = positions;
     }
-    
+
     List<OffsetRange> scan() {
         scan(unit, null);
         return List.copyOf(ranges);
     }
-    
+
     @Override
     public Void visitBlock(BlockTree node, Void unused) {
         long start = positions.getStartPosition(unit, node);

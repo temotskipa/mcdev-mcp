@@ -6,10 +6,10 @@ import dev.mcdevmcp.mcp.tool.ToolResult;
 
 final class McListPackagesTool {
     private static final LimitSpec LIMIT = new LimitSpec(500, 5000);
-    
+
     private McListPackagesTool() {
     }
-    
+
     static ToolBinding<ListPackagesArguments> binding(StaticToolSupport support) {
         var decoder = ArgumentDecoder.sdk(ListPackagesWireArguments.class).map(ListPackagesArguments::from);
         return ToolBinding.blocking(decoder, (arguments, _) -> support.execute("mc_list_packages", () -> {

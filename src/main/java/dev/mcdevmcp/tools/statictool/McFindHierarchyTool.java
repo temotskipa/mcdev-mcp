@@ -9,10 +9,10 @@ import java.util.stream.Collectors;
 
 final class McFindHierarchyTool {
     private static final LimitSpec LIMIT = new LimitSpec(200, 5000);
-    
+
     private McFindHierarchyTool() {
     }
-    
+
     static ToolBinding<FindHierarchyArguments> binding(StaticToolSupport support) {
         var decoder = ArgumentDecoder.sdk(FindHierarchyWireArguments.class).map(FindHierarchyArguments::from);
         return ToolBinding.blocking(decoder, (arguments, _) -> support.execute("mc_find_hierarchy", () -> {

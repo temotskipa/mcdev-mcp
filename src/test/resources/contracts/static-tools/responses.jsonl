@@ -83,7 +83,7 @@
       "content": [
         {
           "type": "text",
-          "text": "Version 9.9.9 not initialized.\n\nSTOP and ask the USER to run this command in their terminal:\n  npx mcdev-mcp init -v 9.9.9\n\nThis will download, decompile, and index Minecraft 9.9.9 sources."
+          "text": "Version 9.9.9 not initialized.\n\nSTOP and ask the USER to run this command in their terminal:\n  java -jar mcdev-mcp-3.0.0.jar init -v 9.9.9\n\nThis will download, decompile, and index Minecraft 9.9.9 sources."
         }
       ]
     },
@@ -98,7 +98,7 @@
       "content": [
         {
           "type": "text",
-          "text": "Version 1.21.4 not indexed.\n\nSTOP and ask the USER to run this command in their terminal:\n  npx mcdev-mcp init -v 1.21.4\n\nThis will index Minecraft 1.21.4 sources."
+          "text": "Version 1.21.4 not indexed.\n\nSTOP and ask the USER to run this command in their terminal:\n  java -jar mcdev-mcp-3.0.0.jar init -v 1.21.4\n\nThis will index Minecraft 1.21.4 sources."
         }
       ]
     },
@@ -265,7 +265,7 @@
       "content": [
         {
           "type": "text",
-          "text": "Version 9.9.9 not initialized. STOP and ask the USER to run this command in their terminal:\n  node dist/cli.js init -v 9.9.9\n\nThis will download, decompile, and index Minecraft 9.9.9 sources (including callgraph)."
+          "text": "Version 9.9.9 not initialized. STOP and ask the USER to run this command in their terminal:\n  java -jar mcdev-mcp-3.0.0.jar init -v 9.9.9\n\nThis will download, decompile, and index Minecraft 9.9.9 sources (including callgraph)."
         }
       ]
     },

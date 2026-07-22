@@ -16,7 +16,7 @@ record CompilerClasspath(List<CompilerClassFile> classes) {
         TreeMap<String, CompilerClassFile> sorted = new TreeMap<>(classes);
         this(List.copyOf(sorted.values()));
     }
-    
+
     static CompilerClasspath read(IndexRequest request) throws IOException, InterruptedException {
         Map<String, CompilerClassFile> classes = new LinkedHashMap<>();
         List<Path> entries = new ArrayList<>(request.classpath().size() + 1);
@@ -27,7 +27,7 @@ record CompilerClasspath(List<CompilerClassFile> classes) {
         }
         return new CompilerClasspath(classes);
     }
-    
+
     private static void readJar(Path jar, Cancellation cancellation, Map<String, CompilerClassFile> classes) throws IOException, InterruptedException {
         ClassFile classFile = ClassFile.of();
         try (ZipFile zip = new ZipFile(jar.toFile())) {

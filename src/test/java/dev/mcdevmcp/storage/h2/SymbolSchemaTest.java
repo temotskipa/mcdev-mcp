@@ -18,10 +18,10 @@ import static org.junit.jupiter.api.Assertions.*;
 //noinspection SqlNoDataSourceInspection,SqlResolve
 class SymbolSchemaTest {
     private static final MinecraftVersion VERSION = new MinecraftVersion("1.21.5");
-    
+
     @TempDir
     Path temporaryDirectory;
-    
+
     private static void assertRejectedByValidationAndState(PlatformPaths paths) {
         Path database = paths.symbolDatabase(VERSION);
         assertThrows(SQLException.class, () -> new SymbolRepository(database).query(connection -> {
@@ -30,7 +30,7 @@ class SymbolSchemaTest {
         }));
         assertFalse(new VersionStateRepository(paths).isH2Ready(VERSION));
     }
-    
+
     private static String packageIdentityConstraint(Connection connection) throws Exception {
         try (var statement = connection.createStatement();
              var results = statement.executeQuery(sql("SELECT tc.constraint_name, cc.check_clause FROM information_schema.table_constraints tc JOIN information_schema.check_constraints cc ON cc.constraint_schema = tc.constraint_schema AND cc.constraint_name = tc.constraint_name WHERE tc.table_schema = 'PUBLIC' AND tc.table_name = 'PACKAGES' AND tc.constraint_type = 'CHECK'"))) {
@@ -42,7 +42,7 @@ class SymbolSchemaTest {
         }
         throw new AssertionError("Package source identity constraint not found");
     }
-    
+
     private static Set<String> tableNames(Connection connection) throws Exception {
         try (var statement = connection.createStatement();
              var results = statement.executeQuery(sql("SELECT table_name FROM information_schema.tables WHERE table_schema = 'PUBLIC'"))) {
@@ -53,7 +53,7 @@ class SymbolSchemaTest {
             return Set.copyOf(names);
         }
     }
-    
+
     private static Set<String> columnSignatures(Connection connection) throws Exception {
         try (var statement = connection.createStatement();
              var results = statement.executeQuery(sql("SELECT table_name, column_name, data_type, is_nullable FROM information_schema.columns WHERE table_schema = 'PUBLIC' ORDER BY table_name, ordinal_position"))) {
@@ -64,7 +64,7 @@ class SymbolSchemaTest {
             return Set.copyOf(signatures);
         }
     }
-    
+
     private static Set<String> constraintNames(Connection connection) throws Exception {
         try (var statement = connection.createStatement();
              var results = statement.executeQuery(sql("SELECT constraint_name FROM information_schema.table_constraints WHERE table_schema = 'PUBLIC'"))) {
@@ -75,7 +75,7 @@ class SymbolSchemaTest {
             return Set.copyOf(names);
         }
     }
-    
+
     private static Set<String> secondaryIndexNames(Connection connection) throws Exception {
         try (var statement = connection.createStatement();
              var results = statement.executeQuery(sql("SELECT index_name FROM information_schema.indexes WHERE table_schema = 'PUBLIC' AND index_name LIKE 'IDX_%'"))) {
@@ -86,15 +86,15 @@ class SymbolSchemaTest {
             return Set.copyOf(names);
         }
     }
-    
+
     private static Set<String> expectedConstraintNames() {
         return Set.of("PK_METADATA", "CK_METADATA_SINGLETON", "PK_PACKAGES", "CK_PACKAGES_SOURCE_IDENTITY", "UQ_PACKAGES_SOURCE_NAME", "UQ_PACKAGES_IDENTITY_REFERENCE", "PK_TYPES", "CK_TYPES_SOURCE_IDENTITY", "CK_TYPES_KIND", "UQ_TYPES_BINARY_NAME", "FK_TYPES_PACKAGE_IDENTITY", "PK_TYPE_INTERFACES", "FK_TYPE_INTERFACES_TYPE", "PK_FIELDS", "UQ_FIELDS_TYPE_ORDINAL", "FK_FIELDS_TYPE", "PK_METHODS", "UQ_METHODS_TYPE_ORDINAL", "FK_METHODS_TYPE", "PK_PARAMETERS", "UQ_PARAMETERS_METHOD_ORDINAL", "FK_PARAMETERS_METHOD");
     }
-    
+
     private static Set<String> expectedColumnSignatures() {
         return Set.of("METADATA|SINGLETON|BOOLEAN|NO", "METADATA|SCHEMA_VERSION|INTEGER|NO", "METADATA|MINECRAFT_VERSION|CHARACTER VARYING|NO", "METADATA|SOURCE_ROOT|CHARACTER VARYING|NO", "METADATA|REMAPPED_JAR_SHA256|CHARACTER VARYING|NO", "METADATA|BUILT_AT|TIMESTAMP WITH TIME ZONE|NO", "PACKAGES|ID|BIGINT|NO", "PACKAGES|SOURCE_NAMESPACE|CHARACTER VARYING|NO", "PACKAGES|FABRIC_API_VERSION|CHARACTER VARYING|YES", "PACKAGES|FABRIC_API_VERSION_KEY|CHARACTER VARYING|NO", "PACKAGES|NAME|CHARACTER VARYING|NO", "TYPES|ID|BIGINT|NO", "TYPES|PACKAGE_ID|BIGINT|NO", "TYPES|SOURCE_NAMESPACE|CHARACTER VARYING|NO", "TYPES|FABRIC_API_VERSION|CHARACTER VARYING|YES", "TYPES|FABRIC_API_VERSION_KEY|CHARACTER VARYING|NO", "TYPES|BINARY_NAME|CHARACTER VARYING|NO", "TYPES|SIMPLE_NAME|CHARACTER VARYING|NO", "TYPES|KIND|CHARACTER VARYING|NO", "TYPES|SUPERCLASS_BINARY_NAME|CHARACTER VARYING|YES", "TYPES|SOURCE_PATH|CHARACTER VARYING|NO", "TYPES|START_OFFSET|INTEGER|NO", "TYPES|END_OFFSET|INTEGER|NO", "TYPES|START_LINE|INTEGER|NO", "TYPES|END_LINE|INTEGER|NO", "TYPE_INTERFACES|TYPE_ID|BIGINT|NO", "TYPE_INTERFACES|ORDINAL|INTEGER|NO", "TYPE_INTERFACES|INTERFACE_BINARY_NAME|CHARACTER VARYING|NO", "FIELDS|ID|BIGINT|NO", "FIELDS|TYPE_ID|BIGINT|NO", "FIELDS|ORDINAL|INTEGER|NO", "FIELDS|NAME|CHARACTER VARYING|NO", "FIELDS|TYPE|CHARACTER VARYING|NO", "FIELDS|MODIFIERS|CHARACTER VARYING|NO", "FIELDS|START_OFFSET|INTEGER|NO", "FIELDS|END_OFFSET|INTEGER|NO", "FIELDS|START_LINE|INTEGER|NO", "FIELDS|END_LINE|INTEGER|NO", "METHODS|ID|BIGINT|NO", "METHODS|TYPE_ID|BIGINT|NO", "METHODS|ORDINAL|INTEGER|NO", "METHODS|NAME|CHARACTER VARYING|NO", "METHODS|DESCRIPTOR|CHARACTER VARYING|NO", "METHODS|RETURN_TYPE|CHARACTER VARYING|YES", "METHODS|MODIFIERS|CHARACTER VARYING|NO", "METHODS|CONSTRUCTOR|BOOLEAN|NO", "METHODS|START_OFFSET|INTEGER|NO", "METHODS|END_OFFSET|INTEGER|NO", "METHODS|START_LINE|INTEGER|NO", "METHODS|END_LINE|INTEGER|NO", "PARAMETERS|ID|BIGINT|NO", "PARAMETERS|METHOD_ID|BIGINT|NO", "PARAMETERS|ORDINAL|INTEGER|NO", "PARAMETERS|NAME|CHARACTER VARYING|NO", "PARAMETERS|TYPE|CHARACTER VARYING|NO", "PARAMETERS|VARARGS|BOOLEAN|NO", "PARAMETERS|START_OFFSET|INTEGER|NO", "PARAMETERS|END_OFFSET|INTEGER|NO", "PARAMETERS|START_LINE|INTEGER|NO", "PARAMETERS|END_LINE|INTEGER|NO");
     }
-    
+
     private static void assertFails(Connection connection, String sql) {
         assertThrows(java.sql.SQLException.class, () -> {
             try (var statement = connection.createStatement()) {
@@ -102,19 +102,19 @@ class SymbolSchemaTest {
             }
         });
     }
-    
+
     private static String sql(String statement) {
         return statement;
     }
-    
+
     private static String dropMethodsIndexSql() {
         return "DROP INDEX idx_methods_type_name";
     }
-    
+
     private static String weakPackageIdentitySql() {
         return "ALTER TABLE packages ADD CONSTRAINT ck_packages_source_identity CHECK (TRUE)";
     }
-    
+
     @Test
     void createsTypedH2MetadataAndNormalizedSchema() throws Exception {
         Path database = temporaryDirectory.resolve("symbols.mv.db");
@@ -123,7 +123,7 @@ class SymbolSchemaTest {
             SymbolSchema.create(connection, VERSION, sourceRoot, "a".repeat(64), Instant.parse("2026-07-12T12:00:00Z"));
             SymbolSchema.createIndexes(connection);
             SymbolSchema.validate(connection);
-            
+
             assertEquals(Set.of("METADATA", "PACKAGES", "TYPES", "TYPE_INTERFACES", "FIELDS", "METHODS", "PARAMETERS"), tableNames(connection));
             assertEquals(expectedColumnSignatures(), columnSignatures(connection));
             assertEquals(expectedConstraintNames(), constraintNames(connection));
@@ -139,7 +139,7 @@ class SymbolSchemaTest {
             }
         }
     }
-    
+
     @Test
     void enforcesWireKindsNamespacesBooleansAndForeignKeys() throws Exception {
         Path database = temporaryDirectory.resolve("symbols.mv.db");
@@ -168,7 +168,7 @@ class SymbolSchemaTest {
             assertFails(connection, "INSERT INTO fields(type_id, ordinal, name, type, modifiers, start_offset, end_offset, start_line, end_line) VALUES (99, 1, 'orphan', 'int', 'public', 0, 1, 1, 1)");
         }
     }
-    
+
     @Test
     void reopenedValidationAndVersionStateRejectMissingSecondaryIndex() throws Exception {
         var paths = createReadyDatabase();
@@ -177,10 +177,10 @@ class SymbolSchemaTest {
              var statement = connection.createStatement()) {
             statement.execute(dropMethodsIndexSql());
         }
-        
+
         assertRejectedByValidationAndState(paths);
     }
-    
+
     @Test
     void reopenedValidationAndVersionStateRejectWeakenedIdentityConstraint() throws Exception {
         var paths = createReadyDatabase();
@@ -191,10 +191,10 @@ class SymbolSchemaTest {
             statement.execute("ALTER TABLE packages DROP CONSTRAINT " + identityConstraint);
             statement.execute(weakPackageIdentitySql());
         }
-        
+
         assertRejectedByValidationAndState(paths);
     }
-    
+
     private PlatformPaths createReadyDatabase() throws Exception {
         var paths = new PlatformPaths(temporaryDirectory);
         Path database = paths.symbolDatabase(VERSION);

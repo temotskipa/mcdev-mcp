@@ -9,7 +9,7 @@ final class NonClosingOutputStream extends FilterOutputStream {
     NonClosingOutputStream(OutputStream output) {
         super(Objects.requireNonNull(output, "output"));
     }
-    
+
     @Override
     public void close() throws IOException {
         flush();

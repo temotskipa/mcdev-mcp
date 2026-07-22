@@ -18,7 +18,7 @@ public record ClassFileType(ClassDesc descriptor, Optional<ClassDesc> superclass
         nestHost = Optional.ofNullable(nestHost).orElseThrow(() -> new NullPointerException("nestHost"));
         nestMembers = List.copyOf(nestMembers);
     }
-    
+
     public String binaryName() {
         return ClassDescriptors.binaryName(descriptor);
     }

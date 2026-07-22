@@ -29,7 +29,7 @@ record SymbolIndexSnapshot(SymbolIndexMetadata metadata, List<IndexedPackageSnap
         methods = List.copyOf(methods);
         parameters = List.copyOf(parameters);
     }
-    
+
     static SymbolIndexSnapshot expected(IndexRequest request, String remappedJarSha256, Instant builtAt, List<IndexedPackage> packages, List<ParsedType> parsedTypes) {
         SymbolIndexMetadata metadata = new SymbolIndexMetadata(true, dev.mcdevmcp.storage.h2.SymbolSchema.VERSION, request.minecraftVersion(), request.sourceRoots().getFirst().path(), remappedJarSha256, builtAt);
         List<IndexedPackageSnapshot> expectedPackages = packages.stream().map(indexedPackage -> new IndexedPackageSnapshot(indexedPackage.id(), indexedPackage.namespace(), indexedPackage.fabricApiVersion(), indexedPackage.fabricApiVersion().map(FabricApiVersion::value).orElse(""), indexedPackage.name())).toList();
@@ -62,7 +62,7 @@ record SymbolIndexSnapshot(SymbolIndexMetadata metadata, List<IndexedPackageSnap
         }
         return new SymbolIndexSnapshot(metadata, expectedPackages, expectedTypes, expectedInterfaces, expectedFields, expectedMethods, expectedParameters);
     }
-    
+
     private static SymbolIndexSnapshot read(Connection connection) throws SQLException {
         SymbolIndexMetadata metadata;
         try (Statement statement = connection.createStatement();
@@ -119,30 +119,30 @@ record SymbolIndexSnapshot(SymbolIndexMetadata metadata, List<IndexedPackageSnap
         }
         return new SymbolIndexSnapshot(metadata, packages, types, interfaces, fields, methods, parameters);
     }
-    
+
     private static Optional<FabricApiVersion> optionalVersion(String value) {
         return Optional.ofNullable(value).map(FabricApiVersion::new);
     }
-    
+
     private static Optional<ClassDesc> optionalClass(String value) {
         return Optional.ofNullable(value).map(ClassDesc::of);
     }
-    
+
     private static List<Modifier> modifiers(java.util.Set<Modifier> modifiers) {
         return Arrays.stream(Modifier.values()).filter(modifiers::contains).toList();
     }
-    
+
     private static List<Modifier> modifiers(String value) {
         if (value.isEmpty()) {
             return List.of();
         }
         return Arrays.stream(value.split(",", -1)).map(name -> Modifier.valueOf(name.toUpperCase(Locale.ROOT))).toList();
     }
-    
+
     private static SourceRange range(ResultSet results, int firstColumn) throws SQLException {
         return new SourceRange(results.getInt(firstColumn), results.getInt(firstColumn + 1), results.getInt(firstColumn + 2), results.getInt(firstColumn + 3));
     }
-    
+
     void validate(Connection connection) throws SQLException {
         SymbolIndexSnapshot actual = read(connection);
         if (!equals(actual)) {

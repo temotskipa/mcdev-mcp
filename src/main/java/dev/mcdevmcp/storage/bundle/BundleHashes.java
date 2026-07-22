@@ -14,7 +14,7 @@ import java.util.Objects;
 public final class BundleHashes {
     private BundleHashes() {
     }
-    
+
     public static String sha256(Path file, Cancellation cancellation) throws IOException, InterruptedException {
         Objects.requireNonNull(file, "file");
         Objects.requireNonNull(cancellation, "cancellation");
@@ -30,11 +30,11 @@ public final class BundleHashes {
         cancellation.throwIfCancelled();
         return HexFormat.of().formatHex(digest.digest());
     }
-    
+
     public static String sha256(byte[] bytes) {
         return HexFormat.of().formatHex(sha256().digest(Objects.requireNonNull(bytes, "bytes")));
     }
-    
+
     private static MessageDigest sha256() {
         try {
             return MessageDigest.getInstance("SHA-256");

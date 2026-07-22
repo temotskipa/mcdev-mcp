@@ -12,7 +12,7 @@ record TextArgument(ArgumentShape shape, String value) {
             Objects.requireNonNull(value, "value");
         }
     }
-    
+
     static TextArgument fromWire(Object value) {
         if (value == null) {
             return new TextArgument(ArgumentShape.MISSING, null);
@@ -22,15 +22,15 @@ record TextArgument(ArgumentShape shape, String value) {
         }
         return new TextArgument(ArgumentShape.OTHER, String.valueOf(value));
     }
-    
+
     boolean isText() {
         return shape == ArgumentShape.TEXT;
     }
-    
+
     boolean isMissing() {
         return shape == ArgumentShape.MISSING;
     }
-    
+
     String display() {
         return isMissing() ? "undefined" : value;
     }

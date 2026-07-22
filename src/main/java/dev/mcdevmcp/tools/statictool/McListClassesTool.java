@@ -9,10 +9,10 @@ import java.util.stream.Collectors;
 
 final class McListClassesTool {
     private static final LimitSpec LIMIT = new LimitSpec(200, 5000);
-    
+
     private McListClassesTool() {
     }
-    
+
     static ToolBinding<ListClassesArguments> binding(StaticToolSupport support) {
         var decoder = ArgumentDecoder.sdk(ListClassesWireArguments.class).map(ListClassesArguments::from);
         return ToolBinding.blocking(decoder, (arguments, _) -> support.execute("mc_list_classes", () -> {

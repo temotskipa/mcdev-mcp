@@ -9,7 +9,7 @@ import java.util.Objects;
 public final class ChannelRangeInputStream extends InputStream {
     private final FileChannel channel;
     private long remaining;
-    
+
     public ChannelRangeInputStream(FileChannel channel, long offset, long length) throws IOException {
         this.channel = Objects.requireNonNull(channel, "channel");
         if (offset < 0 || length < 0) {
@@ -18,14 +18,14 @@ public final class ChannelRangeInputStream extends InputStream {
         channel.position(offset);
         remaining = length;
     }
-    
+
     @Override
     public int read() throws IOException {
         byte[] single = new byte[1];
         int read = read(single, 0, 1);
         return read < 0 ? -1 : Byte.toUnsignedInt(single[0]);
     }
-    
+
     @Override
     public int read(byte[] bytes, int offset, int length) throws IOException {
         Objects.checkFromIndexSize(offset, length, bytes.length);

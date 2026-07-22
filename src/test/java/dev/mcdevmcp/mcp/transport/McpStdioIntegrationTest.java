@@ -38,10 +38,10 @@ class McpStdioIntegrationTest {
     };
     private static final TypeRef<List<Map<String, Object>>> LIST_OF_MAPS_TYPE = new TypeRef<>() {
     };
-    
+
     @TempDir
     Path temporaryDirectory;
-    
+
     private static void assertProtocolMatches(String contractName, Map<String, Object> actual, boolean normalizeVersion) throws IOException {
         var expected = new LinkedHashMap<>(McpContractTestSupport.readContract(contractName));
         expected.remove("id");
@@ -56,18 +56,18 @@ class McpStdioIntegrationTest {
         }
         assertEquals(McpContractTestSupport.normalize(expected), McpContractTestSupport.normalize(actual));
     }
-    
+
     private static Map<String, Object> readJsonLine(BufferedReader reader) throws IOException {
         String line = reader.readLine();
         assertNotNull(line, "server closed STDOUT before responding");
         return MAPPER.readValue(line, MAP_TYPE);
     }
-    
+
     private static void write(OutputStreamWriter writer, Map<String, Object> message) throws IOException {
         writer.write(MAPPER.writeValueAsString(message) + System.lineSeparator());
         writer.flush();
     }
-    
+
     private static Map<String, Object> request(int id, String method, Map<String, Object> params) {
         var request = new LinkedHashMap<String, Object>();
         request.put("jsonrpc", "2.0");
@@ -76,19 +76,19 @@ class McpStdioIntegrationTest {
         request.put("params", params);
         return request;
     }
-    
+
     private static Map<String, Object> initializedNotification() {
         return Map.of("jsonrpc", "2.0", "method", "notifications/initialized", "params", Map.of());
     }
-    
+
     private static Map<String, Object> initializeParams() {
         return Map.of("protocolVersion", "2024-11-05", "capabilities", Map.of(), "clientInfo", Map.of("name", "contract-test", "version", "1"));
     }
-    
+
     private static ToolBinding<TestEmptyArguments> binding(ToolHandler<TestEmptyArguments> handler) {
         return new ToolBinding<>(ArgumentDecoder.sdk(TestEmptyArguments.class), handler);
     }
-    
+
     @Test
     void shadedJarServesOnlyJsonRpcOverStdio() throws Exception {
         var processBuilder = new ProcessBuilder(JAVA.toString(), "-Duser.home=" + temporaryDirectory, "-jar", JAR.toString(), "serve");
@@ -112,12 +112,12 @@ class McpStdioIntegrationTest {
                     var unknownTool = readJsonLine(reader);
                     write(writer, request(6, "tools/call", Map.of("name", "mc_version", "arguments", Map.of("action", "list"))));
                     var versionList = readJsonLine(reader);
-                    
+
                     assertProtocolMatches("initialize.json", initialize, true);
                     assertProtocolMatches("tools-list-default.json", tools, false);
                     var versionResult = MAPPER.convertValue(versionList.get("result"), MAP_TYPE);
                     var versionContent = MAPPER.convertValue(versionResult.get("content"), LIST_OF_MAPS_TYPE);
-                    assertEquals("No Minecraft versions found.\n\nRun this command to initialize a version:\n  npx mcdev-mcp init -v <version>\n\nExample:\n  npx mcdev-mcp init -v 1.21.11", versionContent.getFirst().get("text"));
+                    assertEquals("No Minecraft versions found.\n\nRun this command to initialize a version:\n  java -jar mcdev-mcp-3.0.0.jar init -v <version>\n\nExample:\n  java -jar mcdev-mcp-3.0.0.jar init -v 1.21.11", versionContent.getFirst().get("text"));
                     assertNotEquals(Boolean.TRUE, versionResult.get("isError"));
                     assertProtocolMatches("resources-list.json", resources, false);
                     var resourceResult = MAPPER.convertValue(resource.get("result"), MAP_TYPE);
@@ -132,11 +132,11 @@ class McpStdioIntegrationTest {
                 } finally {
                     writer.close();
                 }
-                
+
                 assertTrue(process.waitFor(Duration.ofSeconds(15)), "shaded JAR did not stop after STDIN closed");
                 assertEquals("", reader.lines().collect(Collectors.joining("\n")), "serve emitted trailing data on STDOUT");
             }
-            
+
             assertEquals(0, process.exitValue());
             assertArrayEquals(new byte[0], process.getErrorStream().readAllBytes(), "serve emitted diagnostics to STDERR");
         } finally {
@@ -146,7 +146,7 @@ class McpStdioIntegrationTest {
             }
         }
     }
-    
+
     @Test
     void incompleteHandlerDoesNotBlockAnotherRequestAndCancellationCancelsItsFuture() throws Exception {
         var pending = new CompletableFuture<ToolResult>();
@@ -158,19 +158,19 @@ class McpStdioIntegrationTest {
                 return pending;
             }), ToolAvailability.ALWAYS);
             var fast = new ToolDefinition("fast", "fast", Map.of("type", "object"), binding((_, _) -> ToolHandlers.completed(ToolResult.text("fast"))), ToolAvailability.ALWAYS);
-            
+
             var slowRequest = McpSchema.CallToolRequest.builder("slow").arguments(Map.of()).build();
             var fastRequest = McpSchema.CallToolRequest.builder("fast").arguments(Map.of()).build();
             var slowSubscription = adapter.callHandler(slow).apply(null, slowRequest).subscribe();
             var fastResult = adapter.callHandler(fast).apply(null, fastRequest).toFuture().get(5, TimeUnit.SECONDS);
-            
+
             assertEquals("fast", ((McpSchema.TextContent) fastResult.content().getFirst()).text());
             slowSubscription.dispose();
             assertTrue(pending.isCancelled());
             assertTrue(cancellation.get().isCancelled());
         }
     }
-    
+
     @Test
     void synchronousAndAsynchronousHandlerFailuresBecomeToolErrors() throws Exception {
         var synchronous = new ToolDefinition("sync", "sync", Map.of("type", "object"), binding((_, _) -> {
@@ -179,10 +179,10 @@ class McpStdioIntegrationTest {
         var asynchronous = new ToolDefinition("async", "async", Map.of("type", "object"), binding((_, _) -> CompletableFuture.failedFuture(new IllegalStateException("async failure"))), ToolAvailability.ALWAYS);
         try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
             var adapter = new McpSdkAdapter(MAPPER, executor);
-            
+
             var syncResult = adapter.callHandler(synchronous).apply(null, McpSchema.CallToolRequest.builder("sync").arguments(Map.of()).build()).toFuture().get(5, TimeUnit.SECONDS);
             var asyncResult = adapter.callHandler(asynchronous).apply(null, McpSchema.CallToolRequest.builder("async").arguments(Map.of()).build()).toFuture().get(5, TimeUnit.SECONDS);
-            
+
             assertTrue(syncResult.isError());
             assertEquals("Error executing sync: sync failure", ((McpSchema.TextContent) syncResult.content().getFirst()).text());
             assertTrue(asyncResult.isError());

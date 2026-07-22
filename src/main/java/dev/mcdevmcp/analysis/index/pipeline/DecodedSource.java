@@ -18,17 +18,17 @@ record DecodedSource(SourceRoot root, Path absolutePath, Path relativePath, Stri
         Objects.requireNonNull(packageName, "packageName");
         topLevelNames = List.copyOf(topLevelNames);
     }
-    
+
     DecodedSource withDeclarations(String parsedPackageName, List<String> parsedTopLevelNames) {
         return new DecodedSource(root, absolutePath, relativePath, relativeName, content, uri, parsedPackageName, parsedTopLevelNames);
     }
-    
+
     String primaryBinaryName() {
         String fileName = relativePath.getFileName().toString();
         String simpleName = fileName.substring(0, fileName.length() - ".java".length());
         return packageName.isEmpty() ? simpleName : packageName + "." + simpleName;
     }
-    
+
     @Override
     public int compareTo(DecodedSource other) {
         int rootOrder = root.compareTo(other.root);

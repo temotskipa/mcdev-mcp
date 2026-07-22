@@ -11,10 +11,10 @@ import java.util.jar.JarOutputStream;
 
 final class CallgraphTestSupport {
     private static final List<String> DEBUG_SOURCES = List.of("Base.java", "Contract.java", "Target.java", "Fixture.java");
-    
+
     private CallgraphTestSupport() {
     }
-    
+
     static Fixture compile(Path root) throws IOException {
         Path sources = root.resolve("sources");
         Path classes = root.resolve("classes");
@@ -28,7 +28,7 @@ final class CallgraphTestSupport {
         compile(classes, List.of("--release", "25", "-g:lines,source", "-d", classes.toString()), debugSources);
         Path noLines = copyResource(sources, "NoLines.java");
         compile(classes, List.of("--release", "25", "-g:none", "-classpath", classes.toString(), "-d", classes.toString()), List.of(noLines));
-        
+
         Map<String, byte[]> classBytes = new TreeMap<>();
         try (var files = Files.walk(classes)) {
             for (Path file : files.filter(Files::isRegularFile).filter(path -> path.toString().endsWith(".class")).sorted().toList()) {
@@ -53,7 +53,7 @@ final class CallgraphTestSupport {
         }
         return new Fixture(jar, Map.copyOf(classBytes));
     }
-    
+
     private static Path copyResource(Path sources, String name) throws IOException {
         Path target = sources.resolve(name);
         String resource = "callgraph/fixture/" + name;
@@ -62,7 +62,7 @@ final class CallgraphTestSupport {
         }
         return target;
     }
-    
+
     private static void compile(Path classes, List<String> options, List<Path> sources) throws IOException {
         var compiler = ToolProvider.getSystemJavaCompiler();
         if (compiler == null) {
@@ -75,7 +75,7 @@ final class CallgraphTestSupport {
             throw new IOException("Fixture compilation failed with exit code " + result + " into " + classes);
         }
     }
-    
+
     record Fixture(Path jar, Map<String, byte[]> classBytes) {
         byte[] bytes(String binaryName) {
             return Objects.requireNonNull(classBytes.get(binaryName.replace('.', '/') + ".class"), binaryName);

@@ -13,30 +13,30 @@ public final class ToolBinding<A> {
     private final ArgumentDecoder<A> decoder;
     private final ToolHandler<A> handler;
     private final BlockingToolHandler<A> blockingHandler;
-    
+
     public ToolBinding(ArgumentDecoder<A> decoder, ToolHandler<A> handler) {
         this.decoder = Objects.requireNonNull(decoder, "decoder");
         this.handler = Objects.requireNonNull(handler, "handler");
         blockingHandler = null;
     }
-    
+
     private ToolBinding(ArgumentDecoder<A> decoder, BlockingToolHandler<A> blockingHandler) {
         this.decoder = Objects.requireNonNull(decoder, "decoder");
         handler = null;
         this.blockingHandler = Objects.requireNonNull(blockingHandler, "blockingHandler");
     }
-    
+
     public static <A> ToolBinding<A> blocking(ArgumentDecoder<A> decoder, BlockingToolHandler<A> handler) {
         return new ToolBinding<>(decoder, handler);
     }
-    
+
     ToolBinding<A> withBlockingExecutor(ExecutorService executor) {
         if (blockingHandler == null) {
             return this;
         }
         return new ToolBinding<>(decoder, ToolHandlers.blocking(executor, blockingHandler));
     }
-    
+
     public CompletionStage<ToolResult> invoke(McpJsonMapper mapper, Map<String, Object> arguments, Cancellation cancellation) {
         Objects.requireNonNull(mapper, "mapper");
         Objects.requireNonNull(arguments, "arguments");

@@ -11,7 +11,7 @@ import java.util.*;
 final class JavacDiagnostics {
     private JavacDiagnostics() {
     }
-    
+
     static List<IndexDiagnostic> classifyDiagnostics(List<Diagnostic<? extends JavaFileObject>> diagnostics, SourceCorpus corpus, Map<URI, List<OffsetRange>> executableBodies, Set<URI> ownedSources) throws IndexBuildException {
         List<IndexDiagnostic> retained = new ArrayList<>();
         List<IndexDiagnostic> fatal = new ArrayList<>();
@@ -36,14 +36,14 @@ final class JavacDiagnostics {
         retained.sort(IndexDiagnostic.ORDERING);
         return List.copyOf(retained);
     }
-    
+
     static void failOnSyntaxErrors(List<Diagnostic<? extends JavaFileObject>> diagnostics, SourceCorpus corpus) throws IndexBuildException {
         List<IndexDiagnostic> errors = diagnostics.stream().filter(diagnostic -> diagnostic.getKind() == Diagnostic.Kind.ERROR).map(diagnostic -> diagnostic(diagnostic, corpus)).sorted(IndexDiagnostic.ORDERING).toList();
         if (!errors.isEmpty()) {
             throw new IndexBuildException("Fatal Javac syntax diagnostic: " + errors.getFirst().display());
         }
     }
-    
+
     private static IndexDiagnostic diagnostic(Diagnostic<? extends JavaFileObject> diagnostic, SourceCorpus corpus) {
         Optional<DecodedSource> source = diagnostic.getSource() == null ? Optional.empty() : Optional.of(corpus.require(diagnostic.getSource().toUri()));
         Path sourcePath = source.map(DecodedSource::relativePath).orElse(Path.of("compiler"));

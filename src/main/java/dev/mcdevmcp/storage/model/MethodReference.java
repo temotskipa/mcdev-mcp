@@ -10,7 +10,7 @@ public record MethodReference(String className, String methodName, String descri
             throw new IllegalArgumentException("edgeId must be positive");
         }
     }
-    
+
     public String displayName() {
         return className + "." + methodName + (descriptor == null ? "" : descriptor);
     }

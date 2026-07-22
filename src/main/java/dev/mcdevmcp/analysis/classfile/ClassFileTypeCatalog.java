@@ -18,11 +18,11 @@ import java.util.zip.ZipFile;
 
 public final class ClassFileTypeCatalog {
     private final NavigableMap<String, ClassFileType> types;
-    
+
     private ClassFileTypeCatalog(Map<String, ClassFileType> types) {
         this.types = Collections.unmodifiableNavigableMap(new TreeMap<>(types));
     }
-    
+
     public static ClassFileTypeCatalog read(Path jar) throws IOException {
         try {
             return read(jar, Cancellation.none());
@@ -31,7 +31,7 @@ public final class ClassFileTypeCatalog {
             throw new IOException("Class-file catalog build was interrupted", exception);
         }
     }
-    
+
     public static ClassFileTypeCatalog read(Path jar, Cancellation cancellation) throws IOException, InterruptedException {
         Path normalized = Objects.requireNonNull(jar, "jar").toAbsolutePath().normalize();
         Objects.requireNonNull(cancellation, "cancellation");
@@ -66,7 +66,7 @@ public final class ClassFileTypeCatalog {
         }
         return new ClassFileTypeCatalog(catalog);
     }
-    
+
     private static ClassFileType toType(ClassModel model) {
         ClassDesc descriptor = model.thisClass().asSymbol();
         Optional<ClassDesc> superclass = model.superclass().map(ClassEntry::asSymbol);
@@ -78,19 +78,19 @@ public final class ClassFileTypeCatalog {
         List<ClassDesc> nestMembers = model.findAttribute(Attributes.nestMembers()).stream().flatMap(attribute -> attribute.nestMembers().stream()).map(ClassEntry::asSymbol).toList();
         return new ClassFileType(descriptor, superclass, interfaces, model.flags().flags(), outerClass, innerName, nestHost, nestMembers);
     }
-    
+
     public boolean contains(String binaryName) {
         return types.containsKey(Objects.requireNonNull(binaryName, "binaryName"));
     }
-    
+
     public Optional<ClassFileType> find(String binaryName) {
         return Optional.ofNullable(types.get(Objects.requireNonNull(binaryName, "binaryName")));
     }
-    
+
     public ClassFileType require(String binaryName) {
         return find(binaryName).orElseThrow(() -> new NoSuchElementException("Class-file type not found: " + binaryName));
     }
-    
+
     public List<ClassFileType> types() {
         return List.copyOf(types.values());
     }

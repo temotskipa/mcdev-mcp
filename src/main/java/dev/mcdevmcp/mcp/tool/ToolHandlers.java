@@ -9,11 +9,11 @@ import java.util.concurrent.Future;
 public final class ToolHandlers {
     private ToolHandlers() {
     }
-    
+
     public static CompletionStage<ToolResult> completed(ToolResult result) {
         return CompletableFuture.completedFuture(Objects.requireNonNull(result));
     }
-    
+
     public static <A> ToolHandler<A> blocking(ExecutorService executor, BlockingToolHandler<A> handler) {
         Objects.requireNonNull(executor, "executor");
         Objects.requireNonNull(handler, "handler");

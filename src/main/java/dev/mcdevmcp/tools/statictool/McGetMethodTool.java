@@ -13,7 +13,7 @@ import java.util.stream.Collectors;
 final class McGetMethodTool {
     private McGetMethodTool() {
     }
-    
+
     static ToolBinding<GetMethodArguments> binding(StaticToolSupport support) {
         var decoder = ArgumentDecoder.sdk(GetMethodWireArguments.class).map(GetMethodArguments::from);
         return ToolBinding.blocking(decoder, (arguments, _) -> support.execute("mc_get_method", () -> {
@@ -58,11 +58,11 @@ final class McGetMethodTool {
             return ToolResult.text(header + String.join("\n", Arrays.copyOfRange(lines, firstLine, lastLine)));
         }));
     }
-    
+
     private static String header(ClassSymbol type, String className, MethodSymbol method, String parameters) {
         return "// Method: " + className + "#" + method.name() + "\n" + "// Signature: " + StaticToolSupport.returnType(method.returnType().orElse(null)) + " " + method.name() + "(" + parameters + ")\n" + "// Modifiers: " + StaticToolSupport.modifiers(method.modifiers()).stripTrailing() + "\n" + "// Lines: " + method.startLine() + "-" + method.endLine() + "\n\n" + type.superclassBinaryName().map(value -> "// Class extends: " + value + "\n\n").orElse("");
     }
-    
+
     private static ToolResult missing(String className, String methodName) {
         return ToolResult.text("Method \"" + methodName + "\" not found in class " + className);
     }

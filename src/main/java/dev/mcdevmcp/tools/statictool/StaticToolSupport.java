@@ -27,20 +27,20 @@ final class StaticToolSupport {
     private final VersionStateRepository states;
     private final ConcurrentHashMap<MinecraftVersion, CallgraphRepository> callgraphs = new ConcurrentHashMap<>();
     private volatile MinecraftVersion activeVersion;
-    
+
     StaticToolSupport(PlatformPaths paths) {
         this.paths = paths;
         states = new VersionStateRepository(paths);
     }
-    
+
     static String modifiers(Set<Modifier> values) {
         return values.stream().sorted(Comparator.comparing(Enum::ordinal)).map(value -> value.name().toLowerCase(Locale.ROOT)).collect(Collectors.joining(" ", "", values.isEmpty() ? "" : " "));
     }
-    
+
     static String returnType(String value) {
         return value == null ? "undefined" : value;
     }
-    
+
     ToolResult execute(String toolName, StaticToolOperation operation) {
         try {
             return operation.run();
@@ -53,15 +53,15 @@ final class StaticToolSupport {
             return ToolResult.error("Error executing " + toolName + ": " + message);
         }
     }
-    
+
     MinecraftVersion resolve(String explicit) {
         if (explicit != null && !explicit.isBlank()) {
             MinecraftVersion version = new MinecraftVersion(explicit);
             if (!Files.isDirectory(paths.sourceRoot(version))) {
-                throw new ExpectedVersionException("Version " + explicit + " not initialized. STOP and ask the USER to run this command in their terminal:\n" + "  node dist/cli.js init -v " + explicit + "\n\n" + "This will download, decompile, and index Minecraft " + explicit + " sources (including callgraph).");
+                throw new ExpectedVersionException("Version " + explicit + " not initialized. STOP and ask the USER to run this command in their terminal:\n" + "  java -jar mcdev-mcp-3.0.0.jar init -v " + explicit + "\n\n" + "This will download, decompile, and index Minecraft " + explicit + " sources (including callgraph).");
             }
             if (!states.isH2Ready(version)) {
-                throw new ExpectedVersionException("Version " + explicit + " not indexed. STOP and ask the USER to run this command in their terminal:\n" + "  node dist/cli.js init -v " + explicit + "\n\n" + "This will index Minecraft " + explicit + " sources (including callgraph).");
+                throw new ExpectedVersionException("Version " + explicit + " not indexed. STOP and ask the USER to run this command in their terminal:\n" + "  java -jar mcdev-mcp-3.0.0.jar init -v " + explicit + "\n\n" + "This will index Minecraft " + explicit + " sources (including callgraph).");
             }
             return version;
         }
@@ -77,31 +77,31 @@ final class StaticToolSupport {
         }
         return activeVersion;
     }
-    
+
     void activate(MinecraftVersion version) {
         activeVersion = version;
     }
-    
+
     Optional<MinecraftVersion> active() {
         return Optional.ofNullable(activeVersion);
     }
-    
+
     SymbolRepository repository(MinecraftVersion version) {
         return new SymbolRepository(paths.symbolDatabase(version));
     }
-    
+
     CallgraphRepository callgraphRepository(MinecraftVersion version) {
         return callgraphs.computeIfAbsent(version, value -> new CallgraphRepository(paths.callgraphBundle(value), value));
     }
-    
+
     boolean indexed(MinecraftVersion version) {
         return states.isH2Ready(version);
     }
-    
+
     PlatformPaths paths() {
         return paths;
     }
-    
+
     String fullSource(MinecraftVersion version, ClassSymbol symbol) throws IOException {
         Path root = symbol.namespace() == SourceNamespace.FABRIC ? paths.fabricSourceRoot(symbol.fabricApiVersion().orElseThrow()) : paths.sourceRoot(version);
         Path relative;
@@ -120,5 +120,5 @@ final class StaticToolSupport {
         }
         return Files.readString(file, StandardCharsets.UTF_8);
     }
-    
+
 }

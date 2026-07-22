@@ -8,7 +8,7 @@ import java.nio.file.StandardOpenOption;
 public final class DebugLog {
     private DebugLog() {
     }
-    
+
     public static void write(AppEnvironment environment, String message) {
         try {
             String value = environment.value("MCDEV_MCP_DEBUG_LOG").orElse("");

@@ -12,12 +12,12 @@ final class PausingDatabaseFileOperations implements DatabaseFileOperations {
     private final CountDownLatch deletionStarted = new CountDownLatch(1);
     private final CountDownLatch continueDeletion = new CountDownLatch(1);
     private final AtomicBoolean pauseNextDeletion = new AtomicBoolean(true);
-    
+
     @Override
     public void move(Path source, Path target, CopyOption... options) throws IOException {
         Files.move(source, target, options);
     }
-    
+
     @Override
     public void delete(Path path) throws IOException {
         if (pauseNextDeletion.compareAndSet(true, false)) {
@@ -33,11 +33,11 @@ final class PausingDatabaseFileOperations implements DatabaseFileOperations {
         }
         DatabaseFileOperations.super.delete(path);
     }
-    
+
     boolean awaitDeletion() throws InterruptedException {
         return deletionStarted.await(5, TimeUnit.SECONDS);
     }
-    
+
     void continueDeletion() {
         continueDeletion.countDown();
     }

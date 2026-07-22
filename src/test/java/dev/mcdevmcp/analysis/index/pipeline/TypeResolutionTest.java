@@ -20,37 +20,37 @@ import static org.junit.jupiter.api.Assertions.*;
 class TypeResolutionTest {
     @TempDir
     Path temporaryDirectory;
-    
+
     private static void write(Path root, String relativePath, String source) throws IOException {
         Path file = root.resolve(relativePath);
         Files.createDirectories(file.getParent());
         Files.writeString(file, source, StandardCharsets.UTF_8);
     }
-    
+
     private static void assertHierarchy(List<String> dump, String type, String superclass) {
         assertTrue(dump.stream().anyMatch(row -> row.startsWith("types|") && row.contains("|" + type + "|") && row.contains("|" + superclass + "|")), dump.toString());
     }
-    
+
     private static void assertInterface(List<String> dump, String type, String interfaceName) {
         String typeRow = dump.stream().filter(row -> row.startsWith("types|") && row.contains("|" + type + "|")).findFirst().orElseThrow();
         String typeId = typeRow.split("\\|", -1)[1];
         assertTrue(dump.stream().anyMatch(row -> row.startsWith("type_interfaces|" + typeId + "|") && row.endsWith("|" + interfaceName)), dump.toString());
     }
-    
+
     @Test
     void classFileCatalogUsesFinalJdkApiAndPreservesBinaryHierarchy() throws Exception {
         Path jar = IndexerTestSupport.createJar(temporaryDirectory.resolve("catalog.jar"), Map.of("catalog/Outer.java", "package catalog; public class Outer { public static final class Inner extends java.util.ArrayList<String> implements java.io.Serializable {} }"));
-        
+
         ClassFileTypeCatalog catalog = ClassFileTypeCatalog.read(jar);
         ClassFileType inner = catalog.require("catalog.Outer$Inner");
-        
+
         assertEquals(ClassDesc.of("catalog.Outer$Inner"), inner.descriptor());
         assertEquals(Optional.of(ClassDesc.of("java.util.ArrayList")), inner.superclass());
         assertEquals(List.of(ClassDesc.of("java.io.Serializable")), inner.interfaces());
         assertTrue(inner.nestHost().isPresent());
         assertFalse(catalog.contains("module-info"));
     }
-    
+
     @Test
     void classFileCatalogRejectsDuplicateLogicalEntries() throws Exception {
         Path original = IndexerTestSupport.createJar(temporaryDirectory.resolve("original.jar"), Map.of("duplicate/Type.java", "package duplicate; public class Type {}"));
@@ -66,11 +66,11 @@ class TypeResolutionTest {
                 output.closeEntry();
             }
         }
-        
+
         IOException failure = assertThrows(IOException.class, () -> ClassFileTypeCatalog.read(duplicate));
         assertTrue(failure.getMessage().contains("duplicate.Type"));
     }
-    
+
     @Test
     void preservesParameterizedAndRawOwnersOfGenericNonStaticMemberTypes() throws Exception {
         Path sources = Files.createDirectories(temporaryDirectory.resolve("owners/owner"));
@@ -91,17 +91,17 @@ class TypeResolutionTest {
                                                        """, StandardCharsets.UTF_8);
         Path jar = IndexerTestSupport.createJar(temporaryDirectory.resolve("owners-empty.jar"), Map.of());
         Path database = temporaryDirectory.resolve("owners.mv.db");
-        
+
         new SourceIndexer().build(IndexerTestSupport.request(sources.getParent(), jar, database, 1));
         List<String> dump = IndexerTestSupport.dump(database);
-        
+
         assertTrue(dump.stream().anyMatch(row -> row.startsWith("fields|") && row.contains("|field|owner.Outer<java.lang.String>::owner.Outer$Inner<java.lang.Integer>|")), dump.toString());
         assertTrue(dump.stream().anyMatch(row -> row.startsWith("fields|") && row.contains("|rawOwner|owner.Outer::owner.Outer$Inner|")), dump.toString());
         assertTrue(dump.stream().anyMatch(row -> row.startsWith("fields|") && row.contains("|wildcardArray|java.util.List<? extends owner.Outer<java.lang.String>::owner.Outer$Inner<java.lang.Integer>[]>|")), dump.toString());
         assertTrue(dump.stream().anyMatch(row -> row.startsWith("methods|") && row.contains("|convert|") && row.contains("|owner.Outer<java.lang.String>::owner.Outer$Inner<java.lang.Integer>|")), dump.toString());
         assertTrue(dump.stream().anyMatch(row -> row.startsWith("parameters|") && row.contains("|value|owner.Outer<java.lang.String>::owner.Outer$Inner<? super java.lang.Long>|")), dump.toString());
     }
-    
+
     @Test
     void resolvesEverySourceOnlyHierarchyNameForm() throws Exception {
         Path root = temporaryDirectory.resolve("hierarchy");
@@ -118,10 +118,10 @@ class TypeResolutionTest {
         write(root, "use/NestedChild.java", "package use; import nested.Owner; public class NestedChild extends Owner.Nested implements Owner.Contract {}");
         Path jar = IndexerTestSupport.createJar(temporaryDirectory.resolve("hierarchy-empty.jar"), Map.of());
         Path database = temporaryDirectory.resolve("hierarchy.mv.db");
-        
+
         new SourceIndexer().build(IndexerTestSupport.request(root, jar, database, 4));
         List<String> dump = IndexerTestSupport.dump(database);
-        
+
         assertHierarchy(dump, "use.ExplicitChild", "base.ExplicitBase");
         assertInterface(dump, "use.ExplicitChild", "base.ExplicitContract");
         assertHierarchy(dump, "use.WildcardChild", "base.WildcardBase");

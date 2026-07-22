@@ -13,7 +13,7 @@ public record ToolDefinition(String name, String description, Map<String, Object
         Objects.requireNonNull(binding, "Tool binding");
         Objects.requireNonNull(availability, "Tool availability");
     }
-    
+
     private static String requireText(String value, String label) {
         if (value == null || value.isBlank()) {
             throw new IllegalArgumentException(label + " must not be blank");

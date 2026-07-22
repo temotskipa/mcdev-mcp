@@ -13,10 +13,10 @@ import java.util.stream.Collectors;
 final class McFindRefsTool {
     static final LimitSpec LIMIT = new LimitSpec(100, 5000);
     private static final int MAX_CAUSE_LENGTH = 500;
-    
+
     private McFindRefsTool() {
     }
-    
+
     static ToolBinding<FindRefsArguments> binding(StaticToolSupport support) {
         var decoder = ArgumentDecoder.sdk(FindRefsWireArguments.class).map(FindRefsArguments::from);
         return ToolBinding.blocking(decoder, (arguments, _) -> support.execute("mc_find_refs", () -> {
@@ -24,8 +24,12 @@ final class McFindRefsTool {
             String direction = arguments.directionText().display();
             String className = arguments.className().display();
             String methodName = arguments.methodName().display();
-            if (!CallgraphRepository.isPublished(support.paths().callgraphBundle(version))) {
-                return ToolResult.text("Version " + version.value() + " does not have callgraph data.\n\n" + "STOP and ask the USER to run this command in their terminal:\n" + "  node dist/cli.js callgraph -v " + version.value() + "\n\n" + "Or for full reinitialization:\n  node dist/cli.js init -v " + version.value());
+            CallgraphRepository.PublicationStatus publicationStatus = CallgraphRepository.publicationStatus(support.paths().callgraphBundle(version));
+            if (publicationStatus == CallgraphRepository.PublicationStatus.CORRUPT) {
+                return ToolResult.text("Version " + version.value() + " has corrupt callgraph data.\n\n" + "STOP and ask the USER to run this command in their terminal:\n" + "  java -jar mcdev-mcp-3.0.0.jar callgraph -v " + version.value() + "\n\n" + "Or for full reinitialization:\n  java -jar mcdev-mcp-3.0.0.jar init -v " + version.value());
+            }
+            if (publicationStatus == CallgraphRepository.PublicationStatus.ABSENT) {
+                return ToolResult.text("Version " + version.value() + " does not have callgraph data.\n\n" + "STOP and ask the USER to run this command in their terminal:\n" + "  java -jar mcdev-mcp-3.0.0.jar callgraph -v " + version.value() + "\n\n" + "Or for full reinitialization:\n  java -jar mcdev-mcp-3.0.0.jar init -v " + version.value());
             }
             var limit = LIMIT.normalize(arguments.limit().value());
             int queryLimit = limit.value() + 1;
@@ -48,12 +52,12 @@ final class McFindRefsTool {
             return ToolResult.text("Found " + fetchedCount + " " + direction + ":\n" + rows + StaticTools.truncationNote(shown.size(), fetchedCount, truncated, limit, direction));
         }));
     }
-    
+
     private static String render(MethodReference reference) {
         Integer line = reference.lineNumber();
         return reference.displayName() + (line == null || line == 0 ? "" : " (line " + line + ")");
     }
-    
+
     private static String boundedCause(Exception exception) {
         String message = exception.getMessage();
         String value = message == null ? exception.toString() : message;

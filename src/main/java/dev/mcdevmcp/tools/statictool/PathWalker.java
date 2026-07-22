@@ -8,7 +8,7 @@ import java.util.List;
 final class PathWalker {
     private PathWalker() {
     }
-    
+
     static void listDirectories(Path root, List<String> result) {
         if (!Files.isDirectory(root)) return;
         try (var files = Files.list(root)) {
@@ -16,7 +16,7 @@ final class PathWalker {
         } catch (IOException ignored) {
         }
     }
-    
+
     static boolean isDecompiled(Path source) {
         try (var files = Files.walk(source)) {
             return files.filter(path -> Files.isRegularFile(path) && path.getFileName().toString().endsWith(".java")).limit(101).count() > 100;

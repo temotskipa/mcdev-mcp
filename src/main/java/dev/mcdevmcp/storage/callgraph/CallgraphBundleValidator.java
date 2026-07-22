@@ -17,10 +17,10 @@ import java.util.Set;
 
 public final class CallgraphBundleValidator {
     private static final Duration READ_LOCK_TIMEOUT = Duration.ofSeconds(30);
-    
+
     private CallgraphBundleValidator() {
     }
-    
+
     public static void validate(Path bundle) throws IOException {
         Path root = bundle.toAbsolutePath().normalize();
         try (var lock = BundleLock.read(root, READ_LOCK_TIMEOUT)) {
@@ -36,8 +36,30 @@ public final class CallgraphBundleValidator {
             }
         }
     }
-    
+
+    static void validateArtifacts(Path bundle) throws IOException {
+        Path root = bundle.toAbsolutePath().normalize();
+        try (var lock = BundleLock.read(root, READ_LOCK_TIMEOUT)) {
+            if (!lock.isHeld()) {
+                throw new IOException("Failed to acquire shared bundle lock");
+            }
+            CallgraphBundleLayout.ResolvedGeneration generation = CallgraphBundleLayout.resolve(root);
+            try {
+                validateArtifacts(root, generation.path(), generation.identity(), generation.manifest(), Cancellation.none());
+            } catch (InterruptedException exception) {
+                Thread.currentThread().interrupt();
+                throw new IOException("Callgraph artifact validation interrupted", exception);
+            }
+        }
+    }
+
     static void validateGeneration(Path root, Path generation, String identity, CallgraphManifest manifest, Cancellation cancellation) throws IOException, InterruptedException {
+        validateArtifacts(root, generation, identity, manifest, cancellation);
+        validateDirection(generation, manifest, CallgraphDirection.CALLERS, cancellation);
+        validateDirection(generation, manifest, CallgraphDirection.CALLEES, cancellation);
+    }
+
+    private static void validateArtifacts(Path root, Path generation, String identity, CallgraphManifest manifest, Cancellation cancellation) throws IOException, InterruptedException {
         BundleFiles.requireDirectory(root, generation);
         CallgraphBundleLayout.validateManifestShape(manifest);
         try {
@@ -67,24 +89,23 @@ public final class CallgraphBundleValidator {
                 throw new IOException("Callgraph generation artifact set mismatch: " + actual);
             }
         }
-        validateDirection(root, generation, manifest, CallgraphDirection.CALLERS, cancellation);
-        validateDirection(root, generation, manifest, CallgraphDirection.CALLEES, cancellation);
+        for (CallgraphArtifact artifact : CallgraphBundleLayout.ARTIFACTS) {
+            validateArtifact(root, artifact.resolve(generation), CallgraphBundleLayout.metadata(manifest, artifact), cancellation);
+        }
     }
-    
+
     static CallgraphFileMetadata metadata(Path file, CallgraphArtifact artifact, long records, Cancellation cancellation) throws IOException, InterruptedException {
         if (records < 0) {
             throw new IllegalArgumentException("records must not be negative");
         }
         return new CallgraphFileMetadata(artifact, Files.size(file), records, BundleHashes.sha256(file, cancellation));
     }
-    
-    private static void validateDirection(Path root, Path generation, CallgraphManifest manifest, CallgraphDirection direction, Cancellation cancellation) throws IOException, InterruptedException {
+
+    private static void validateDirection(Path generation, CallgraphManifest manifest, CallgraphDirection direction, Cancellation cancellation) throws IOException, InterruptedException {
         CallgraphFileMetadata dataMetadata = CallgraphBundleLayout.metadata(manifest, direction.dataArtifact());
         CallgraphFileMetadata indexMetadata = CallgraphBundleLayout.metadata(manifest, direction.indexArtifact());
         Path data = direction.dataArtifact().resolve(generation);
         Path index = direction.indexArtifact().resolve(generation);
-        validateArtifact(root, data, dataMetadata, cancellation);
-        validateArtifact(root, index, indexMetadata, cancellation);
         long dataRows = 0;
         long indexRows = 0;
         CallgraphDirection.LookupKey previousKey = null;
@@ -138,7 +159,7 @@ public final class CallgraphBundleValidator {
             throw new IOException("Callgraph manifest record counts do not match validated JSONL records");
         }
     }
-    
+
     private static void validateArtifact(Path root, Path file, CallgraphFileMetadata metadata, Cancellation cancellation) throws IOException, InterruptedException {
         BundleFiles.requireRegularFile(root, file);
         if (Files.size(file) != metadata.byteLength()) {
@@ -148,7 +169,7 @@ public final class CallgraphBundleValidator {
             throw new IOException("Callgraph artifact SHA-256 mismatch: " + metadata.artifact());
         }
     }
-    
+
     private static long add(long left, long right, String message) throws IOException {
         try {
             return Math.addExact(left, right);
@@ -156,7 +177,7 @@ public final class CallgraphBundleValidator {
             throw new IOException(message, exception);
         }
     }
-    
+
     private static <T> T parse(byte[] bytes, Class<T> type, String file) throws IOException {
         try {
             return CallgraphJson.readCanonical(bytes, type, file);

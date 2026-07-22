@@ -17,12 +17,12 @@ import java.util.Objects;
 final class TypeResolver {
     private final Elements elements;
     private final Types types;
-    
+
     TypeResolver(Elements elements, Types types) {
         this.elements = Objects.requireNonNull(elements, "elements");
         this.types = Objects.requireNonNull(types, "types");
     }
-    
+
     private static boolean containsError(TypeMirror type) {
         if (type.getKind() == TypeKind.ERROR) {
             return true;
@@ -38,12 +38,12 @@ final class TypeResolver {
             default -> false;
         };
     }
-    
+
     ClassDesc erasedDescriptor(TypeMirror type) throws IndexBuildException {
         TypeMirror erased = types.erasure(requireResolved(type));
         return descriptor(erased);
     }
-    
+
     MethodTypeDesc methodDescriptor(ExecutableType method) throws IndexBuildException {
         List<ClassDesc> parameters = new ArrayList<>();
         for (TypeMirror parameter : method.getParameterTypes()) {
@@ -51,11 +51,11 @@ final class TypeResolver {
         }
         return MethodTypeDesc.of(erasedDescriptor(method.getReturnType()), parameters.toArray(ClassDesc[]::new));
     }
-    
+
     String semanticType(TypeMirror type) throws IndexBuildException {
         return encode(requireResolved(type));
     }
-    
+
     String binaryName(TypeElement element) throws IndexBuildException {
         String binaryName = elements.getBinaryName(Objects.requireNonNull(element, "element")).toString();
         if (binaryName.isBlank()) {
@@ -63,7 +63,7 @@ final class TypeResolver {
         }
         return binaryName;
     }
-    
+
     private TypeMirror requireResolved(TypeMirror type) throws IndexBuildException {
         Objects.requireNonNull(type, "type");
         if (containsError(type)) {
@@ -71,7 +71,7 @@ final class TypeResolver {
         }
         return type;
     }
-    
+
     private ClassDesc descriptor(TypeMirror type) throws IndexBuildException {
         return switch (type.getKind()) {
             case BOOLEAN -> ConstantDescs.CD_boolean;
@@ -89,7 +89,7 @@ final class TypeResolver {
                     throw new IndexBuildException("Stored type has no faithful JVM descriptor: " + type + " (" + type.getKind() + ")");
         };
     }
-    
+
     private String encode(TypeMirror type) throws IndexBuildException {
         return switch (type.getKind()) {
             case BOOLEAN, BYTE, SHORT, INT, LONG, CHAR, FLOAT, DOUBLE, VOID ->
@@ -104,7 +104,7 @@ final class TypeResolver {
                     throw new IndexBuildException("Unsupported stored semantic type: " + type + " (" + type.getKind() + ")");
         };
     }
-    
+
     private String encodeDeclared(DeclaredType type) throws IndexBuildException {
         String binaryName = binaryName(type);
         String current = type.getTypeArguments().isEmpty() ? binaryName : binaryName + "<" + join(type.getTypeArguments(), ", ") + ">";
@@ -114,7 +114,7 @@ final class TypeResolver {
         }
         return encode(enclosing) + "::" + current;
     }
-    
+
     private String encodeWildcard(WildcardType type) throws IndexBuildException {
         if (type.getExtendsBound() != null) {
             return "? extends " + encode(type.getExtendsBound());
@@ -124,7 +124,7 @@ final class TypeResolver {
         }
         return "?";
     }
-    
+
     private String join(List<? extends TypeMirror> mirrors, String separator) throws IndexBuildException {
         List<String> values = new ArrayList<>(mirrors.size());
         for (TypeMirror mirror : mirrors) {
@@ -132,7 +132,7 @@ final class TypeResolver {
         }
         return String.join(separator, values);
     }
-    
+
     private String binaryName(DeclaredType type) throws IndexBuildException {
         if (!(type.asElement() instanceof TypeElement element)) {
             throw new IndexBuildException("Declared type has no type element: " + type);
