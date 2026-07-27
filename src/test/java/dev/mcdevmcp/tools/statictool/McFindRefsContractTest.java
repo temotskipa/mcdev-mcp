@@ -14,6 +14,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import java.math.BigDecimal;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.sql.DriverManager;
@@ -99,7 +100,7 @@ class McFindRefsContractTest {
     @Test
     void usesTheFrozenLimitContract() {
         assertEquals(new NormalizedLimit(100, false, true), McFindRefsTool.LIMIT.normalize(null));
-        assertEquals(new NormalizedLimit(5000, true, false), McFindRefsTool.LIMIT.normalize(5001));
+        assertEquals(new NormalizedLimit(5000, true, false), McFindRefsTool.LIMIT.normalize(BigDecimal.valueOf(5001)));
     }
 
     @Test

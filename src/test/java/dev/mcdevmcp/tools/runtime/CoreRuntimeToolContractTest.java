@@ -12,7 +12,6 @@ import io.modelcontextprotocol.json.McpJsonMapper;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
@@ -31,7 +30,7 @@ class CoreRuntimeToolContractTest {
     private static CompletableFuture<BridgeResponse> respond(RequestFixture request, BridgeFixture bridge, BridgeRequest wireRequest) {
         String endpoint = wireRequest.endpoint().wireName();
         if (!request.endpoint().equals("status") && endpoint.equals("status")) {
-            return CompletableFuture.completedFuture(status(wireRequest.id()));
+            return CompletableFuture.completedFuture(RuntimeContractFixtures.status(wireRequest.id()));
         }
         if (!request.endpoint().equals(endpoint)) {
             return CompletableFuture.failedFuture(new IllegalStateException("Unexpected endpoint " + endpoint + " for " + request.label()));
@@ -42,18 +41,6 @@ class CoreRuntimeToolContractTest {
         return CompletableFuture.completedFuture(new BridgeResponse(wireRequest.id(), Boolean.TRUE.equals(bridge.success()), Boolean.TRUE.equals(bridge.resultPresent()), bridge.result(), bridge.output(), bridge.error()));
     }
 
-    private static BridgeResponse status(String requestId) {
-        var result = new LinkedHashMap<String, Object>();
-        result.put("version", "1.21.11");
-        result.put("mappingStatus", "mojang");
-        result.put("obfuscated", true);
-        result.put("refs", 7);
-        result.put("gameDir", "C:\\Game");
-        result.put("latestLog", "C:\\Game\\logs\\latest.log");
-        result.put("sessionControlEnabled", true);
-        return new BridgeResponse(requestId, true, true, result, null, null);
-    }
-
     private static void assertWireRequest(RequestFixture fixture, List<BridgeRequest> actual) {
         int expectedSize = fixture.endpoint().equals("status") ? 1 : 2;
         assertEquals(expectedSize, actual.size(), fixture.label());
@@ -61,7 +48,15 @@ class CoreRuntimeToolContractTest {
         assertEquals(Map.of(), actual.getFirst().payload(), fixture.label());
         BridgeRequest target = actual.getLast();
         assertEquals(fixture.endpoint(), target.endpoint().wireName(), fixture.label());
-        assertEquals(fixture.payload(), target.payload(), fixture.label());
+        assertEquals(writeJson(fixture.payload()), writeJson(target.payload()), fixture.label());
+    }
+
+    private static String writeJson(Object value) {
+        try {
+            return MAPPER.writeValueAsString(value);
+        } catch (IOException exception) {
+            throw new AssertionError("Unable to serialize contract payload", exception);
+        }
     }
 
     private static List<Duration> expectedEffectiveTimeouts(RequestFixture fixture) {
@@ -69,66 +64,11 @@ class CoreRuntimeToolContractTest {
         return fixture.endpoint().equals("status") ? List.of(Duration.ofSeconds(10)) : List.of(Duration.ofSeconds(10), targetTimeout);
     }
 
-    private static <T> List<T> fixtures(String resource, Class<T> type) throws IOException {
-        try (var input = CoreRuntimeToolContractTest.class.getClassLoader().getResourceAsStream(resource)) {
-            String contents = new String(Objects.requireNonNull(input, resource).readAllBytes(), StandardCharsets.UTF_8);
-            List<T> documents = new ArrayList<>();
-            int start = -1;
-            int depth = 0;
-            boolean quoted = false;
-            boolean escaped = false;
-            for (int index = 0; index < contents.length(); index++) {
-                char character = contents.charAt(index);
-                if (start < 0) {
-                    if (Character.isWhitespace(character)) {
-                        continue;
-                    }
-                    if (character != '{') {
-                        throw new IOException("Expected a JSON object at offset " + index + " in " + resource);
-                    }
-                    start = index;
-                }
-                if (quoted) {
-                    if (escaped) {
-                        escaped = false;
-                    }
-                    else if (character == '\\') {
-                        escaped = true;
-                    }
-                    else if (character == '"') {
-                        quoted = false;
-                    }
-                    continue;
-                }
-                if (character == '"') {
-                    quoted = true;
-                }
-                else if (character == '{' || character == '[') {
-                    depth++;
-                }
-                else if (character == '}' || character == ']') {
-                    depth--;
-                    if (depth == 0) {
-                        documents.add(MAPPER.readValue(contents.substring(start, index + 1), type));
-                        start = -1;
-                    }
-                    else if (depth < 0) {
-                        throw new IOException("Unbalanced JSON at offset " + index + " in " + resource);
-                    }
-                }
-            }
-            if (start >= 0) {
-                throw new IOException("Incomplete JSON document in " + resource);
-            }
-            return List.copyOf(documents);
-        }
-    }
-
     @Test
     void replaysTheFrozenCoreRuntimeCorpusAndPreservesEveryBridgePayload() throws Exception {
-        List<RequestFixture> requests = fixtures("contracts/runtime-tools/core-requests.jsonl", RequestFixture.class);
-        List<BridgeFixture> bridgeResponses = fixtures("contracts/runtime-tools/core-bridge-responses.jsonl", BridgeFixture.class);
-        List<ResultFixture> results = fixtures("contracts/runtime-tools/core-tool-results.jsonl", ResultFixture.class);
+        List<RequestFixture> requests = RuntimeContractFixtures.load(MAPPER, "contracts/runtime-tools/core-requests.jsonl", RequestFixture.class);
+        List<BridgeFixture> bridgeResponses = RuntimeContractFixtures.load(MAPPER, "contracts/runtime-tools/core-bridge-responses.jsonl", BridgeFixture.class);
+        List<ResultFixture> results = RuntimeContractFixtures.load(MAPPER, "contracts/runtime-tools/core-tool-results.jsonl", ResultFixture.class);
         assertEquals(requests.size(), bridgeResponses.size());
         assertEquals(requests.size(), results.size());
 
@@ -157,7 +97,7 @@ class CoreRuntimeToolContractTest {
     void reconnectsAfterPeerDisconnectionAndResetCreatesANewSession() throws Exception {
         try (var harness = new BridgeTestHarness(MAPPER, ENVIRONMENT, (connection, request) -> {
             if (request.endpoint().wireName().equals("status")) {
-                return CompletableFuture.completedFuture(status(request.id()));
+                return CompletableFuture.completedFuture(RuntimeContractFixtures.status(request.id()));
             }
             return CompletableFuture.completedFuture(new BridgeResponse(request.id(), true, true, Map.of("connection", connection), null, null));
         })) {
@@ -176,7 +116,7 @@ class CoreRuntimeToolContractTest {
 
     @Test
     void reportsAlreadyConnectedWithoutAnotherBridgeRequest() throws Exception {
-        try (var harness = new BridgeTestHarness(MAPPER, ENVIRONMENT, (_, request) -> CompletableFuture.completedFuture(status(request.id())))) {
+        try (var harness = new BridgeTestHarness(MAPPER, ENVIRONMENT, (_, request) -> CompletableFuture.completedFuture(RuntimeContractFixtures.status(request.id())))) {
             ToolCatalog catalog = ToolCatalog.load(ENVIRONMENT, RuntimeToolModule.handlers(harness.session(), MAPPER), MAPPER);
 
             assertTrue(dispatch(catalog, "mc_connect", Map.of()).content().getFirst().text().startsWith("Connected!"));
@@ -189,10 +129,11 @@ class CoreRuntimeToolContractTest {
     }
 
     @Test
-    void exposesExactlyTenMutableCoreRuntimeBindingsAndRejectsInvalidArgumentsBeforeSending() throws Exception {
-        try (var harness = new BridgeTestHarness(MAPPER, ENVIRONMENT, (_, request) -> CompletableFuture.completedFuture(status(request.id())))) {
+    void exposesAllCoreRuntimeBindingsInOrderAndRejectsInvalidArgumentsBeforeSending() throws Exception {
+        try (var harness = new BridgeTestHarness(MAPPER, ENVIRONMENT, (_, request) -> CompletableFuture.completedFuture(RuntimeContractFixtures.status(request.id())))) {
             Map<String, ?> handlers = RuntimeToolModule.handlers(harness.session(), MAPPER);
-            assertEquals(List.of("mc_connect", "mc_execute", "mc_snapshot", "mc_nearby_entities", "mc_entity_details", "mc_nearby_blocks", "mc_block_details", "mc_looked_at_entity", "mc_chat_history", "mc_screen_inspect"), List.copyOf(handlers.keySet()));
+            List<String> coreNames = List.of("mc_connect", "mc_execute", "mc_snapshot", "mc_nearby_entities", "mc_entity_details", "mc_nearby_blocks", "mc_block_details", "mc_looked_at_entity", "mc_chat_history", "mc_screen_inspect");
+            assertEquals(coreNames, List.copyOf(handlers.keySet()).subList(0, coreNames.size()));
             assertDoesNotThrow(handlers::clear);
 
             ToolCatalog catalog = ToolCatalog.load(ENVIRONMENT, RuntimeToolModule.handlers(harness.session(), MAPPER), MAPPER);

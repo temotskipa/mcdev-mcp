@@ -112,6 +112,8 @@ class McpStdioIntegrationTest {
                     var unknownTool = readJsonLine(reader);
                     write(writer, request(6, "tools/call", Map.of("name", "mc_version", "arguments", Map.of("action", "list"))));
                     var versionList = readJsonLine(reader);
+                    write(writer, request(7, "tools/call", Map.of("name", "mc_record_video", "arguments", Map.of("frames", 1, "interval", "50"))));
+                    var numericStringInterval = readJsonLine(reader);
 
                     assertProtocolMatches("initialize.json", initialize, true);
                     assertProtocolMatches("tools-list-default.json", tools, false);
@@ -129,6 +131,8 @@ class McpStdioIntegrationTest {
                     var unknownResult = MAPPER.convertValue(unknownTool.get("result"), MAP_TYPE);
                     assertEquals(true, unknownResult.get("isError"));
                     assertEquals("Unknown tool: not_a_tool", MAPPER.convertValue(unknownResult.get("content"), LIST_OF_MAPS_TYPE).getFirst().get("text"));
+                    assertTrue(numericStringInterval.containsKey("result"), "numeric-string intervals must pass SDK input validation");
+                    assertFalse(numericStringInterval.containsKey("error"), "numeric-string intervals must reach the tool handler");
                 } finally {
                     writer.close();
                 }

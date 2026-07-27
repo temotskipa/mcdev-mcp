@@ -26,4 +26,8 @@ public record ToolContent(ToolContentType type, String text, String mimeType, St
     public static ToolContent text(String text) {
         return new ToolContent(ToolContentType.TEXT, text, null, null);
     }
+
+    public static ToolContent image(String data, String mimeType) {
+        return new ToolContent(ToolContentType.IMAGE, null, mimeType, data);
+    }
 }

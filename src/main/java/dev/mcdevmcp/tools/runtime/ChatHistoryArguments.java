@@ -1,7 +1,9 @@
 package dev.mcdevmcp.tools.runtime;
 
-record ChatHistoryArguments(Number limit, Boolean includeJson) {
+import java.math.BigDecimal;
+
+record ChatHistoryArguments(BigDecimal limit, Boolean includeJson) {
     static ChatHistoryArguments from(ChatHistoryWireArguments wire) {
-        return new ChatHistoryArguments(RuntimeToolSupport.optionalNumber(wire.limit(), "limit"), RuntimeToolSupport.optionalBoolean(wire.includeJson(), "includeJson"));
+        return new ChatHistoryArguments(RuntimeToolSupport.optionalDecimal(wire.limit(), "limit"), RuntimeToolSupport.optionalBoolean(wire.includeJson(), "includeJson"));
     }
 }

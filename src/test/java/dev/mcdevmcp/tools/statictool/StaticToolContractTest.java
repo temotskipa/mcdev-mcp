@@ -211,8 +211,8 @@ class StaticToolContractTest {
     void exposesOnlyTheEightStaticToolsAndNormalizesLargeLimitsWithoutOverflow() throws Exception {
         assertEquals(Set.of("mc_version", "mc_search", "mc_get_class", "mc_get_method", "mc_list_classes", "mc_list_packages", "mc_find_hierarchy", "mc_find_refs"), StaticToolModule.handlers(fixture()).keySet());
         LimitSpec limits = new LimitSpec(50, 1000);
-        assertEquals(new NormalizedLimit(50, false, true), limits.normalize(new java.math.BigInteger("-999999999999999999999999999")));
-        assertEquals(new NormalizedLimit(1000, true, false), limits.normalize(new java.math.BigInteger("999999999999999999999999999")));
+        assertEquals(new NormalizedLimit(50, false, true), limits.normalize(new java.math.BigDecimal("-999999999999999999999999999")));
+        assertEquals(new NormalizedLimit(1000, true, false), limits.normalize(new java.math.BigDecimal("999999999999999999999999999")));
         assertEquals(new NormalizedLimit(1000, false, false), limits.normalize(new java.math.BigDecimal("1000.999")));
     }
 

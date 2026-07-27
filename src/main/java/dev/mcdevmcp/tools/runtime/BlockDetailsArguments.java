@@ -1,7 +1,9 @@
 package dev.mcdevmcp.tools.runtime;
 
-record BlockDetailsArguments(Number x, Number y, Number z) {
+import java.math.BigDecimal;
+
+record BlockDetailsArguments(BigDecimal x, BigDecimal y, BigDecimal z) {
     static BlockDetailsArguments from(BlockDetailsWireArguments wire) {
-        return new BlockDetailsArguments(RuntimeToolSupport.requiredNumber(wire.x(), "x"), RuntimeToolSupport.requiredNumber(wire.y(), "y"), RuntimeToolSupport.requiredNumber(wire.z(), "z"));
+        return new BlockDetailsArguments(RuntimeToolSupport.requiredDecimal(wire.x(), "x"), RuntimeToolSupport.requiredDecimal(wire.y(), "y"), RuntimeToolSupport.requiredDecimal(wire.z(), "z"));
     }
 }

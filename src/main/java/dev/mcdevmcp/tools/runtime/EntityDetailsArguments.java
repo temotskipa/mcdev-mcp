@@ -1,7 +1,9 @@
 package dev.mcdevmcp.tools.runtime;
 
-record EntityDetailsArguments(Number entityId) {
+import java.math.BigDecimal;
+
+record EntityDetailsArguments(BigDecimal entityId) {
     static EntityDetailsArguments from(EntityDetailsWireArguments wire) {
-        return new EntityDetailsArguments(RuntimeToolSupport.requiredNumber(wire.entityId(), "entityId"));
+        return new EntityDetailsArguments(RuntimeToolSupport.requiredDecimal(wire.entityId(), "entityId"));
     }
 }

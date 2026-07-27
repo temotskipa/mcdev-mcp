@@ -24,6 +24,7 @@ public final class RuntimeToolModule {
         add(handlers, "mc_looked_at_entity", McLookedAtEntityTool.binding(support));
         add(handlers, "mc_chat_history", McChatHistoryTool.binding(support));
         add(handlers, "mc_screen_inspect", McScreenInspectTool.binding(support));
+        MediaRuntimeToolModule.handlers(new MediaToolSupport(support)).forEach((name, binding) -> add(handlers, name, binding));
         return handlers;
     }
 

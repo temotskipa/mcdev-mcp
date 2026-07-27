@@ -1,7 +1,9 @@
 package dev.mcdevmcp.tools.runtime;
 
-record LookedAtEntityArguments(Number range) {
+import java.math.BigDecimal;
+
+record LookedAtEntityArguments(BigDecimal range) {
     static LookedAtEntityArguments from(LookedAtEntityWireArguments wire) {
-        return new LookedAtEntityArguments(RuntimeToolSupport.optionalNumber(wire.range(), "range"));
+        return new LookedAtEntityArguments(RuntimeToolSupport.optionalDecimal(wire.range(), "range"));
     }
 }

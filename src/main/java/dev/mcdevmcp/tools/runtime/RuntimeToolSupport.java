@@ -9,6 +9,7 @@ import io.modelcontextprotocol.json.McpJsonMapper;
 
 import java.io.IOException;
 import java.math.BigDecimal;
+import java.math.BigInteger;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.*;
@@ -47,7 +48,7 @@ final class RuntimeToolSupport {
         return Collections.unmodifiableMap(payload);
     }
 
-    static Number optionalNumber(Object value, String name) {
+    private static Number optionalNumber(Object value, String name) {
         if (value == null) {
             return null;
         }
@@ -57,12 +58,50 @@ final class RuntimeToolSupport {
         throw new IllegalArgumentException("'" + name + "' must be a finite number");
     }
 
-    static Number requiredNumber(Object value, String name) {
+    private static Number requiredNumber(Object value, String name) {
         Number number = optionalNumber(value, name);
         if (number == null) {
             throw new IllegalArgumentException("'" + name + "' is required");
         }
         return number;
+    }
+
+    static BigDecimal optionalDecimal(Object value, String name) {
+        Number number = optionalNumber(value, name);
+        return number == null ? null : toBigDecimal(number);
+    }
+
+    static BigDecimal requiredDecimal(Object value, String name) {
+        return toBigDecimal(requiredNumber(value, name));
+    }
+
+    private static BigDecimal toBigDecimal(Number number) {
+        BigDecimal decimal = switch (number) {
+            case BigDecimal value -> value;
+            case BigInteger value -> new BigDecimal(value);
+            case Byte _, Short _, Integer _, Long _ -> BigDecimal.valueOf(number.longValue());
+            default -> BigDecimal.valueOf(number.doubleValue());
+        };
+        BigDecimal normalized = decimal.stripTrailingZeros();
+        return normalized.scale() < 0 ? new BigDecimal(normalized.toBigIntegerExact()) : normalized;
+    }
+
+    static double requiredTimeoutNumber(Object value) {
+        return requiredNumber(value, "timeoutMs").doubleValue();
+    }
+
+    static String requiredString(Object value, String name) {
+        if (value instanceof String text) {
+            return text;
+        }
+        throw new IllegalArgumentException("'" + name + "' is required and must be a string");
+    }
+
+    static boolean requiredGlow(Object value) {
+        if (value instanceof Boolean flag) {
+            return flag;
+        }
+        throw new IllegalArgumentException("'glow' is required and must be a boolean");
     }
 
     static Boolean optionalBoolean(Object value, String name) {
@@ -95,20 +134,19 @@ final class RuntimeToolSupport {
         if (value == null) {
             return 10_000;
         }
-        Number number = requiredNumber(value, "timeoutMs");
-        double numeric = number.doubleValue();
+        double numeric = requiredTimeoutNumber(value);
         if (numeric != Math.rint(numeric) || numeric < 1_000 || numeric > 300_000) {
             throw new IllegalArgumentException("'timeoutMs' must be an integer from 1000 to 300000");
         }
         return (int) numeric;
     }
 
-    private static ToolResult declaredFailure(BridgeResponse response) {
+    static ToolResult declaredFailure(BridgeResponse response) {
         String error = response.error() == null ? "undefined" : response.error();
         return response.success() ? null : ToolResult.error("Error: " + error);
     }
 
-    private static Object requireResult(BridgeEndpoint endpoint, BridgeResponse response) {
+    static Object requireResult(BridgeEndpoint endpoint, BridgeResponse response) {
         if (!response.resultPresent() || response.result() == null) {
             throw missingResult(endpoint);
         }
@@ -130,7 +168,7 @@ final class RuntimeToolSupport {
         return String.join("\n", lines);
     }
 
-    private static String nodeNumber(Number number) {
+    static String nodeNumber(Number number) {
         double value = number.doubleValue();
         if (!Double.isFinite(value)) {
             throw new IllegalArgumentException("DebugBridge JSON number must be finite");
@@ -159,11 +197,11 @@ final class RuntimeToolSupport {
         };
     }
 
-    private static boolean isFinite(Number number) {
+    static boolean isFinite(Number number) {
         return Double.isFinite(number.doubleValue());
     }
 
-    private static String describe(Object value) {
+    static String describe(Object value) {
         return switch (value) {
             case null -> "null";
             case Map<?, ?> ignored -> "object";
@@ -254,7 +292,7 @@ final class RuntimeToolSupport {
         });
     }
 
-    private CompletionStage<ToolResult> request(BridgeEndpoint endpoint, Map<String, Object> payload, Duration timeout, Function<BridgeResponse, ToolResult> renderer) {
+    CompletionStage<ToolResult> request(BridgeEndpoint endpoint, Map<String, Object> payload, Duration timeout, Function<BridgeResponse, ToolResult> renderer) {
         return mapStage(() -> session.send(endpoint, payload, timeout), renderer, ToolResult::error);
     }
 
@@ -290,7 +328,7 @@ final class RuntimeToolSupport {
         return ToolResult.error(prettyJson(structured));
     }
 
-    private String prettyJson(Object value) {
+    String prettyJson(Object value) {
         var result = new StringBuilder();
         appendJson(result, value, 0);
         return result.toString();

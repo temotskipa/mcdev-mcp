@@ -9,6 +9,7 @@ import io.modelcontextprotocol.server.McpServerFeatures;
 import io.modelcontextprotocol.spec.McpSchema;
 import org.junit.jupiter.api.Test;
 
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executors;
@@ -55,6 +56,20 @@ class McpSdkAdapterTest {
             assertEquals(new TestEmptyArguments(), received.get(5, TimeUnit.SECONDS));
             assertFalse(result.isError());
             assertEquals("legacy packages", assertInstanceOf(McpSchema.TextContent.class, result.content().getFirst()).text());
+        }
+    }
+
+    @Test
+    void imageContentMapsToTheSdkProtocolTypeWithoutDecodingBase64() throws Exception {
+        var definition = new ToolDefinition("image", "image", Map.of("type", "object"), new ToolBinding<>(ArgumentDecoder.sdk(TestEmptyArguments.class), (_, _) -> ToolHandlers.completed(new ToolResult(List.of(ToolContent.image("iVBORw0KGgo=", "image/png")), false))), ToolAvailability.ALWAYS);
+
+        try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
+            var result = new McpSdkAdapter(MAPPER, executor).callHandler(definition).apply(null, McpSchema.CallToolRequest.builder("image").arguments(Map.of()).build()).toFuture().get(5, TimeUnit.SECONDS);
+
+            var image = assertInstanceOf(McpSchema.ImageContent.class, result.content().getFirst());
+            assertEquals("iVBORw0KGgo=", image.data());
+            assertEquals("image/png", image.mimeType());
+            assertFalse(result.isError());
         }
     }
 
