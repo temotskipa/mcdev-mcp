@@ -7,7 +7,8 @@ public enum BridgeMappingStatus {
         return switch (value) {
             case "mojang" -> MOJANG;
             case "passthrough" -> PASSTHROUGH;
-            default -> throw new IllegalArgumentException("DebugBridge status mappingStatus is invalid: " + BridgePayloadValidator.safeDisplay(value));
+            default ->
+                    throw new IllegalArgumentException("DebugBridge status mappingStatus is invalid: " + BridgePayloadValidator.safeDisplay(value));
         };
     }
 }

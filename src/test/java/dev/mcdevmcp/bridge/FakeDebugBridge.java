@@ -21,16 +21,16 @@ final class FakeDebugBridge {
         this.status = Map.copyOf(values);
     }
 
-    BridgeClient client() {
-        return BridgeClient.testing(new BridgeJson(McpJsonDefaults.getMapper()), request -> CompletableFuture.completedFuture(new BridgeResponse(request.id(), true, request.endpoint().wireName().equals("status") ? status : request.payload(), "", null)));
-    }
-
     static BridgeClient client(BridgeJson json, String version) {
         Map<String, Object> status = Map.of("version", version, "mappingStatus", "mojang", "obfuscated", false, "refs", 0L, "gameDir", gameDirectory());
-        return BridgeClient.testing(json, request -> CompletableFuture.completedFuture(new BridgeResponse(request.id(), true, request.endpoint().wireName().equals("status") ? status : request.payload(), "", null)));
+        return BridgeClient.testing(json, request -> CompletableFuture.completedFuture(new BridgeResponse(request.id(), true, true, request.endpoint().wireName().equals("status") ? status : request.payload(), "", null)));
     }
 
     private static String gameDirectory() {
         return Path.of("run").toAbsolutePath().normalize().toString();
+    }
+
+    BridgeClient client() {
+        return BridgeClient.testing(new BridgeJson(McpJsonDefaults.getMapper()), request -> CompletableFuture.completedFuture(new BridgeResponse(request.id(), true, true, request.endpoint().wireName().equals("status") ? status : request.payload(), "", null)));
     }
 }

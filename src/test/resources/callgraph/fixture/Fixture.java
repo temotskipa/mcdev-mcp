@@ -1,5 +1,7 @@
 package callgraph.fixture;
 
+import org.junit.platform.commons.annotation.Contract;
+
 import java.io.Serializable;
 import java.util.function.Consumer;
 import java.util.function.Supplier;

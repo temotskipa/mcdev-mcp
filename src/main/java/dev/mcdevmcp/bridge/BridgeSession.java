@@ -9,13 +9,7 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.nio.file.Path;
 import java.time.Duration;
-import java.util.Collections;
-import java.util.IdentityHashMap;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Optional;
-import java.util.OptionalInt;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
@@ -59,6 +53,59 @@ public final class BridgeSession implements AutoCloseable {
         this.connector = Objects.requireNonNull(connector, "connector");
         this.diagnostics = Objects.requireNonNull(diagnostics, "diagnostics");
         this.payloadValidator = new BridgePayloadValidator(json.mapper());
+    }
+
+    private static void closeQuietly(BridgeClient client) {
+        if (client != null) {
+            client.close();
+        }
+    }
+
+    private static Connector defaultConnector(BridgeJson json) {
+        HttpClient client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(2)).build();
+        return defaultConnector(client, json);
+    }
+
+    private static Connector defaultConnector(HttpClient client, BridgeJson json) {
+        return port -> BridgeClient.connect(client, URI.create("ws://127.0.0.1:" + port), json);
+    }
+
+    private static Optional<Integer> parsePort(String text) {
+        try {
+            double numeric = Double.parseDouble(text.strip());
+            if (!Double.isFinite(numeric) || numeric != Math.rint(numeric) || numeric < 1 || numeric > 65535) {
+                return Optional.empty();
+            }
+            return Optional.of((int) numeric);
+        } catch (IllegalArgumentException exception) {
+            return Optional.empty();
+        }
+    }
+
+    private static int requireExplicitPort(int port) {
+        if (port < 1 || port > 65535) {
+            throw new IllegalArgumentException("DebugBridge port must be in range: " + port);
+        }
+        return port;
+    }
+
+    private static SessionInfo toSessionInfo(int port, BridgeStatusWire status) {
+        if (status.version() == null || status.mappingStatus() == null || status.obfuscated() == null || status.refs() == null) {
+            throw new IllegalArgumentException("DebugBridge status response is missing required fields");
+        }
+        return new SessionInfo(port, new MinecraftVersion(status.version()), BridgeMappingStatus.fromWire(status.mappingStatus()), status.obfuscated(), status.refs(), path(status.gameDir()), path(status.logsDir()), path(status.latestLog()), Optional.ofNullable(status.latestLogExists()), path(status.debugLog()), Optional.ofNullable(status.debugLogExists()), Optional.ofNullable(status.sessionControlEnabled()));
+    }
+
+    private static Optional<Path> path(String value) {
+        return value == null ? Optional.empty() : Optional.of(Path.of(value));
+    }
+
+    private static boolean identityChanged(SessionInfo previous, SessionInfo next) {
+        return previous.gameDir().isPresent() && next.gameDir().isPresent() ? !previous.gameDir().equals(next.gameDir()) : !previous.version().equals(next.version());
+    }
+
+    private static String display(SessionInfo info) {
+        return "port " + info.port() + ", game " + BridgePayloadValidator.safeDisplay(info.gameDir().map(Path::toString).orElse(info.version().value()));
     }
 
     public synchronized CompletionStage<SessionInfo> connect(Integer explicitPort) {
@@ -292,21 +339,6 @@ public final class BridgeSession implements AutoCloseable {
         candidates.remove(client);
     }
 
-    private static void closeQuietly(BridgeClient client) {
-        if (client != null) {
-            client.close();
-        }
-    }
-
-    private static Connector defaultConnector(BridgeJson json) {
-        HttpClient client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(2)).build();
-        return defaultConnector(client, json);
-    }
-
-    private static Connector defaultConnector(HttpClient client, BridgeJson json) {
-        return port -> BridgeClient.connect(client, URI.create("ws://127.0.0.1:" + port), json);
-    }
-
     private CompletionStage<BridgeClient> openCandidate(int port) {
         try {
             CompletionStage<BridgeClient> opened = connector.open(port);
@@ -320,46 +352,8 @@ public final class BridgeSession implements AutoCloseable {
         return environment.value("DEBUGBRIDGE_PORT").flatMap(BridgeSession::parsePort).orElse(DEFAULT_PORT);
     }
 
-    private static Optional<Integer> parsePort(String text) {
-        try {
-            double numeric = Double.parseDouble(text.strip());
-            if (!Double.isFinite(numeric) || numeric != Math.rint(numeric) || numeric < 1 || numeric > 65535) {
-                return Optional.empty();
-            }
-            return Optional.of((int) numeric);
-        } catch (IllegalArgumentException exception) {
-            return Optional.empty();
-        }
-    }
-
-    private static int requireExplicitPort(int port) {
-        if (port < 1 || port > 65535) {
-            throw new IllegalArgumentException("DebugBridge port must be in range: " + port);
-        }
-        return port;
-    }
-
     private void supersede() {
         reset();
-    }
-
-    private static SessionInfo toSessionInfo(int port, BridgeStatusWire status) {
-        if (status.version() == null || status.mappingStatus() == null || status.obfuscated() == null || status.refs() == null) {
-            throw new IllegalArgumentException("DebugBridge status response is missing required fields");
-        }
-        return new SessionInfo(port, new MinecraftVersion(status.version()), BridgeMappingStatus.fromWire(status.mappingStatus()), status.obfuscated(), status.refs(), path(status.gameDir()), path(status.logsDir()), path(status.latestLog()), Optional.ofNullable(status.latestLogExists()), path(status.debugLog()), Optional.ofNullable(status.debugLogExists()), Optional.ofNullable(status.sessionControlEnabled()));
-    }
-
-    private static Optional<Path> path(String value) {
-        return value == null ? Optional.empty() : Optional.of(Path.of(value));
-    }
-
-    private static boolean identityChanged(SessionInfo previous, SessionInfo next) {
-        return previous.gameDir().isPresent() && next.gameDir().isPresent() ? !previous.gameDir().equals(next.gameDir()) : !previous.version().equals(next.version());
-    }
-
-    private static String display(SessionInfo info) {
-        return "port " + info.port() + ", game " + BridgePayloadValidator.safeDisplay(info.gameDir().map(Path::toString).orElse(info.version().value()));
     }
 
     private void ensureOpen() {

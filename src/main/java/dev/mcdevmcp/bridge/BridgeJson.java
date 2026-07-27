@@ -2,6 +2,7 @@ package dev.mcdevmcp.bridge;
 
 import dev.mcdevmcp.support.JsonValues;
 import io.modelcontextprotocol.json.McpJsonMapper;
+import io.modelcontextprotocol.json.TypeRef;
 
 import java.io.IOException;
 import java.util.LinkedHashMap;
@@ -13,6 +14,13 @@ public final class BridgeJson {
 
     public BridgeJson(McpJsonMapper mapper) {
         this.mapper = Objects.requireNonNull(mapper, "mapper");
+    }
+
+    private static void optionalString(Map<String, Object> envelope, String field, String id) {
+        Object value = envelope.get(field);
+        if (value != null && !(value instanceof String)) {
+            throw new IllegalArgumentException("DebugBridge response " + BridgePayloadValidator.safeDisplay(id) + " " + field + " must be a string");
+        }
     }
 
     McpJsonMapper mapper() {
@@ -37,14 +45,19 @@ public final class BridgeJson {
             throw new IllegalArgumentException("DebugBridge response is missing or exceeds the wire limit");
         }
         try {
-            BridgeWireResponse wire = mapper.readValue(message, BridgeWireResponse.class);
-            if (wire == null || wire.id() == null || wire.id().isBlank()) {
+            Map<String, Object> envelope = mapper.readValue(message, new TypeRef<>() {
+            });
+            Object rawId = envelope.get("id");
+            if (!(rawId instanceof String id) || id.isBlank()) {
                 throw new IllegalArgumentException("DebugBridge response is missing required id");
             }
-            if (wire.success() == null) {
-                throw new IllegalArgumentException("DebugBridge response " + BridgePayloadValidator.safeDisplay(wire.id()) + " is missing required success");
+            if (!(envelope.get("success") instanceof Boolean)) {
+                throw new IllegalArgumentException("DebugBridge response " + BridgePayloadValidator.safeDisplay(id) + " is missing required success");
             }
-            return new BridgeResponse(wire.id(), wire.success(), JsonValues.freeze(wire.result()), wire.output(), wire.error());
+            optionalString(envelope, "output", id);
+            optionalString(envelope, "error", id);
+            BridgeWireResponse wire = mapper.convertValue(envelope, BridgeWireResponse.class);
+            return new BridgeResponse(wire.id(), wire.success(), envelope.containsKey("result"), JsonValues.freeze(wire.result()), wire.output(), wire.error());
         } catch (IOException | RuntimeException exception) {
             if (exception instanceof IllegalArgumentException illegalArgumentException) {
                 throw illegalArgumentException;

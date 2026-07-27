@@ -10,9 +10,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
 import java.util.stream.IntStream;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.*;
 
 final class BridgeClientTest {
     @Test
@@ -26,8 +24,8 @@ final class BridgeClientTest {
 
         CompletableFuture<BridgeResponse> first = client.send(new BridgeEndpoint("one"), null, Duration.ofSeconds(1)).toCompletableFuture();
         CompletableFuture<BridgeResponse> second = client.send(new BridgeEndpoint("two"), null, Duration.ofSeconds(1)).toCompletableFuture();
-        responses.get("req_2").complete(new BridgeResponse("req_2", true, "second", "", null));
-        responses.get("req_1").complete(new BridgeResponse("req_1", true, "first", "", null));
+        responses.get("req_2").complete(new BridgeResponse("req_2", true, true, "second", "", null));
+        responses.get("req_1").complete(new BridgeResponse("req_1", true, true, "first", "", null));
 
         assertEquals("first", first.join().result());
         assertEquals("second", second.join().result());
@@ -43,7 +41,10 @@ final class BridgeClientTest {
         CompletableFuture<BridgeResponse> call = client.send(new BridgeEndpoint("status"), null, Duration.ofDays(1)).toCompletableFuture();
 
         assertEquals(Duration.ofSeconds(10), BridgeClient.effectiveTimeout(null));
+        assertEquals(Duration.ofSeconds(15), BridgeClient.effectiveTimeout(Duration.ofSeconds(10)));
         assertEquals(Duration.ofMinutes(5), BridgeClient.effectiveTimeout(Duration.ofDays(1)));
+        assertEquals("Request timed out after 15000ms. The game may be frozen or the script may be in an infinite loop.", BridgeClient.timeoutMessage(Duration.ofSeconds(10), Duration.ofSeconds(15)));
+        assertEquals("Request timed out after 300000ms (capped from 86405000ms by BridgeSession ceiling of 300000ms). The game may be frozen or the script may be in an infinite loop.", BridgeClient.timeoutMessage(Duration.ofDays(1), Duration.ofMinutes(5)));
         client.close();
 
         assertThrows(Exception.class, call::join);
@@ -52,7 +53,7 @@ final class BridgeClientTest {
 
     @Test
     void parallelSendsKeepEachPublishedRequestAttachedToItsOwnPayload() {
-        BridgeClient client = BridgeClient.testing(new BridgeJson(McpJsonDefaults.getMapper()), request -> CompletableFuture.completedFuture(new BridgeResponse(request.id(), true, request.endpoint().wireName(), "", null)));
+        BridgeClient client = BridgeClient.testing(new BridgeJson(McpJsonDefaults.getMapper()), request -> CompletableFuture.completedFuture(new BridgeResponse(request.id(), true, true, request.endpoint().wireName(), "", null)));
 
         try (var executor = Executors.newFixedThreadPool(8)) {
             List<CompletableFuture<BridgeResponse>> calls = IntStream.range(0, 128).mapToObj(index -> CompletableFuture.supplyAsync(() -> client.send(new BridgeEndpoint("endpoint-" + index), index, Duration.ofSeconds(1)).toCompletableFuture().join(), executor)).toList();
@@ -67,7 +68,7 @@ final class BridgeClientTest {
 
     @Test
     void invalidTimeoutIsRejectedBeforePublishingARequest() {
-        BridgeClient client = BridgeClient.testing(new BridgeJson(McpJsonDefaults.getMapper()), request -> CompletableFuture.completedFuture(new BridgeResponse(request.id(), true, null, "", null)));
+        BridgeClient client = BridgeClient.testing(new BridgeJson(McpJsonDefaults.getMapper()), request -> CompletableFuture.completedFuture(new BridgeResponse(request.id(), true, true, null, "", null)));
 
         assertThrows(IllegalArgumentException.class, () -> client.send(new BridgeEndpoint("status"), null, Duration.ZERO));
         assertEquals(0, client.pendingRequestCount());

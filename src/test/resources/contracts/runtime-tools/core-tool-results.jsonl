@@ -1,0 +1,175 @@
+{
+  "label": "connect-success",
+  "text": "Connected!\nMinecraft 1.21.11\nPort: 9876\nGame dir: C:\\Game\nLog: C:\\Game\\logs\\latest.log\nMappings: mojang\nSession control: enabled",
+  "isError": false
+}
+{
+  "label": "connect-declared-error",
+  "text": "{\n  \"connected\": false,\n  \"action\": \"investigate\",\n  \"ports_tried\": [\n    9999\n  ],\n  \"message\": \"Connection failed: DebugBridge status failed: offline\",\n  \"raw_error\": \"DebugBridge status failed: offline\"\n}",
+  "isError": true
+}
+{
+  "label": "connect-missing-result",
+  "text": "{\n  \"connected\": false,\n  \"action\": \"investigate\",\n  \"ports_tried\": [\n    9999\n  ],\n  \"message\": \"Connection failed: DebugBridge status response is missing result\",\n  \"raw_error\": \"DebugBridge status response is missing result\"\n}",
+  "isError": true
+}
+{
+  "label": "execute-success",
+  "text": "line\n{\n  \"value\": 1\n}",
+  "isError": false
+}
+{
+  "label": "execute-number-formatting",
+  "text": "{\n  \"negativeZero\": 0,\n  \"smallFixed\": 0.000001,\n  \"smallExponent\": 1e-7,\n  \"largeFixed\": 100000000000000000000,\n  \"largeExponent\": 1e+21,\n  \"unsafeInteger\": 9007199254740992\n}",
+  "isError": false
+}
+{
+  "label": "execute-declared-error",
+  "text": "Error: bridge boom",
+  "isError": true
+}
+{
+  "label": "execute-timeout",
+  "text": "Request timed out after 17000ms. The game may be frozen or the script may be in an infinite loop.",
+  "isError": true
+}
+{
+  "label": "snapshot-success",
+  "text": "{\n  \"player\": {\n    \"name\": \"Alex\",\n    \"x\": 1.5\n  },\n  \"fps\": 60,\n  \"futureField\": \"kept\"\n}",
+  "isError": false
+}
+{
+  "label": "snapshot-declared-error",
+  "text": "Error: bridge boom",
+  "isError": true
+}
+{
+  "label": "snapshot-missing-result",
+  "text": "Bridge 'snapshot' reported success but returned no result. This is a bridge protocol mismatch — please verify the DebugBridge mod version.",
+  "isError": true
+}
+{
+  "label": "snapshot-wrong-primitive",
+  "text": "Bridge 'snapshot' returned non-container result (got string). Expected a JSON object or array.",
+  "isError": true
+}
+{
+  "label": "nearby-entities-success",
+  "text": "{\n  \"entities\": [\n    {\n      \"entityId\": 12,\n      \"type\": \"Zombie\",\n      \"distance\": 4.25\n    }\n  ],\n  \"count\": 1,\n  \"futureField\": true\n}",
+  "isError": false
+}
+{
+  "label": "nearby-entities-declared-error",
+  "text": "Error: bridge boom",
+  "isError": true
+}
+{
+  "label": "nearby-entities-missing-result",
+  "text": "Bridge 'nearbyEntities' reported success but returned no result. This is a bridge protocol mismatch — please verify the DebugBridge mod version.",
+  "isError": true
+}
+{
+  "label": "entity-details-success",
+  "text": "{\n  \"entityId\": 12,\n  \"type\": \"Zombie\",\n  \"health\": 20,\n  \"futureField\": \"kept\"\n}",
+  "isError": false
+}
+{
+  "label": "entity-details-declared-error",
+  "text": "Error: bridge boom",
+  "isError": true
+}
+{
+  "label": "entity-details-missing-result",
+  "text": "Bridge 'entityDetails' reported success but returned no result. This is a bridge protocol mismatch — please verify the DebugBridge mod version.",
+  "isError": true
+}
+{
+  "label": "nearby-blocks-success",
+  "text": "{\n  \"blocks\": [\n    {\n      \"x\": 1,\n      \"y\": 64,\n      \"z\": 2,\n      \"type\": \"ChestBlockEntity\"\n    }\n  ],\n  \"count\": 1\n}",
+  "isError": false
+}
+{
+  "label": "nearby-blocks-declared-error",
+  "text": "Error: bridge boom",
+  "isError": true
+}
+{
+  "label": "nearby-blocks-missing-result",
+  "text": "Bridge 'nearbyBlocks' reported success but returned no result. This is a bridge protocol mismatch — please verify the DebugBridge mod version.",
+  "isError": true
+}
+{
+  "label": "block-details-success",
+  "text": "{\n  \"x\": 1,\n  \"y\": 64,\n  \"z\": 2,\n  \"type\": \"ChestBlockEntity\",\n  \"blockId\": \"minecraft:chest\",\n  \"items\": []\n}",
+  "isError": false
+}
+{
+  "label": "block-details-declared-error",
+  "text": "Error: bridge boom",
+  "isError": true
+}
+{
+  "label": "block-details-missing-result",
+  "text": "Bridge 'blockDetails' reported success but returned no result. This is a bridge protocol mismatch — please verify the DebugBridge mod version.",
+  "isError": true
+}
+{
+  "label": "looked-at-entity-success",
+  "text": "12",
+  "isError": false
+}
+{
+  "label": "looked-at-entity-null",
+  "text": "null",
+  "isError": false
+}
+{
+  "label": "looked-at-entity-declared-error",
+  "text": "Error: bridge boom",
+  "isError": true
+}
+{
+  "label": "looked-at-entity-missing-result",
+  "text": "Bridge 'lookedAtEntity' reported success but returned no result. This is a bridge protocol mismatch — please verify the DebugBridge mod version.",
+  "isError": true
+}
+{
+  "label": "looked-at-entity-wrong-primitive",
+  "text": "Bridge 'lookedAtEntity' returned malformed result: expected an integer entity id or null, got string.",
+  "isError": true
+}
+{
+  "label": "chat-history-success",
+  "text": "{\n  \"messages\": [\n    {\n      \"plain\": \"hello\",\n      \"addedTime\": 42\n    }\n  ],\n  \"count\": 1\n}",
+  "isError": false
+}
+{
+  "label": "chat-history-declared-error",
+  "text": "Error: bridge boom",
+  "isError": true
+}
+{
+  "label": "chat-history-missing-result",
+  "text": "Bridge 'chatHistory' reported success but returned no result. This is a bridge protocol mismatch — please verify the DebugBridge mod version.",
+  "isError": true
+}
+{
+  "label": "screen-inspect-success",
+  "text": "{\n  \"open\": true,\n  \"type\": \"InventoryScreen\",\n  \"title\": \"Inventory\",\n  \"slots\": []\n}",
+  "isError": false
+}
+{
+  "label": "screen-inspect-declared-error",
+  "text": "Error: bridge boom",
+  "isError": true
+}
+{
+  "label": "screen-inspect-missing-result",
+  "text": "Bridge 'screenInspect' reported success but returned no result. This is a bridge protocol mismatch — please verify the DebugBridge mod version.",
+  "isError": true
+}
+{
+  "label": "snapshot-declared-error-without-message",
+  "text": "Error: undefined",
+  "isError": true
+}

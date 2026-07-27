@@ -16,20 +16,6 @@ public final class BridgePayloadValidator {
         this.mapper = Objects.requireNonNull(mapper, "mapper");
     }
 
-    public <T> T requireResult(BridgeResponse response, Class<T> type) {
-        return requireResult("unknown", response, type);
-    }
-
-    public <T> T requireResult(String endpoint, BridgeResponse response, Class<T> type) {
-        Objects.requireNonNull(type, "type");
-        Object result = requireResultValue(endpoint, response);
-        try {
-            return mapper.convertValue(result, type);
-        } catch (RuntimeException exception) {
-            throw new IllegalArgumentException("DebugBridge " + endpoint + " response has invalid result: " + safeDisplay(result), exception);
-        }
-    }
-
     public static Map<String, Object> requireOpenObject(BridgeResponse response) {
         return requireOpenObject("unknown", response);
     }
@@ -94,14 +80,36 @@ public final class BridgePayloadValidator {
     }
 
     private static Object requireResultValue(String endpoint, BridgeResponse response) {
+        Object result = requirePresentResult(endpoint, response);
+        if (result == null) {
+            throw new IllegalArgumentException("DebugBridge " + safeDisplay(endpoint) + " response is missing result");
+        }
+        return result;
+    }
+
+    public static Object requirePresentResult(String endpoint, BridgeResponse response) {
         Objects.requireNonNull(response, "response");
         String label = safeDisplay(endpoint);
         if (!response.success()) {
             throw new IllegalArgumentException("DebugBridge " + label + " failed: " + safeDisplay(response.error()));
         }
-        if (response.result() == null) {
+        if (!response.resultPresent()) {
             throw new IllegalArgumentException("DebugBridge " + label + " response is missing result");
         }
         return response.result();
+    }
+
+    public <T> T requireResult(BridgeResponse response, Class<T> type) {
+        return requireResult("unknown", response, type);
+    }
+
+    public <T> T requireResult(String endpoint, BridgeResponse response, Class<T> type) {
+        Objects.requireNonNull(type, "type");
+        Object result = requireResultValue(endpoint, response);
+        try {
+            return mapper.convertValue(result, type);
+        } catch (RuntimeException exception) {
+            throw new IllegalArgumentException("DebugBridge " + endpoint + " response has invalid result: " + safeDisplay(result), exception);
+        }
     }
 }

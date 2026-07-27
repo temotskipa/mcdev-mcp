@@ -35,6 +35,7 @@ tasks.withType<JavaCompile>().configureEach {
 tasks.withType<Test>().configureEach {
     useJUnitPlatform()
     javaLauncher.set(testJavaLauncher)
+    filter.isFailOnNoMatchingTests = false
 }
 
 tasks.jar {

@@ -7,10 +7,7 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 import java.util.Map;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.*;
 
 final class BridgeJsonContractTest {
     @Test
@@ -23,11 +20,25 @@ final class BridgeJsonContractTest {
 
         assertEquals("req_1", response.id());
         assertTrue(response.success());
+        assertTrue(response.resultPresent());
         assertTrue(BridgePayloadValidator.requireBoolean(true, "flag"));
         assertEquals("text", BridgePayloadValidator.requireString("text", "field"));
         assertEquals(7L, BridgePayloadValidator.requireIntegralNumber(7, "count"));
         assertEquals("png", BridgePayloadValidator.requirePngBase64("png"));
         assertThrows(UnsupportedOperationException.class, () -> BridgePayloadValidator.requireOpenObject(response).put("later", false));
+    }
+
+    @Test
+    void distinguishesAnExplicitNullResultFromAnOmittedResult() {
+        BridgeJson json = new BridgeJson(McpJsonDefaults.getMapper());
+
+        BridgeResponse explicitNull = json.readResponse("{\"id\":\"req_1\",\"success\":true,\"result\":null}");
+        BridgeResponse omitted = json.readResponse("{\"id\":\"req_2\",\"success\":true}");
+
+        assertTrue(explicitNull.resultPresent());
+        assertNull(BridgePayloadValidator.requirePresentResult("lookedAtEntity", explicitNull));
+        assertFalse(omitted.resultPresent());
+        assertThrows(IllegalArgumentException.class, () -> BridgePayloadValidator.requirePresentResult("lookedAtEntity", omitted));
     }
 
     @Test
@@ -65,7 +76,7 @@ final class BridgeJsonContractTest {
     @Test
     void endpointAwareValidationKeepsWireDataBounded() {
         String enormous = "x".repeat(2_000);
-        IllegalArgumentException exception = assertThrows(IllegalArgumentException.class, () -> BridgePayloadValidator.requireOpenObject("screenshot", new BridgeResponse("req_1", false, null, "", enormous)));
+        IllegalArgumentException exception = assertThrows(IllegalArgumentException.class, () -> BridgePayloadValidator.requireOpenObject("screenshot", new BridgeResponse("req_1", false, false, null, "", enormous)));
 
         assertTrue(exception.getMessage().contains("screenshot"));
         assertTrue(exception.getMessage().length() < 600);

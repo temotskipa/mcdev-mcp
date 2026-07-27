@@ -13,11 +13,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.*;
 
 final class BridgeLifecycleTest {
     private static final BridgeJson JSON = new BridgeJson(McpJsonDefaults.getMapper());
@@ -57,7 +53,7 @@ final class BridgeLifecycleTest {
     @Test
     void resetFencesDelayedScansAndClosesFailedAndReplacedCandidates() {
         CompletableFuture<BridgeClient> delayedOpen = new CompletableFuture<>();
-        BridgeClient stale = BridgeClient.testing(JSON, ignored -> CompletableFuture.completedFuture(new BridgeResponse("req_1", true, Map.of("version", "stale", "mappingStatus", "mojang", "obfuscated", false, "refs", 0L), "", null)));
+        BridgeClient stale = BridgeClient.testing(JSON, ignored -> CompletableFuture.completedFuture(new BridgeResponse("req_1", true, true, Map.of("version", "stale", "mappingStatus", "mojang", "obfuscated", false, "refs", 0L), "", null)));
         BridgeSession resetSession = new BridgeSession(JSON, new AppEnvironment(Map.of()), _ -> delayedOpen);
         CompletableFuture<SessionInfo> connecting = resetSession.connect(null).toCompletableFuture();
         resetSession.reset();
@@ -67,7 +63,7 @@ final class BridgeLifecycleTest {
         assertFalse(resetSession.connectedPort().isPresent());
 
         AtomicInteger attempts = new AtomicInteger();
-        BridgeClient failed = BridgeClient.testing(JSON, ignored -> CompletableFuture.completedFuture(new BridgeResponse("req_1", false, null, "", "no")));
+        BridgeClient failed = BridgeClient.testing(JSON, ignored -> CompletableFuture.completedFuture(new BridgeResponse("req_1", false, false, null, "", "no")));
         BridgeClient first = FakeDebugBridge.client(JSON, "first");
         BridgeClient replacement = FakeDebugBridge.client(JSON, "first");
         BridgeSession session = new BridgeSession(JSON, new AppEnvironment(Map.of()), _ -> {
@@ -133,7 +129,7 @@ final class BridgeLifecycleTest {
     @Test
     void oversizedFragmentTailIsDiscardedUntilTheFinalFragment() {
         List<String> diagnostics = new CopyOnWriteArrayList<>();
-        BridgeClient client = BridgeClient.testing(JSON, request -> CompletableFuture.completedFuture(new BridgeResponse(request.id(), true, Map.of(), "", null)), diagnostics::add);
+        BridgeClient client = BridgeClient.testing(JSON, request -> CompletableFuture.completedFuture(new BridgeResponse(request.id(), true, true, Map.of(), "", null)), diagnostics::add);
 
         client.receiveText("x".repeat(8 * 1024 * 1024 + 1), false);
         client.receiveText("{\"id\":\"discarded\",\"success\":true,\"result\":{}}", true);

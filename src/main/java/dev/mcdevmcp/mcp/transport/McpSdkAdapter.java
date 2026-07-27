@@ -51,20 +51,21 @@ public final class McpSdkAdapter {
         return new StdioServerTransportProvider(mapper, new EofTrackingInputStream(input, inputClosed), new NonClosingOutputStream(output));
     }
 
-    public static StdioServer startStdio(McpJsonMapper mapper, InputStream input, OutputStream output, ToolCatalog toolCatalog, ResourceCatalog resourceCatalog, ExecutorService blockingExecutor) {
+    public static StdioServer startStdio(McpJsonMapper mapper, InputStream input, OutputStream output, ToolCatalog toolCatalog, ResourceCatalog resourceCatalog, ExecutorService blockingExecutor, AutoCloseable ownedRuntime) {
         Objects.requireNonNull(mapper, "mapper");
         Objects.requireNonNull(input, "input");
         Objects.requireNonNull(output, "output");
         Objects.requireNonNull(toolCatalog, "toolCatalog");
         Objects.requireNonNull(resourceCatalog, "resourceCatalog");
         Objects.requireNonNull(blockingExecutor, "blockingExecutor");
+        Objects.requireNonNull(ownedRuntime, "ownedRuntime");
 
         var inputClosed = new CountDownLatch(1);
         McpJsonMapper transportMapper = nodeParityMapper(mapper);
         var transport = stdioTransport(transportMapper, input, output, inputClosed);
         var adapter = new McpSdkAdapter(mapper, blockingExecutor);
         McpAsyncServer server = McpServer.async(transport).jsonMapper(transportMapper).serverInfo("mcdev-mcp", AppVersion.current()).instructions(ResourceCatalog.INSTRUCTIONS).capabilities(McpSchema.ServerCapabilities.builder().resources(null, null).tools(null).build()).validateToolInputs(true).tools(adapter.tools(toolCatalog)).resources(adapter.resources(resourceCatalog)).build();
-        return new StdioServer(server, blockingExecutor, inputClosed);
+        return new StdioServer(server, blockingExecutor, inputClosed, ownedRuntime);
     }
 
     List<McpServerFeatures.AsyncToolSpecification> tools(ToolCatalog catalog) {
