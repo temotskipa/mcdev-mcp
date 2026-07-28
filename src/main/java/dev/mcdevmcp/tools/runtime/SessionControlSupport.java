@@ -1,0 +1,703 @@
+package dev.mcdevmcp.tools.runtime;
+
+import dev.mcdevmcp.bridge.BridgeEndpoint;
+import dev.mcdevmcp.bridge.BridgeResponse;
+import dev.mcdevmcp.bridge.BridgeSession;
+import dev.mcdevmcp.bridge.SessionInfo;
+import dev.mcdevmcp.mcp.tool.ToolResult;
+import dev.mcdevmcp.storage.model.MinecraftVersion;
+import dev.mcdevmcp.support.AppEnvironment;
+import dev.mcdevmcp.support.Cancellation;
+
+import java.io.IOException;
+import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.net.InetSocketAddress;
+import java.nio.channels.AsynchronousSocketChannel;
+import java.nio.channels.CompletionHandler;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Path;
+import java.time.Duration;
+import java.util.*;
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.BiFunction;
+import java.util.function.Function;
+import java.util.function.LongSupplier;
+
+final class SessionControlSupport {
+    static final int BRIDGE_PORT_START = 9876;
+    static final int BRIDGE_PORT_END = 9886;
+    static final int DEFAULT_JOIN_TIMEOUT_SECONDS = 60;
+    static final int DEFAULT_QUIT_TIMEOUT_SECONDS = 30;
+    static final int DEFAULT_BRIDGE_WAIT_TIMEOUT_SECONDS = 120;
+
+    private static final Duration POLL_INTERVAL = Duration.ofSeconds(1);
+    private static final Duration PROCESS_POLL_INTERVAL = Duration.ofMillis(250);
+    private static final Duration PID_PROBE_TIMEOUT = Duration.ofSeconds(4);
+    private static final BridgeEndpoint SNAPSHOT = new BridgeEndpoint("snapshot");
+    private static final BridgeEndpoint SCREEN_INSPECT = new BridgeEndpoint("screenInspect");
+
+    private final BridgeSession session;
+    private final AppEnvironment environment;
+    private final ScheduledExecutorService scheduler;
+    private final LongSupplier currentTimeMillis;
+    private final PortListeningProbe portListeningProbe;
+    private final ListeningPidResolver listeningPidResolver;
+
+    SessionControlSupport(BridgeSession session, AppEnvironment environment, ScheduledExecutorService scheduler) {
+        this(session, environment, scheduler, System::currentTimeMillis, defaultPortListeningProbe(scheduler), defaultListeningPidResolver(scheduler));
+    }
+
+    SessionControlSupport(BridgeSession session, AppEnvironment environment, ScheduledExecutorService scheduler, LongSupplier currentTimeMillis, PortListeningProbe portListeningProbe, ListeningPidResolver listeningPidResolver) {
+        this.session = Objects.requireNonNull(session, "session");
+        this.environment = Objects.requireNonNull(environment, "environment");
+        this.scheduler = Objects.requireNonNull(scheduler, "scheduler");
+        this.currentTimeMillis = Objects.requireNonNull(currentTimeMillis, "currentTimeMillis");
+        this.portListeningProbe = Objects.requireNonNull(portListeningProbe, "portListeningProbe");
+        this.listeningPidResolver = Objects.requireNonNull(listeningPidResolver, "listeningPidResolver");
+    }
+
+    static BigDecimal timeoutSeconds(Object value, int defaultValue) {
+        BigDecimal timeout = RuntimeToolSupport.optionalDecimal(value, "timeoutSeconds");
+        return timeout == null ? BigDecimal.valueOf(defaultValue) : timeout;
+    }
+
+    static String optionalString(Object value, String name) {
+        if (value == null || value instanceof String) {
+            return (String) value;
+        }
+        throw new IllegalArgumentException("'" + name + "' must be a string");
+    }
+
+    static <T, R> CompletionStage<R> mapCancellable(CompletionStage<T> stage, Function<T, R> mapper) {
+        var result = new CancellableOperation<R>();
+        result.pending(stage);
+        stage.whenComplete((value, failure) -> {
+            if (result.isDone()) {
+                return;
+            }
+            if (failure != null) {
+                result.completeExceptionally(failure);
+                return;
+            }
+            try {
+                result.complete(mapper.apply(value));
+            } catch (RuntimeException exception) {
+                result.completeExceptionally(exception);
+            }
+        });
+        return result;
+    }
+
+    static <T, R> CompletionStage<R> composeCancellable(CompletionStage<T> stage, Function<T, CompletionStage<R>> mapper) {
+        var result = new CancellableOperation<R>();
+        result.pending(stage);
+        stage.whenComplete((value, failure) -> {
+            if (result.isDone()) {
+                return;
+            }
+            if (failure != null) {
+                result.completeExceptionally(failure);
+                return;
+            }
+            CompletionStage<R> next;
+            try {
+                next = Objects.requireNonNull(mapper.apply(value), "Composed runtime operation returned no stage");
+            } catch (RuntimeException exception) {
+                result.completeExceptionally(exception);
+                return;
+            }
+            result.pending(next);
+            next.whenComplete((mapped, mappedFailure) -> {
+                if (result.isDone()) {
+                    return;
+                }
+                if (mappedFailure != null) {
+                    result.completeExceptionally(mappedFailure);
+                }
+                else {
+                    result.complete(mapped);
+                }
+            });
+        });
+        return result;
+    }
+
+    static <T, R> CompletionStage<R> handleCancellable(CompletionStage<T> stage, BiFunction<T, Throwable, R> handler) {
+        var result = new CancellableOperation<R>();
+        result.pending(stage);
+        stage.whenComplete((value, failure) -> {
+            if (result.isDone()) {
+                return;
+            }
+            try {
+                result.complete(handler.apply(value, failure));
+            } catch (RuntimeException exception) {
+                result.completeExceptionally(exception);
+            }
+        });
+        return result;
+    }
+
+    static CompletionStage<ToolResult> recoverTool(CompletionStage<ToolResult> stage) {
+        var result = new CancellableOperation<ToolResult>();
+        result.pending(stage);
+        stage.whenComplete((value, failure) -> {
+            if (result.isDone()) {
+                return;
+            }
+            if (failure == null) {
+                result.complete(value);
+            }
+            else {
+                result.complete(ToolResult.error(message(failure)));
+            }
+        });
+        return result;
+    }
+
+    static InWorldPollResult classifyInWorldPoll(Object snapshotResult, Object screenResult) {
+        if (snapshotResult instanceof Map<?, ?> snapshot && truthy(snapshot.get("player"))) {
+            return new InWorldPollResult.Joined();
+        }
+        if (screenResult instanceof Map<?, ?> screen && screen.get("type") instanceof String type && type.contains("DisconnectedScreen")) {
+            Object title = screen.get("title");
+            return new InWorldPollResult.Failed(title instanceof String text && !text.isEmpty() ? text : type);
+        }
+        return new InWorldPollResult.Pending();
+    }
+
+    static InWorldPollResult stepInWorldWait(InWorldWaitProgress progress, boolean requireAbsenceFirst, Object snapshotResult, Object screenResult) {
+        InWorldPollResult classified = classifyInWorldPoll(snapshotResult, screenResult);
+        if (snapshotResult instanceof Map<?, ?> && !(classified instanceof InWorldPollResult.Joined)) {
+            progress.sawAbsence = true;
+        }
+        if (classified instanceof InWorldPollResult.Joined && requireAbsenceFirst && !progress.sawAbsence) {
+            return new InWorldPollResult.Pending();
+        }
+        return classified;
+    }
+
+    static String sessionControlDisabledMessage(Path gameDirectory) {
+        String config = gameDirectory == null ? "<minecraft>/config/debugbridge.json" : gameDirectory.resolve("config").resolve("debugbridge.json").toString();
+        return "Session control is disabled in DebugBridge (session_control_enabled=false, the default).\n" + "To enable it: edit " + config + ", set \"session_control_enabled\": true, then restart the Minecraft client — the flag is only read at startup.";
+    }
+
+    static Long parseListeningPid(String output) {
+        Set<Long> pids = new LinkedHashSet<>();
+        for (String line : output.split("\\R", -1)) {
+            String trimmed = line.strip();
+            if (trimmed.isEmpty()) {
+                continue;
+            }
+            if (!trimmed.chars().allMatch(Character::isDigit)) {
+                return null;
+            }
+            try {
+                pids.add(Long.parseLong(trimmed));
+            } catch (NumberFormatException exception) {
+                return null;
+            }
+        }
+        if (pids.size() != 1) {
+            return null;
+        }
+        long pid = pids.iterator().next();
+        return pid > 0 ? pid : null;
+    }
+
+    static boolean instanceMatches(SessionInfo info, ExpectedInstance expected) {
+        if (expected.gameDirectory().isPresent()) {
+            if (info.gameDir().isPresent()) {
+                return expected.gameDirectory().equals(info.gameDir());
+            }
+            return expected.version().map(version -> version.equals(info.version())).orElse(false);
+        }
+        return expected.version().map(version -> version.equals(info.version())).orElse(true);
+    }
+
+    private static Optional<Integer> parsePort(String value) {
+        try {
+            BigDecimal numeric = new BigDecimal(value.strip());
+            int port = numeric.intValueExact();
+            return port > 0 && port <= 65535 ? Optional.of(port) : Optional.empty();
+        } catch (ArithmeticException | NumberFormatException exception) {
+            return Optional.empty();
+        }
+    }
+
+    private static boolean truthy(Object value) {
+        return switch (value) {
+            case null -> false;
+            case Boolean flag -> flag;
+            case Number number -> number.doubleValue() != 0;
+            case String text -> !text.isEmpty();
+            default -> true;
+        };
+    }
+
+    private static long milliseconds(BigDecimal seconds) {
+        BigDecimal milliseconds = seconds.multiply(BigDecimal.valueOf(1_000)).setScale(0, RoundingMode.DOWN);
+        if (milliseconds.compareTo(BigDecimal.valueOf(Long.MAX_VALUE)) > 0) {
+            return Long.MAX_VALUE;
+        }
+        if (milliseconds.compareTo(BigDecimal.valueOf(Long.MIN_VALUE)) < 0) {
+            return Long.MIN_VALUE;
+        }
+        return milliseconds.longValueExact();
+    }
+
+    private static double elapsedSeconds(long started, long now) {
+        return Math.round((now - started) / 100.0) / 10.0;
+    }
+
+    private static String message(Throwable failure) {
+        Throwable current = failure;
+        while ((current instanceof java.util.concurrent.CompletionException || current instanceof java.util.concurrent.ExecutionException) && current.getCause() != null) {
+            current = current.getCause();
+        }
+        return current.getMessage() == null ? current.toString() : current.getMessage();
+    }
+
+    @SuppressWarnings("resource")
+    private static PortListeningProbe defaultPortListeningProbe(ScheduledExecutorService scheduler) {
+        return port -> {
+            var result = new CompletableFuture<Boolean>();
+            AsynchronousSocketChannel channel;
+            try {
+                channel = AsynchronousSocketChannel.open();
+            } catch (IOException exception) {
+                return CompletableFuture.completedFuture(false);
+            }
+            ScheduledFuture<?> timeout = scheduler.schedule(() -> {
+                closeQuietly(channel);
+                result.complete(false);
+            }, 800, TimeUnit.MILLISECONDS);
+            result.whenComplete((_, _) -> {
+                timeout.cancel(false);
+                closeQuietly(channel);
+            });
+            channel.connect(new InetSocketAddress("127.0.0.1", port), null, new CompletionHandler<>() {
+                @Override
+                public void completed(Void ignored, Object attachment) {
+                    result.complete(true);
+                }
+
+                @Override
+                public void failed(Throwable ignored, Object attachment) {
+                    result.complete(false);
+                }
+            });
+            return result;
+        };
+    }
+
+    private static ListeningPidResolver defaultListeningPidResolver(ScheduledExecutorService scheduler) {
+        return port -> {
+            List<String> command = System.getProperty("os.name").toLowerCase(Locale.ROOT).contains("win") ? List.of("powershell.exe", "-NoProfile", "-Command", "(Get-NetTCPConnection -LocalPort " + port + " -State Listen -ErrorAction SilentlyContinue).OwningProcess") : List.of("lsof", "-t", "-iTCP:" + port, "-sTCP:LISTEN");
+            var result = new CompletableFuture<Long>();
+            Process process;
+            try {
+                process = new ProcessBuilder(command).redirectError(ProcessBuilder.Redirect.DISCARD).start();
+            } catch (IOException exception) {
+                return CompletableFuture.completedFuture(null);
+            }
+            ScheduledFuture<?> timeout = scheduler.schedule(() -> {
+                process.destroyForcibly();
+                result.complete(null);
+            }, PID_PROBE_TIMEOUT.toMillis(), TimeUnit.MILLISECONDS);
+            result.whenComplete((_, _) -> {
+                timeout.cancel(false);
+                if (result.isCancelled()) {
+                    process.destroyForcibly();
+                }
+            });
+            process.onExit().whenComplete((exited, failure) -> {
+                if (failure != null || exited.exitValue() != 0) {
+                    result.complete(null);
+                    return;
+                }
+                try {
+                    result.complete(parseListeningPid(new String(exited.getInputStream().readAllBytes(), StandardCharsets.UTF_8)));
+                } catch (IOException exception) {
+                    result.complete(null);
+                }
+            });
+            return result;
+        };
+    }
+
+    private static void closeQuietly(AsynchronousSocketChannel channel) {
+        try {
+            channel.close();
+        } catch (IOException ignored) {
+        }
+    }
+
+    static boolean processAlive(long pid) {
+        try {
+            return ProcessHandle.of(pid).map(ProcessHandle::isAlive).orElse(false);
+        } catch (RuntimeException exception) {
+            return true;
+        }
+    }
+
+    List<Integer> bridgePortRange() {
+        var ports = new ArrayList<Integer>();
+        environment.value("DEBUGBRIDGE_PORT").flatMap(SessionControlSupport::parsePort).filter(port -> port < BRIDGE_PORT_START || port > BRIDGE_PORT_END).ifPresent(ports::add);
+        for (int port = BRIDGE_PORT_START; port <= BRIDGE_PORT_END; port++) {
+            ports.add(port);
+        }
+        return List.copyOf(ports);
+    }
+
+    CompletionStage<String> checkSessionControlEnabled() {
+        CompletionStage<SessionInfo> info;
+        if (session.connectedPort().isPresent()) {
+            info = CompletableFuture.completedFuture(session.sessionInfo().orElseThrow(() -> new IllegalStateException("DebugBridge connected without session information")));
+        }
+        else {
+            info = session.connect(null);
+        }
+        return info.thenApply(sessionInfo -> sessionInfo.sessionControlEnabled().filter(enabled -> !enabled).map(_ -> sessionControlDisabledMessage(sessionInfo.gameDir().orElse(null))).orElse(null));
+    }
+
+    CompletionStage<InWorldWaitResult> waitUntilInWorld(BigDecimal timeoutSeconds, boolean requireAbsenceFirst, Cancellation cancellation) {
+        long timeoutMillis = milliseconds(timeoutSeconds);
+        long started = currentTimeMillis.getAsLong();
+        var operation = new CancellableOperation<InWorldWaitResult>();
+        var poller = new InWorldPoller(operation, cancellation, started, timeoutMillis, requireAbsenceFirst);
+        operation.deadline(() -> operation.complete(new InWorldWaitResult(InWorldWaitResult.State.TIMEOUT, null, elapsedSeconds(started, currentTimeMillis.getAsLong()))), timeoutMillis, scheduler);
+        poller.tick();
+        return operation;
+    }
+
+    CompletionStage<FoundBridge> waitForBridge(ExpectedInstance expected, BigDecimal timeoutSeconds, List<String> notes, Cancellation cancellation) {
+        long timeoutMillis = milliseconds(timeoutSeconds);
+        long started = currentTimeMillis.getAsLong();
+        var operation = new CancellableOperation<FoundBridge>();
+        var waiter = new BridgeWaiter(operation, cancellation, expected, notes, started, timeoutMillis);
+        operation.deadline(waiter::timeout, timeoutMillis, scheduler);
+        waiter.sweep();
+        return operation;
+    }
+
+    CompletionStage<Long> resolveListeningPid(int port) {
+        return listeningPidResolver.resolve(port);
+    }
+
+    CompletionStage<BridgeResponse> send(BridgeEndpoint endpoint, Map<String, Object> payload, Duration timeout) {
+        return session.send(endpoint, payload, timeout);
+    }
+
+    Optional<SessionInfo> sessionInfo() {
+        return session.sessionInfo();
+    }
+
+    OptionalLong connectedPort() {
+        return session.connectedPort().isPresent() ? OptionalLong.of(session.connectedPort().orElseThrow()) : OptionalLong.empty();
+    }
+
+    CompletionStage<SessionInfo> adoptPort(int port) {
+        return session.adoptPort(port);
+    }
+
+    void disconnect() {
+        session.disconnect();
+    }
+
+    CompletionStage<ClientExitResult> waitForClientExit(int port, Long pid, BigDecimal timeoutSeconds, Cancellation cancellation) {
+        long timeoutMillis = milliseconds(timeoutSeconds);
+        long started = currentTimeMillis.getAsLong();
+        var operation = new CancellableOperation<ClientExitResult>();
+        var phase = new AtomicReference<>(ClientExitResult.Phase.PORT);
+        operation.deadline(() -> operation.complete(new ClientExitResult.Timeout(phase.get())), timeoutMillis, scheduler);
+        pollPortClosed(operation, cancellation, port, pid, started, timeoutMillis, phase);
+        return operation;
+    }
+
+    private void pollPortClosed(CancellableOperation<ClientExitResult> operation, Cancellation cancellation, int port, Long pid, long started, long timeoutMillis, AtomicReference<ClientExitResult.Phase> phase) {
+        if (operation.stopIfCancelled(cancellation)) {
+            return;
+        }
+        CompletionStage<Boolean> listening = portListeningProbe.isListening(port);
+        operation.pending(listening);
+        listening.whenComplete((isListening, failure) -> {
+            if (operation.isDone()) {
+                return;
+            }
+            boolean stillListening = failure != null || Boolean.TRUE.equals(isListening);
+            if (!stillListening) {
+                if (pid == null) {
+                    operation.complete(new ClientExitResult.Exited(false));
+                }
+                else {
+                    phase.set(ClientExitResult.Phase.PROCESS);
+                    pollProcessExit(operation, cancellation, pid, started, timeoutMillis);
+                }
+                return;
+            }
+            if (currentTimeMillis.getAsLong() - started >= timeoutMillis) {
+                operation.complete(new ClientExitResult.Timeout(ClientExitResult.Phase.PORT));
+                return;
+            }
+            operation.schedule(() -> pollPortClosed(operation, cancellation, port, pid, started, timeoutMillis, phase), POLL_INTERVAL, scheduler);
+        });
+    }
+
+    private void pollProcessExit(CancellableOperation<ClientExitResult> operation, Cancellation cancellation, long pid, long started, long timeoutMillis) {
+        if (operation.stopIfCancelled(cancellation)) {
+            return;
+        }
+        if (!processAlive(pid)) {
+            operation.complete(new ClientExitResult.Exited(true));
+            return;
+        }
+        if (currentTimeMillis.getAsLong() - started >= timeoutMillis) {
+            operation.complete(new ClientExitResult.Timeout(ClientExitResult.Phase.PROCESS));
+            return;
+        }
+        operation.schedule(() -> pollProcessExit(operation, cancellation, pid, started, timeoutMillis), PROCESS_POLL_INTERVAL, scheduler);
+    }
+
+    @FunctionalInterface
+    interface PortListeningProbe {
+        CompletionStage<Boolean> isListening(int port);
+    }
+
+    @FunctionalInterface
+    interface ListeningPidResolver {
+        CompletionStage<Long> resolve(int port);
+    }
+
+    record ExpectedInstance(Optional<MinecraftVersion> version, Optional<Path> gameDirectory) {
+        ExpectedInstance {
+            Objects.requireNonNull(version, "version");
+            Objects.requireNonNull(gameDirectory, "gameDirectory");
+        }
+
+        static ExpectedInstance none() {
+            return new ExpectedInstance(Optional.empty(), Optional.empty());
+        }
+    }
+
+    record FoundBridge(int port, SessionInfo info) {
+    }
+
+    static final class InWorldWaitProgress {
+        private boolean sawAbsence;
+    }
+
+    private static final class CancellableOperation<T> extends CompletableFuture<T> {
+        private final AtomicReference<Future<?>> pending = new AtomicReference<>();
+        private final AtomicReference<ScheduledFuture<?>> scheduled = new AtomicReference<>();
+        private final AtomicReference<ScheduledFuture<?>> deadline = new AtomicReference<>();
+
+        private CancellableOperation() {
+            whenComplete((_, _) -> cancelWork());
+        }
+
+        private void pending(CompletionStage<?> stage) {
+            CompletableFuture<?> future = stage.toCompletableFuture();
+            pending.set(future);
+            if (isDone()) {
+                future.cancel(true);
+            }
+            future.whenComplete((_, _) -> pending.compareAndSet(future, null));
+        }
+
+        private void schedule(Runnable action, Duration delay, ScheduledExecutorService scheduler) {
+            if (isDone()) {
+                return;
+            }
+            ScheduledFuture<?> future = scheduler.schedule(action, delay.toMillis(), TimeUnit.MILLISECONDS);
+            ScheduledFuture<?> previous = scheduled.getAndSet(future);
+            if (previous != null) {
+                previous.cancel(false);
+            }
+            if (isDone()) {
+                future.cancel(false);
+            }
+        }
+
+        private void deadline(Runnable action, long delayMillis, ScheduledExecutorService scheduler) {
+            if (isDone()) {
+                return;
+            }
+            ScheduledFuture<?> future = scheduler.schedule(action, Math.max(0, delayMillis), TimeUnit.MILLISECONDS);
+            ScheduledFuture<?> previous = deadline.getAndSet(future);
+            if (previous != null) {
+                previous.cancel(false);
+            }
+            if (isDone()) {
+                future.cancel(false);
+            }
+        }
+
+        private boolean stopIfCancelled(Cancellation cancellation) {
+            if (isDone()) {
+                return true;
+            }
+            if (cancellation.isCancelled()) {
+                cancel(true);
+                return true;
+            }
+            return false;
+        }
+
+        @Override
+        public boolean cancel(boolean mayInterruptIfRunning) {
+            boolean cancelled = super.cancel(mayInterruptIfRunning);
+            cancelWork();
+            return cancelled;
+        }
+
+        private void cancelWork() {
+            Future<?> active = pending.getAndSet(null);
+            if (active != null) {
+                active.cancel(true);
+            }
+            ScheduledFuture<?> timer = scheduled.getAndSet(null);
+            if (timer != null) {
+                timer.cancel(false);
+            }
+            ScheduledFuture<?> deadlineTimer = deadline.getAndSet(null);
+            if (deadlineTimer != null) {
+                deadlineTimer.cancel(false);
+            }
+        }
+    }
+
+    private final class InWorldPoller {
+        private final CancellableOperation<InWorldWaitResult> operation;
+        private final Cancellation cancellation;
+        private final long started;
+        private final long timeoutMillis;
+        private final boolean requireAbsenceFirst;
+        private final InWorldWaitProgress progress = new InWorldWaitProgress();
+
+        private InWorldPoller(CancellableOperation<InWorldWaitResult> operation, Cancellation cancellation, long started, long timeoutMillis, boolean requireAbsenceFirst) {
+            this.operation = operation;
+            this.cancellation = cancellation;
+            this.started = started;
+            this.timeoutMillis = timeoutMillis;
+            this.requireAbsenceFirst = requireAbsenceFirst;
+        }
+
+        private void tick() {
+            if (operation.stopIfCancelled(cancellation)) {
+                return;
+            }
+            CompletionStage<BridgeResponse> snapshot = session.send(SNAPSHOT, RuntimeToolSupport.EMPTY_PAYLOAD, null);
+            operation.pending(snapshot);
+            snapshot.handle((response, failure) -> failure == null && response.success() ? response.result() : null).whenComplete((snapshotResult, _) -> onSnapshot(snapshotResult));
+        }
+
+        private void onSnapshot(Object snapshotResult) {
+            if (operation.isDone()) {
+                return;
+            }
+            InWorldPollResult snapshotState = stepInWorldWait(progress, requireAbsenceFirst, snapshotResult, null);
+            if (snapshotState instanceof InWorldPollResult.Joined) {
+                operation.complete(new InWorldWaitResult(InWorldWaitResult.State.JOINED, null, elapsedSeconds(started, currentTimeMillis.getAsLong())));
+                return;
+            }
+            CompletionStage<BridgeResponse> screen = session.send(SCREEN_INSPECT, RuntimeToolSupport.EMPTY_PAYLOAD, null);
+            operation.pending(screen);
+            screen.handle((response, failure) -> failure == null && response.success() ? response.result() : null).whenComplete((screenResult, _) -> onScreen(snapshotResult, screenResult));
+        }
+
+        private void onScreen(Object snapshotResult, Object screenResult) {
+            if (operation.isDone()) {
+                return;
+            }
+            InWorldPollResult state = stepInWorldWait(progress, requireAbsenceFirst, snapshotResult, screenResult);
+            long now = currentTimeMillis.getAsLong();
+            if (state instanceof InWorldPollResult.Failed(String reason)) {
+                operation.complete(new InWorldWaitResult(InWorldWaitResult.State.FAILED, reason, elapsedSeconds(started, now)));
+            }
+            else if (now - started >= timeoutMillis) {
+                operation.complete(new InWorldWaitResult(InWorldWaitResult.State.TIMEOUT, null, elapsedSeconds(started, now)));
+            }
+            else {
+                operation.schedule(this::tick, POLL_INTERVAL, scheduler);
+            }
+        }
+    }
+
+    private final class BridgeWaiter {
+        private final CancellableOperation<FoundBridge> operation;
+        private final Cancellation cancellation;
+        private final ExpectedInstance expected;
+        private final List<String> notes;
+        private final long started;
+        private final long timeoutMillis;
+        private final Map<Integer, String> mismatches = new LinkedHashMap<>();
+        private List<Integer> ports;
+        private int index;
+
+        private BridgeWaiter(CancellableOperation<FoundBridge> operation, Cancellation cancellation, ExpectedInstance expected, List<String> notes, long started, long timeoutMillis) {
+            this.operation = operation;
+            this.cancellation = cancellation;
+            this.expected = expected;
+            this.notes = notes;
+            this.started = started;
+            this.timeoutMillis = timeoutMillis;
+        }
+
+        private synchronized void sweep() {
+            if (operation.stopIfCancelled(cancellation)) {
+                return;
+            }
+            if (currentTimeMillis.getAsLong() - started >= timeoutMillis) {
+                operation.completeExceptionally(new IllegalStateException(timeoutMessage()));
+                return;
+            }
+            ports = bridgePortRange();
+            index = 0;
+            probeNext();
+        }
+
+        private synchronized void timeout() {
+            operation.completeExceptionally(new IllegalStateException(timeoutMessage()));
+        }
+
+        private synchronized void probeNext() {
+            if (operation.stopIfCancelled(cancellation)) {
+                return;
+            }
+            if (index >= ports.size()) {
+                operation.schedule(this::sweep, POLL_INTERVAL, scheduler);
+                return;
+            }
+            int port = ports.get(index++);
+            CompletionStage<SessionInfo> probe = session.probe(port);
+            operation.pending(probe);
+            probe.whenComplete((info, failure) -> onProbe(port, info, failure));
+        }
+
+        private synchronized void onProbe(int port, SessionInfo info, Throwable failure) {
+            if (operation.isDone()) {
+                return;
+            }
+            if (failure == null && instanceMatches(info, expected)) {
+                operation.complete(new FoundBridge(port, info));
+                return;
+            }
+            if (failure == null) {
+                String description = info.version().value() + " (" + info.gameDir().map(Path::toString).orElse("unknown gameDir") + ")";
+                if (!description.equals(mismatches.put(port, description))) {
+                    notes.add("port " + port + " answered with a different instance: " + description + " — skipping");
+                }
+            }
+            probeNext();
+        }
+
+        private String timeoutMessage() {
+            String expectedDescription = expected.gameDirectory().map(Path::toString).orElseGet(() -> expected.version().map(MinecraftVersion::value).orElse("any instance"));
+            String seen = mismatches.isEmpty() ? "" : " Other instances answered: " + String.join(", ", mismatches.entrySet().stream().map(entry -> "port " + entry.getKey() + " → " + entry.getValue()).toList()) + ".";
+            return "Timed out after " + Math.round(timeoutMillis / 1_000.0) + "s waiting for the bridge of " + expectedDescription + " on ports " + BRIDGE_PORT_START + "-" + BRIDGE_PORT_END + "." + seen + " If you just launched the client, check the launcher window: it may be sitting on a login prompt (the user must log in once in the launcher GUI), or the game may have crashed — read <gameDir>/logs/latest.log.";
+        }
+    }
+}

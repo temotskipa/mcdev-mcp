@@ -10,8 +10,8 @@ final class McExecuteTool {
     private McExecuteTool() {
     }
 
-    static ToolBinding<ExecuteArguments> binding(RuntimeToolSupport support) {
+    static ToolBinding<ExecuteArguments> binding(RuntimeToolSupport support, ScriptLogger scriptLogger, boolean scriptLogsEnabled) {
         var decoder = ArgumentDecoder.sdk(ExecuteWireArguments.class).map(ExecuteArguments::from);
-        return new ToolBinding<>(decoder, (arguments, _) -> support.execute(arguments));
+        return new ToolBinding<>(decoder, (arguments, _) -> support.execute(arguments, scriptLogger, scriptLogsEnabled));
     }
 }

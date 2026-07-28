@@ -237,23 +237,48 @@ final class RuntimeToolSupport {
         return mapStage(() -> session.connect(arguments.port()), info -> ToolResult.text("Connected!\n" + formatSessionInfo(info, session.connectedPort().orElse(info.port()))), failure -> connectFailure(arguments.port(), failure));
     }
 
-    CompletionStage<ToolResult> execute(ExecuteArguments arguments) {
+    CompletionStage<ToolResult> execute(ExecuteArguments arguments, ScriptLogger scriptLogger, boolean scriptLogsEnabled) {
+        long started = System.currentTimeMillis();
         Map<String, Object> payload = payload("code", arguments.code(), "timeoutMs", arguments.timeoutMillis());
         Duration timeout = Duration.ofMillis(arguments.timeoutMillis());
-        return request(McExecuteTool.ENDPOINT, payload, timeout, response -> {
-            ToolResult failure = declaredFailure(response);
-            if (failure != null) {
-                return failure;
+        CompletionStage<BridgeResponse> sent;
+        try {
+            sent = session.send(McExecuteTool.ENDPOINT, payload, timeout);
+        } catch (RuntimeException exception) {
+            if (scriptLogsEnabled) {
+                scriptLogger.log(ScriptLogger.ScriptLogEntry.failed(arguments.code(), message(exception), Duration.ofMillis(System.currentTimeMillis() - started)), false);
             }
-            StringBuilder text = new StringBuilder();
-            if (response.output() != null && !response.output().isEmpty()) {
-                text.append(response.output()).append('\n');
+            return CompletableFuture.completedFuture(ToolResult.error(message(exception)));
+        }
+        return sent.handle((response, exception) -> {
+            long duration = System.currentTimeMillis() - started;
+            if (exception != null) {
+                String failure = message(exception);
+                if (scriptLogsEnabled) {
+                    scriptLogger.log(ScriptLogger.ScriptLogEntry.failed(arguments.code(), failure, Duration.ofMillis(duration)), false);
+                }
+                return ToolResult.error(failure);
             }
-            if (response.resultPresent() && jsonTruthy(response.result())) {
-                text.append(prettyJson(response.result()));
+            if (scriptLogsEnabled) {
+                scriptLogger.log(ScriptLogger.ScriptLogEntry.completed(response.success(), arguments.code(), response.resultPresent(), response.result(), response.output(), response.error(), Duration.ofMillis(duration)), true);
             }
-            String rendered = text.toString().strip();
-            return ToolResult.text(rendered.isEmpty() ? "(no output)" : rendered);
+            try {
+                ToolResult failure = declaredFailure(response);
+                if (failure != null) {
+                    return failure;
+                }
+                StringBuilder text = new StringBuilder();
+                if (response.output() != null && !response.output().isEmpty()) {
+                    text.append(response.output()).append('\n');
+                }
+                if (response.resultPresent() && jsonTruthy(response.result())) {
+                    text.append(prettyJson(response.result()));
+                }
+                String rendered = text.toString().strip();
+                return ToolResult.text(rendered.isEmpty() ? "(no output)" : rendered);
+            } catch (RuntimeException renderingFailure) {
+                return ToolResult.error(message(renderingFailure));
+            }
         });
     }
 

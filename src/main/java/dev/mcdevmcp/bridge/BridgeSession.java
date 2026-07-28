@@ -13,7 +13,9 @@ import java.util.*;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
+import java.util.function.Supplier;
 
 public final class BridgeSession implements AutoCloseable {
     private static final int DEFAULT_PORT = 9876;
@@ -122,21 +124,19 @@ public final class BridgeSession implements AutoCloseable {
         if (implicitConnect != null) {
             return implicitConnect;
         }
-        CompletableFuture<SessionInfo> started = newAttempt();
+        CascadingFuture<SessionInfo> started = newAttempt();
         implicitConnect = started;
         if (configuredPort == null) {
-            scanPort(generation, basePort(), 0, started);
+            scanPort(generation, basePort(), 0, started, null);
         }
         else {
-            openPort(configuredPort, generation).whenComplete((info, failure) -> {
-                if (failure == null) {
-                    started.complete(info);
-                }
-                else {
-                    started.completeExceptionally(failure);
-                }
-                clearImplicit(started);
-            });
+            CompletableFuture<SessionInfo> opening = started.start(() -> openPort(configuredPort, generation));
+            if (opening != null) {
+                opening.whenComplete((info, failure) -> {
+                    started.finish(opening, info, failure);
+                    clearImplicit(started);
+                });
+            }
         }
         return started;
     }
@@ -145,7 +145,7 @@ public final class BridgeSession implements AutoCloseable {
         ensureOpen();
         int explicit = requireExplicitPort(port);
         Integer preservedConfiguredPort = configuredPort;
-        supersede();
+        disconnect();
         configuredPort = preservedConfiguredPort;
         return openPort(explicit, generation);
     }
@@ -153,14 +153,29 @@ public final class BridgeSession implements AutoCloseable {
     @SuppressWarnings("resource")
     public CompletionStage<BridgeResponse> send(BridgeEndpoint endpoint, Object payload, Duration endpointTimeout) {
         Objects.requireNonNull(endpoint, "endpoint");
-        return connect(null).thenCompose(ignored -> {
-            synchronized (this) {
-                if (connected == null) {
-                    return CompletableFuture.failedFuture(new IllegalStateException("DebugBridge session is disconnected"));
+        CascadingFuture<BridgeResponse> result = new CascadingFuture<>();
+        CompletableFuture<SessionInfo> connection = result.observe(() -> connect(null));
+        if (connection == null) {
+            return result;
+        }
+        connection.whenComplete((_, connectionFailure) -> {
+            if (connectionFailure != null) {
+                result.finish(connection, null, connectionFailure);
+                return;
+            }
+            CompletableFuture<BridgeResponse> request = result.transition(connection, () -> {
+                synchronized (this) {
+                    if (connected == null) {
+                        throw new IllegalStateException("DebugBridge session is disconnected");
+                    }
+                    return connected.client().send(endpoint, payload, endpointTimeout);
                 }
-                return connected.client().send(endpoint, payload, endpointTimeout);
+            });
+            if (request != null) {
+                request.whenComplete((response, requestFailure) -> result.finish(request, response, requestFailure));
             }
         });
+        return result;
     }
 
     public synchronized OptionalInt connectedPort() {
@@ -171,7 +186,45 @@ public final class BridgeSession implements AutoCloseable {
         return Optional.ofNullable(lastSessionInfo);
     }
 
-    public synchronized void reset() {
+    public CompletionStage<SessionInfo> probe(int port) {
+        int explicit = requireExplicitPort(port);
+        var result = new CompletableFuture<SessionInfo>();
+        result.orTimeout(1_500, TimeUnit.MILLISECONDS);
+        CompletableFuture<BridgeClient> opening = openCandidate(explicit).toCompletableFuture();
+        result.whenComplete((_, _) -> {
+            if (!opening.isDone()) {
+                opening.cancel(true);
+            }
+        });
+        opening.whenComplete((client, openFailure) -> {
+            if (openFailure != null || client == null) {
+                result.completeExceptionally(openFailure == null ? new IllegalStateException("DebugBridge port " + explicit + " did not open") : openFailure);
+                return;
+            }
+            result.whenComplete((_, _) -> client.close());
+            CompletableFuture<BridgeResponse> status = client.send(STATUS, Map.of(), Duration.ofMillis(1_500)).toCompletableFuture();
+            result.whenComplete((_, _) -> {
+                if (result.isCancelled()) {
+                    status.cancel(true);
+                }
+            });
+            status.whenComplete((response, statusFailure) -> {
+                if (statusFailure != null) {
+                    result.completeExceptionally(statusFailure);
+                    return;
+                }
+                try {
+                    BridgeStatusWire wire = payloadValidator.requireResult("status", response, BridgeStatusWire.class);
+                    result.complete(toSessionInfo(explicit, wire));
+                } catch (RuntimeException exception) {
+                    result.completeExceptionally(exception);
+                }
+            });
+        });
+        return result;
+    }
+
+    public synchronized void disconnect() {
         generation++;
         implicitConnect = null;
         Set<CompletableFuture<SessionInfo>> pendingAttempts = Set.copyOf(connectionAttempts);
@@ -180,13 +233,17 @@ public final class BridgeSession implements AutoCloseable {
         candidates.clear();
         Connected previous = connected;
         connected = null;
-        lastSessionInfo = null;
-        CancellationException cancellation = new CancellationException("DebugBridge session reset");
+        CancellationException cancellation = new CancellationException("DebugBridge session disconnected");
         pendingAttempts.forEach(attempt -> attempt.completeExceptionally(cancellation));
         pendingCandidates.forEach(BridgeClient::close);
         if (previous != null) {
             previous.client().close();
         }
+    }
+
+    public synchronized void reset() {
+        disconnect();
+        lastSessionInfo = null;
         configuredPort = null;
     }
 
@@ -199,70 +256,114 @@ public final class BridgeSession implements AutoCloseable {
         reset();
     }
 
-    private void scanPort(long token, int port, int offset, CompletableFuture<SessionInfo> result) {
+    private void scanPort(long token, int port, int offset, CascadingFuture<SessionInfo> result, CompletableFuture<?> previous) {
         if (stale(token)) {
-            result.completeExceptionally(new CancellationException("DebugBridge session changed during scan"));
+            result.finish(previous, null, new CancellationException("DebugBridge session changed during scan"));
             return;
         }
         if (offset >= PORTS_TO_SCAN) {
-            result.completeExceptionally(new IllegalStateException("No DebugBridge instance accepted status on ports " + basePort() + "-" + (basePort() + PORTS_TO_SCAN - 1)));
+            result.finish(previous, null, new IllegalStateException("No DebugBridge instance accepted status on ports " + basePort() + "-" + (basePort() + PORTS_TO_SCAN - 1)));
             clearImplicit(result);
             return;
         }
-        openCandidate(port).whenComplete((client, failure) -> {
+        CompletableFuture<BridgeClient> opening = previous == null ? result.start(() -> openCandidate(port)) : result.transition(previous, () -> openCandidate(port));
+        if (opening == null) {
+            return;
+        }
+        opening.whenComplete((client, failure) -> {
+            if (result.doesNotOwn(opening)) {
+                closeQuietly(client);
+                return;
+            }
             if (stale(token)) {
                 closeQuietly(client);
-                result.completeExceptionally(new CancellationException("DebugBridge session changed during scan"));
+                result.finish(opening, null, new CancellationException("DebugBridge session changed during scan"));
                 return;
             }
             if (failure != null || client == null) {
-                scanPort(token, port + 1, offset + 1, result);
+                scanPort(token, port + 1, offset + 1, result, opening);
                 return;
             }
             if (candidateRejected(token, client)) {
                 closeQuietly(client);
-                result.completeExceptionally(new CancellationException("DebugBridge session changed during scan"));
+                result.finish(opening, null, new CancellationException("DebugBridge session changed during scan"));
                 return;
             }
-            verifyStatus(token, port, client).whenComplete((info, statusFailure) -> {
+            CompletableFuture<SessionInfo> status = result.transition(opening, () -> verifyStatus(token, port, client));
+            if (status == null) {
+                releaseCandidate(client);
+                closeQuietly(client);
+                return;
+            }
+            status.whenComplete((info, statusFailure) -> {
+                if (result.doesNotOwn(status)) {
+                    releaseCandidate(client);
+                    closeQuietly(client);
+                    return;
+                }
                 if (statusFailure == null) {
-                    result.complete(info);
-                    clearImplicit(result);
+                    if (result.finish(status, info, null)) {
+                        clearImplicit(result);
+                    }
+                    else {
+                        closeQuietly(client);
+                    }
                 }
                 else {
                     releaseCandidate(client);
                     closeQuietly(client);
-                    scanPort(token, port + 1, offset + 1, result);
+                    scanPort(token, port + 1, offset + 1, result, status);
                 }
             });
         });
     }
 
     private CompletionStage<SessionInfo> openPort(int port, long token) {
-        CompletableFuture<SessionInfo> result = newAttempt();
-        openCandidate(port).whenComplete((client, failure) -> {
+        CascadingFuture<SessionInfo> result = newAttempt();
+        CompletableFuture<BridgeClient> opening = result.start(() -> openCandidate(port));
+        if (opening == null) {
+            return result;
+        }
+        opening.whenComplete((client, failure) -> {
+            if (result.doesNotOwn(opening)) {
+                closeQuietly(client);
+                return;
+            }
             if (failure != null || client == null) {
-                result.completeExceptionally(failure == null ? new IllegalStateException("DebugBridge port " + port + " did not open") : failure);
+                result.finish(opening, null, failure == null ? new IllegalStateException("DebugBridge port " + port + " did not open") : failure);
                 return;
             }
             if (stale(token)) {
                 closeQuietly(client);
-                result.completeExceptionally(new CancellationException("DebugBridge session changed during connect"));
+                result.finish(opening, null, new CancellationException("DebugBridge session changed during connect"));
                 return;
             }
             if (candidateRejected(token, client)) {
                 closeQuietly(client);
-                result.completeExceptionally(new CancellationException("DebugBridge session changed during connect"));
+                result.finish(opening, null, new CancellationException("DebugBridge session changed during connect"));
                 return;
             }
-            verifyStatus(token, port, client).whenComplete((info, statusFailure) -> {
+            CompletableFuture<SessionInfo> status = result.transition(opening, () -> verifyStatus(token, port, client));
+            if (status == null) {
+                releaseCandidate(client);
+                closeQuietly(client);
+                return;
+            }
+            status.whenComplete((info, statusFailure) -> {
+                if (result.doesNotOwn(status)) {
+                    releaseCandidate(client);
+                    closeQuietly(client);
+                    return;
+                }
                 if (statusFailure == null) {
-                    result.complete(info);
+                    if (!result.finish(status, info, null)) {
+                        closeQuietly(client);
+                    }
                 }
                 else {
                     releaseCandidate(client);
                     closeQuietly(client);
-                    result.completeExceptionally(statusFailure);
+                    result.finish(status, null, statusFailure);
                 }
             });
         });
@@ -271,7 +372,20 @@ public final class BridgeSession implements AutoCloseable {
 
     private CompletionStage<SessionInfo> verifyStatus(long token, int port, BridgeClient client) {
         client.onClosed(this::clearDeadClient);
-        return client.send(STATUS, Map.of(), null).thenApply(response -> acceptStatus(token, port, client, response));
+        CascadingFuture<SessionInfo> result = new CascadingFuture<>();
+        CompletableFuture<BridgeResponse> request = result.start(() -> client.send(STATUS, Map.of(), null));
+        if (request == null) {
+            return result;
+        }
+        request.whenComplete((response, failure) -> {
+            if (failure != null) {
+                result.finish(request, null, failure);
+            }
+            else {
+                result.finishMapped(request, () -> acceptStatus(token, port, client, response));
+            }
+        });
+        return result;
     }
 
     @SuppressWarnings("resource")
@@ -316,10 +430,13 @@ public final class BridgeSession implements AutoCloseable {
         }
     }
 
-    private synchronized CompletableFuture<SessionInfo> newAttempt() {
-        CompletableFuture<SessionInfo> attempt = new CompletableFuture<>();
+    private synchronized CascadingFuture<SessionInfo> newAttempt() {
+        CascadingFuture<SessionInfo> attempt = new CascadingFuture<>();
         connectionAttempts.add(attempt);
-        attempt.whenComplete((_, _) -> removeAttempt(attempt));
+        attempt.whenComplete((_, _) -> {
+            removeAttempt(attempt);
+            clearImplicit(attempt);
+        });
         return attempt;
     }
 
@@ -368,5 +485,92 @@ public final class BridgeSession implements AutoCloseable {
     }
 
     private record Connected(BridgeClient client, SessionInfo info) {
+    }
+
+    private static final class CascadingFuture<T> extends CompletableFuture<T> {
+        private CompletableFuture<?> active;
+        private boolean cancelActive;
+
+        private synchronized <R> CompletableFuture<R> start(Supplier<? extends CompletionStage<R>> starter) {
+            if (isDone()) {
+                return null;
+            }
+            return replace(starter);
+        }
+
+        private synchronized <R> CompletableFuture<R> observe(Supplier<? extends CompletionStage<R>> starter) {
+            if (isDone()) {
+                return null;
+            }
+            return replace(starter, false);
+        }
+
+        private synchronized <R> CompletableFuture<R> transition(CompletableFuture<?> previous, Supplier<? extends CompletionStage<R>> starter) {
+            if (isDone() || active != previous) {
+                return null;
+            }
+            return replace(starter);
+        }
+
+        private synchronized boolean doesNotOwn(CompletableFuture<?> operation) {
+            return isDone() || active != operation;
+        }
+
+        private synchronized boolean finish(CompletableFuture<?> operation, T value, Throwable failure) {
+            if (isDone() || active != operation) {
+                return false;
+            }
+            active = null;
+            return failure == null ? super.complete(value) : super.completeExceptionally(failure);
+        }
+
+        private synchronized void finishMapped(CompletableFuture<?> operation, Supplier<T> mapper) {
+            if (isDone() || active != operation) {
+                return;
+            }
+            try {
+                T value = mapper.get();
+                active = null;
+                super.complete(value);
+            } catch (RuntimeException failure) {
+                active = null;
+                super.completeExceptionally(failure);
+            }
+        }
+
+        @Override
+        public synchronized boolean cancel(boolean mayInterruptIfRunning) {
+            if (isDone()) {
+                return false;
+            }
+            CompletableFuture<?> operation = active;
+            boolean cancelOperation = cancelActive;
+            active = null;
+            cancelActive = false;
+            boolean cancelled = super.cancel(mayInterruptIfRunning);
+            if (cancelled && cancelOperation && operation != null) {
+                operation.cancel(mayInterruptIfRunning);
+            }
+            return cancelled;
+        }
+
+        private <R> CompletableFuture<R> replace(Supplier<? extends CompletionStage<R>> starter) {
+            return replace(starter, true);
+        }
+
+        private <R> CompletableFuture<R> replace(Supplier<? extends CompletionStage<R>> starter, boolean cancelOnCompletion) {
+            try {
+                CompletionStage<R> stage = Objects.requireNonNull(starter.get(), "Cascaded operation returned no stage");
+                CompletableFuture<R> operation = stage.toCompletableFuture();
+                active = operation;
+                cancelActive = cancelOnCompletion;
+                return operation;
+            } catch (RuntimeException failure) {
+                active = null;
+                cancelActive = false;
+                super.completeExceptionally(failure);
+                return null;
+            }
+        }
     }
 }

@@ -148,6 +148,11 @@ public final class BridgeClient implements AutoCloseable {
             request = new BridgeRequest("req_" + requestCounter.incrementAndGet(), endpoint, payload);
             pendingRequest = new PendingRequest(request, new CompletableFuture<>());
             pending.put(request.id(), pendingRequest);
+            pendingRequest.future.whenComplete((_, _) -> {
+                if (pendingRequest.future.isCancelled() && pending.remove(request.id(), pendingRequest)) {
+                    pendingRequest.cancelTimeout();
+                }
+            });
             try {
                 pendingRequest.timeout = scheduler.schedule(() -> completeExceptionally(request.id(), pendingRequest, new IllegalStateException(timeoutMessage(endpointTimeout, effectiveTimeout))), effectiveTimeout.toMillis(), TimeUnit.MILLISECONDS);
             } catch (RejectedExecutionException exception) {

@@ -52,6 +52,20 @@ final class BridgeClientTest {
     }
 
     @Test
+    void cancellingACallRemovesItsPendingRequest() {
+        CompletableFuture<BridgeResponse> delayed = new CompletableFuture<>();
+        BridgeClient client = BridgeClient.testing(new BridgeJson(McpJsonDefaults.getMapper()), ignored -> delayed);
+        CompletableFuture<BridgeResponse> call = client.send(new BridgeEndpoint("status"), null, Duration.ofSeconds(1)).toCompletableFuture();
+
+        assertEquals(1, client.pendingRequestCount());
+        assertTrue(call.cancel(true));
+        assertEquals(0, client.pendingRequestCount());
+        delayed.complete(new BridgeResponse("req_1", true, true, null, "", null));
+        assertEquals(0, client.pendingRequestCount());
+        client.close();
+    }
+
+    @Test
     void parallelSendsKeepEachPublishedRequestAttachedToItsOwnPayload() {
         BridgeClient client = BridgeClient.testing(new BridgeJson(McpJsonDefaults.getMapper()), request -> CompletableFuture.completedFuture(new BridgeResponse(request.id(), true, true, request.endpoint().wireName(), "", null)));
 

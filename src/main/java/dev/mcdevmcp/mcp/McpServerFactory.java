@@ -70,7 +70,7 @@ public final class McpServerFactory {
         var ownedRuntime = new RuntimeResources(session, client);
         try {
             var bindings = new LinkedHashMap<>(StaticToolModule.handlers(paths));
-            RuntimeToolModule.handlers(session, mapper).forEach((name, binding) -> {
+            RuntimeToolModule.handlers(session, mapper, environment).forEach((name, binding) -> {
                 if (bindings.putIfAbsent(name, binding) != null) {
                     throw new IllegalStateException("Duplicate MCP tool binding: " + name);
                 }

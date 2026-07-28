@@ -101,8 +101,8 @@ class MediaRuntimeToolContractTest {
             List<String> names = List.copyOf(handlers.keySet());
             List<String> mediaNames = List.of("mc_screenshot", "mc_record_video", "mc_get_item_texture", "mc_get_entity_item_texture", "mc_get_item_texture_by_id", "mc_set_entity_glow", "mc_set_block_glow", "mc_clear_block_glow");
 
-            assertEquals(18, names.size());
-            assertEquals(mediaNames, names.subList(names.size() - mediaNames.size(), names.size()));
+            assertEquals(25, names.size());
+            assertEquals(mediaNames, names.subList(10, 10 + mediaNames.size()));
             assertDoesNotThrow(handlers::clear);
         }
     }
