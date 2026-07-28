@@ -51,21 +51,39 @@ local verification, and final independent review all passed.
 
 - [x] **Step 1: Write the failing typed-decoder test**
 
-Create a child-project test that converts the complete map to this wire record and then maps it to these domain values:
+Create `WireArguments.java` and `DomainArguments.java` as separate package-private records:
 
 ```java
 record WireArguments(String uri, long timeoutMs) {}
-record DomainArguments(URI uri, Duration timeout) {}
+```
 
-var decoder = ArgumentDecoder.sdk(WireArguments.class)
-        .map(arguments -> new DomainArguments(
-                URI.create(arguments.uri()),
-                Duration.ofMillis(arguments.timeoutMs())));
-assertEquals(
-        new DomainArguments(URI.create("https://example.test/tool"), Duration.ofMillis(1250)),
-        decoder.decode(McpJsonDefaults.getMapper(), Map.of(
+```java
+record DomainArguments(URI uri, Duration timeout) {}
+```
+
+Then create a child-project test that converts the complete map to the wire record and maps it to the domain record:
+
+```java
+class ArgumentDecoderTest {
+    @Test
+    void convertsTheCompleteArgumentMapAndThenMapsToDomainTypes() {
+        var mapper = McpJsonDefaults.getMapper();
+        var decoder = ArgumentDecoder.sdk(WireArguments.class)
+                .map(arguments -> new DomainArguments(
+                        URI.create(arguments.uri()),
+                        Duration.ofMillis(arguments.timeoutMs())));
+
+        var result = decoder.decode(mapper, Map.of(
                 "uri", "https://example.test/tool",
-                "timeoutMs", 1250L)));
+                "timeoutMs", 1250L));
+
+        assertEquals(
+                new DomainArguments(
+                        URI.create("https://example.test/tool"),
+                        Duration.ofMillis(1250)),
+                result);
+    }
+}
 ```
 
 - [x] **Step 2: Configure the child project without production source**
