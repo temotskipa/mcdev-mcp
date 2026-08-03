@@ -10,6 +10,7 @@ import dev.mcdevmcp.support.Cancellation;
 import io.modelcontextprotocol.json.McpJsonDefaults;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.api.Assumptions;
 
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
@@ -187,9 +188,17 @@ class SessionControlSupportTest {
         assertTrue(Files.exists(logger.logDirectory().resolve("all.1234.jsonl")));
         assertTrue(diagnostics.isEmpty());
 
-        AppEnvironment windows = new AppEnvironment(Map.of("LOCALAPPDATA", "C:\\Local"));
-        assertEquals(Path.of("C:\\Local\\mcdev-mcp\\Data"), ScriptLogger.dataDirectory("Windows 11", windows, Path.of("C:\\Home")));
+        // The Linux dataDirectory layout is verifiable on any POSIX host.
         assertEquals(Path.of("/home/test/.local/share/mcdev-mcp"), ScriptLogger.dataDirectory("Linux", new AppEnvironment(Map.of()), Path.of("/home/test")));
+
+        // The Windows dataDirectory branch is only reachable in production when the
+        // host OS is actually Windows, where java.nio.Path uses backslash separators.
+        // On a POSIX CI runner the expected literal form (C:\\Local\\mcdev-mcp\\Data)
+        // cannot be produced, so only assert it when running on Windows.
+        var windows = new AppEnvironment(Map.of("LOCALAPPDATA", "C:\\Local"));
+        Assumptions.assumeTrue(System.getProperty("os.name").toLowerCase(java.util.Locale.ROOT).contains("win"),
+                "Windows-local dataDirectory layout only verifiable on a Windows host");
+        assertEquals(Path.of("C:\\Local\\mcdev-mcp\\Data"), ScriptLogger.dataDirectory("Windows 11", windows, Path.of("C:\\Home")));
     }
 
     private static List<Integer> bridgePorts(Map<String, String> environment) {

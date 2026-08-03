@@ -26,9 +26,22 @@ public record SessionInfo(int port, MinecraftVersion version, BridgeMappingStatu
     }
 
     private static Path normalizePath(String field, Path path) {
-        if (!path.isAbsolute()) {
+        if (!isAbsolutePath(path)) {
             throw new IllegalArgumentException("DebugBridge status " + field + " must be absolute: " + BridgePayloadValidator.safeDisplay(path));
         }
         return path.normalize();
+    }
+
+    // DebugBridge reports paths as seen by the Minecraft client, which may run on a
+    // different operating system than this MCP server. A Windows drive path such as
+    // `C:\Game` is not considered absolute by a POSIX Path, but is absolute on the
+    // client; treat drive-letter-prefixed paths as absolute so a Windows client can
+    // be used against a POSIX-hosted server.
+    private static boolean isAbsolutePath(Path path) {
+        if (path.isAbsolute()) {
+            return true;
+        }
+        String text = path.toString();
+        return text.length() >= 3 && Character.isLetter(text.charAt(0)) && text.charAt(1) == ':' && (text.charAt(2) == '\\' || text.charAt(2) == '/');
     }
 }

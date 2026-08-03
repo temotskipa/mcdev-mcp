@@ -147,6 +147,13 @@ tasks.named("build") {
     dependsOn(tasks.named("shadowJar"))
 }
 
+// The application plugin's startScripts/distribution tasks reference the shadow
+// fat-jar output but Gradle 9.x rejects that as an implicit dependency. Declare
+// the dependency explicitly so `build` (and the runtime start scripts) work.
+tasks.named("startScripts") {
+    dependsOn(tasks.named("shadowJar"))
+}
+
 val runtimeModuleVersions = configurations.named("runtimeClasspath").map { configuration ->
     configuration.incoming.resolutionResult.allComponents
         .mapNotNull { component -> component.moduleVersion }

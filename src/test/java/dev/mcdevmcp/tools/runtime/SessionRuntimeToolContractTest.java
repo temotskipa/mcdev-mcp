@@ -150,15 +150,18 @@ class SessionRuntimeToolContractTest {
             default ->
                     CompletableFuture.failedFuture(new AssertionError("Unexpected endpoint: " + request.endpoint().wireName()));
         })) {
-            AppEnvironment disabled = new AppEnvironment(Map.of("LOCALAPPDATA", temporary.resolve("disabled").toString()));
+            // Redirect the script-log data directory into the TempDir via the
+            // MCDEV_SESSION_LOG_DIR override so the test is portable across host OSes
+            // (the audit path uses Windows-style LOCALAPPDATA layout on Windows only).
+            AppEnvironment disabled = new AppEnvironment(Map.of("MCDEV_SESSION_LOG_DIR", temporary.resolve("disabled").toString()));
             ToolCatalog disabledCatalog = ToolCatalog.load(disabled, RuntimeToolModule.handlers(harness.session(), MAPPER, disabled), MAPPER);
             assertEquals("2", dispatch(disabledCatalog, "mc_execute", Map.of("code", "return 2")).content().getFirst().text());
-            assertFalse(Files.exists(temporary.resolve("disabled").resolve("mcdev-mcp").resolve("Data").resolve("script-logs")));
+            assertFalse(Files.exists(temporary.resolve("disabled").resolve("script-logs")));
 
-            AppEnvironment enabled = new AppEnvironment(Map.of("LOCALAPPDATA", temporary.resolve("enabled").toString(), "MCDEV_SCRIPT_LOGS", "true"));
+            AppEnvironment enabled = new AppEnvironment(Map.of("MCDEV_SESSION_LOG_DIR", temporary.resolve("enabled").toString(), "MCDEV_SCRIPT_LOGS", "true"));
             ToolCatalog enabledCatalog = ToolCatalog.load(enabled, RuntimeToolModule.handlers(harness.session(), MAPPER, enabled), MAPPER);
             assertEquals("2", dispatch(enabledCatalog, "mc_execute", Map.of("code", "return 2")).content().getFirst().text());
-            Path log = temporary.resolve("enabled").resolve("mcdev-mcp").resolve("Data").resolve("script-logs").resolve("all.jsonl");
+            Path log = temporary.resolve("enabled").resolve("script-logs").resolve("all.jsonl");
             assertTrue(Files.exists(log));
             assertTrue(Files.readString(log).contains("\"code\":\"return 2\""));
             ToolResult paths = dispatch(enabledCatalog, "mc_script_logs", Map.of("mode", "paths"));

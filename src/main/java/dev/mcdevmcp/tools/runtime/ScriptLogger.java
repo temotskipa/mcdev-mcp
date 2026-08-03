@@ -51,6 +51,10 @@ final class ScriptLogger {
         Objects.requireNonNull(osName, "osName");
         Objects.requireNonNull(environment, "environment");
         Objects.requireNonNull(home, "home");
+        Path override = environment.value("MCDEV_SESSION_LOG_DIR").filter(value -> !value.isBlank()).map(Path::of).orElse(null);
+        if (override != null) {
+            return override;
+        }
         String os = osName.toLowerCase(Locale.ROOT);
         if (os.contains("win")) {
             Path local = environment.value("LOCALAPPDATA").filter(value -> !value.isBlank()).map(Path::of).orElseGet(() -> home.resolve("AppData").resolve("Local"));

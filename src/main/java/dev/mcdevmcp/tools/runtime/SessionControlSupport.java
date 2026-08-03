@@ -180,8 +180,24 @@ final class SessionControlSupport {
     }
 
     static String sessionControlDisabledMessage(Path gameDirectory) {
-        String config = gameDirectory == null ? "<minecraft>/config/debugbridge.json" : gameDirectory.resolve("config").resolve("debugbridge.json").toString();
+        String config = gameDirectory == null ? "<minecraft>/config/debugbridge.json" : joinClientPath(gameDirectory, "config", "debugbridge.json");
         return "Session control is disabled in DebugBridge (session_control_enabled=false, the default).\n" + "To enable it: edit " + config + ", set \"session_control_enabled\": true, then restart the Minecraft client — the flag is only read at startup.";
+    }
+
+    // The game directory is reported by the Minecraft client and may use Windows
+    // separators while this MCP server runs on POSIX. Join the config sub-path with
+    // backslashes so the instruction matches the client's OS rather than the host's.
+    private static String joinClientPath(Path base, String... segments) {
+        String root = base.toString();
+        String separator = root.matches("[A-Za-z]:[\\\\/].*") ? "\\" : base.getFileSystem().getSeparator();
+        StringBuilder joined = new StringBuilder(root);
+        for (String segment : segments) {
+            if (joined.length() > 0 && joined.charAt(joined.length() - 1) != separator.charAt(0)) {
+                joined.append(separator);
+            }
+            joined.append(segment);
+        }
+        return joined.toString();
     }
 
     static Long parseListeningPid(String output) {
