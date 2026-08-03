@@ -96,6 +96,37 @@ final class EmbeddedDecompilerTest {
     }
 
     @Test
+    void decompilesAcrossSymlinkedOutputPrefix() throws Exception {
+        Path root = Files.createTempDirectory("decompiler-link-prefix");
+        Path realBase = Files.createDirectory(root.resolve("real-base"));
+        Path linkedPrefix = root.resolve("linked-prefix");
+        createSymbolicLinkOrSkip(linkedPrefix, realBase);
+        Path parent = realBase.resolve("out");
+        Files.createDirectories(parent);
+        Path jar = jar(root);
+
+        Path output = new MinecraftDecompiler().decompile(jar, linkedPrefix.resolve("out").resolve("sources"));
+
+        try (var files = Files.walk(output)) {
+            assertTrue(files.anyMatch(path -> path.getFileName().toString().equals("Example.java")));
+        }
+        assertNoPublicationDebris(output);
+    }
+
+    @Test
+    void refusesSymlinkedOutputParent() throws Exception {
+        Path root = Files.createTempDirectory("decompiler-parent-link");
+        Path outside = Files.createDirectory(root.resolve("outside"));
+        Path parent = root.resolve("linked-parent");
+        createSymbolicLinkOrSkip(parent, outside);
+        Path jar = jar(root);
+
+        assertThrows(IOException.class, () -> new MinecraftDecompiler().decompile(jar, parent.resolve("sources")));
+
+        assertFalse(Files.exists(outside.resolve("sources")));
+    }
+
+    @Test
     void preservesExistingSourcesWhenCancelledBeforeStart() throws Exception {
         Path root = Files.createTempDirectory("embedded-decompiler");
         Path target = existingTarget(root);

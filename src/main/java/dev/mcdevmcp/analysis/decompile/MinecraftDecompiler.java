@@ -40,7 +40,7 @@ public final class MinecraftDecompiler {
         if (!directory.startsWith(root)) {
             throw new IOException("Unsafe decompiler output directory: " + path);
         }
-        ensureDirectoryNoLinks(directory);
+        ensureDirectoryWithinStaging(root, directory);
     }
 
     private static IResultSaver saver(Path staging, AtomicInteger written, Cancellation cancellation) {
@@ -89,7 +89,7 @@ public final class MinecraftDecompiler {
                 try {
                     checkCancelled(cancellation);
                     Path file = resolveSourcePath(staging, path, entryName);
-                    ensureDirectoryNoLinks(file.getParent());
+                    ensureDirectoryWithinStaging(staging, file.getParent());
                     Files.writeString(file, Objects.requireNonNull(content, "content"), StandardCharsets.UTF_8, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE);
                     checkCancelled(cancellation);
                     written.incrementAndGet();
@@ -200,28 +200,61 @@ public final class MinecraftDecompiler {
         return relative.normalize();
     }
 
-    private static void ensureDirectoryNoLinks(Path directory) throws IOException {
-        Path absolute = directory.toAbsolutePath().normalize();
-        Path current = absolute.getRoot();
-        if (current == null) {
-            throw new IOException("Output directory has no filesystem root: " + directory);
+    /**
+     * Ensures that the user/agent-supplied {@code parent} of the decompiler
+     * output target exists as a real directory, creating any missing
+     * components. Unlike the staging-internal check, this tolerates
+     * legitimate system-level symlink prefixes (for example {@code /var ->
+     * /private/var} on macOS) because the parent path is chosen by the
+     * caller rather than derived from untrusted input.
+     */
+    private static void ensureOutputParentDirectory(Path parent) throws IOException {
+        if (!Files.exists(parent, NO_FOLLOW_LINKS)) {
+            Files.createDirectories(parent);
         }
-        for (Path component : absolute) {
+        BasicFileAttributes attributes = Files.readAttributes(parent, BasicFileAttributes.class, NO_FOLLOW_LINKS);
+        if (attributes.isSymbolicLink() || !attributes.isDirectory()) {
+            throw new IOException("Output directory is not a real directory: " + parent);
+        }
+    }
+
+    /**
+     * Ensures that {@code directory} exists under the staging {@code root} as
+     * a real directory, creating any missing components, while guaranteeing
+     * that no path component escapes {@code root}. Decompiler output paths are
+     * derived from untrusted JAR content (the bytes being decompiled), so a
+     * component that is a symlink pointing outside staging is rejected before
+     * any directory is created beneath it. The anchor is {@code root} rather
+     * than the filesystem root, so system symlink prefixes such as
+     * {@code /var} (which only appear on the staging root's own ancestry) are
+     * never traversed here.
+     */
+    private static void ensureDirectoryWithinStaging(Path root, Path directory) throws IOException {
+        if (!directory.startsWith(root)) {
+            throw new IOException("Unsafe decompiler output directory outside staging root: " + directory);
+        }
+        Path resolvedRoot = root.toRealPath();
+        Path current = root;
+        for (Path component : root.relativize(directory)) {
             current = current.resolve(component);
+            BasicFileAttributes attributes;
             try {
-                BasicFileAttributes attributes = Files.readAttributes(current, BasicFileAttributes.class, NO_FOLLOW_LINKS);
-                if (attributes.isSymbolicLink() || !attributes.isDirectory()) {
-                    throw new IOException("Refusing linked or non-directory output path: " + current);
-                }
-            } catch (NoSuchFileException exception) {
+                attributes = Files.readAttributes(current, BasicFileAttributes.class, NO_FOLLOW_LINKS);
+            } catch (NoSuchFileException missing) {
                 try {
                     Files.createDirectory(current);
                 } catch (FileAlreadyExistsException race) {
-                    BasicFileAttributes attributes = Files.readAttributes(current, BasicFileAttributes.class, NO_FOLLOW_LINKS);
-                    if (attributes.isSymbolicLink() || !attributes.isDirectory()) {
-                        throw new IOException("Refusing linked or non-directory output path: " + current, race);
-                    }
+                    // A concurrent decompiler thread created this component.
                 }
+                attributes = Files.readAttributes(current, BasicFileAttributes.class, NO_FOLLOW_LINKS);
+            }
+            if (attributes.isSymbolicLink()) {
+                Path resolved = current.toRealPath();
+                if (!resolved.startsWith(resolvedRoot)) {
+                    throw new IOException("Refusing decompiler output path escaping staging root: " + current);
+                }
+            } else if (!attributes.isDirectory()) {
+                throw new IOException("Refusing non-directory decompiler output path: " + current);
             }
         }
     }
@@ -302,7 +335,7 @@ public final class MinecraftDecompiler {
         checkCancelled(cancellation);
         progress.report("decompile", 0, "Decompiling " + input.getFileName());
         verifyInputJar(input, cancellation);
-        ensureDirectoryNoLinks(parent);
+        ensureOutputParentDirectory(parent);
         validateExistingTarget(target);
 
         Path staging = target.resolveSibling(target.getFileName() + "." + UUID.randomUUID() + ".tmp");
