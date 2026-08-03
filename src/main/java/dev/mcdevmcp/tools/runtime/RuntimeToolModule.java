@@ -8,6 +8,7 @@ import io.modelcontextprotocol.json.McpJsonMapper;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 
@@ -21,12 +22,14 @@ public final class RuntimeToolModule {
 
     public static Map<String, ToolBinding<?>> handlers(BridgeSession session, McpJsonMapper mapper, AppEnvironment environment) {
         var support = new RuntimeToolSupport(session, mapper);
-        Path dataDirectory = ScriptLogger.dataDirectory(System.getProperty("os.name"), environment, Path.of(System.getProperty("user.home")));
-        var scriptLogger = new ScriptLogger(dataDirectory, mapper, System.err::println);
+        // Session logging is an explicit opt-in debug feature: unless MCDEV_SESSION_LOG_DIR
+        // is set, no session logs are written and the mc_script_logs tool is unavailable.
+        Optional<Path> sessionLogDirectory = environment.value("MCDEV_SESSION_LOG_DIR").filter(value -> !value.isBlank()).map(Path::of);
+        ScriptLogger scriptLogger = sessionLogDirectory.map(directory -> new ScriptLogger(directory, mapper, System.err::println)).orElse(null);
         var sessionControl = new SessionControlSupport(session, environment, SchedulerHolder.SCHEDULER);
         var handlers = new LinkedHashMap<String, ToolBinding<?>>();
         add(handlers, "mc_connect", McConnectTool.binding(support));
-        add(handlers, "mc_execute", McExecuteTool.binding(support, scriptLogger, environment.isTruthy("MCDEV_SCRIPT_LOGS")));
+        add(handlers, "mc_execute", McExecuteTool.binding(support, scriptLogger, scriptLogger != null));
         add(handlers, "mc_snapshot", McSnapshotTool.binding(support));
         add(handlers, "mc_nearby_entities", McNearbyEntitiesTool.binding(support));
         add(handlers, "mc_entity_details", McEntityDetailsTool.binding(support));

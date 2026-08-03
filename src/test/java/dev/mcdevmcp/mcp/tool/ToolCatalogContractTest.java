@@ -51,15 +51,15 @@ class ToolCatalogContractTest {
 
     @Test
     void devEnabledToolListMatchesTheNodeContractInExactMetadataOrder() throws Exception {
-        var catalog = ToolCatalog.load(new AppEnvironment(Map.of("MCDEV_SCRIPT_LOGS", "TRUE", "MCDEV_RUN_COMMAND", "1")), Map.of(), MAPPER);
+        var catalog = ToolCatalog.load(new AppEnvironment(Map.of("MCDEV_SESSION_LOG_DIR", "/tmp/mcdev/session-logs", "MCDEV_RUN_COMMAND", "1")), Map.of(), MAPPER);
 
         assertEquals(McpContractTestSupport.normalize(contractTools("tools-list-dev.json")), McpContractTestSupport.normalize(toToolList(catalog.enabledDefinitions())));
         assertTrue(catalog.enabledDefinitions().stream().anyMatch(tool -> tool.name().equals("mc_record_video")));
     }
 
     @Test
-    void availabilityGatesAcceptOnlyOneOrTrueWithoutTrimming() {
-        var catalog = ToolCatalog.load(new AppEnvironment(Map.of("MCDEV_SCRIPT_LOGS", " true ", "MCDEV_RUN_COMMAND", "TRUE")), Map.of(), MAPPER);
+    void availabilityGatesTreatBlankLogPathAndUntrimmedRunCommandCorrectly() {
+        var catalog = ToolCatalog.load(new AppEnvironment(Map.of("MCDEV_SESSION_LOG_DIR", "   ", "MCDEV_RUN_COMMAND", "TRUE")), Map.of(), MAPPER);
 
         assertFalse(catalog.enabledDefinitions().stream().anyMatch(tool -> tool.name().equals("mc_script_logs")));
         assertTrue(catalog.enabledDefinitions().stream().anyMatch(tool -> tool.name().equals("mc_run_command")));

@@ -20,6 +20,10 @@ import java.util.stream.Stream;
 final class ScriptLogger {
     static final long MAX_LOG_BYTES = 10L * 1024 * 1024;
 
+    // Keep rotated session-log files for at most 3 days so explicit session logging
+    // cannot grow the data directory without bound on a long-lived server.
+    private static final long ROTATION_RETENTION_MILLIS = 3L * 24 * 60 * 60 * 1000;
+
     private static final Pattern LINE_NUMBER = Pattern.compile("line (\\d+)", Pattern.CASE_INSENSITIVE);
     private static final Pattern COLON_NUMBER = Pattern.compile(":\\d+:");
     private static final Pattern QUOTED_VALUE = Pattern.compile("'[^']+'");
@@ -51,10 +55,6 @@ final class ScriptLogger {
         Objects.requireNonNull(osName, "osName");
         Objects.requireNonNull(environment, "environment");
         Objects.requireNonNull(home, "home");
-        Path override = environment.value("MCDEV_SESSION_LOG_DIR").filter(value -> !value.isBlank()).map(Path::of).orElse(null);
-        if (override != null) {
-            return override;
-        }
         String os = osName.toLowerCase(Locale.ROOT);
         if (os.contains("win")) {
             Path local = environment.value("LOCALAPPDATA").filter(value -> !value.isBlank()).map(Path::of).orElseGet(() -> home.resolve("AppData").resolve("Local"));
@@ -200,18 +200,38 @@ final class ScriptLogger {
     }
 
     private void cleanOldRotations(Path live) throws IOException {
+        long now = currentTimeMillis.getAsLong();
         String baseName = baseName(live);
         try (Stream<Path> paths = Files.list(logDirectory)) {
             List<Path> rotations = paths.filter(path -> {
                 String name = path.getFileName().toString();
-                return name.startsWith(baseName) && name.endsWith(".jsonl") && !path.equals(live);
-            }).sorted(Comparator.comparing(path -> path.getFileName().toString(), Comparator.reverseOrder())).toList();
-            for (Path old : rotations.subList(Math.min(2, rotations.size()), rotations.size())) {
-                try {
-                    Files.deleteIfExists(old);
-                } catch (IOException ignored) {
+                return name.startsWith(baseName + ".") && name.endsWith(".jsonl") && !path.equals(live);
+            }).toList();
+            long cutoff = now - ROTATION_RETENTION_MILLIS;
+            for (Path old : rotations) {
+                Long timestamp = rotationTimestamp(old.getFileName().toString(), baseName.length());
+                if (timestamp != null && timestamp < cutoff) {
+                    try {
+                        Files.deleteIfExists(old);
+                    } catch (IOException ignored) {
+                    }
                 }
             }
+        }
+    }
+
+    // Parses the epoch-millis suffix from a rotation file name such as "all.1700000000000.jsonl".
+    // The millis start immediately after the "<base>." prefix.
+    private static Long rotationTimestamp(String name, int baseNameLength) {
+        int start = baseNameLength + 1;
+        int end = name.length() - ".jsonl".length();
+        if (end <= start) {
+            return null;
+        }
+        try {
+            return Long.parseLong(name.substring(start, end));
+        } catch (NumberFormatException exception) {
+            return null;
         }
     }
 

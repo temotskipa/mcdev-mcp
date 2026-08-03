@@ -17,6 +17,9 @@ final class McScriptLogsTool {
     }
 
     private static ToolResult render(ScriptLogger logger, ScriptLogsArguments arguments) {
+        if (logger == null) {
+            return ToolResult.text("Session logging is disabled. Set the MCDEV_SESSION_LOG_DIR environment variable to enable it.");
+        }
         return switch (arguments.mode()) {
             case PATHS ->
                     ToolResult.text("Script log files:\n" + "  All executions: " + logger.allLogPath() + "\n" + "  Errors only:    " + logger.errorsLogPath() + "\n" + "  Log directory:  " + logger.logDirectory() + "\n\n" + "Use the Read tool to view these files. Format: JSON Lines (one JSON object per line).");

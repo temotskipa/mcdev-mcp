@@ -135,7 +135,7 @@ class SessionRuntimeToolContractTest {
             assertFalse(defaultCatalog.enabledDefinitions().stream().anyMatch(tool -> tool.name().equals("mc_run_command")));
             assertEquals("Unknown tool: mc_run_command", dispatch(defaultCatalog, "mc_run_command", Map.of("command", "say hi")).content().getFirst().text());
 
-            AppEnvironment devEnvironment = new AppEnvironment(Map.of("MCDEV_SCRIPT_LOGS", "true", "MCDEV_RUN_COMMAND", "1"));
+            AppEnvironment devEnvironment = new AppEnvironment(Map.of("MCDEV_SESSION_LOG_DIR", Path.of(System.getProperty("java.io.tmpdir"), "mcdev-dev-session-logs").toString(), "MCDEV_RUN_COMMAND", "1"));
             ToolCatalog devCatalog = ToolCatalog.load(devEnvironment, RuntimeToolModule.handlers(harness.session(), MAPPER, devEnvironment), MAPPER);
             assertTrue(devCatalog.enabledDefinitions().stream().anyMatch(tool -> tool.name().equals("mc_script_logs")));
             assertTrue(devCatalog.enabledDefinitions().stream().anyMatch(tool -> tool.name().equals("mc_run_command")));
@@ -150,15 +150,16 @@ class SessionRuntimeToolContractTest {
             default ->
                     CompletableFuture.failedFuture(new AssertionError("Unexpected endpoint: " + request.endpoint().wireName()));
         })) {
-            // Redirect the script-log data directory into the TempDir via the
-            // MCDEV_SESSION_LOG_DIR override so the test is portable across host OSes
-            // (the audit path uses Windows-style LOCALAPPDATA layout on Windows only).
-            AppEnvironment disabled = new AppEnvironment(Map.of("MCDEV_SESSION_LOG_DIR", temporary.resolve("disabled").toString()));
+            // Session logging is opt-in: with no MCDEV_SESSION_LOG_DIR the logger is not
+            // constructed and no script-log files are written anywhere.
+            AppEnvironment disabled = new AppEnvironment(Map.of());
             ToolCatalog disabledCatalog = ToolCatalog.load(disabled, RuntimeToolModule.handlers(harness.session(), MAPPER, disabled), MAPPER);
             assertEquals("2", dispatch(disabledCatalog, "mc_execute", Map.of("code", "return 2")).content().getFirst().text());
-            assertFalse(Files.exists(temporary.resolve("disabled").resolve("script-logs")));
+            try (var files = java.nio.file.Files.walk(temporary)) {
+                assertTrue(files.noneMatch(path -> path.getFileName().toString().equals("script-logs")));
+            }
 
-            AppEnvironment enabled = new AppEnvironment(Map.of("MCDEV_SESSION_LOG_DIR", temporary.resolve("enabled").toString(), "MCDEV_SCRIPT_LOGS", "true"));
+            AppEnvironment enabled = new AppEnvironment(Map.of("MCDEV_SESSION_LOG_DIR", temporary.resolve("enabled").toString()));
             ToolCatalog enabledCatalog = ToolCatalog.load(enabled, RuntimeToolModule.handlers(harness.session(), MAPPER, enabled), MAPPER);
             assertEquals("2", dispatch(enabledCatalog, "mc_execute", Map.of("code", "return 2")).content().getFirst().text());
             Path log = temporary.resolve("enabled").resolve("script-logs").resolve("all.jsonl");
