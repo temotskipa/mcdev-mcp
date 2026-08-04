@@ -2,12 +2,13 @@
 mcp = "2.0.1-SNAPSHOT"
 picocli = "4.7.7"
 h2 = "2.4.240"
-vineflower = "1.11.2"
-tiny-remapper = "0.10.4"
-mapping-io = "0.8.0"
-junit = "6.1.0"
-shadow = "9.5.1"
-slf4j = "2.0.16"
+vineflower = "1.12.0"
+tiny-remapper = "0.14.0"
+mapping-io = "0.9.0"
+junit = "6.1.2"
+shadow = "9.6.1"
+slf4j = "2.0.18"
+tomcat = "11.0.24"
 
 [libraries]
 mcp = { module = "io.modelcontextprotocol.sdk:mcp", version.ref = "mcp" }
@@ -19,3 +20,4 @@ mapping-io = { module = "net.fabricmc:mapping-io", version.ref = "mapping-io" }
 slf4j-nop = { module = "org.slf4j:slf4j-nop", version.ref = "slf4j" }
 junit-bom = { module = "org.junit:junit-bom", version.ref = "junit" }
 junit-jupiter = { module = "org.junit.jupiter:junit-jupiter" }
+tomcat-embed-core = { module = "org.apache.tomcat.embed:tomcat-embed-core", version.ref = "tomcat" }

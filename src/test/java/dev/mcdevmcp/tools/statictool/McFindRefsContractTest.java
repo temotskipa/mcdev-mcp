@@ -1,6 +1,7 @@
 package dev.mcdevmcp.tools.statictool;
 
 import dev.mcdevmcp.mcp.tool.ToolCatalog;
+import dev.mcdevmcp.mcp.tool.CompleteToolBindings;
 import dev.mcdevmcp.mcp.tool.ToolResult;
 import dev.mcdevmcp.storage.PlatformPaths;
 import dev.mcdevmcp.storage.callgraph.CallgraphBundleTestSupport;
@@ -215,7 +216,7 @@ class McFindRefsContractTest {
     private ToolCatalog catalog(PlatformPaths paths) {
         ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
         executors.add(executor);
-        return ToolCatalog.load(new AppEnvironment(Map.of()), StaticToolModule.handlers(paths), McpJsonDefaults.getMapper(), executor);
+        return ToolCatalog.load(new AppEnvironment(Map.of()), CompleteToolBindings.including(McpJsonDefaults.getMapper(), StaticToolModule.handlers(paths)), McpJsonDefaults.getMapper(), executor);
     }
 
     private PlatformPaths fixture() throws Exception {

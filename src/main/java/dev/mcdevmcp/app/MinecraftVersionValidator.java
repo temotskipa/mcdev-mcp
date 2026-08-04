@@ -38,7 +38,11 @@ public final class MinecraftVersionValidator {
     public static String requireSupported(String value) {
         Objects.requireNonNull(value, "value");
         if (!isSupported(value)) {
-            throw new IllegalArgumentException("Unsupported Minecraft version: " + value);
+            throw new IllegalArgumentException("""
+                                               Error: Version %s is not supported.
+                                               Supported versions:
+                                                 - 1.14 and later (official Mojang mappings required)
+                                                 - 26.x and later (26.1, 26.1-snapshot-10, etc.)""".formatted(value));
         }
         return value;
     }

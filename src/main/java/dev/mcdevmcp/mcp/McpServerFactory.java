@@ -26,7 +26,9 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-public final class McpServerFactory {
+public final class McpServerFactory implements AutoCloseable {
+    private static final Duration EXECUTOR_STOP_TIMEOUT = Duration.ofSeconds(5);
+
     private static final AutoCloseable NO_RUNTIME = () -> {
     };
 
@@ -34,8 +36,9 @@ public final class McpServerFactory {
     private final Map<String, ToolBinding<?>> bindings;
     private final ResourceCatalog resourceCatalog;
     private final McpJsonMapper mapper;
-    private final AutoCloseable ownedRuntime;
+    private final CloseOnce ownedRuntime;
     private final AtomicBoolean started = new AtomicBoolean();
+    private final AtomicBoolean closed = new AtomicBoolean();
 
     public McpServerFactory(AppEnvironment environment) {
         this(environment, defaultComposition(environment));
@@ -58,7 +61,7 @@ public final class McpServerFactory {
         this.bindings = Map.copyOf(bindings);
         this.resourceCatalog = Objects.requireNonNull(resourceCatalog, "resourceCatalog");
         this.mapper = Objects.requireNonNull(mapper, "mapper");
-        this.ownedRuntime = Objects.requireNonNull(ownedRuntime, "ownedRuntime");
+        this.ownedRuntime = new CloseOnce(Objects.requireNonNull(ownedRuntime, "ownedRuntime"));
     }
 
     private static DefaultComposition defaultComposition(AppEnvironment environment) {
@@ -90,12 +93,36 @@ public final class McpServerFactory {
         }
     }
 
-    ToolCatalog loadToolCatalog(ExecutorService blockingExecutor) {
+    private static void closeExecutorAfterFailure(ExecutorService executor, Throwable failure) {
+        executor.shutdownNow();
+        boolean interrupted = false;
+        try {
+            if (!executor.awaitTermination(EXECUTOR_STOP_TIMEOUT.toNanos(), java.util.concurrent.TimeUnit.NANOSECONDS)) {
+                failure.addSuppressed(new IllegalStateException("MCP blocking executor did not stop after startup failure"));
+            }
+        } catch (InterruptedException exception) {
+            interrupted = true;
+            failure.addSuppressed(new IllegalStateException("Interrupted while stopping MCP blocking executor after startup failure", exception));
+        } finally {
+            if (interrupted) {
+                Thread.currentThread().interrupt();
+            }
+        }
+    }
+
+    synchronized ToolCatalog loadToolCatalog(ExecutorService blockingExecutor) {
+        requireOpen();
         Objects.requireNonNull(blockingExecutor, "blockingExecutor");
         return ToolCatalog.load(environment, bindings, mapper, blockingExecutor);
     }
 
-    public StdioServer startStdio(InputStream input, OutputStream output) {
+    public synchronized ServerDefinition loadServerDefinition(ExecutorService blockingExecutor) {
+        requireOpen();
+        return new ServerDefinition("mcdev-mcp", dev.mcdevmcp.support.AppVersion.current(), ResourceCatalog.INSTRUCTIONS, loadToolCatalog(blockingExecutor), resourceCatalog);
+    }
+
+    public synchronized StdioServer startStdio(InputStream input, OutputStream output) {
+        requireOpen();
         Objects.requireNonNull(input, "input");
         Objects.requireNonNull(output, "output");
         if (!started.compareAndSet(false, true)) {
@@ -104,12 +131,27 @@ public final class McpServerFactory {
 
         var blockingExecutor = Executors.newVirtualThreadPerTaskExecutor();
         try {
-            ToolCatalog toolCatalog = loadToolCatalog(blockingExecutor);
-            return McpSdkAdapter.startStdio(mapper, input, output, toolCatalog, resourceCatalog, blockingExecutor, ownedRuntime);
+            ServerDefinition definition = loadServerDefinition(blockingExecutor);
+            return McpSdkAdapter.startStdio(mapper, input, output, definition, blockingExecutor, ownedRuntime);
         } catch (RuntimeException | Error exception) {
+            closed.set(true);
+            closeExecutorAfterFailure(blockingExecutor, exception);
             closeAfterFailure(ownedRuntime, exception);
-            closeAfterFailure(blockingExecutor, exception);
             throw exception;
+        }
+    }
+
+    @Override
+    public synchronized void close() {
+        if (!closed.compareAndSet(false, true)) {
+            return;
+        }
+        ownedRuntime.close();
+    }
+
+    private void requireOpen() {
+        if (closed.get() || ownedRuntime.isClosed()) {
+            throw new IllegalStateException("MCP server factory is closed");
         }
     }
 
@@ -119,11 +161,57 @@ public final class McpServerFactory {
     private record RuntimeResources(BridgeSession session, HttpClient client) implements AutoCloseable {
         @Override
         public void close() {
+            Throwable failure = null;
             try {
                 session.close();
-            } finally {
-                client.close();
+            } catch (Throwable exception) {
+                failure = exception;
             }
+            try {
+                client.close();
+            } catch (Throwable exception) {
+                if (failure == null) {
+                    failure = exception;
+                }
+                else {
+                    failure.addSuppressed(exception);
+                }
+            }
+            if (failure instanceof RuntimeException exception) {
+                throw exception;
+            }
+            if (failure instanceof Error error) {
+                throw error;
+            }
+        }
+    }
+
+    private static final class CloseOnce implements AutoCloseable {
+        private final AutoCloseable delegate;
+        private final AtomicBoolean closed = new AtomicBoolean();
+
+        private CloseOnce(AutoCloseable delegate) {
+            this.delegate = delegate;
+        }
+
+        @Override
+        public void close() {
+            if (closed.compareAndSet(false, true)) {
+                try {
+                    delegate.close();
+                } catch (RuntimeException | Error exception) {
+                    throw exception;
+                } catch (Exception exception) {
+                    if (exception instanceof InterruptedException) {
+                        Thread.currentThread().interrupt();
+                    }
+                    throw new IllegalStateException("Unable to close owned MCP runtime", exception);
+                }
+            }
+        }
+
+        private boolean isClosed() {
+            return closed.get();
         }
     }
 }

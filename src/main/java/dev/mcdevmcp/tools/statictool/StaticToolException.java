@@ -9,5 +9,4 @@ class StaticToolException extends RuntimeException {
     StaticToolException(String message) {
         super(message);
     }
-
 }

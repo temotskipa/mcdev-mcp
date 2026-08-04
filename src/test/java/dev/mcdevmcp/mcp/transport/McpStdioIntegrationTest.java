@@ -114,6 +114,14 @@ class McpStdioIntegrationTest {
                     var versionList = readJsonLine(reader);
                     write(writer, request(7, "tools/call", Map.of("name", "mc_record_video", "arguments", Map.of("frames", 1, "interval", "50"))));
                     var numericStringInterval = readJsonLine(reader);
+                    write(writer, request(8, "mcdev/unknown", Map.of()));
+                    var unknownMethod = readJsonLine(reader);
+                    write(writer, request(9, "resources/read", Map.of("uri", "mcdev://guides/not-present")));
+                    var unknownResource = readJsonLine(reader);
+                    write(writer, request(10, "resources/read", Map.of()));
+                    var missingResourceUri = readJsonLine(reader);
+                    write(writer, request(11, "resources/read", Map.of("uri", "")));
+                    var emptyResourceUri = readJsonLine(reader);
 
                     assertProtocolMatches("initialize.json", initialize, true);
                     assertProtocolMatches("tools-list-default.json", tools, false);
@@ -133,6 +141,20 @@ class McpStdioIntegrationTest {
                     assertEquals("Unknown tool: not_a_tool", MAPPER.convertValue(unknownResult.get("content"), LIST_OF_MAPS_TYPE).getFirst().get("text"));
                     assertTrue(numericStringInterval.containsKey("result"), "numeric-string intervals must pass SDK input validation");
                     assertFalse(numericStringInterval.containsKey("error"), "numeric-string intervals must reach the tool handler");
+                    var unknownMethodError = MAPPER.convertValue(unknownMethod.get("error"), MAP_TYPE);
+                    assertEquals(-32601, unknownMethodError.get("code"));
+                    assertEquals("Method not found", unknownMethodError.get("message"));
+                    var unknownResourceError = MAPPER.convertValue(unknownResource.get("error"), MAP_TYPE);
+                    assertEquals(-32603, unknownResourceError.get("code"));
+                    assertEquals("Unknown resource URI: mcdev://guides/not-present", unknownResourceError.get("message"));
+                    assertFalse(unknownResourceError.containsKey("data"));
+                    var missingResourceUriError = MAPPER.convertValue(missingResourceUri.get("error"), MAP_TYPE);
+                    assertEquals(-32603, missingResourceUriError.get("code"));
+                    assertEquals("[\n  {\n    \"expected\": \"string\",\n    \"code\": \"invalid_type\",\n    \"path\": [\n      \"params\",\n      \"uri\"\n    ],\n    \"message\": \"Invalid input: expected string, received undefined\"\n  }\n]", missingResourceUriError.get("message"));
+                    var emptyResourceUriError = MAPPER.convertValue(emptyResourceUri.get("error"), MAP_TYPE);
+                    assertEquals(-32603, emptyResourceUriError.get("code"));
+                    assertEquals("Unknown resource URI: ", emptyResourceUriError.get("message"));
+                    assertFalse(emptyResourceUriError.containsKey("data"));
                 } finally {
                     writer.close();
                 }

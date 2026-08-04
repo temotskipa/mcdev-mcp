@@ -35,8 +35,11 @@ public final class ToolCatalog {
 
     public static ToolCatalog load(AppEnvironment environment, Map<String, ToolBinding<?>> bindings, McpJsonMapper mapper) {
         Objects.requireNonNull(mapper, "mapper");
-        ToolMetadata[] metadata = new JsonResourceReader(mapper).read("/mcp/tools.json", ToolMetadata[].class);
-        return fromMetadata(environment, mapper, metadata, Objects.requireNonNull(bindings, "bindings").entrySet());
+        return fromMetadata(environment, mapper, loadMetadata(mapper), Objects.requireNonNull(bindings, "bindings").entrySet());
+    }
+
+    public static ToolMetadata[] loadMetadata(McpJsonMapper mapper) {
+        return new JsonResourceReader(Objects.requireNonNull(mapper, "mapper")).read("/mcp/tools.json", ToolMetadata[].class);
     }
 
     public static ToolCatalog load(AppEnvironment environment, Map<String, ToolBinding<?>> bindings, McpJsonMapper mapper, ExecutorService blockingExecutor) {
@@ -51,9 +54,7 @@ public final class ToolCatalog {
         Objects.requireNonNull(metadata, "metadata");
         Objects.requireNonNull(bindings, "bindings");
 
-        Map<String, ToolBinding<?>> boundBindings = collectBindings(bindings);
         Set<String> metadataNames = new java.util.HashSet<>();
-        var definitions = new ArrayList<ToolDefinition>();
         for (ToolMetadata tool : metadata) {
             if (tool == null) {
                 throw new IllegalArgumentException("Malformed tool metadata entry");
@@ -62,17 +63,25 @@ public final class ToolCatalog {
             if (!metadataNames.add(name)) {
                 throw new IllegalArgumentException("Duplicate tool metadata: " + name);
             }
-            Map<String, Object> inputSchema = validatedSchema(name, tool.inputSchema());
-            ToolBinding<?> binding = boundBindings.get(name);
-            if (binding == null) {
-                binding = unavailable(name);
-            }
-            definitions.add(new ToolDefinition(name, tool.description(), inputSchema, binding, AVAILABILITY.getOrDefault(name, ToolAvailability.ALWAYS)));
+            validatedSchema(name, tool.inputSchema());
         }
+
+        Map<String, ToolBinding<?>> boundBindings = collectBindings(bindings);
         for (String name : boundBindings.keySet()) {
             if (!metadataNames.contains(name)) {
                 throw new IllegalArgumentException("Handler without tool metadata: " + name);
             }
+        }
+
+        var definitions = new ArrayList<ToolDefinition>();
+        for (ToolMetadata tool : metadata) {
+            String name = tool.name();
+            Map<String, Object> inputSchema = validatedSchema(name, tool.inputSchema());
+            ToolBinding<?> binding = boundBindings.get(name);
+            if (binding == null) {
+                throw new IllegalArgumentException("Missing tool handler: " + name);
+            }
+            definitions.add(new ToolDefinition(name, tool.description(), inputSchema, binding, AVAILABILITY.getOrDefault(name, ToolAvailability.ALWAYS)));
         }
         return new ToolCatalog(environment, Objects.requireNonNull(mapper, "mapper"), definitions);
     }
@@ -112,10 +121,6 @@ public final class ToolCatalog {
         }
         String message = current.getMessage();
         return "Error executing " + name + ": " + (message == null ? current.toString() : message);
-    }
-
-    private static ToolBinding<UnavailableToolArguments> unavailable(String name) {
-        return new ToolBinding<>((_, arguments) -> new UnavailableToolArguments(arguments), (_, _) -> ToolHandlers.completed(ToolResult.error("Tool handler is not available in this migration build: " + name)));
     }
 
     public List<ToolDefinition> enabledDefinitions() {

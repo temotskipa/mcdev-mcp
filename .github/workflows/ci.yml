@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [main, master]
+    branches: [ main, master ]
   pull_request:
-    branches: [main, master]
+    branches: [ main, master ]
 
 permissions:
   contents: read
@@ -15,7 +15,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        runtime: [25, 26]
+        runtime: [ 25, 26 ]
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-java@v5
@@ -36,6 +36,22 @@ jobs:
           name: mcdev-mcp-java-25
           path: build/libs/mcdev-mcp-*.jar
           retention-days: 7
+
+  conformance:
+    name: Official MCP conformance
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 25
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - name: Run official MCP conformance 0.1.16
+        shell: pwsh
+        run: .\scripts\run-conformance.ps1
 
 
   macos:

@@ -10,7 +10,8 @@ import java.util.concurrent.Callable;
 public final class ServeCommand implements Callable<Integer> {
     @Override
     public Integer call() throws Exception {
-        try (var server = new McpServerFactory(AppEnvironment.system()).startStdio(System.in, System.out)) {
+        try (var factory = new McpServerFactory(AppEnvironment.system());
+             var server = factory.startStdio(System.in, System.out)) {
             server.awaitInputClosed();
             return 0;
         }

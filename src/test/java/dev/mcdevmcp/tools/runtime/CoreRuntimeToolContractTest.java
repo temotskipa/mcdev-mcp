@@ -4,6 +4,7 @@ import dev.mcdevmcp.bridge.BridgeRequest;
 import dev.mcdevmcp.bridge.BridgeResponse;
 import dev.mcdevmcp.bridge.BridgeTestHarness;
 import dev.mcdevmcp.mcp.tool.ToolCatalog;
+import dev.mcdevmcp.mcp.tool.CompleteToolBindings;
 import dev.mcdevmcp.mcp.tool.ToolResult;
 import dev.mcdevmcp.support.AppEnvironment;
 import dev.mcdevmcp.support.Cancellation;
@@ -80,7 +81,7 @@ class CoreRuntimeToolContractTest {
             assertEquals(request.label(), expected.label(), "result fixture " + index);
 
             try (var harness = new BridgeTestHarness(MAPPER, ENVIRONMENT, (_, wireRequest) -> respond(request, bridge, wireRequest))) {
-                ToolCatalog catalog = ToolCatalog.load(ENVIRONMENT, RuntimeToolModule.handlers(harness.session(), MAPPER), MAPPER);
+                ToolCatalog catalog = ToolCatalog.load(ENVIRONMENT, CompleteToolBindings.including(MAPPER, RuntimeToolModule.handlers(harness.session(), MAPPER)), MAPPER);
                 ToolResult actual = catalog.dispatch(request.tool(), request.arguments(), Cancellation.none()).toCompletableFuture().get(5, TimeUnit.SECONDS);
 
                 assertEquals(expected.text(), actual.content().getFirst().text(), request.label());
@@ -101,7 +102,7 @@ class CoreRuntimeToolContractTest {
             }
             return CompletableFuture.completedFuture(new BridgeResponse(request.id(), true, true, Map.of("connection", connection), null, null));
         })) {
-            ToolCatalog catalog = ToolCatalog.load(ENVIRONMENT, RuntimeToolModule.handlers(harness.session(), MAPPER), MAPPER);
+            ToolCatalog catalog = ToolCatalog.load(ENVIRONMENT, CompleteToolBindings.including(MAPPER, RuntimeToolModule.handlers(harness.session(), MAPPER)), MAPPER);
 
             assertEquals("{\n  \"connection\": 1\n}", dispatch(catalog, "mc_snapshot", Map.of()).content().getFirst().text());
             harness.disconnect();
@@ -117,7 +118,7 @@ class CoreRuntimeToolContractTest {
     @Test
     void reportsAlreadyConnectedWithoutAnotherBridgeRequest() throws Exception {
         try (var harness = new BridgeTestHarness(MAPPER, ENVIRONMENT, (_, request) -> CompletableFuture.completedFuture(RuntimeContractFixtures.status(request.id())))) {
-            ToolCatalog catalog = ToolCatalog.load(ENVIRONMENT, RuntimeToolModule.handlers(harness.session(), MAPPER), MAPPER);
+            ToolCatalog catalog = ToolCatalog.load(ENVIRONMENT, CompleteToolBindings.including(MAPPER, RuntimeToolModule.handlers(harness.session(), MAPPER)), MAPPER);
 
             assertTrue(dispatch(catalog, "mc_connect", Map.of()).content().getFirst().text().startsWith("Connected!"));
             ToolResult second = dispatch(catalog, "mc_connect", Map.of());
@@ -136,7 +137,7 @@ class CoreRuntimeToolContractTest {
             assertEquals(coreNames, List.copyOf(handlers.keySet()).subList(0, coreNames.size()));
             assertDoesNotThrow(handlers::clear);
 
-            ToolCatalog catalog = ToolCatalog.load(ENVIRONMENT, RuntimeToolModule.handlers(harness.session(), MAPPER), MAPPER);
+            ToolCatalog catalog = ToolCatalog.load(ENVIRONMENT, CompleteToolBindings.including(MAPPER, RuntimeToolModule.handlers(harness.session(), MAPPER)), MAPPER);
             ToolResult timeout = dispatch(catalog, "mc_execute", Map.of("code", "return 1", "timeoutMs", 999));
             ToolResult port = dispatch(catalog, "mc_connect", Map.of("port", 1.5));
 

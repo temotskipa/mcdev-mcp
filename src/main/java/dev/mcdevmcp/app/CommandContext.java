@@ -27,10 +27,10 @@ public record CommandContext(AnalysisOperations operations, PlatformPaths paths)
             return commandClass.cast(new InitCommand(operations));
         }
         if (commandClass == CallgraphCommand.class) {
-            return commandClass.cast(new CallgraphCommand(operations));
+            return commandClass.cast(new CallgraphCommand(operations, paths));
         }
         if (commandClass == RebuildCommand.class) {
-            return commandClass.cast(new RebuildCommand(operations));
+            return commandClass.cast(new RebuildCommand(operations, paths));
         }
         if (commandClass == StatusCommand.class) {
             return commandClass.cast(new StatusCommand(paths));

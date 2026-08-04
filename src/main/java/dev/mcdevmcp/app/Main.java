@@ -2,10 +2,13 @@ package dev.mcdevmcp.app;
 
 import picocli.CommandLine;
 
+import java.io.FileDescriptor;
+import java.io.FileOutputStream;
+import java.io.OutputStreamWriter;
 import java.io.PrintWriter;
+import java.nio.charset.StandardCharsets;
 import java.util.Objects;
 
-@SuppressWarnings("ExtractMethodRecommender")
 public final class Main {
     public static int execute(String[] arguments, int javaFeature, PrintWriter output, PrintWriter error) {
         if (javaFeature < 25) {
@@ -24,10 +27,19 @@ public final class Main {
             return rejectOldJava(javaFeature, error);
         }
 
+        CliHelp.Preflight preflight = CliHelp.preflight(arguments);
+        if (preflight != null) {
+            output.print(platformLines(preflight.stdout()));
+            error.print(platformLines(preflight.stderr()));
+            output.flush();
+            error.flush();
+            return preflight.exitCode();
+        }
+
         var commandLine = new CommandLine(new McdevCommand(), context);
         commandLine.setOut(output);
         commandLine.setErr(error);
-        commandLine.setParameterExceptionHandler((exception, _) -> report(exception.getCommandLine(), exception.getMessage(), exception.getCommandLine().getCommandSpec().exitCodeOnInvalidInput()));
+        commandLine.setParameterExceptionHandler((exception, _) -> report(exception.getCommandLine(), exception.getMessage(), 1));
         commandLine.setExecutionExceptionHandler((exception, command, _) -> report(command, conciseMessage(exception), command.getCommandSpec().exitCodeOnExecutionException()));
         return commandLine.execute(arguments);
     }
@@ -35,6 +47,10 @@ public final class Main {
     private static String conciseMessage(Throwable failure) {
         String message = failure.getMessage();
         return message == null || message.isBlank() ? failure.getClass().getSimpleName() : message;
+    }
+
+    private static String platformLines(String text) {
+        return text.replace("\n", System.lineSeparator());
     }
 
     private static int rejectOldJava(int javaFeature, PrintWriter error) {
@@ -51,6 +67,8 @@ public final class Main {
     }
 
     void main(String[] arguments) {
-        System.exit(execute(arguments, Runtime.version().feature(), new PrintWriter(System.out, true), new PrintWriter(System.err, true)));
+        var output = new PrintWriter(new OutputStreamWriter(new FileOutputStream(FileDescriptor.out), StandardCharsets.UTF_8), true);
+        var error = new PrintWriter(new OutputStreamWriter(new FileOutputStream(FileDescriptor.err), StandardCharsets.UTF_8), true);
+        System.exit(execute(arguments, Runtime.version().feature(), output, error));
     }
 }

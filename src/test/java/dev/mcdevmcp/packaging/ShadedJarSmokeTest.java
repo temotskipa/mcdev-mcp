@@ -110,7 +110,7 @@ class ShadedJarSmokeTest {
         String statusError = new String(status.getErrorStream().readAllBytes(), StandardCharsets.UTF_8);
         assertTrue(status.waitFor(Duration.ofSeconds(10)));
         assertEquals(0, status.exitValue());
-        assertEquals("No cached versions." + System.lineSeparator(), statusOutput);
+        assertEquals("Status: Not initialized" + System.lineSeparator() + "Run `mcdev-mcp init -v <version>` to set up." + System.lineSeparator(), statusOutput);
         assertEquals("", statusError);
 
         Process serve = start(localAppData, "serve");

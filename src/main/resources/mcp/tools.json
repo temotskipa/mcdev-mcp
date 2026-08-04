@@ -318,7 +318,10 @@
           "description": "\"frame\" for every render tick (~60 Hz), or milliseconds (number, >= 1). Default \"frame\". Recommended: 50–100 ms unless you specifically need sub-tick detail.",
           "oneOf": [
             {
-              "type": "string"
+              "type": "string",
+              "enum": [
+                "frame"
+              ]
             },
             {
               "type": "number",

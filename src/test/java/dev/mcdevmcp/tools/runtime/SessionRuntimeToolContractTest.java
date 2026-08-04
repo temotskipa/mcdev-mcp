@@ -4,6 +4,7 @@ import dev.mcdevmcp.bridge.BridgeRequest;
 import dev.mcdevmcp.bridge.BridgeResponse;
 import dev.mcdevmcp.bridge.BridgeTestHarness;
 import dev.mcdevmcp.mcp.tool.ToolCatalog;
+import dev.mcdevmcp.mcp.tool.CompleteToolBindings;
 import dev.mcdevmcp.mcp.tool.ToolResult;
 import dev.mcdevmcp.support.AppEnvironment;
 import dev.mcdevmcp.support.Cancellation;
@@ -45,7 +46,7 @@ class SessionRuntimeToolContractTest {
 
             AppEnvironment environment = request.tool().equals("mc_run_command") ? new AppEnvironment(Map.of("MCDEV_RUN_COMMAND", "1")) : DEFAULT_ENVIRONMENT;
             try (var harness = new BridgeTestHarness(MAPPER, environment, (_, wireRequest) -> respond(request, bridge, wireRequest))) {
-                ToolCatalog catalog = ToolCatalog.load(environment, RuntimeToolModule.handlers(harness.session(), MAPPER, environment), MAPPER);
+                ToolCatalog catalog = ToolCatalog.load(environment, CompleteToolBindings.including(MAPPER, RuntimeToolModule.handlers(harness.session(), MAPPER, environment)), MAPPER);
                 ToolResult actual = dispatch(catalog, request.tool(), request.arguments());
 
                 assertEquals(expected.text(), actual.content().getFirst().text(), request.label());
@@ -65,7 +66,7 @@ class SessionRuntimeToolContractTest {
             default ->
                     CompletableFuture.failedFuture(new AssertionError("Unexpected endpoint: " + request.endpoint().wireName()));
         })) {
-            ToolResult result = dispatch(ToolCatalog.load(DEFAULT_ENVIRONMENT, RuntimeToolModule.handlers(joined.session(), MAPPER), MAPPER), "mc_wait_until_in_world", Map.of());
+            ToolResult result = dispatch(ToolCatalog.load(DEFAULT_ENVIRONMENT, CompleteToolBindings.including(MAPPER, RuntimeToolModule.handlers(joined.session(), MAPPER)), MAPPER), "mc_wait_until_in_world", Map.of());
             assertEquals("In-world after 0s.", result.content().getFirst().text());
             assertFalse(result.isError());
         }
@@ -78,7 +79,7 @@ class SessionRuntimeToolContractTest {
             default ->
                     CompletableFuture.failedFuture(new AssertionError("Unexpected endpoint: " + request.endpoint().wireName()));
         })) {
-            ToolResult result = dispatch(ToolCatalog.load(DEFAULT_ENVIRONMENT, RuntimeToolModule.handlers(disconnected.session(), MAPPER), MAPPER), "mc_wait_until_in_world", Map.of());
+            ToolResult result = dispatch(ToolCatalog.load(DEFAULT_ENVIRONMENT, CompleteToolBindings.including(MAPPER, RuntimeToolModule.handlers(disconnected.session(), MAPPER)), MAPPER), "mc_wait_until_in_world", Map.of());
             assertEquals("Join failed — DisconnectedScreen shown.\nReason: Connection refused", result.content().getFirst().text());
             assertTrue(result.isError());
         }
@@ -87,7 +88,7 @@ class SessionRuntimeToolContractTest {
     @Test
     void rejectsDisabledSessionControlBeforeCallingAGatedEndpoint() throws Exception {
         try (var harness = new BridgeTestHarness(MAPPER, DEFAULT_ENVIRONMENT, (_, request) -> CompletableFuture.completedFuture(disabledStatus(request)))) {
-            ToolCatalog catalog = ToolCatalog.load(DEFAULT_ENVIRONMENT, RuntimeToolModule.handlers(harness.session(), MAPPER), MAPPER);
+            ToolCatalog catalog = ToolCatalog.load(DEFAULT_ENVIRONMENT, CompleteToolBindings.including(MAPPER, RuntimeToolModule.handlers(harness.session(), MAPPER)), MAPPER);
 
             ToolResult result = dispatch(catalog, "mc_join_server", Map.of("address", "localhost", "wait", false));
 
@@ -100,7 +101,7 @@ class SessionRuntimeToolContractTest {
     @Test
     void reconnectsToTheFirstMatchingBridgeAndQueuesQuitWithoutWaiting() throws Exception {
         try (var bridge = new BridgeTestHarness(MAPPER, DEFAULT_ENVIRONMENT, (_, request) -> CompletableFuture.completedFuture(RuntimeContractFixtures.status(request.id())))) {
-            ToolResult result = dispatch(ToolCatalog.load(DEFAULT_ENVIRONMENT, RuntimeToolModule.handlers(bridge.session(), MAPPER), MAPPER), "mc_wait_for_bridge", Map.of());
+            ToolResult result = dispatch(ToolCatalog.load(DEFAULT_ENVIRONMENT, CompleteToolBindings.including(MAPPER, RuntimeToolModule.handlers(bridge.session(), MAPPER)), MAPPER), "mc_wait_for_bridge", Map.of());
             assertEquals("Connected: Minecraft 1.21.11 on port 9876.\nGame dir: C:\\Game\nSession control: enabled", result.content().getFirst().text());
             assertEquals(List.of(9876, 9876), bridge.openedPorts());
             assertEquals(List.of("status", "status"), bridge.requests().stream().map(request -> request.endpoint().wireName()).toList());
@@ -112,7 +113,7 @@ class SessionRuntimeToolContractTest {
             default ->
                     CompletableFuture.failedFuture(new AssertionError("Unexpected endpoint: " + request.endpoint().wireName()));
         })) {
-            ToolResult result = dispatch(ToolCatalog.load(DEFAULT_ENVIRONMENT, RuntimeToolModule.handlers(quitting.session(), MAPPER), MAPPER), "mc_quit_client", Map.of("waitForExit", false));
+            ToolResult result = dispatch(ToolCatalog.load(DEFAULT_ENVIRONMENT, CompleteToolBindings.including(MAPPER, RuntimeToolModule.handlers(quitting.session(), MAPPER)), MAPPER), "mc_quit_client", Map.of("waitForExit", false));
             assertEquals("Quit queued — the client is shutting down. Use mc_wait_for_bridge after relaunching to reconnect.", result.content().getFirst().text());
             assertFalse(result.isError());
             assertFalse(quitting.session().connectedPort().isPresent());
@@ -129,14 +130,14 @@ class SessionRuntimeToolContractTest {
             assertEquals(taskNames, names.subList(names.size() - taskNames.size(), names.size()));
             assertDoesNotThrow(handlers::clear);
 
-            ToolCatalog defaultCatalog = ToolCatalog.load(DEFAULT_ENVIRONMENT, RuntimeToolModule.handlers(harness.session(), MAPPER), MAPPER);
+            ToolCatalog defaultCatalog = ToolCatalog.load(DEFAULT_ENVIRONMENT, CompleteToolBindings.including(MAPPER, RuntimeToolModule.handlers(harness.session(), MAPPER)), MAPPER);
             assertTrue(defaultCatalog.enabledDefinitions().stream().anyMatch(tool -> tool.name().equals("mc_wait_for_bridge")));
             assertFalse(defaultCatalog.enabledDefinitions().stream().anyMatch(tool -> tool.name().equals("mc_script_logs")));
             assertFalse(defaultCatalog.enabledDefinitions().stream().anyMatch(tool -> tool.name().equals("mc_run_command")));
             assertEquals("Unknown tool: mc_run_command", dispatch(defaultCatalog, "mc_run_command", Map.of("command", "say hi")).content().getFirst().text());
 
             AppEnvironment devEnvironment = new AppEnvironment(Map.of("MCDEV_SESSION_LOG_DIR", Path.of(System.getProperty("java.io.tmpdir"), "mcdev-dev-session-logs").toString(), "MCDEV_RUN_COMMAND", "1"));
-            ToolCatalog devCatalog = ToolCatalog.load(devEnvironment, RuntimeToolModule.handlers(harness.session(), MAPPER, devEnvironment), MAPPER);
+            ToolCatalog devCatalog = ToolCatalog.load(devEnvironment, CompleteToolBindings.including(MAPPER, RuntimeToolModule.handlers(harness.session(), MAPPER, devEnvironment)), MAPPER);
             assertTrue(devCatalog.enabledDefinitions().stream().anyMatch(tool -> tool.name().equals("mc_script_logs")));
             assertTrue(devCatalog.enabledDefinitions().stream().anyMatch(tool -> tool.name().equals("mc_run_command")));
         }
@@ -153,14 +154,14 @@ class SessionRuntimeToolContractTest {
             // Session logging is opt-in: with no MCDEV_SESSION_LOG_DIR the logger is not
             // constructed and no script-log files are written anywhere.
             AppEnvironment disabled = new AppEnvironment(Map.of());
-            ToolCatalog disabledCatalog = ToolCatalog.load(disabled, RuntimeToolModule.handlers(harness.session(), MAPPER, disabled), MAPPER);
+            ToolCatalog disabledCatalog = ToolCatalog.load(disabled, CompleteToolBindings.including(MAPPER, RuntimeToolModule.handlers(harness.session(), MAPPER, disabled)), MAPPER);
             assertEquals("2", dispatch(disabledCatalog, "mc_execute", Map.of("code", "return 2")).content().getFirst().text());
             try (var files = java.nio.file.Files.walk(temporary)) {
                 assertTrue(files.noneMatch(path -> path.getFileName().toString().equals("script-logs")));
             }
 
             AppEnvironment enabled = new AppEnvironment(Map.of("MCDEV_SESSION_LOG_DIR", temporary.resolve("enabled").toString()));
-            ToolCatalog enabledCatalog = ToolCatalog.load(enabled, RuntimeToolModule.handlers(harness.session(), MAPPER, enabled), MAPPER);
+            ToolCatalog enabledCatalog = ToolCatalog.load(enabled, CompleteToolBindings.including(MAPPER, RuntimeToolModule.handlers(harness.session(), MAPPER, enabled)), MAPPER);
             assertEquals("2", dispatch(enabledCatalog, "mc_execute", Map.of("code", "return 2")).content().getFirst().text());
             Path log = temporary.resolve("enabled").resolve("script-logs").resolve("all.jsonl");
             assertTrue(Files.exists(log));

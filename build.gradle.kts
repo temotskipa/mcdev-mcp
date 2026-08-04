@@ -1,12 +1,5 @@
 import com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar
 import groovy.json.JsonSlurper
-import org.gradle.api.DefaultTask
-import org.gradle.api.file.DuplicatesStrategy
-import org.gradle.api.provider.MapProperty
-import org.gradle.api.tasks.Input
-import org.gradle.api.tasks.TaskAction
-import org.gradle.api.tasks.WriteProperties
-import org.gradle.api.tasks.compile.JavaCompile
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 
@@ -36,7 +29,7 @@ abstract class McpSdkSnapshotCheck : DefaultTask() {
         }
         val gsonModules = runtimeModules.filter { (module, _) ->
             module.substringBefore(':').equals("com.google.code.$gsonModuleName", ignoreCase = true) ||
-                module.substringAfter(':').equals(gsonModuleName, ignoreCase = true)
+                    module.substringAfter(':').equals(gsonModuleName, ignoreCase = true)
         }
 
         check(mismatches.isEmpty() && gsonModules.isEmpty()) {
@@ -91,6 +84,7 @@ dependencies {
     testImplementation(platform(libs.junit.bom))
     testImplementation(libs.junit.jupiter)
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
+
 }
 
 application {
@@ -109,6 +103,37 @@ sourceSets {
     }
 }
 
+val conformance = sourceSets.create("conformance") {
+    java.srcDir("src/conformance/java")
+    resources.srcDir(layout.buildDirectory.dir("generated-test-resources"))
+    compileClasspath += sourceSets.main.get().output + configurations.runtimeClasspath.get()
+    runtimeClasspath += output + compileClasspath
+}
+
+tasks.named(conformance.processResourcesTaskName) {
+    dependsOn(generateTestVersionProperties)
+}
+
+dependencies {
+    add(conformance.implementationConfigurationName, libs.tomcat.embed.core)
+}
+
+tasks.register<JavaExec>("conformanceRun") {
+    group = "verification"
+    description = "Runs the test-only Streamable HTTP conformance server."
+    classpath = conformance.runtimeClasspath
+    mainClass.set("dev.mcdevmcp.conformance.ConformanceServerMain")
+    jvmArgs(
+        "--add-opens=java.base/java.lang=ALL-UNNAMED",
+        "--add-opens=java.rmi/sun.rmi.transport=ALL-UNNAMED"
+    )
+    systemProperty("dev.mcdevmcp.test.versionFallback", "true")
+    systemProperty("mcdevMcpVersion", applicationVersion)
+    providers.environmentVariable("MCDEV_MCP_CONFORMANCE_SHUTDOWN_FILE").orNull?.let { shutdownFile ->
+        systemProperty("dev.mcdevmcp.conformance.shutdownFile", shutdownFile)
+    }
+}
+
 tasks.processTestResources {
     dependsOn(generateTestVersionProperties)
 }
@@ -121,8 +146,30 @@ tasks.withType<Test>().configureEach {
     systemProperty("dev.mcdevmcp.test.versionFallback", "true")
     systemProperty("dev.mcdevmcp.test.javaFeature", testJavaFeature.get())
     systemProperty("mcdevMcpVersion", applicationVersion)
-    systemProperty("mcdevMcpJar", layout.buildDirectory.file("libs/mcdev-mcp-$applicationVersion.jar").get().asFile.absolutePath)
+    systemProperty(
+        "mcdevMcpJar",
+        layout.buildDirectory.file("libs/mcdev-mcp-$applicationVersion.jar").get().asFile.absolutePath
+    )
     systemProperty("mcdevMcpJava", testJavaLauncher.get().executablePath.asFile.absolutePath)
+}
+
+tasks.named<Test>("test") {
+    useJUnitPlatform {
+        excludeTags("parity")
+    }
+}
+
+val parityTest = tasks.register<Test>("parityTest") {
+    group = "verification"
+    description = "Compares the Java server and CLI with the pinned Node oracle."
+    testClassesDirs = sourceSets.test.get().output.classesDirs
+    classpath = sourceSets.test.get().runtimeClasspath
+    useJUnitPlatform {
+        includeTags("parity")
+    }
+    maxParallelForks = 1
+    dependsOn(tasks.named("test"))
+    outputs.upToDateWhen { false }
 }
 
 tasks.named<ShadowJar>("shadowJar") {
@@ -235,11 +282,11 @@ val cutoverCheck = tasks.register("cutoverCheck") {
                 lowercasePath.endsWith(".ts") ||
                 lowercasePath.endsWith(".tsx") ||
                 ((lowercasePath.endsWith(".js") ||
-                    lowercasePath.endsWith(".mjs") ||
-                    lowercasePath.endsWith(".cjs")) &&
-                    normalizedPath !in allowedScriptFiles) ||
+                        lowercasePath.endsWith(".mjs") ||
+                        lowercasePath.endsWith(".cjs")) &&
+                        normalizedPath !in allowedScriptFiles) ||
                 ((fileName == "package.json" || fileName == "package-lock.json") &&
-                    normalizedPath !in allowedPackageMetadata) ||
+                        normalizedPath !in allowedPackageMetadata) ||
                 fileName in forbiddenMetadataFiles ||
                 lowercasePath.startsWith("java-worker/")
             ) {
@@ -248,20 +295,20 @@ val cutoverCheck = tasks.register("cutoverCheck") {
 
             val mustInspectContents =
                 (lowercasePath.endsWith(".json") &&
-                    normalizedPath != "contracts/node-oracle.json" &&
-                    !normalizedPath.startsWith("src/test/resources/contracts/") &&
-                    !normalizedPath.startsWith("src/test/resources/oracle/") &&
-                    !normalizedPath.startsWith("docs/superpowers/")) ||
-                normalizedPath == "build.gradle.kts" ||
-                normalizedPath == "settings.gradle.kts" ||
-                normalizedPath.endsWith(".gradle") ||
-                normalizedPath.endsWith(".gradle.kts") ||
-                normalizedPath.endsWith(".toml") ||
-                normalizedPath.endsWith(".properties") ||
-                normalizedPath.startsWith(".github/") ||
-                normalizedPath.startsWith("scripts/") ||
-                (normalizedPath.startsWith("src/main/") &&
-                    !normalizedPath.startsWith("src/main/resources/"))
+                        normalizedPath != "contracts/node-oracle.json" &&
+                        !normalizedPath.startsWith("src/test/resources/contracts/") &&
+                        !normalizedPath.startsWith("src/test/resources/oracle/") &&
+                        !normalizedPath.startsWith("docs/superpowers/")) ||
+                        normalizedPath == "build.gradle.kts" ||
+                        normalizedPath == "settings.gradle.kts" ||
+                        normalizedPath.endsWith(".gradle") ||
+                        normalizedPath.endsWith(".gradle.kts") ||
+                        normalizedPath.endsWith(".toml") ||
+                        normalizedPath.endsWith(".properties") ||
+                        normalizedPath.startsWith(".github/") ||
+                        normalizedPath.startsWith("scripts/") ||
+                        (normalizedPath.startsWith("src/main/") &&
+                                !normalizedPath.startsWith("src/main/resources/"))
             if (mustInspectContents) {
                 val file = repositoryRoot.toPath().resolve(path)
                 if (Files.isRegularFile(file)) {
@@ -318,23 +365,27 @@ val cutoverCheck = tasks.register("cutoverCheck") {
                                         if (nestedValue != null) {
                                             pendingEnvironmentValues.add(
                                                 nestedValue to
-                                                    (normalizedKey in environmentKeys &&
-                                                        (nestedValue is String || nestedValue is Iterable<*>))
+                                                        (normalizedKey in environmentKeys &&
+                                                                (nestedValue is String || nestedValue is Iterable<*>))
                                             )
                                         }
                                     }
+
                                     is Iterable<*> -> value.filterNotNull().forEach { nestedValue ->
                                         pendingEnvironmentValues.add(
                                             nestedValue to
-                                                (assignmentList &&
-                                                    (nestedValue is String || nestedValue is Iterable<*>))
+                                                    (assignmentList &&
+                                                            (nestedValue is String || nestedValue is Iterable<*>))
                                         )
                                     }
+
                                     is String -> {
                                         val assignment = value.indexOf('=')
                                         if (assignmentList &&
                                             assignment > 0 &&
-                                            normalizedMetadataKey(value.substring(0, assignment).trim()) == "nodeoptions"
+                                            normalizedMetadataKey(
+                                                value.substring(0, assignment).trim()
+                                            ) == "nodeoptions"
                                         ) {
                                             return true
                                         }
@@ -411,6 +462,7 @@ val cutoverCheck = tasks.register("cutoverCheck") {
                                                 word.append(character)
                                             }
                                         }
+
                                         else -> word.append(character)
                                     }
                                     wordStarted = true
@@ -423,6 +475,7 @@ val cutoverCheck = tasks.register("cutoverCheck") {
                                         quote = character
                                         wordStarted = true
                                     }
+
                                     character == '\r' || character == '\n' || character == ';' -> {
                                         finishWord()
                                         if (words.isNotEmpty()) {
@@ -437,6 +490,7 @@ val cutoverCheck = tasks.register("cutoverCheck") {
                                             index++
                                         }
                                     }
+
                                     character == '&' -> {
                                         if (index + 1 >= value.length || value[index + 1] != '&') {
                                             return null
@@ -446,6 +500,7 @@ val cutoverCheck = tasks.register("cutoverCheck") {
                                         }
                                         index++
                                     }
+
                                     character == '|' -> {
                                         if (!finishSegment(true)) {
                                             return null
@@ -454,14 +509,16 @@ val cutoverCheck = tasks.register("cutoverCheck") {
                                             index++
                                         }
                                     }
+
                                     character.isWhitespace() -> finishWord()
                                     character == '\\' && index + 1 < value.length &&
-                                        (value[index + 1].isWhitespace() ||
-                                            value[index + 1] in setOf('\'', '"', ';', '&', '|')) -> {
+                                            (value[index + 1].isWhitespace() ||
+                                                    value[index + 1] in setOf('\'', '"', ';', '&', '|')) -> {
                                         index++
                                         word.append(value[index])
                                         wordStarted = true
                                     }
+
                                     else -> {
                                         word.append(character)
                                         wordStarted = true
@@ -498,7 +555,7 @@ val cutoverCheck = tasks.register("cutoverCheck") {
                                         break
                                     }
                                     hasNodeOptions = hasNodeOptions ||
-                                        normalizedMetadataKey(name) == "nodeoptions"
+                                            normalizedMetadataKey(name) == "nodeoptions"
                                     executableIndex++
                                 }
                             }
@@ -517,6 +574,7 @@ val cutoverCheck = tasks.register("cutoverCheck") {
                                         }
                                         consumeAssignments()
                                     }
+
                                     "exec", "command" -> {
                                         executableIndex++
                                         if (executableIndex < words.size && words[executableIndex] == "--") {
@@ -527,6 +585,7 @@ val cutoverCheck = tasks.register("cutoverCheck") {
                                             return null
                                         }
                                     }
+
                                     else -> break
                                 }
                             }
@@ -557,7 +616,7 @@ val cutoverCheck = tasks.register("cutoverCheck") {
                                 val arguments = segment.drop(executableIndex + 1)
                                 if (arguments.isNotEmpty() &&
                                     (normalizedEntrypoint(arguments.first()) !in allowedEntrypoints ||
-                                        arguments.drop(1).any(::hasForbiddenJavaScriptEntrypoint))
+                                            arguments.drop(1).any(::hasForbiddenJavaScriptEntrypoint))
                                 ) {
                                     return true
                                 }
@@ -588,9 +647,10 @@ val cutoverCheck = tasks.register("cutoverCheck") {
                                             is Iterable<*> -> {
                                                 val commandParts = command.toList()
                                                 (commandParts.firstOrNull() as? String) to
-                                                    (stringArguments(commandParts.drop(1)) +
-                                                        stringArguments(explicitArguments))
+                                                        (stringArguments(commandParts.drop(1)) +
+                                                                stringArguments(explicitArguments))
                                             }
+
                                             is Map<*, *> -> {
                                                 val commandFields = command.entries.associate { (key, fieldValue) ->
                                                     (key as? String)?.let(::normalizedMetadataKey) to fieldValue
@@ -601,22 +661,24 @@ val cutoverCheck = tasks.register("cutoverCheck") {
                                                 val commandArguments =
                                                     commandFields["args"] ?: commandFields["arguments"]
                                                 commandExecutable to
-                                                    (stringArguments(commandArguments) +
-                                                        stringArguments(explicitArguments))
+                                                        (stringArguments(commandArguments) +
+                                                                stringArguments(explicitArguments))
                                             }
+
                                             else -> null to emptyList()
                                         }
                                         if (executable != null && isNodeCommand(executable)) {
                                             if (!isPackagingMetadata ||
                                                 arguments.isNotEmpty() &&
                                                 (normalizedEntrypoint(arguments.first()) !in allowedEntrypoints ||
-                                                    arguments.drop(1).any(::hasForbiddenJavaScriptEntrypoint))
+                                                        arguments.drop(1).any(::hasForbiddenJavaScriptEntrypoint))
                                             ) {
                                                 return true
                                             }
                                         }
                                         value.values.filterNotNull().forEach(pendingCommands::add)
                                     }
+
                                     is Iterable<*> -> value.filterNotNull().forEach(pendingCommands::add)
                                 }
                             }
@@ -637,7 +699,7 @@ val cutoverCheck = tasks.register("cutoverCheck") {
                             val isEntrypoint = normalizedKey in entrypointKeys
                             val isCommand = normalizedKey == "command"
                             isEntrypoint && hasForbiddenEntrypointTarget(value) ||
-                                isCommand && hasForbiddenNodeCommandText(value)
+                                    isCommand && hasForbiddenNodeCommandText(value)
                         }
                         val nestedJavaScriptMetadata = mutableListOf<Boolean>()
                         val nestedEntrypointKeys = setOf("bin", "exports", "browser")
@@ -657,9 +719,9 @@ val cutoverCheck = tasks.register("cutoverCheck") {
                                     ) {
                                         nestedJavaScriptMetadata +=
                                             parentKey in nestedEntrypointKeys &&
-                                                hasForbiddenEntrypointTarget(nestedValue) ||
-                                                (parentKey == "scripts" || normalizedKey == "command") &&
-                                                hasForbiddenNodeCommandText(nestedValue)
+                                                    hasForbiddenEntrypointTarget(nestedValue) ||
+                                                    (parentKey == "scripts" || normalizedKey == "command") &&
+                                                    hasForbiddenNodeCommandText(nestedValue)
                                     }
                                     if (nestedValue != null) {
                                         pendingMetadataValues.add(
@@ -678,14 +740,14 @@ val cutoverCheck = tasks.register("cutoverCheck") {
                         }
                         if (isPackagingMetadata) {
                             javascriptMetadata ||
-                                nestedJavaScriptMetadata.any { it } ||
-                                parsedJson != null && hasNodeOptionsMetadata(parsedJson) ||
-                                parsedJson != null && hasForbiddenStructuredNodeInvocation(parsedJson)
+                                    nestedJavaScriptMetadata.any { it } ||
+                                    parsedJson != null && hasNodeOptionsMetadata(parsedJson) ||
+                                    parsedJson != null && hasForbiddenStructuredNodeInvocation(parsedJson)
                         } else {
                             nodeRuntime ||
-                                javascriptMetadata ||
-                                nestedJavaScriptMetadata.any { it } ||
-                                parsedJson != null && hasForbiddenStructuredNodeInvocation(parsedJson)
+                                    javascriptMetadata ||
+                                    nestedJavaScriptMetadata.any { it } ||
+                                    parsedJson != null && hasForbiddenStructuredNodeInvocation(parsedJson)
                         }
                     } else {
                         false

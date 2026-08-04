@@ -4,6 +4,7 @@ import dev.mcdevmcp.bridge.BridgeRequest;
 import dev.mcdevmcp.bridge.BridgeResponse;
 import dev.mcdevmcp.bridge.BridgeTestHarness;
 import dev.mcdevmcp.mcp.tool.ToolCatalog;
+import dev.mcdevmcp.mcp.tool.CompleteToolBindings;
 import dev.mcdevmcp.mcp.tool.ToolContent;
 import dev.mcdevmcp.mcp.tool.ToolContentType;
 import dev.mcdevmcp.mcp.tool.ToolResult;
@@ -45,7 +46,7 @@ class MediaRuntimeToolContractTest {
             assertEquals(request.label(), expected.label(), "result fixture " + index);
 
             try (var harness = new BridgeTestHarness(MAPPER, ENVIRONMENT, (_, wireRequest) -> respond(request, bridge, wireRequest))) {
-                ToolCatalog catalog = ToolCatalog.load(ENVIRONMENT, RuntimeToolModule.handlers(harness.session(), MAPPER), MAPPER);
+                ToolCatalog catalog = ToolCatalog.load(ENVIRONMENT, CompleteToolBindings.including(MAPPER, RuntimeToolModule.handlers(harness.session(), MAPPER)), MAPPER);
                 ToolResult actual = dispatch(catalog, request.tool(), request.arguments());
 
                 assertContent(expected, actual);
@@ -65,7 +66,7 @@ class MediaRuntimeToolContractTest {
             }
             return CompletableFuture.completedFuture(new BridgeResponse(request.id(), true, true, Map.of("base64Png", oversized, "width", 16, "height", 16, "spriteName", "minecraft:item/diamond"), null, null));
         })) {
-            ToolCatalog catalog = ToolCatalog.load(ENVIRONMENT, RuntimeToolModule.handlers(harness.session(), MAPPER), MAPPER);
+            ToolCatalog catalog = ToolCatalog.load(ENVIRONMENT, CompleteToolBindings.including(MAPPER, RuntimeToolModule.handlers(harness.session(), MAPPER)), MAPPER);
 
             ToolResult result = dispatch(catalog, "mc_get_item_texture", Map.of("slot", 0));
 

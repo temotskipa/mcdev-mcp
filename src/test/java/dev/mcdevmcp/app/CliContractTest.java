@@ -32,6 +32,14 @@ final class CliContractTest {
         Files.writeString(paths.callgraphBundle(version).resolve("generations/one/calls.jsonl"), "{}\n");
     }
 
+    private static void createSymbolicLinkOrSkip(Path link, Path target) {
+        try {
+            Files.createSymbolicLink(link, target);
+        } catch (Exception exception) {
+            org.junit.jupiter.api.Assumptions.assumeTrue(false, "Symbolic links are unavailable: " + exception.getMessage());
+        }
+    }
+
     private static CliResult execute(AnalysisOperations operations, PlatformPaths paths, String... arguments) {
         var output = new StringWriter();
         var error = new StringWriter();
@@ -83,7 +91,7 @@ final class CliContractTest {
     }
 
     @Test
-    void rebuildAndSkipFlagsSelectOnlyRequestedOperations() {
+    void rebuildAndSkipFlagsSelectOnlyRequestedOperations() throws Exception {
         var initOperations = new RecordingOperations(temporaryDirectory);
         CliResult init = execute(initOperations, "init", "--version", "26.1", "--skip-callgraph");
 
@@ -92,7 +100,9 @@ final class CliContractTest {
         assertFalse(init.stdout().contains("callgraph"));
 
         var rebuildOperations = new RecordingOperations(temporaryDirectory);
-        CliResult rebuild = execute(rebuildOperations, "rebuild", "-v", "26.1", "--with-callgraph");
+        PlatformPaths rebuildPaths = new PlatformPaths(temporaryDirectory.resolve("rebuild-cache"));
+        Files.createDirectories(rebuildPaths.sourceRoot(new MinecraftVersion("26.1")));
+        CliResult rebuild = execute(rebuildOperations, rebuildPaths, "rebuild", "-v", "26.1", "--with-callgraph");
 
         assertEquals(0, rebuild.exitCode());
         assertEquals(List.of("index", "callgraph"), rebuildOperations.calls());
@@ -102,26 +112,46 @@ final class CliContractTest {
     }
 
     @Test
-    void commandFailuresAndParameterErrorsStayOnStderrWithoutStacks() {
+    void commandFailuresAndParameterErrorsStayOnStderrWithoutStacks() throws Exception {
         var operations = new RecordingOperations(temporaryDirectory);
         operations.fail();
+        PlatformPaths paths = new PlatformPaths(temporaryDirectory.resolve("failure-cache"));
+        MinecraftVersion version = new MinecraftVersion("1.21.11");
+        Files.createDirectories(paths.sourceRoot(version));
+        Files.createDirectories(paths.symbolDatabase(version).getParent());
+        Files.writeString(paths.symbolDatabase(version), "fixture");
 
-        CliResult failure = execute(operations, "callgraph", "-v", "1.21.11");
+        CliResult failure = execute(operations, paths, "callgraph", "-v", "1.21.11");
 
         assertEquals(1, failure.exitCode());
-        assertEquals("", failure.stdout());
+        assertEquals(lines("Generating callgraph for Minecraft 1.21.11..."), failure.stdout());
         assertEquals(lines("analysis failed"), failure.stderr());
         assertFalse(failure.stderr().contains("Exception"));
 
         CliResult missingVersion = execute(new RecordingOperations(temporaryDirectory), "rebuild");
 
-        assertEquals(2, missingVersion.exitCode());
+        assertEquals(1, missingVersion.exitCode());
         assertEquals("", missingVersion.stdout());
-        assertEquals(lines("Missing required option: '--version=<version>'"), missingVersion.stderr());
+        assertEquals(lines("error: required option '-v, --version <version>' not specified"), missingVersion.stderr());
     }
 
     @Test
-    void statusEnumeratesCacheAndIndexVersionsInStableOrder() throws Exception {
+    void rootHelpIgnoresTrailingArgumentsAndUnknownHelpUsesRootUsageOnStderr() {
+        RecordingOperations operations = new RecordingOperations(temporaryDirectory);
+        CliResult rootHelp = execute(operations, "--help");
+        CliResult trailing = execute(operations, "--help", "extra");
+        CliResult unknown = execute(operations, "help", "unknown");
+
+        assertEquals(rootHelp, trailing);
+        assertEquals(0, rootHelp.exitCode());
+        assertEquals("", rootHelp.stderr());
+        assertEquals(1, unknown.exitCode());
+        assertEquals("", unknown.stdout());
+        assertEquals(rootHelp.stdout(), unknown.stderr());
+    }
+
+    @Test
+    void statusEnumeratesCachedVersionsInNodeCompatibleShape() throws Exception {
         PlatformPaths paths = new PlatformPaths(temporaryDirectory.resolve("status"));
         MinecraftVersion cached = new MinecraftVersion("1.21.11");
         MinecraftVersion indexed = new MinecraftVersion("26.1");
@@ -133,7 +163,7 @@ final class CliContractTest {
         CliResult result = execute(new RecordingOperations(temporaryDirectory), paths, "status");
 
         assertEquals(0, result.exitCode());
-        assertEquals(lines("1.21.11: source-only, callgraph absent", "26.1: needs-rebuild, callgraph absent"), result.stdout());
+        assertEquals(lines("Cached Minecraft versions:", "", "  1.21.11:", "    Decompiled: ✓", "    Indexed: ✗", "    Callgraph: ✗", "", "Total: 1 version(s) cached"), result.stdout());
         assertEquals("", result.stderr());
     }
 
@@ -147,12 +177,12 @@ final class CliContractTest {
         CliResult result = execute(new RecordingOperations(temporaryDirectory), paths, "status", "-v", version.value());
 
         assertEquals(0, result.exitCode());
-        assertEquals(lines("1.21.11: absent, callgraph corrupt"), result.stdout());
+        assertEquals(lines("", "Minecraft 1.21.11:", "  Decompiled: ✗", "  Indexed: ✗", "  Callgraph: ✗", "", "  Run 'mcdev-mcp init -v 1.21.11' to initialize."), result.stdout());
         assertEquals("", result.stderr());
     }
 
     @Test
-    void cleanRequiresOneSelectorAndCanEnumerateCallgraphsWithoutVersion() throws Exception {
+    void cleanMatchesNodeSelectorAndVersionRules() throws Exception {
         PlatformPaths paths = new PlatformPaths(temporaryDirectory.resolve("clean"));
         MinecraftVersion first = new MinecraftVersion("1.21.11");
         MinecraftVersion second = new MinecraftVersion("26.1");
@@ -161,19 +191,51 @@ final class CliContractTest {
 
         CliResult result = execute(new RecordingOperations(temporaryDirectory), paths, "clean", "--callgraph");
 
-        assertEquals(0, result.exitCode());
-        assertEquals(lines("Cleaned callgraph for Minecraft 1.21.11.", "Cleaned callgraph for Minecraft 26.1."), result.stdout());
-        assertEquals("", result.stderr());
-        assertFalse(Files.exists(paths.callgraphBundle(first).resolve("current.json")));
-        assertFalse(Files.exists(paths.callgraphBundle(second).resolve("current.json")));
+        assertEquals(1, result.exitCode());
+        assertEquals("", result.stdout());
+        assertEquals(lines("--callgraph requires -v <version>"), result.stderr());
+        assertTrue(Files.exists(paths.callgraphBundle(first).resolve("current.json")));
+        assertTrue(Files.exists(paths.callgraphBundle(second).resolve("current.json")));
 
         CliResult missing = execute(new RecordingOperations(temporaryDirectory), paths, "clean");
-        assertEquals(1, missing.exitCode());
-        assertEquals(lines("Specify exactly one of --callgraph, --cache, --index, or --all"), missing.stderr());
+        assertEquals(0, missing.exitCode());
+        assertEquals(lines("Specify what to clean:", "  --cache           Clean decompiled sources", "  --index           Clean symbol index", "  --callgraph       Clean callgraph database only (requires -v)", "  --all             Clean everything (cache, index, tmp)", "  -v <version>      Clean data for specific version only"), missing.stdout());
+        assertEquals("", missing.stderr());
 
         CliResult conflict = execute(new RecordingOperations(temporaryDirectory), paths, "clean", "--cache", "--index");
-        assertEquals(1, conflict.exitCode());
-        assertEquals(lines("Specify exactly one of --callgraph, --cache, --index, or --all"), conflict.stderr());
+        assertEquals(0, conflict.exitCode());
+        assertEquals("", conflict.stderr());
+
+        createCallgraphMarker(paths, first);
+        CliResult versioned = execute(new RecordingOperations(temporaryDirectory), paths, "clean", "--callgraph", "-v", first.value());
+        assertEquals(0, versioned.exitCode());
+        assertEquals(lines("Removed callgraph data for 1.21.11: " + paths.callgraphBundle(first).toAbsolutePath().normalize()), versioned.stdout());
+        assertEquals("", versioned.stderr());
+        assertFalse(Files.exists(paths.callgraphBundle(first).resolve("current.json")));
+    }
+
+    @Test
+    void cleanContinuesWithTheNextSelectedTargetAfterOneFails() throws Exception {
+        PlatformPaths paths = new PlatformPaths(temporaryDirectory.resolve("clean-failure"));
+        MinecraftVersion version = new MinecraftVersion("1.21.11");
+        Path source = paths.sourceRoot(version).resolve("Example.java");
+        Path database = paths.symbolDatabase(version);
+        Path outside = temporaryDirectory.resolve("outside");
+        Files.createDirectories(source.getParent());
+        Files.createDirectories(database.getParent());
+        Files.createDirectories(outside);
+        Files.writeString(source, "class Example {}");
+        Files.writeString(database, "h2");
+        createSymbolicLinkOrSkip(paths.versionCache(version).resolve("linked"), outside);
+
+        CliResult result = execute(new RecordingOperations(temporaryDirectory), paths, "clean", "--cache", "--index");
+
+        assertEquals(1, result.exitCode());
+        assertTrue(result.stdout().contains("Removed index: " + paths.cacheRoot().resolve("index").toAbsolutePath().normalize()));
+        assertTrue(result.stderr().contains("Error removing cache at " + paths.cacheRoot().resolve("cache").toAbsolutePath().normalize()));
+        assertTrue(result.stderr().contains("(Hint: another process may have files open"));
+        assertTrue(Files.exists(source));
+        assertFalse(Files.exists(database));
     }
 
     @Test
@@ -191,7 +253,7 @@ final class CliContractTest {
         CliResult clean = execute(new RecordingOperations(temporaryDirectory), paths, "clean", "--all");
 
         assertEquals(0, clean.exitCode());
-        assertEquals(lines("Cleaned all cached state for Minecraft 1.21.11.", "Cleaned all cached state for Minecraft 26.1."), clean.stdout());
+        assertEquals(lines("Removed cache: " + paths.cacheRoot().resolve("cache").toAbsolutePath().normalize(), "Removed index: " + paths.cacheRoot().resolve("index").toAbsolutePath().normalize(), "tmp not found: " + paths.cacheRoot().resolve("tmp").toAbsolutePath().normalize(), "", "Run `mcdev-mcp init -v <version>` to reinitialize."), clean.stdout());
         assertEquals("", clean.stderr());
         assertFalse(Files.exists(source));
         assertFalse(Files.exists(paths.indexRoot(indexed).resolve("manifest.json")));
@@ -199,7 +261,7 @@ final class CliContractTest {
         CliResult status = execute(new RecordingOperations(temporaryDirectory), paths, "status");
 
         assertEquals(0, status.exitCode());
-        assertEquals(lines("No cached versions."), status.stdout());
+        assertEquals(lines("Status: Not initialized", "Run `mcdev-mcp init -v <version>` to set up."), status.stdout());
         assertEquals("", status.stderr());
     }
 

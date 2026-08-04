@@ -16,8 +16,8 @@ import static org.junit.jupiter.api.Assertions.*;
 class ResourceCatalogTest {
     private static final McpJsonMapper MAPPER = McpJsonDefaults.getMapper();
 
-    private static String devLoopContractText() throws Exception {
-        var result = MAPPER.convertValue(McpContractTestSupport.readContract("resource-dev-loop.json").get("result"), new TypeRef<Map<String, List<Map<String, Object>>>>() {
+    private static String contractText(String contract) throws Exception {
+        var result = MAPPER.convertValue(McpContractTestSupport.readContract(contract).get("result"), new TypeRef<Map<String, List<Map<String, Object>>>>() {
         });
         return (String) result.get("contents").getFirst().get("text");
     }
@@ -33,10 +33,12 @@ class ResourceCatalogTest {
     }
 
     @Test
-    void resourceContentsMatchExpectedContracts() throws Exception {
+    void resourceContentsMatchReviewedContractsWithCanonicalLineEndings() {
         var catalog = new ResourceCatalog();
+        var devLoop = catalog.read(URI.create("mcdev://guides/dev-loop")).text();
+        var pythonScripting = catalog.read(URI.create("mcdev://guides/python-scripting")).text();
 
-        assertEquals(devLoopContractText(), catalog.read(URI.create("mcdev://guides/dev-loop")).text());
+        assertAll(() -> assertEquals(contractText("resource-dev-loop.json"), devLoop), () -> assertEquals(contractText("resource-python-scripting.json"), pythonScripting), () -> assertFalse(devLoop.contains("\r"), "Resource responses must use platform-independent LF line endings"), () -> assertFalse(pythonScripting.contains("\r"), "Resource responses must use platform-independent LF line endings"));
     }
 
     @Test
