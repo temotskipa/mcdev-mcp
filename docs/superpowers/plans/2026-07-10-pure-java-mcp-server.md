@@ -2024,23 +2024,23 @@ Expected: remote codex branch updates successfully. Do not merge, tag, create a 
 
 ## Specification Coverage Map
 
-| Approved design area | Implemented and proven by |
-|---|---|
-| Immutable Node parity oracle and `mc_record_video` catalog correction | Tasks 1 and 13 |
-| Root Java 25 build, one shaded JAR, version authority, signature/service/native-resource handling | Tasks 2, 14, 15, and 17 |
+| Approved design area                                                                                                                               | Implemented and proven by              |
+|----------------------------------------------------------------------------------------------------------------------------------------------------|----------------------------------------|
+| Immutable Node parity oracle and `mc_record_video` catalog correction                                                                              | Tasks 1 and 13                         |
+| Root Java 25 build, one shaded JAR, version authority, signature/service/native-resource handling                                                  | Tasks 2, 14, 15, and 17                |
 | Java 25 instance entry point, top-level production types, semantic Java values, preserved IntelliJ style, and warning-clean Gradle/IDE diagnostics | Tasks 2 through 17, audited in Task 17 |
-| SDK-only JSON mapping, generic typed tool bindings, explicit wire/domain conversion, and Gson absence | Tasks 3, 9 through 13, 16, and 17 |
-| Official MCP protocol via the Java SDK STDIO server, tools/resources, errors, STDOUT hygiene | Tasks 3 and 13 |
-| Frozen STDIO-only production transport, with Streamable HTTP and any container confined to the test conformance harness | Tasks 3, 13, 15, and 17 |
-| CLI and cache lifecycle | Tasks 4 and 8 |
-| Javac-only accurate source indexing, bounded shared-corpus memory, semantic type identity, and complete 1.21.11/26.1 qualification | Tasks 5, 15, and 17 |
-| Normalized H2 symbols, locks, atomic promotion, legacy detection/cleaning | Tasks 4, 5, and 6 |
-| Static tools and intentional user search regex | Task 6 |
-| Class-File API callgraph and full `mc_find_refs` behavior | Task 7 |
-| Embedded download, Tiny Remapper, and Vineflower pipeline | Task 8 |
-| Versioned DebugBridge envelopes, fixtures, session, and every runtime tool | Tasks 9 through 12 |
-| Production STDIO integration plus official URL-based conformance 0.1.16 harness | Task 13 |
-| MCPB minimal Node launcher containing the exact release JAR | Task 14 |
-| Java 25/26 correctness, same-runner benchmark policy, reproducible dependencies with daily update PRs, and build-once release provenance | Task 15 |
-| Environment preservation/removal inventory, TypeScript/worker deletion, docs transition | Task 16 |
-| Live DebugBridge smoke, full acceptance evidence, independent whole-branch review, guarded push | Task 17 |
+| SDK-only JSON mapping, generic typed tool bindings, explicit wire/domain conversion, and Gson absence                                              | Tasks 3, 9 through 13, 16, and 17      |
+| Official MCP protocol via the Java SDK STDIO server, tools/resources, errors, STDOUT hygiene                                                       | Tasks 3 and 13                         |
+| Frozen STDIO-only production transport, with Streamable HTTP and any container confined to the test conformance harness                            | Tasks 3, 13, 15, and 17                |
+| CLI and cache lifecycle                                                                                                                            | Tasks 4 and 8                          |
+| Javac-only accurate source indexing, bounded shared-corpus memory, semantic type identity, and complete 1.21.11/26.1 qualification                 | Tasks 5, 15, and 17                    |
+| Normalized H2 symbols, locks, atomic promotion, legacy detection/cleaning                                                                          | Tasks 4, 5, and 6                      |
+| Static tools and intentional user search regex                                                                                                     | Task 6                                 |
+| Class-File API callgraph and full `mc_find_refs` behavior                                                                                          | Task 7                                 |
+| Embedded download, Tiny Remapper, and Vineflower pipeline                                                                                          | Task 8                                 |
+| Versioned DebugBridge envelopes, fixtures, session, and every runtime tool                                                                         | Tasks 9 through 12                     |
+| Production STDIO integration plus official URL-based conformance 0.1.16 harness                                                                    | Task 13                                |
+| MCPB minimal Node launcher containing the exact release JAR                                                                                        | Task 14                                |
+| Java 25/26 correctness, same-runner benchmark policy, reproducible dependencies with daily update PRs, and build-once release provenance           | Task 15                                |
+| Environment preservation/removal inventory, TypeScript/worker deletion, docs transition                                                            | Task 16                                |
+| Live DebugBridge smoke, full acceptance evidence, independent whole-branch review, guarded push                                                    | Task 17                                |

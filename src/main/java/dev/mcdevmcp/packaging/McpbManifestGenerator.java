@@ -1,0 +1,114 @@
+package dev.mcdevmcp.packaging;
+
+import dev.mcdevmcp.mcp.tool.ToolCatalog;
+import dev.mcdevmcp.mcp.tool.ToolMetadata;
+import dev.mcdevmcp.support.AppVersion;
+import io.modelcontextprotocol.json.McpJsonDefaults;
+import io.modelcontextprotocol.json.McpJsonMapper;
+import io.modelcontextprotocol.json.TypeRef;
+
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+
+/**
+ * Generates the Java-owned MCPB catalog manifest and the packer-only staging manifest.
+ */
+public final class McpbManifestGenerator {
+    private static final String STAGING_ENTRY_POINT = "bootstrap.cjs";
+
+    private McpbManifestGenerator() {
+    }
+
+    static void main(String[] arguments) {
+        if (arguments.length != 4) {
+            throw new IllegalArgumentException("Usage: McpbManifestGenerator <template> <root-manifest> <staging-manifest> <version>");
+        }
+        generate(Path.of(arguments[0]), Path.of(arguments[1]), Path.of(arguments[2]), arguments[3]);
+    }
+
+    public static void generate(Path template, Path rootManifest, Path stagingManifest) {
+        generate(template, rootManifest, stagingManifest, AppVersion.current());
+    }
+
+    public static void generate(Path template, Path rootManifest, Path stagingManifest, String version) {
+        Objects.requireNonNull(template, "template");
+        Objects.requireNonNull(rootManifest, "rootManifest");
+        Objects.requireNonNull(stagingManifest, "stagingManifest");
+        McpJsonMapper mapper = McpJsonDefaults.getMapper();
+        Map<String, Object> root = generatedRootManifest(readTemplate(mapper, template), version, ToolCatalog.loadMetadata(mapper));
+        write(mapper, rootManifest, root);
+        write(mapper, stagingManifest, stagingManifest(root));
+    }
+
+    static Map<String, Object> generatedRootManifest(Map<String, Object> template, String version, ToolMetadata[] tools) {
+        Objects.requireNonNull(template, "template");
+        Objects.requireNonNull(version, "version");
+        Objects.requireNonNull(tools, "tools");
+        var manifest = new LinkedHashMap<>(template);
+        manifest.put("version", version);
+        manifest.put("tools", toolMetadata(tools));
+        return Map.copyOf(manifest);
+    }
+
+    static Map<String, Object> stagingManifest(Map<String, Object> rootManifest) {
+        Objects.requireNonNull(rootManifest, "rootManifest");
+        var staging = new LinkedHashMap<>(rootManifest);
+        staging.computeIfPresent("tools", (_, tools) -> stagingTools(tools));
+        staging.put("server", Map.of("type", "node", "entry_point", STAGING_ENTRY_POINT, "mcp_config", Map.of("command", "node", "args", List.of(STAGING_ENTRY_POINT), "env", Map.of("MCDEV_SESSION_LOG_DIR", "${user_config.script_logs}", "MCDEV_RUN_COMMAND", "${user_config.run_command}", "MCDEV_MCP_DEBUG_LOG", "${user_config.debug_log}", "MCDEV_INDEX_THREADS", "${user_config.index_threads}", "DEBUGBRIDGE_PORT", "${user_config.debugbridge_port}"))));
+        return Map.copyOf(staging);
+    }
+
+    private static List<Map<String, Object>> stagingTools(Object value) {
+        if (!(value instanceof List<?> tools)) {
+            throw new IllegalArgumentException("MCPB root manifest tools must be an array");
+        }
+        var result = new ArrayList<Map<String, Object>>(tools.size());
+        for (Object tool : tools) {
+            if (!(tool instanceof Map<?, ?> metadata) || !(metadata.get("name") instanceof String name) || !(metadata.get("description") instanceof String description)) {
+                throw new IllegalArgumentException("MCPB root manifest tool metadata is malformed");
+            }
+            result.add(Map.of("name", name, "description", description));
+        }
+        return List.copyOf(result);
+    }
+
+    private static Map<String, Object> readTemplate(McpJsonMapper mapper, Path template) {
+        try {
+            Map<String, Object> result = mapper.readValue(Files.readString(template, StandardCharsets.UTF_8), new TypeRef<>() {
+            });
+            if (!"0.3".equals(result.get("manifest_version"))) {
+                throw new IllegalArgumentException("MCPB manifest template must use manifest_version 0.3");
+            }
+            return Map.copyOf(result);
+        } catch (IOException exception) {
+            throw new IllegalStateException("Unable to read MCPB manifest template: " + template, exception);
+        }
+    }
+
+    private static List<Map<String, Object>> toolMetadata(ToolMetadata[] tools) {
+        var result = new ArrayList<Map<String, Object>>(tools.length);
+        for (ToolMetadata tool : tools) {
+            result.add(Map.of("name", tool.name(), "description", tool.description(), "inputSchema", tool.inputSchema()));
+        }
+        return List.copyOf(result);
+    }
+
+    private static void write(McpJsonMapper mapper, Path target, Map<String, Object> value) {
+        try {
+            Path parent = target.toAbsolutePath().getParent();
+            if (parent != null) {
+                Files.createDirectories(parent);
+            }
+            Files.writeString(target, mapper.writeValueAsString(value) + System.lineSeparator(), StandardCharsets.UTF_8);
+        } catch (IOException exception) {
+            throw new IllegalStateException("Unable to write MCPB manifest: " + target, exception);
+        }
+    }
+}

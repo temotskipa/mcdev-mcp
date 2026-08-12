@@ -46,7 +46,7 @@ abstract class McpSdkSnapshotCheck : DefaultTask() {
 
 plugins {
     application
-    id("com.gradleup.shadow") version libs.versions.shadow.get()
+    id("com.gradleup.shadow") version "9.6.1"
 }
 
 val applicationVersion = providers.gradleProperty("version").get()
@@ -73,18 +73,17 @@ java {
 
 dependencies {
     implementation(project(":mcp-tool-binding"))
-    implementation(libs.mcp)
-    implementation(libs.picocli)
-    implementation(libs.h2)
-    implementation(libs.vineflower)
-    implementation(libs.tiny.remapper)
-    implementation(libs.mapping.io)
-    implementation(libs.slf4j.nop)
+    implementation("io.modelcontextprotocol.sdk:mcp:2.0.1-SNAPSHOT")
+    implementation("info.picocli:picocli:4.7.7")
+    implementation("com.h2database:h2:2.4.240")
+    implementation("org.vineflower:vineflower:1.12.0")
+    implementation("net.fabricmc:tiny-remapper:0.14.0")
+    implementation("net.fabricmc:mapping-io:0.9.1")
+    implementation("org.slf4j:slf4j-nop:2.0.18")
 
-    testImplementation(platform(libs.junit.bom))
-    testImplementation(libs.junit.jupiter)
+    testImplementation(platform("org.junit:junit-bom:6.1.3"))
+    testImplementation("org.junit.jupiter:junit-jupiter")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
-
 }
 
 application {
@@ -115,7 +114,7 @@ tasks.named(conformance.processResourcesTaskName) {
 }
 
 dependencies {
-    add(conformance.implementationConfigurationName, libs.tomcat.embed.core)
+    add(conformance.implementationConfigurationName, "org.apache.tomcat.embed:tomcat-embed-core:11.0.24")
 }
 
 tasks.register<JavaExec>("conformanceRun") {
@@ -188,6 +187,42 @@ tasks.named<ShadowJar>("shadowJar") {
         ] = application.mainClass.get()
         attributes["Implementation-Version"] = applicationVersion
     }
+}
+
+val generateMcpbManifest = tasks.register<JavaExec>("generateMcpbManifest") {
+    group = "distribution"
+    description = "Generates the Java-owned MCPB catalog and packer manifest."
+    dependsOn(tasks.named("classes"))
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass.set("dev.mcdevmcp.packaging.McpbManifestGenerator")
+    args(
+        layout.projectDirectory.file("packaging/mcpb/manifest.template.json").asFile.absolutePath,
+        layout.projectDirectory.file("manifest.json").asFile.absolutePath,
+        layout.buildDirectory.file("mcpb/manifest.json").get().asFile.absolutePath,
+        applicationVersion
+    )
+    inputs.file(layout.projectDirectory.file("packaging/mcpb/manifest.template.json"))
+    inputs.file(layout.projectDirectory.file("src/main/resources/mcp/tools.json"))
+    inputs.property("version", applicationVersion)
+    outputs.file(layout.projectDirectory.file("manifest.json"))
+    outputs.file(layout.buildDirectory.file("mcpb/manifest.json"))
+}
+
+val mcpbBundleDirectory = providers.gradleProperty("mcpbBundleDirectory")
+
+tasks.register<JavaExec>("mcpbBundleSmoke") {
+    group = "verification"
+    description = "Runs initialize/tools-list against an extracted MCPB bundle."
+    dependsOn(tasks.named("classes"))
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass.set("dev.mcdevmcp.packaging.McpbBundleSmokeMain")
+    argumentProviders.add(CommandLineArgumentProvider {
+        listOf(mcpbBundleDirectory.get())
+    })
+}
+
+tasks.named("assemble") {
+    dependsOn(generateMcpbManifest)
 }
 
 tasks.named("build") {

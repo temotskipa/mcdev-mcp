@@ -35,3 +35,4 @@ coverage/
 # MCPB build output
 dist-mcpb/
 *.mcpb
+/packaging/mcpb/node_modules/

@@ -16,6 +16,7 @@ import java.util.Objects;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.jar.JarFile;
+import java.util.jar.Manifest;
 
 /**
  * Invokes Vineflower directly and atomically publishes a nonempty Java source tree.
@@ -65,7 +66,7 @@ public final class MinecraftDecompiler {
             }
 
             @Override
-            public void createArchive(String path, String archiveName, java.util.jar.Manifest manifest) {
+            public void createArchive(String path, String archiveName, Manifest manifest) {
             }
 
             @Override
@@ -253,7 +254,8 @@ public final class MinecraftDecompiler {
                 if (!resolved.startsWith(resolvedRoot)) {
                     throw new IOException("Refusing decompiler output path escaping staging root: " + current);
                 }
-            } else if (!attributes.isDirectory()) {
+            }
+            else if (!attributes.isDirectory()) {
                 throw new IOException("Refusing non-directory decompiler output path: " + current);
             }
         }

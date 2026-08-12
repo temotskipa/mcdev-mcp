@@ -18,11 +18,11 @@ java {
 }
 
 dependencies {
-    api("io.modelcontextprotocol.sdk:mcp-core:${libs.versions.mcp.get()}")
+    api("io.modelcontextprotocol.sdk:mcp-core:2.0.1-SNAPSHOT")
 
-    testImplementation("io.modelcontextprotocol.sdk:mcp-json-jackson3:${libs.versions.mcp.get()}")
-    testImplementation(platform(libs.junit.bom))
-    testImplementation(libs.junit.jupiter)
+    testImplementation("io.modelcontextprotocol.sdk:mcp-json-jackson3:2.0.1-SNAPSHOT")
+    testImplementation(platform("org.junit:junit-bom:6.1.3"))
+    testImplementation("org.junit.jupiter:junit-jupiter")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
 

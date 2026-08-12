@@ -31,7 +31,7 @@ class HandlerCompletenessTest {
 
     @Test
     void everyMetadataEntryHasExactlyOneBoundHandlerIncludingEnvironmentGatedTools() {
-        var environment = new AppEnvironment(Map.of("LOCALAPPDATA", temporaryDirectory.toString(), "XDG_CACHE_HOME", temporaryDirectory.toString(), "MCDEV_SCRIPT_LOGS", "true", "MCDEV_RUN_COMMAND", "true"));
+        var environment = new AppEnvironment(Map.of("LOCALAPPDATA", temporaryDirectory.toString(), "XDG_CACHE_HOME", temporaryDirectory.toString(), "MCDEV_SESSION_LOG_DIR", temporaryDirectory.resolve("session-logs").toString(), "MCDEV_RUN_COMMAND", "true"));
         var handlers = new LinkedHashMap<String, ToolBinding<?>>();
 
         StaticToolModule.handlers(PlatformPaths.forEnvironment("Linux", environment.values(), temporaryDirectory)).forEach((name, binding) -> assertNull(handlers.put(name, binding), () -> "duplicate static handler: " + name));

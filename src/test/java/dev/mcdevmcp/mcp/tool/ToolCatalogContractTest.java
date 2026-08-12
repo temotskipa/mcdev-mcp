@@ -40,9 +40,17 @@ class ToolCatalogContractTest {
         return new ToolBinding<>(ArgumentDecoder.sdk(TestEmptyArguments.class), (_, _) -> ToolHandlers.completed(ToolResult.text("ok")));
     }
 
+    private static Map<String, ToolBinding<?>> completeBindings() {
+        var bindings = new java.util.LinkedHashMap<String, ToolBinding<?>>();
+        for (ToolMetadata tool : ToolCatalog.loadMetadata(MAPPER)) {
+            bindings.put(tool.name(), binding());
+        }
+        return Map.copyOf(bindings);
+    }
+
     @Test
     void defaultToolListMatchesTheNodeContract() throws Exception {
-        var catalog = ToolCatalog.load(new AppEnvironment(Map.of()), Map.of(), MAPPER);
+        var catalog = ToolCatalog.load(new AppEnvironment(Map.of()), completeBindings(), MAPPER);
 
         assertEquals(McpContractTestSupport.normalize(contractTools("tools-list-default.json")), McpContractTestSupport.normalize(toToolList(catalog.enabledDefinitions())));
         assertFalse(catalog.enabledDefinitions().stream().anyMatch(tool -> tool.name().equals("mc_script_logs")));
@@ -51,7 +59,7 @@ class ToolCatalogContractTest {
 
     @Test
     void devEnabledToolListMatchesTheNodeContractInExactMetadataOrder() throws Exception {
-        var catalog = ToolCatalog.load(new AppEnvironment(Map.of("MCDEV_SESSION_LOG_DIR", "/tmp/mcdev/session-logs", "MCDEV_RUN_COMMAND", "1")), Map.of(), MAPPER);
+        var catalog = ToolCatalog.load(new AppEnvironment(Map.of("MCDEV_SESSION_LOG_DIR", "/tmp/mcdev/session-logs", "MCDEV_RUN_COMMAND", "1")), completeBindings(), MAPPER);
 
         assertEquals(McpContractTestSupport.normalize(contractTools("tools-list-dev.json")), McpContractTestSupport.normalize(toToolList(catalog.enabledDefinitions())));
         assertTrue(catalog.enabledDefinitions().stream().anyMatch(tool -> tool.name().equals("mc_record_video")));
@@ -59,7 +67,7 @@ class ToolCatalogContractTest {
 
     @Test
     void availabilityGatesTreatBlankLogPathAndUntrimmedRunCommandCorrectly() {
-        var catalog = ToolCatalog.load(new AppEnvironment(Map.of("MCDEV_SESSION_LOG_DIR", "   ", "MCDEV_RUN_COMMAND", "TRUE")), Map.of(), MAPPER);
+        var catalog = ToolCatalog.load(new AppEnvironment(Map.of("MCDEV_SESSION_LOG_DIR", "   ", "MCDEV_RUN_COMMAND", "TRUE")), completeBindings(), MAPPER);
 
         assertFalse(catalog.enabledDefinitions().stream().anyMatch(tool -> tool.name().equals("mc_script_logs")));
         assertTrue(catalog.enabledDefinitions().stream().anyMatch(tool -> tool.name().equals("mc_run_command")));
@@ -67,18 +75,17 @@ class ToolCatalogContractTest {
 
     @Test
     void unknownToolReturnsTheNodeCompatibilityError() {
-        var result = ToolCatalog.load(new AppEnvironment(Map.of()), Map.of(), MAPPER).dispatch("not_a_tool", Map.of(), Cancellation.none()).toCompletableFuture().resultNow();
+        var result = ToolCatalog.load(new AppEnvironment(Map.of()), completeBindings(), MAPPER).dispatch("not_a_tool", Map.of(), Cancellation.none()).toCompletableFuture().resultNow();
 
         assertTrue(result.isError());
         assertEquals("Unknown tool: not_a_tool", result.content().getFirst().text());
     }
 
     @Test
-    void unboundMigrationToolReturnsTheStagedUnavailableError() {
-        var result = ToolCatalog.load(new AppEnvironment(Map.of()), Map.of(), MAPPER).dispatch("mc_version", Map.of(), Cancellation.none()).toCompletableFuture().resultNow();
+    void startupRejectsMissingToolHandlers() {
+        var exception = assertThrows(IllegalArgumentException.class, () -> ToolCatalog.fromMetadata(new AppEnvironment(Map.of()), MAPPER, metadata("mc_version"), List.of()));
 
-        assertTrue(result.isError());
-        assertEquals("Tool handler is not available in this migration build: mc_version", result.content().getFirst().text());
+        assertEquals("Missing tool handler: mc_version", exception.getMessage());
     }
 
     @Test
