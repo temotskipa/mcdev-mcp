@@ -85,7 +85,10 @@ final class VersionManifestClientTest {
                                                                                {"downloads":{
                                                                                  "client":{"url":"http://127.0.0.1:%1$d/client.jar","sha1":"%2$s","size":123},
                                                                                  "client_mappings":{"url":"http://127.0.0.1:%1$d/client.txt","sha1":"%2$s","size":45}
-                                                                               }}
+                                                                               },
+                                                                               "libraries":[
+                                                                                 {"downloads":{"artifact":{"url":"http://127.0.0.1:%1$d/lib.jar","sha1":"%2$s","size":789}},"name":"test:lib:1.0"}
+                                                                               ]}
                                                                                """.formatted(port, SHA1)));
 
             MinecraftDownloads downloads = client(server, "/manifest", Duration.ofSeconds(2)).resolve(new MinecraftVersion("1.21.11"));
@@ -97,6 +100,9 @@ final class VersionManifestClientTest {
             assertEquals(45, downloads.clientMappings().byteLength());
             assertEquals(ArtifactKind.MAPPING, downloads.clientMappings().kind());
             assertNull(downloads.officialUnobfuscatedClient());
+            assertEquals(1, downloads.libraries().size());
+            assertEquals(URI.create("http://127.0.0.1:" + port + "/lib.jar"), downloads.libraries().getFirst().uri());
+            assertEquals(789, downloads.libraries().getFirst().byteLength());
         } finally {
             server.stop(0);
         }

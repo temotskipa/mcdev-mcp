@@ -155,4 +155,31 @@ class JavacSourceParserTest {
                                                                             > values""");
         assertRecordRange(dump, "parameters", "nameAgain", source, "String nameAgain");
     }
+
+    @Test
+    void indexesSourcesWithBuiltinAnnotationsAndComplexFieldInitializers() throws Exception {
+        Path sources = Files.createDirectories(temporaryDirectory.resolve("annotated-sources/sample"));
+        String source = """
+                        package sample;
+                        import org.jetbrains.annotations.Nullable;
+                        import org.jetbrains.annotations.Contract;
+                        import org.jspecify.annotations.NonNull;
+                        import javax.annotation.CheckForNull;
+                        public class AnnotatedClass {
+                            public static final String FIELD = "test";
+                            @Nullable private String nullableField;
+                            @NonNull public String method(@CheckForNull String arg) {
+                                return arg == null ? "" : arg;
+                            }
+                        }
+                        """;
+        Files.writeString(sources.resolve("AnnotatedClass.java"), source, StandardCharsets.UTF_8);
+        Path jar = IndexerTestSupport.createJar(temporaryDirectory.resolve("annotated-empty.jar"), Map.of());
+        Path database = temporaryDirectory.resolve("annotated.mv.db");
+
+        IndexSummary summary = new SourceIndexer().build(IndexerTestSupport.request(sources.getParent(), jar, database, 1));
+        assertEquals(1, summary.types());
+        assertEquals(2, summary.fields());
+        assertEquals(1, summary.methods());
+    }
 }

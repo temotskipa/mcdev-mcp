@@ -183,6 +183,13 @@ public final class AnalysisPipeline implements AnalysisOperations {
             else {
                 unobfuscated = remapped;
             }
+            Path librariesDir = paths.versionCache(version).resolve("libraries");
+            for (DownloadArtifact library : metadata.libraries()) {
+                checkCancelled(cancellation);
+                String fileName = Path.of(library.uri().getPath()).getFileName().toString();
+                Path targetLib = librariesDir.resolve(fileName);
+                downloads.download(library, targetLib, progress, cancellation);
+            }
             Path source = paths.sourceRoot(version);
             if (javaSourceCacheMissing(source, cancellation)) {
                 decompiler.decompile(remapped, source, progress, cancellation);
@@ -206,10 +213,30 @@ public final class AnalysisPipeline implements AnalysisOperations {
             checkCancelled(cancellation);
             List<SourceRoot> sourceRoots = cachedSourceRoots(version, cancellation);
             Path remapped = cachedRemappedJar(version, cancellation);
-            return indexer.build(new IndexRequest(version, sourceRoots, remapped, List.of(), paths.symbolDatabase(version), threads, progress, cancellation));
+            List<Path> classpath = cachedClasspath(version, cancellation);
+            return indexer.build(new IndexRequest(version, sourceRoots, remapped, classpath, paths.symbolDatabase(version), threads, progress, cancellation));
         } catch (Exception exception) {
             preserveInterruption(exception);
             throw new IllegalStateException("Unable to rebuild index for " + version.value(), exception);
+        }
+    }
+
+    private List<Path> cachedClasspath(MinecraftVersion version, Cancellation cancellation) throws IOException, InterruptedException {
+        checkCancelled(cancellation);
+        Path librariesDir = paths.versionCache(version).resolve("libraries");
+        if (!Files.isDirectory(librariesDir)) {
+            return List.of();
+        }
+        try (var stream = Files.list(librariesDir)) {
+            List<Path> classpath = new ArrayList<>();
+            for (Path jar : stream.filter(p -> p.getFileName().toString().endsWith(".jar")).toList()) {
+                checkCancelled(cancellation);
+                if (!invalidJar(jar, cancellation)) {
+                    classpath.add(jar.toAbsolutePath().normalize());
+                }
+            }
+            classpath.sort(Comparator.comparing(Path::toString));
+            return List.copyOf(classpath);
         }
     }
 

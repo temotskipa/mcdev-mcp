@@ -150,7 +150,7 @@ RUNTIME_ARTIFACT_SMOKE_OK
 ```
 
 Both executions used SHA-256
-`182446b6002c5126932addab0e356496664fa6698bd8096b4709128190c30e07`
+`c85d2191ca303d929426f47caeb1fd173266dd056d8be53f7d7b74bceff8e898`
 and covered manifest/signature/service validation, H2 persistence, Tiny
 Remapper, Vineflower decompile-and-compile, CLI, STDIO initialize, and the
 Java-owned `tools/list` catalog.
@@ -161,7 +161,7 @@ At audit time the clean build produced:
 
 ```text
 Artifact: build/libs/mcdev-mcp-3.0.0.jar
-SHA-256: 182446b6002c5126932addab0e356496664fa6698bd8096b4709128190c30e07
+SHA-256: c85d2191ca303d929426f47caeb1fd173266dd056d8be53f7d7b74bceff8e898
 Main-Class: dev.mcdevmcp.app.Main
 Implementation-Version: 3.0.0
 ```

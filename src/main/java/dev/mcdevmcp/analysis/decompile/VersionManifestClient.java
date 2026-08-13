@@ -13,6 +13,7 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 
@@ -183,9 +184,18 @@ public final class VersionManifestClient {
         if (mappingDownload == null && unobfuscatedDownload == null && requiresMappings(version)) {
             throw new IOException("Mojang metadata lacks client mappings for mapped version " + version.value());
         }
+        List<DownloadArtifact> libraryArtifacts = new java.util.ArrayList<>();
+        for (LibraryEntry library : detailBody.libraries()) {
+            if (library.downloads() != null && library.downloads().artifact() != null && library.downloads().artifact().url() != null) {
+                try {
+                    libraryArtifacts.add(library.downloads().artifact().toArtifact(ArtifactKind.JAR));
+                } catch (IllegalArgumentException ignored) {
+                }
+            }
+        }
         try {
             OfficialUnobfuscatedClient officialUnobfuscatedClient = unobfuscatedEntry == null ? null : new OfficialUnobfuscatedClient(unobfuscatedEntry, unobfuscatedDownload.toArtifact(ArtifactKind.JAR));
-            return new MinecraftDownloads(clientDownload.toArtifact(ArtifactKind.JAR), mappingDownload == null ? null : mappingDownload.toArtifact(ArtifactKind.MAPPING), officialUnobfuscatedClient);
+            return new MinecraftDownloads(clientDownload.toArtifact(ArtifactKind.JAR), mappingDownload == null ? null : mappingDownload.toArtifact(ArtifactKind.MAPPING), officialUnobfuscatedClient, libraryArtifacts);
         } catch (IllegalArgumentException exception) {
             throw new IOException("Mojang metadata has invalid download integrity for " + version.value(), exception);
         }

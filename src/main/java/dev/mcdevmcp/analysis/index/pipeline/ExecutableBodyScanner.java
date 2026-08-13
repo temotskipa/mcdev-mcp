@@ -2,6 +2,7 @@ package dev.mcdevmcp.analysis.index.pipeline;
 
 import com.sun.source.tree.BlockTree;
 import com.sun.source.tree.CompilationUnitTree;
+import com.sun.source.tree.VariableTree;
 import com.sun.source.util.SourcePositions;
 import com.sun.source.util.TreeScanner;
 
@@ -31,5 +32,17 @@ final class ExecutableBodyScanner extends TreeScanner<Void, Void> {
             ranges.add(new OffsetRange(start, end));
         }
         return super.visitBlock(node, unused);
+    }
+
+    @Override
+    public Void visitVariable(VariableTree node, Void unused) {
+        if (node.getInitializer() != null) {
+            long start = positions.getStartPosition(unit, node.getInitializer());
+            long end = positions.getEndPosition(unit, node.getInitializer());
+            if (start >= 0 && end >= start) {
+                ranges.add(new OffsetRange(start, end));
+            }
+        }
+        return super.visitVariable(node, unused);
     }
 }
