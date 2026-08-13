@@ -40,12 +40,12 @@ final class StaticParityFixture {
                                                 }
                                                 """;
     private static final String NODE_DATABASE_SCRIPT = """
-                                                       import initSqlJs from 'sql.js';
+                                                       import initSqlJs from 'sql%s';
                                                        import fs from 'node:fs';
                                                        import path from 'node:path';
                                                        const output = process.argv[1];
                                                        const rows = JSON.parse(fs.readFileSync(0, 'utf8'));
-                                                       const SQL = await initSqlJs({ locateFile: file => path.resolve('node_modules', 'sql.js', 'dist', file) });
+                                                       const SQL = await initSqlJs({ locateFile: file => path.resolve('node_modules', 'sql%s', 'dist', file) });
                                                        const database = new SQL.Database();
                                                        database.exec('CREATE TABLE calls (id INTEGER PRIMARY KEY, caller_class TEXT, caller_method TEXT, caller_desc TEXT, callee_class TEXT, callee_method TEXT, callee_desc TEXT, line_number INTEGER); CREATE INDEX idx_callee ON calls(callee_class, callee_method); CREATE INDEX idx_caller ON calls(caller_class, caller_method);');
                                                        const insert = database.prepare('INSERT INTO calls VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
@@ -54,7 +54,7 @@ final class StaticParityFixture {
                                                        fs.mkdirSync(path.dirname(output), { recursive: true });
                                                        fs.writeFileSync(output, Buffer.from(database.export()));
                                                        database.close();
-                                                       """;
+                                                       """.formatted(".js", ".js");
 
     private StaticParityFixture() {
     }

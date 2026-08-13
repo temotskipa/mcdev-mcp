@@ -80,7 +80,7 @@ final class CliHelp {
                                           --callgraph              Only clean callgraph data
                                           --cache                  Clean cache directory (decompiled sources)
                                           --index                  Clean index directory (symbol index)
-                                          --all                    Clean everything (cache, index, DecompilerMC)
+                                          --all                    Clean everything (cache, index, temporary analysis state)
                                           -v, --version <version>  Clean data for specific version only
                                           -h, --help               display help for command
                                         """;

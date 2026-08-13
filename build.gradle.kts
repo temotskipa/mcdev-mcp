@@ -457,9 +457,14 @@ val dependencyPolicyCheck = tasks.register<DependencyPolicyCheck>("dependencyPol
     productionRuntimeModules.set(runtimeModuleVersions.map { modules -> modules.keys })
 }
 
-val cutoverCheck = tasks.register("cutoverCheck") {
+fun registerCutoverScan(
+    name: String,
+    descriptionText: String,
+    syntheticFiles: Map<String, String> = emptyMap(),
+    allowedSyntheticFiles: Set<String> = emptySet()
+) = tasks.register(name) {
     group = "verification"
-    description = "Rejects tracked retired implementation surface."
+    description = descriptionText
     val repositoryRoot = project.layout.projectDirectory.asFile
     val allowedScriptFiles = setOf("packaging/mcpb/bootstrap.cjs")
     val allowedPackageMetadata = setOf(
@@ -499,23 +504,26 @@ val cutoverCheck = tasks.register("cutoverCheck") {
             "\\bMCDEV_INDEX_SINGLE_FILE_" + "FALLBACK\\b",
             "\\bMCDEV_MCP_REMAPPER_" + "HEAP\\b",
             "\\bMCDEV_ARGV_" + "CAPTURE\\b",
-            "\\bpackage[- ]json (?:index|reader|writer)s?\\b"
+            "package[._-]?json[._-]?(?:index(?:er|ers|es)?|readers?|writers?)"
         ).joinToString("|"),
         RegexOption.IGNORE_CASE
     )
     doLast {
-        val git = ProcessBuilder("git", "ls-files", "-z")
-            .directory(repositoryRoot)
-            .redirectErrorStream(true)
-            .start()
-        val trackedOutput = git.inputStream.readBytes()
-        check(git.waitFor() == 0) {
-            "Unable to list tracked files for cutoverCheck: ${trackedOutput.toString(StandardCharsets.UTF_8)}"
+        val trackedFiles = if (syntheticFiles.isEmpty()) {
+            val git = ProcessBuilder("git", "ls-files", "-z")
+                .directory(repositoryRoot)
+                .redirectErrorStream(true)
+                .start()
+            val trackedOutput = git.inputStream.readBytes()
+            check(git.waitFor() == 0) {
+                "Unable to list tracked files for cutoverCheck: ${trackedOutput.toString(StandardCharsets.UTF_8)}"
+            }
+            trackedOutput.toString(StandardCharsets.UTF_8)
+                .split('\u0000')
+                .filter(String::isNotEmpty)
+        } else {
+            syntheticFiles.keys.toList()
         }
-
-        val trackedFiles = trackedOutput.toString(StandardCharsets.UTF_8)
-            .split('\u0000')
-            .filter(String::isNotEmpty)
         val violations = mutableListOf<String>()
 
         trackedFiles.forEach { path ->
@@ -553,12 +561,12 @@ val cutoverCheck = tasks.register("cutoverCheck") {
                         normalizedPath.endsWith(".properties") ||
                         normalizedPath.startsWith(".github/") ||
                         normalizedPath.startsWith("scripts/") ||
-                        (normalizedPath.startsWith("src/main/") &&
-                                !normalizedPath.startsWith("src/main/resources/"))
+                        normalizedPath.startsWith("src/main/")
             if (mustInspectContents) {
                 val file = repositoryRoot.toPath().resolve(path)
-                if (Files.isRegularFile(file)) {
-                    val contents = Files.readString(file)
+                val syntheticContents = syntheticFiles[path]
+                if (syntheticContents != null || Files.isRegularFile(file)) {
+                    val contents = syntheticContents ?: Files.readString(file)
                     val forbiddenNodeMetadata = if (lowercasePath.endsWith(".json")) {
                         val isPackagingMetadata = normalizedPath.startsWith("packaging/mcpb/")
                         val parsedJson = runCatching { JsonSlurper().parseText(contents) }
@@ -842,28 +850,49 @@ val cutoverCheck = tasks.register("cutoverCheck") {
                                 ?.let { it to hasNodeOptions }
                         }
 
+                        val nodeToken = Regex("""(?i)\bnode(?:\.exe)?\b""")
+                        val nodeOptionsToken = Regex("""(?i)\bNODE_OPTIONS\b""")
+
+                        fun hasForbiddenCommandWords(words: List<String>): Boolean {
+                            val (executableIndex, hasNodeOptions) = resolveCommandSegment(words)
+                                ?: return words.any { word ->
+                                    nodeToken.containsMatchIn(word) ||
+                                            nodeOptionsToken.containsMatchIn(word) ||
+                                            javascriptEntrypoint.containsMatchIn(word)
+                                }
+                            if (hasNodeOptions || words.any(nodeOptionsToken::containsMatchIn)) {
+                                return true
+                            }
+                            val executable = words[executableIndex]
+                            val arguments = words.drop(executableIndex + 1)
+                            if (isNodeCommand(executable)) {
+                                return !isPackagingMetadata ||
+                                    arguments.size != 1 ||
+                                    normalizedEntrypoint(arguments.single()) !in allowedEntrypoints
+                            }
+                            return words.drop(executableIndex).any { word ->
+                                nodeToken.containsMatchIn(word) ||
+                                    javascriptEntrypoint.containsMatchIn(word)
+                            }
+                        }
+
                         fun hasForbiddenNodeCommandText(value: String): Boolean {
-                            val nodeToken = Regex("""(?i)\bnode(?:\.exe)?\b""")
                             val segments = parseCommandSegments(value)
-                                ?: return nodeToken.containsMatchIn(value)
+                                ?: return nodeToken.containsMatchIn(value) ||
+                                    nodeOptionsToken.containsMatchIn(value) ||
+                                    javascriptEntrypoint.containsMatchIn(value)
+                            if (isPackagingMetadata &&
+                                segments.size != 1 &&
+                                segments.flatten().any { word ->
+                                    nodeToken.containsMatchIn(word) ||
+                                        nodeOptionsToken.containsMatchIn(word) ||
+                                        javascriptEntrypoint.containsMatchIn(word)
+                                }
+                            ) {
+                                return true
+                            }
                             for (segment in segments) {
-                                val (executableIndex, hasNodeOptions) = resolveCommandSegment(segment)
-                                    ?: if (segment.any(nodeToken::containsMatchIn)) {
-                                        return true
-                                    } else {
-                                        continue
-                                    }
-                                if (!isNodeCommand(segment[executableIndex])) {
-                                    continue
-                                }
-                                if (hasNodeOptions || !isPackagingMetadata) {
-                                    return true
-                                }
-                                val arguments = segment.drop(executableIndex + 1)
-                                if (arguments.isNotEmpty() &&
-                                    (normalizedEntrypoint(arguments.first()) !in allowedEntrypoints ||
-                                            arguments.drop(1).any(::hasForbiddenJavaScriptEntrypoint))
-                                ) {
+                                if (hasForbiddenCommandWords(segment)) {
                                     return true
                                 }
                             }
@@ -887,9 +916,18 @@ val cutoverCheck = tasks.register("cutoverCheck") {
                                             (key as? String)?.let(::normalizedMetadataKey) to fieldValue
                                         }
                                         val command = fields["command"]
+                                            ?: listOf("executable", "program")
+                                                .firstNotNullOfOrNull { fields[it] as? String }
                                         val explicitArguments = fields["args"] ?: fields["arguments"]
                                         val (executable, arguments) = when (command) {
-                                            is String -> command to stringArguments(explicitArguments)
+                                            is String -> if (explicitArguments == null) {
+                                                if (hasForbiddenNodeCommandText(command)) {
+                                                    return true
+                                                }
+                                                null to emptyList()
+                                            } else {
+                                                command to stringArguments(explicitArguments)
+                                            }
                                             is Iterable<*> -> {
                                                 val commandParts = command.toList()
                                                 (commandParts.firstOrNull() as? String) to
@@ -913,14 +951,10 @@ val cutoverCheck = tasks.register("cutoverCheck") {
 
                                             else -> null to emptyList()
                                         }
-                                        if (executable != null && isNodeCommand(executable)) {
-                                            if (!isPackagingMetadata ||
-                                                arguments.isNotEmpty() &&
-                                                (normalizedEntrypoint(arguments.first()) !in allowedEntrypoints ||
-                                                        arguments.drop(1).any(::hasForbiddenJavaScriptEntrypoint))
-                                            ) {
-                                                return true
-                                            }
+                                        if (executable != null &&
+                                            hasForbiddenCommandWords(listOf(executable) + arguments)
+                                        ) {
+                                            return true
                                         }
                                         value.values.filterNotNull().forEach(pendingCommands::add)
                                     }
@@ -945,7 +979,9 @@ val cutoverCheck = tasks.register("cutoverCheck") {
                             val isEntrypoint = normalizedKey in entrypointKeys
                             val isCommand = normalizedKey == "command"
                             isEntrypoint && hasForbiddenEntrypointTarget(value) ||
-                                    isCommand && hasForbiddenNodeCommandText(value)
+                                    isCommand &&
+                                    (!isPackagingMetadata || !isNodeCommand(value)) &&
+                                    hasForbiddenNodeCommandText(value)
                         }
                         val nestedJavaScriptMetadata = mutableListOf<Boolean>()
                         val nestedEntrypointKeys = setOf("bin", "exports", "browser")
@@ -967,6 +1003,9 @@ val cutoverCheck = tasks.register("cutoverCheck") {
                                             parentKey in nestedEntrypointKeys &&
                                                     hasForbiddenEntrypointTarget(nestedValue) ||
                                                     (parentKey == "scripts" || normalizedKey == "command") &&
+                                                    (!isPackagingMetadata ||
+                                                            normalizedKey != "command" ||
+                                                            !isNodeCommand(nestedValue)) &&
                                                     hasForbiddenNodeCommandText(nestedValue)
                                     }
                                     if (nestedValue != null) {
@@ -1005,14 +1044,173 @@ val cutoverCheck = tasks.register("cutoverCheck") {
             }
         }
 
-        check(violations.isEmpty()) {
-            "Early worktree cutover is incomplete:\n${violations.joinToString("\n")}"
+        if (syntheticFiles.isEmpty()) {
+            check(violations.isEmpty()) {
+                "Early worktree cutover is incomplete:\n${violations.joinToString("\n")}"
+            }
+        } else {
+            val unreportedBypasses = syntheticFiles.keys
+                .filterNot { it in allowedSyntheticFiles }
+                .filter { path -> violations.none { path in it } }
+            val rejectedAllowedFiles = allowedSyntheticFiles
+                .filter { path -> violations.any { path in it } }
+            check(unreportedBypasses.isEmpty() && rejectedAllowedFiles.isEmpty()) {
+                buildString {
+                    appendLine("cutoverCheck bypass regression failed")
+                    if (unreportedBypasses.isNotEmpty()) {
+                        appendLine("unreported forbidden fixtures:")
+                        appendLine(unreportedBypasses.joinToString("\n"))
+                    }
+                    if (rejectedAllowedFiles.isNotEmpty()) {
+                        appendLine("rejected permitted fixtures:")
+                        appendLine(rejectedAllowedFiles.joinToString("\n"))
+                    }
+                    append("reported violations:\n${violations.joinToString("\n")}")
+                }
+            }
         }
     }
 }
 
+val retiredEnvironmentFixtures = listOf(
+    "MCDEV_" + "INDEXER",
+    "MCDEV_AST_" + "PARSER",
+    "MCDEV_SUPPRESS_INDEXER_" + "HINT",
+    "MCDEV_JAVA_WORKER_" + "COMMAND",
+    "MCDEV_JAVA_WORKER_ARGS_" + "JSON",
+    "MCDEV_INDEX_" + "WORKERS",
+    "MCDEV_INDEX_BATCH_" + "SIZE",
+    "MCDEV_INDEX_WORKER_HEAP_" + "MB",
+    "MCDEV_INDEX_WORKER_RETRY_HEAP_" + "MB",
+    "MCDEV_INDEX_PARSE_WORKER_" + "PATH",
+    "MCDEV_INDEX_WORKER_" + "MARKER",
+    "MCDEV_INDEX_SINGLE_FILE_" + "FALLBACK",
+    "MCDEV_MCP_REMAPPER_" + "HEAP",
+    "MCDEV_ARGV_" + "CAPTURE"
+)
+val retiredLibraryFixtures = listOf(
+    "type" + "script",
+    "ts-" + "jest",
+    "b" + "un",
+    "@modelcontextprotocol/" + "sdk",
+    "java-" + "parser",
+    "sql" + ".js",
+    "gso" + "n",
+    "Json" + "Node",
+    "java-" + "callgraph" + "2",
+    "java" + "cg-static.jar",
+    "callgraph" + ".txt",
+    "build-java-" + "worker",
+    "Package" + "JsonIndexer"
+)
+val cutoverBypassFixtures = linkedMapOf(
+    ".cutover-fixtures/server.ts" to "export {}",
+    ".cutover-fixtures/server.tsx" to "export {}",
+    ".cutover-fixtures/server.js" to "export {}",
+    ".cutover-fixtures/server.mjs" to "export {}",
+    ".cutover-fixtures/server.cjs" to "module.exports = {}",
+    ".cutover-fixtures/package.json" to "{}",
+    ".cutover-fixtures/package-lock.json" to "{}",
+    ".cutover-fixtures/tsconfig.json" to "{}",
+    ".cutover-fixtures/jest.config.js" to "module.exports = {}",
+    ".cutover-fixtures/eslint.config.js" to "module.exports = {}",
+    "java-worker/protocol.txt" to "retired worker",
+    "src/main/resources/guides/retired.txt" to "The type" + "script client lives in src/tools/runtime/session" + ".ts",
+    ("src/main/java/cutover/Package" + "JsonIndexer.java") to "final class Package" + "JsonIndexer {}",
+    ("src/main/java/cutover/Package" + "JsonReader.java") to "final class PackageTools { Object package" + "JsonReader; }",
+    ("src/main/java/cutover/Package" + "JsonWriter.java") to "final class PackageTools { Object package_" + "json_writer; }",
+    ("src/main/java/cutover/Package" + "JsonIndexerImpl.java") to "final class Package" + "JsonIndexerImpl {}",
+    ("src/main/java/cutover/Package" + "JsonIndexerFactory.java") to "final class Package" + "JsonIndexerFactory {}",
+    ("src/main/java/cutover/Package" + "JsonReaderFactory.java") to "final class Package" + "JsonReaderFactory {}",
+    ("src/main/java/cutover/Package" + "JsonIndexReader.java") to "final class Package" + "JsonIndexReader {}",
+    ("src/main/java/cutover/LegacyPackage" + "JsonIndexer.java") to "final class LegacyPackage" + "JsonIndexer {}",
+    "src/main/resources/cutover/legacy-package-json.properties" to "legacy_package_" + "json_writer=retired",
+    "src/main/resources/cutover/package-json.properties" to "package-" + "json-indexer=retired",
+    ".cutover-fixtures/root-node.json" to "{\"runtime\":\"no" + "de\"}",
+    ".cutover-fixtures/root-command.json" to "{\"command\":\"no" + "de escape.cjs\"}",
+    ".cutover-fixtures/root-structured-command.json" to
+            "{\"command\":\"no" + "de\",\"args\":[\"escape.cjs\"]}",
+    ".cutover-fixtures/shell-wrapper.json" to "{\"command\":\"sh -c 'node escape.cjs'\"}",
+    "packaging/mcpb/escape.json" to "{\"command\":\"no" + "de ../escape.cjs\"}",
+    "packaging/mcpb/bare-node.json" to "{\"command\":\"node\"}",
+    "packaging/mcpb/shell-wrapper.json" to "{\"command\":\"sh -c 'node bootstrap.cjs'\"}",
+    "packaging/mcpb/structured-shell.json" to
+            "{\"command\":\"sh\",\"args\":[\"-c\",\"node escape.cjs\"]}",
+    "packaging/mcpb/nested-command.json" to
+            "{\"server\":{\"command\":{\"executable\":\"node\",\"arguments\":[\"escape.cjs\"]}}}",
+    "packaging/mcpb/nested-executable.json" to
+            "{\"server\":{\"executable\":\"node\",\"arguments\":[\"escape.cjs\"]}}",
+    "packaging/mcpb/nested-program.json" to
+            "{\"server\":{\"program\":\"node\",\"args\":[\"escape.cjs\"]}}",
+    "packaging/mcpb/node-options-map.json" to
+            "{\"command\":\"node\",\"args\":[\"bootstrap.cjs\"],\"env\":{\"NODE_OPTIONS\":\"--require escape.cjs\"}}",
+    "packaging/mcpb/node-options-list.json" to
+            "{\"command\":\"node\",\"args\":[\"bootstrap.cjs\"],\"environment\":[\"NODE_OPTIONS=--require escape.cjs\"]}",
+    "packaging/mcpb/node-options-inline.json" to
+            "{\"command\":\"NODE_OPTIONS=--require=escape.cjs node bootstrap.cjs\"}",
+    "packaging/mcpb/env-option-wrapper.json" to
+            "{\"command\":\"env -S node bootstrap.cjs\"}",
+    "packaging/mcpb/exec-option-wrapper.json" to
+            "{\"command\":\"exec -a node bootstrap.cjs\"}",
+    "packaging/mcpb/malformed-chain.json" to "{\"command\":\"node bootstrap.cjs &&\"}",
+    "packaging/mcpb/unclosed-quote.json" to "{\"command\":\"sh -c 'node bootstrap.cjs\"}",
+    "packaging/mcpb/pipeline.json" to "{\"command\":\"echo ok | node bootstrap.cjs\"}",
+    "packaging/mcpb/semicolon.json" to "{\"command\":\"echo ok; node bootstrap.cjs\"}",
+    "packaging/mcpb/direct-script.json" to "{\"command\":\"./bootstrap.cjs\"}"
+).apply {
+    retiredEnvironmentFixtures.forEachIndexed { index, value ->
+        put("src/main/java/cutover/RetiredEnvironment$index.java", value)
+    }
+    retiredLibraryFixtures.forEachIndexed { index, value ->
+        put("src/main/java/cutover/RetiredLibrary$index.java", value)
+    }
+    put("packaging/mcpb/bootstrap.cjs", "permitted launcher")
+    put("packaging/mcpb/package.json", "{\"command\":\"no" + "de bootstrap.cjs\"}")
+    put("packaging/mcpb/package-lock.json", "{\"lockfileVersion\":3}")
+    put("packaging/mcpb/allowed-structured.json", "{\"command\":\"node\",\"args\":[\"bootstrap.cjs\"]}")
+    put("packaging/mcpb/allowed-relative.json", "{\"command\":[\"node\",\"./bootstrap.cjs\"]}")
+    put("packaging/mcpb/allowed-executable.json", "{\"server\":{\"executable\":\"node\",\"args\":[\"bootstrap.cjs\"]}}")
+    put("packaging/mcpb/allowed-env-wrapper.json", "{\"command\":\"env -- node bootstrap.cjs\"}")
+    put("packaging/mcpb/allowed-exec-wrapper.json", "{\"command\":\"exec -- node ./bootstrap.cjs\"}")
+    put("packaging/mcpb/allowed-assignment-wrapper.json", "{\"command\":\"MCPB=1 node bootstrap.cjs\"}")
+    put("contracts/node-oracle.json", "{\"runtime\":\"no" + "de\"}")
+    put("src/test/resources/contracts/cutover/frozen.json", "{\"runtime\":\"no" + "de\"}")
+    put("src/test/resources/oracle/cutover/frozen.json", "{\"runtime\":\"no" + "de\"}")
+    put(
+        "src/main/resources/guides/package-json-transition.txt",
+        "Legacy package JSON readers and writers are historical documentation, not production identifiers."
+    )
+}
+val allowedCutoverFixtures = setOf(
+    "packaging/mcpb/bootstrap.cjs",
+    "packaging/mcpb/package.json",
+    "packaging/mcpb/package-lock.json",
+    "packaging/mcpb/allowed-structured.json",
+    "packaging/mcpb/allowed-relative.json",
+    "packaging/mcpb/allowed-executable.json",
+    "packaging/mcpb/allowed-env-wrapper.json",
+    "packaging/mcpb/allowed-exec-wrapper.json",
+    "packaging/mcpb/allowed-assignment-wrapper.json",
+    "contracts/node-oracle.json",
+    "src/test/resources/contracts/cutover/frozen.json",
+    "src/test/resources/oracle/cutover/frozen.json",
+    "src/main/resources/guides/package-json-transition.txt"
+)
+
+val cutoverCheck = registerCutoverScan(
+    "cutoverCheck",
+    "Rejects tracked retired implementation surface."
+)
+val cutoverCheckBypassTest = registerCutoverScan(
+    "cutoverCheckBypassTest",
+    "Regression-tests cutoverCheck against forbidden and permitted synthetic tracked files.",
+    cutoverBypassFixtures,
+    allowedCutoverFixtures
+)
+
 tasks.named("check") {
     dependsOn(cutoverCheck)
+    dependsOn(cutoverCheckBypassTest)
     dependsOn(dependencyPolicyCheck)
     dependsOn(mcpSdkSnapshotCheck)
     dependsOn(tasks.named("releaseVerifierTest"))

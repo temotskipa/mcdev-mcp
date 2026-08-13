@@ -52,6 +52,16 @@ final class CliContractTest {
     }
 
     @Test
+    void cleanHelpNamesOnlyCurrentManagedState() {
+        CliResult result = execute(new RecordingOperations(temporaryDirectory), "clean", "--help");
+
+        assertEquals(0, result.exitCode());
+        assertTrue(result.stdout().contains("--all                    Clean everything (cache, index, temporary analysis state)"));
+        assertFalse(result.stdout().contains("DecompilerMC"));
+        assertEquals("", result.stderr());
+    }
+
+    @Test
     void acceptsSupportedMinecraftRelease() {
         assertTrue(MinecraftVersionValidator.isSupported("1.21.11"));
         assertTrue(MinecraftVersionValidator.isSupported("1.14"));

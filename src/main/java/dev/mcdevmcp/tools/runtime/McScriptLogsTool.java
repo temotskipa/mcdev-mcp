@@ -18,7 +18,7 @@ final class McScriptLogsTool {
 
     private static ToolResult render(ScriptLogger logger, ScriptLogsArguments arguments) {
         if (logger == null) {
-            return ToolResult.text("Session logging is disabled. Set the MCDEV_SESSION_LOG_DIR environment variable to enable it.");
+            return ToolResult.text("Session logging is disabled. Set MCDEV_SCRIPT_LOGS=1 or MCDEV_SESSION_LOG_DIR to enable it.");
         }
         return switch (arguments.mode()) {
             case PATHS ->

@@ -9,6 +9,7 @@
 .vscode/
 .idea/
 .codex/
+# Includes differential-oracle clones and parity/benchmark execution evidence.
 .superpowers/
 *.swp
 *.swo

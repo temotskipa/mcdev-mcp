@@ -42,12 +42,14 @@ class ResourceCatalogTest {
     }
 
     @Test
-    void pythonGuidePinsRetiredLinksWhilePreservingTheNodeOracle() throws Exception {
+    void pythonGuideNamesCurrentJavaSourcesWhilePreservingTheNodeOracle() throws Exception {
         var currentGuide = new ResourceCatalog().read(URI.create("mcdev://guides/python-scripting")).text();
         var oracleLink = "https://github.com/use-ai-for-mc/mcdev-mcp/blob/" + "7b98bdb4a1d885d588cd141d8eb21e3c5c18b2b6/src/tools/runtime/session.ts";
 
-        assertTrue(currentGuide.contains(oracleLink));
-        assertFalse(currentGuide.contains("](../src/tools/runtime/"));
+        assertFalse(currentGuide.contains(oracleLink));
+        assertFalse(currentGuide.contains("src/tools/runtime/"));
+        assertTrue(currentGuide.contains("dev.mcdevmcp.bridge.BridgeSession"));
+        assertTrue(currentGuide.contains("dev.mcdevmcp.tools.runtime.McExecuteTool"));
 
         try (var oracleResource = ResourceCatalogTest.class.getResourceAsStream("/oracle/python-scripting-node.md")) {
             assertNotNull(oracleResource, "The frozen Node-visible Python guide must be retained separately");

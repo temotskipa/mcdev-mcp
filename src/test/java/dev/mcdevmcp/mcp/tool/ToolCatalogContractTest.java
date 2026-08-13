@@ -66,6 +66,14 @@ class ToolCatalogContractTest {
     }
 
     @Test
+    void retainedScriptLogSwitchEnablesTheNodeContractTool() {
+        var catalog = ToolCatalog.load(new AppEnvironment(Map.of("MCDEV_SCRIPT_LOGS", "1")), completeBindings(), MAPPER);
+
+        assertTrue(catalog.enabledDefinitions().stream().anyMatch(tool -> tool.name().equals("mc_script_logs")));
+        assertFalse(catalog.enabledDefinitions().stream().anyMatch(tool -> tool.name().equals("mc_run_command")));
+    }
+
+    @Test
     void availabilityGatesTreatBlankLogPathAndUntrimmedRunCommandCorrectly() {
         var catalog = ToolCatalog.load(new AppEnvironment(Map.of("MCDEV_SESSION_LOG_DIR", "   ", "MCDEV_RUN_COMMAND", "TRUE")), completeBindings(), MAPPER);
 

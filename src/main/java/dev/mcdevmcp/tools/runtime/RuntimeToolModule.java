@@ -22,9 +22,9 @@ public final class RuntimeToolModule {
 
     public static Map<String, ToolBinding<?>> handlers(BridgeSession session, McpJsonMapper mapper, AppEnvironment environment) {
         var support = new RuntimeToolSupport(session, mapper);
-        // Session logging is an explicit opt-in debug feature: unless MCDEV_SESSION_LOG_DIR
-        // is set, no session logs are written and the mc_script_logs tool is unavailable.
-        Optional<Path> sessionLogDirectory = environment.value("MCDEV_SESSION_LOG_DIR").filter(value -> !value.isBlank()).map(Path::of);
+        // An explicit directory takes precedence; the retained Node-line switch uses
+        // the platform data directory so existing client configurations keep working.
+        Optional<Path> sessionLogDirectory = environment.value("MCDEV_SESSION_LOG_DIR").filter(value -> !value.isBlank()).map(Path::of).or(() -> environment.isTruthy("MCDEV_SCRIPT_LOGS") ? Optional.of(ScriptLogger.dataDirectory(System.getProperty("os.name"), environment, Path.of(System.getProperty("user.home")))) : Optional.empty());
         ScriptLogger scriptLogger = sessionLogDirectory.map(directory -> new ScriptLogger(directory, mapper, System.err::println)).orElse(null);
         var sessionControl = new SessionControlSupport(session, environment, SchedulerHolder.SCHEDULER);
         var handlers = new LinkedHashMap<String, ToolBinding<?>>();

@@ -81,7 +81,7 @@ class DifferentialMcpTest {
                         case "sdk_input_validation" ->
                                 assertSdkInputValidationUpgrade(scenario, nodeResponse, javaResponse, nodeRoot, javaRoot, nodeBridge.port(), javaBridge.port());
                         case "pinned_guide_links" ->
-                                assertPinnedGuideLinks(scenario, nodeResponse, javaResponse, nodeRoot, javaRoot, nodeBridge.port(), javaBridge.port());
+                                assertCurrentGuideReferences(scenario, nodeResponse, javaResponse, nodeRoot, javaRoot, nodeBridge.port(), javaBridge.port());
                         case "reviewed_guide" ->
                                 assertReviewedGuide(scenario, nodeResponse, javaResponse, nodeRoot, javaRoot, nodeBridge.port(), javaBridge.port());
                         default ->
@@ -231,21 +231,22 @@ class DifferentialMcpTest {
         }
     }
 
-    private static void assertPinnedGuideLinks(Scenario scenario, Map<String, Object> nodeResponse, Map<String, Object> javaResponse, Path nodeRoot, Path javaRoot, int nodePort, int javaPort) throws IOException {
+    private static void assertCurrentGuideReferences(Scenario scenario, Map<String, Object> nodeResponse, Map<String, Object> javaResponse, Path nodeRoot, Path javaRoot, int nodePort, int javaPort) throws IOException {
         String nodeText = resourceText(nodeResponse);
         String javaText = resourceText(javaResponse);
-        String pinnedRoot = "https://github.com/use-ai-for-mc/mcdev-mcp/blob/7b98bdb4a1d885d588cd141d8eb21e3c5c18b2b6/src/tools/runtime/";
-        assertTrue(javaText.contains(pinnedRoot), "Java guide must pin retired source links to the frozen Node revision");
-        assertFalse(javaText.contains("](../src/tools/runtime/"), "Java guide must not expose links that are invalid outside the retired Node source tree");
+        assertTrue(nodeText.contains("src/tools/runtime/session.ts"), "Pinned Node guide must retain its captured source reference");
+        assertFalse(javaText.contains("src/tools/runtime/"), "Java guide must not name deleted runtime source paths");
+        assertTrue(javaText.contains("dev.mcdevmcp.bridge.BridgeSession"), "Java guide must identify the current bridge implementation");
+        assertTrue(javaText.contains("dev.mcdevmcp.tools.runtime.McExecuteTool"), "Java guide must identify the current execute handler");
         assertEquals(resourceText(McpContractTestSupport.readContract("resource-python-scripting.json")), javaText, "Java Python guide must match its reviewed distribution contract");
         assertNotEquals(nodeText, javaText, "Pinned Node and Java guide fixtures must continue exercising the approved distribution-guide difference");
 
-        Map<String, Object> normalizedNode = withApprovedResourceText(normalize(nodeResponse, scenario, nodeRoot, nodePort), "$APPROVED_PINNED_GUIDE_LINKS");
-        Map<String, Object> normalizedJava = withApprovedResourceText(normalize(javaResponse, scenario, javaRoot, javaPort), "$APPROVED_PINNED_GUIDE_LINKS");
+        Map<String, Object> normalizedNode = withApprovedResourceText(normalize(nodeResponse, scenario, nodeRoot, nodePort), "$APPROVED_JAVA_GUIDE_REFERENCES");
+        Map<String, Object> normalizedJava = withApprovedResourceText(normalize(javaResponse, scenario, javaRoot, javaPort), "$APPROVED_JAVA_GUIDE_REFERENCES");
         String difference = firstDifference(normalizedNode, normalizedJava, "");
         if (difference != null) {
             Path report = writeReport(scenario, nodeResponse, javaResponse, normalizedNode, normalizedJava, difference);
-            fail("MCP parity mismatch outside the approved pinned guide links for '" + scenario.label() + "' at " + difference + ". Report: " + report);
+            fail("MCP parity mismatch outside the approved Java guide references for '" + scenario.label() + "' at " + difference + ". Report: " + report);
         }
     }
 

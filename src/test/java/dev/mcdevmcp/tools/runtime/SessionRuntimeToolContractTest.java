@@ -12,6 +12,8 @@ import io.modelcontextprotocol.json.McpJsonDefaults;
 import io.modelcontextprotocol.json.McpJsonMapper;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.api.parallel.ResourceLock;
+import org.junit.jupiter.api.parallel.Resources;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -168,6 +170,61 @@ class SessionRuntimeToolContractTest {
             assertTrue(Files.readString(log).contains("\"code\":\"return 2\""));
             ToolResult paths = dispatch(enabledCatalog, "mc_script_logs", Map.of("mode", "paths"));
             assertTrue(paths.content().getFirst().text().contains("All executions: " + log));
+        }
+    }
+
+    @Test
+    @ResourceLock(Resources.SYSTEM_PROPERTIES)
+    void retainedScriptLogSwitchWritesJsonlToThePlatformDefaultAndExplicitDirectoryTakesPrecedence(@TempDir Path temporary) throws Exception {
+        String previousHome = System.getProperty("user.home");
+        System.setProperty("user.home", temporary.resolve("home").toString());
+        try {
+            var values = new LinkedHashMap<String, String>();
+            values.put("MCDEV_SCRIPT_LOGS", "1");
+            values.put("LOCALAPPDATA", temporary.resolve("local-app-data").toString());
+            values.put("XDG_DATA_HOME", temporary.resolve("xdg-data").toString());
+            AppEnvironment environment = new AppEnvironment(values);
+            Path dataDirectory = ScriptLogger.dataDirectory(System.getProperty("os.name"), environment, Path.of(System.getProperty("user.home")));
+            Path defaultLog = dataDirectory.resolve("script-logs").resolve("all.jsonl");
+
+            try (var harness = new BridgeTestHarness(MAPPER, environment, (_, request) -> switch (request.endpoint().wireName()) {
+                case "status" -> CompletableFuture.completedFuture(RuntimeContractFixtures.status(request.id()));
+                case "execute" -> CompletableFuture.completedFuture(success(request, 2));
+                default ->
+                        CompletableFuture.failedFuture(new AssertionError("Unexpected endpoint: " + request.endpoint().wireName()));
+            })) {
+                ToolCatalog catalog = ToolCatalog.load(environment, CompleteToolBindings.including(MAPPER, RuntimeToolModule.handlers(harness.session(), MAPPER, environment)), MAPPER);
+
+                assertEquals("2", dispatch(catalog, "mc_execute", Map.of("code", "return 2")).content().getFirst().text());
+                assertTrue(Files.exists(defaultLog));
+                assertTrue(Files.readString(defaultLog).contains("\"code\":\"return 2\""));
+                assertTrue(catalog.enabledDefinitions().stream().anyMatch(tool -> tool.name().equals("mc_script_logs")));
+            }
+
+            long defaultLogSize = Files.size(defaultLog);
+            Path explicitDirectory = temporary.resolve("explicit-session-data");
+            values.put("MCDEV_SESSION_LOG_DIR", explicitDirectory.toString());
+            AppEnvironment explicitEnvironment = new AppEnvironment(values);
+            try (var harness = new BridgeTestHarness(MAPPER, explicitEnvironment, (_, request) -> switch (request.endpoint().wireName()) {
+                case "status" -> CompletableFuture.completedFuture(RuntimeContractFixtures.status(request.id()));
+                case "execute" -> CompletableFuture.completedFuture(success(request, 3));
+                default ->
+                        CompletableFuture.failedFuture(new AssertionError("Unexpected endpoint: " + request.endpoint().wireName()));
+            })) {
+                ToolCatalog catalog = ToolCatalog.load(explicitEnvironment, CompleteToolBindings.including(MAPPER, RuntimeToolModule.handlers(harness.session(), MAPPER, explicitEnvironment)), MAPPER);
+
+                assertEquals("3", dispatch(catalog, "mc_execute", Map.of("code", "return 3")).content().getFirst().text());
+                Path explicitLog = explicitDirectory.resolve("script-logs").resolve("all.jsonl");
+                assertTrue(Files.readString(explicitLog).contains("\"code\":\"return 3\""));
+                assertEquals(defaultLogSize, Files.size(defaultLog));
+            }
+        } finally {
+            if (previousHome == null) {
+                System.clearProperty("user.home");
+            }
+            else {
+                System.setProperty("user.home", previousHome);
+            }
         }
     }
 

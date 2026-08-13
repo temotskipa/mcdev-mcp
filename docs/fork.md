@@ -1,36 +1,43 @@
-# DecompilerMC Fork Plan — ABANDONED
+# DecompilerMC Fork Proposal: Abandoned
 
-> **Pinned Node oracle evidence:** Historical source paths below refer to the commit recorded in
-> [`contracts/node-oracle.json`](../contracts/node-oracle.json), not files in the current Java worktree.
+This document records a rejected design. mcdev-mcp does not clone, patch, or
+execute DecompilerMC.
 
-> **Status:** Not implemented. This document is retained as design history; the actual decompiler in mcdev-mcp is **Vineflower** (no Python, no DecompilerMC fork). Read [VF.md](VF.md) for the shipped flow.
+## Original Proposal
 
-## What this plan proposed
+The earlier server considered maintaining a Python fork that could handle
+development snapshots and load external decompiler/remapping JARs from a local
+tools directory. That would have required a repository clone, a Python runtime,
+several downloaded launchers, and another subprocess protocol.
 
-An earlier design considered forking [DecompilerMC](https://github.com/hube12/DecompilerMC) and maintaining a modified `lib/DecompilerMC-main.py` that:
+## Shipped Decision
 
-1. Could decompile dev snapshots without Proguard mappings.
-2. Took a `--lib-dir` argument so the CFR / FernFlower / SpecialSource jars could live outside the repo.
+The Java server instead owns the complete pipeline:
 
-The plan called for `cloneDecompilerMC()`, `runDecompilerMC()`, and `hasDecompilerMCLibs()` helpers in `src/decompiler/index.ts`, plus an in-tree `lib/DecompilerMC-main.py`.
+- `VersionManifestClient` resolves Mojang metadata.
+- `DownloadService` downloads and verifies artifacts.
+- `MappingConverter` converts official mappings.
+- `MinecraftRemapper` embeds Tiny Remapper.
+- `MinecraftDecompiler` embeds Vineflower and atomically publishes sources.
 
-## Why it was abandoned
+All of those classes live in `dev.mcdevmcp.analysis.decompile`. Their
+dependencies are shaded into the single release JAR. There is no `lib/`
+toolchain directory, downloaded analysis-tool launcher, Python requirement, or
+DecompilerMC source in the repository.
 
-- **No Python dependency.** Vineflower is a single self-contained Java jar; mcdev-mcp can drive it directly via `java -jar` in `src/decompiler/vineflower.ts`.
-- **Fewer moving parts.** Dropping DecompilerMC removed a clone step, a Python subprocess, and three bundled jars (CFR, FernFlower, SpecialSource).
-- **Mappings handled separately.** Proguard remap is done in `src/decompiler/remapper.ts` using Tiny Remapper + the version's official Proguard mappings; dev snapshots without mappings can be decompiled directly from the unobfuscated jar.
+## Operational Consequences
 
-None of `cloneDecompilerMC()`, `runDecompilerMC()`, `hasDecompilerMCLibs()`, or `lib/DecompilerMC-main.py` were ever committed. `lib/` is not part of the repository (the `.gitignore` entries that mention `lib/` are leftover and tracked separately for cleanup).
+Users run only the Java CLI:
 
-## Where the actual flow lives
+```powershell
+java -jar mcdev-mcp-3.0.0.jar init -v 1.21.11
+```
 
-| Concern | File |
-|---|---|
-| Top-level orchestration (`ensureDecompiled`, `getStatus`) | `src/decompiler/index.ts` |
-| Vineflower driver | `src/decompiler/vineflower.ts` |
-| Proguard → Tiny mapping conversion + remapping | `src/decompiler/remapper.ts` |
-| Mojang manifest + jar download (with redirect handling) | `src/decompiler/download.ts` |
-| Vineflower jar download | `src/decompiler/tools.ts` |
-| Cache layout (versioned paths) | `src/utils/paths.ts` |
+Source-cache cleanup and retry are likewise owned by the CLI:
 
-For the current end-to-end design, see [VF.md](VF.md).
+```powershell
+java -jar mcdev-mcp-3.0.0.jar clean --cache -v 1.21.11
+java -jar mcdev-mcp-3.0.0.jar init -v 1.21.11
+```
+
+See [`VF.md`](VF.md) for the current pipeline and ownership map.

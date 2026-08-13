@@ -65,7 +65,7 @@ final class DifferentialCliTest {
                                                     }
                                                   }
                                                   """;
-    private static final List<CliCase> HELP_CASES = List.of(new CliCase("root-no-arguments", List.of(), Fixture.EMPTY), new CliCase("root-help", List.of("--help"), Fixture.EMPTY), new CliCase("root-help-extra", List.of("--help", "extra"), Fixture.EMPTY), new CliCase("help-unknown", List.of("help", "unknown"), Fixture.EMPTY), new CliCase("serve-help", List.of("serve", "--help"), Fixture.EMPTY), new CliCase("init-help", List.of("init", "--help"), Fixture.EMPTY), new CliCase("callgraph-help", List.of("callgraph", "--help"), Fixture.EMPTY), new CliCase("rebuild-help", List.of("rebuild", "--help"), Fixture.EMPTY), new CliCase("status-help", List.of("status", "--help"), Fixture.EMPTY), new CliCase("clean-help", List.of("clean", "--help"), Fixture.EMPTY));
+    private static final List<CliCase> HELP_CASES = List.of(new CliCase("root-no-arguments", List.of(), Fixture.EMPTY), new CliCase("root-help", List.of("--help"), Fixture.EMPTY), new CliCase("root-help-extra", List.of("--help", "extra"), Fixture.EMPTY), new CliCase("help-unknown", List.of("help", "unknown"), Fixture.EMPTY), new CliCase("serve-help", List.of("serve", "--help"), Fixture.EMPTY), new CliCase("init-help", List.of("init", "--help"), Fixture.EMPTY), new CliCase("callgraph-help", List.of("callgraph", "--help"), Fixture.EMPTY), new CliCase("rebuild-help", List.of("rebuild", "--help"), Fixture.EMPTY), new CliCase("status-help", List.of("status", "--help"), Fixture.EMPTY));
     private static final List<CliCase> VALIDATION_CASES = List.of(new CliCase("unknown-command", List.of("unknown"), Fixture.EMPTY), new CliCase("init-missing-version", List.of("init"), Fixture.EMPTY), new CliCase("init-invalid-version", List.of("init", "-v", "1.13"), Fixture.EMPTY), new CliCase("callgraph-missing-version", List.of("callgraph"), Fixture.EMPTY), new CliCase("callgraph-invalid-version", List.of("callgraph", "-v", "1.13"), Fixture.EMPTY), new CliCase("rebuild-missing-version", List.of("rebuild"), Fixture.EMPTY), new CliCase("rebuild-invalid-version", List.of("rebuild", "-v", "1.13"), Fixture.EMPTY), new CliCase("status-invalid-version", List.of("status", "-v", "1.13"), Fixture.EMPTY), new CliCase("clean-invalid-version", List.of("clean", "--cache", "-v", "1.13"), Fixture.CLEANABLE));
     private static final List<CliCase> CACHE_CASES = List.of(new CliCase("callgraph-missing-cache", List.of("callgraph", "-v", LEGACY_VERSION), Fixture.EMPTY), new CliCase("rebuild-missing-cache", List.of("rebuild", "-v", LEGACY_VERSION), Fixture.EMPTY), new CliCase("status-empty-cache", List.of("status"), Fixture.EMPTY), new CliCase("status-missing-version-cache", List.of("status", "-v", LEGACY_VERSION), Fixture.EMPTY));
     private static final List<CliCase> CLEAN_CASES = List.of(new CliCase("clean-no-selector", List.of("clean"), Fixture.CLEANABLE, StateChange.UNCHANGED), new CliCase("clean-version-default", List.of("clean", "-v", LEGACY_VERSION), Fixture.CLEANABLE, StateChange.DEFAULT_VERSION), new CliCase("clean-cache", List.of("clean", "--cache"), Fixture.CLEANABLE, StateChange.CACHE_ALL), new CliCase("clean-cache-version", List.of("clean", "--cache", "-v", LEGACY_VERSION), Fixture.CLEANABLE, StateChange.CACHE_VERSION), new CliCase("clean-index", List.of("clean", "--index"), Fixture.CLEANABLE, StateChange.INDEX_ALL), new CliCase("clean-index-version", List.of("clean", "--index", "-v", LEGACY_VERSION), Fixture.CLEANABLE, StateChange.INDEX_VERSION), new CliCase("clean-callgraph", List.of("clean", "--callgraph"), Fixture.CLEANABLE, StateChange.CALLGRAPH_ALL), new CliCase("clean-callgraph-version", List.of("clean", "--callgraph", "-v", LEGACY_VERSION), Fixture.CLEANABLE, StateChange.CALLGRAPH_VERSION), new CliCase("clean-all", List.of("clean", "--all"), Fixture.CLEANABLE, StateChange.ALL_ALL), new CliCase("clean-all-version", List.of("clean", "--all", "-v", LEGACY_VERSION), Fixture.CLEANABLE, StateChange.ALL_VERSION), new CliCase("clean-conflicting-selectors", List.of("clean", "--cache", "--index"), Fixture.CLEANABLE, StateChange.CONFLICTING_SELECTORS));
@@ -131,6 +131,22 @@ final class DifferentialCliTest {
 
         assertEquals(new ProcessResult(0, "2.2.1\n", ""), pair.node());
         assertEquals(new ProcessResult(0, "3.0.0\n", ""), pair.java());
+    }
+
+    @Test
+    void cleanHelpUsesTheApprovedCurrentAnalysisStateDifference() throws Exception {
+        CliCase testCase = new CliCase("clean-help", List.of("clean", "--help"), Fixture.EMPTY);
+        ExecutionPair pair = execute(testCase);
+        assertStateTransitions(testCase, pair);
+
+        assertTrue(pair.node().stdout().contains("DecompilerMC"), pair.node()::stdout);
+        assertTrue(pair.java().stdout().contains("temporary analysis state"), pair.java()::stdout);
+        assertEquals(
+                pair.node().stdout().replace("DecompilerMC", "$APPROVED_ANALYSIS_STATE"),
+                pair.java().stdout().replace("temporary analysis state", "$APPROVED_ANALYSIS_STATE")
+        );
+        assertEquals(pair.node().exitCode(), pair.java().exitCode());
+        assertEquals(pair.node().stderr(), pair.java().stderr());
     }
 
     @Test

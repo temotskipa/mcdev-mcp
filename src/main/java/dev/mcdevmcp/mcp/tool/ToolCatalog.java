@@ -144,7 +144,8 @@ public final class ToolCatalog {
     private boolean isEnabled(ToolDefinition definition) {
         return switch (definition.availability()) {
             case ALWAYS -> true;
-            case SCRIPT_LOGS -> environment.value("MCDEV_SESSION_LOG_DIR").filter(value -> !value.isBlank()).isPresent();
+            case SCRIPT_LOGS ->
+                    environment.isTruthy("MCDEV_SCRIPT_LOGS") || environment.value("MCDEV_SESSION_LOG_DIR").filter(value -> !value.isBlank()).isPresent();
             case RUN_COMMAND -> environment.isTruthy("MCDEV_RUN_COMMAND");
         };
     }
