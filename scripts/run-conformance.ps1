@@ -3,16 +3,79 @@ $ErrorActionPreference = "Stop"
 $npxTimeoutMilliseconds = 10 * 60 * 1000
 $processStopTimeoutMilliseconds = 10 * 1000
 $harnessStopTimeoutMilliseconds = 30 * 1000
+$harnessReadinessTimeoutMilliseconds = 30 * 1000
 $portCloseTimeoutMilliseconds = 10 * 1000
 $conformancePort = 3000
-$shutdownEnvironmentVariable = "MCDEV_MCP_CONFORMANCE_SHUTDOWN_FILE"
 $shutdownRoot = [IO.Path]::GetFullPath(
     [IO.Path]::Combine((Get-Location).Path, "build", "tmp", "conformance")
 )
 $shutdownDirectory = [IO.Path]::Combine($shutdownRoot, [Guid]::NewGuid().ToString("N"))
 $shutdownFile = [IO.Path]::Combine($shutdownDirectory, "stop.shutdown")
-$previousShutdownFile = [Environment]::GetEnvironmentVariable($shutdownEnvironmentVariable, "Process")
 $conformanceExitCode = 1
+
+function Build-ConformanceHarness {
+    $gradle = [IO.Path]::GetFullPath([IO.Path]::Combine((Get-Location).Path, "gradlew.bat"))
+    & $gradle "conformanceHarnessJar" "--no-daemon" "--console=plain" | Out-Host
+    if ($LASTEXITCODE -ne 0) {
+        throw "Failed to build the conformance harness (Gradle exit code $LASTEXITCODE)."
+    }
+
+    $harnessJar = [IO.Path]::GetFullPath(
+        [IO.Path]::Combine((Get-Location).Path, "build", "conformance", "mcdev-mcp-conformance.jar")
+    )
+    if (-not [IO.File]::Exists($harnessJar)) {
+        throw "Gradle completed without producing the conformance harness at $harnessJar."
+    }
+
+    $javaExecutableFile = [IO.Path]::GetFullPath(
+        [IO.Path]::Combine((Get-Location).Path, "build", "conformance", "java-executable.txt")
+    )
+    if (-not [IO.File]::Exists($javaExecutableFile)) {
+        throw "Gradle completed without recording the conformance Java executable at $javaExecutableFile."
+    }
+    $javaExecutable = [IO.File]::ReadAllText($javaExecutableFile, [Text.Encoding]::UTF8).Trim()
+    if ([string]::IsNullOrWhiteSpace($javaExecutable) -or -not [IO.File]::Exists($javaExecutable)) {
+        throw "Gradle recorded an invalid conformance Java executable: $javaExecutable"
+    }
+
+    return [PSCustomObject]@{
+        HarnessJar = $harnessJar
+        JavaExecutable = $javaExecutable
+    }
+}
+
+function Start-ConformanceHarness {
+    param(
+        [Parameter(Mandatory)]
+        [string] $HarnessJar,
+
+        [Parameter(Mandatory)]
+        [string] $JavaExecutable
+    )
+
+    $startInfo = [Diagnostics.ProcessStartInfo]::new()
+    $startInfo.FileName = $JavaExecutable
+    $startInfo.WorkingDirectory = (Get-Location).Path
+    $startInfo.UseShellExecute = $false
+    $startInfo.CreateNoWindow = $true
+    $startInfo.RedirectStandardOutput = $false
+    $startInfo.RedirectStandardError = $false
+    $startInfo.ArgumentList.Add("--add-opens=java.base/java.lang=ALL-UNNAMED")
+    $startInfo.ArgumentList.Add("--add-opens=java.rmi/sun.rmi.transport=ALL-UNNAMED")
+    $startInfo.ArgumentList.Add("-Ddev.mcdevmcp.conformance.shutdownFile=$shutdownFile")
+    $startInfo.ArgumentList.Add("-jar")
+    $startInfo.ArgumentList.Add($HarnessJar)
+
+    $process = [Diagnostics.Process]::new()
+    $process.StartInfo = $startInfo
+    try {
+        [void] $process.Start()
+        return $process
+    } catch {
+        $process.Dispose()
+        throw
+    }
+}
 
 function Stop-ProcessTree {
     param(
@@ -84,20 +147,6 @@ function Wait-ConformancePortClosed {
         Start-Sleep -Milliseconds 100
     }
     return -not (Test-ConformancePortOpen)
-}
-
-function Get-ConformancePortProcesses {
-    $ownerProcessIds = @(
-        Get-NetTCPConnection -LocalPort $conformancePort -State Listen -ErrorAction SilentlyContinue |
-            Select-Object -ExpandProperty OwningProcess -Unique
-    )
-    foreach ($ownerProcessId in $ownerProcessIds) {
-        try {
-            [Diagnostics.Process]::GetProcessById($ownerProcessId)
-        } catch [ArgumentException] {
-            # The listener exited between discovery and process lookup.
-        }
-    }
 }
 
 function Invoke-NpxConformance {
@@ -192,12 +241,18 @@ if (Test-ConformancePortOpen) {
     throw "Conformance port $conformancePort is already in use."
 }
 
+$harnessBuild = Build-ConformanceHarness
+if (Test-ConformancePortOpen) {
+    throw "Conformance port $conformancePort became occupied while the harness was being built."
+}
+
 $harness = $null
 try {
     [void] [IO.Directory]::CreateDirectory($shutdownDirectory)
-    [Environment]::SetEnvironmentVariable($shutdownEnvironmentVariable, $shutdownFile, "Process")
-    $harness = Start-Process -FilePath ".\gradlew.bat" -ArgumentList "conformanceRun", "--no-daemon", "--console=plain" -PassThru -NoNewWindow
-    $deadline = [DateTime]::UtcNow.AddSeconds(30)
+    $harness = Start-ConformanceHarness `
+        -HarnessJar $harnessBuild.HarnessJar `
+        -JavaExecutable $harnessBuild.JavaExecutable
+    $deadline = [DateTime]::UtcNow.AddMilliseconds($harnessReadinessTimeoutMilliseconds)
     $portOpen = $false
     do {
         if (Test-ConformancePortOpen) {
@@ -208,10 +263,10 @@ try {
     } while ([DateTime]::UtcNow -lt $deadline -and -not $harness.HasExited)
 
     if ($harness.HasExited) {
-        throw "Conformance harness stopped before opening port $conformancePort."
+        throw "Conformance harness stopped with exit code $($harness.ExitCode) before opening port $conformancePort."
     }
     if (-not $portOpen) {
-        throw "Conformance harness did not open port $conformancePort within 30 seconds."
+        throw "Conformance harness did not open port $conformancePort within $($harnessReadinessTimeoutMilliseconds / 1000) seconds after the JVM was started."
     }
 
     $conformanceExitCode = Invoke-NpxConformance -Harness $harness
@@ -248,37 +303,6 @@ try {
         $harness.Dispose()
     }
 
-    if (Test-ConformancePortOpen) {
-        $listenerProcesses = @(Get-ConformancePortProcesses)
-        if ($listenerProcesses.Count -eq 0) {
-            $portOwnerFailure = "Conformance port $conformancePort remained open, but its listener process could not be identified."
-            $harnessCleanupFailure = if ($null -eq $harnessCleanupFailure) {
-                $portOwnerFailure
-            } else {
-                "$harnessCleanupFailure`n$portOwnerFailure"
-            }
-        }
-        foreach ($listenerProcess in $listenerProcesses) {
-            try {
-                $listenerCleanupParameters = @{
-                    Process             = $listenerProcess
-                    Description         = "detached conformance server"
-                    TimeoutMilliseconds = $processStopTimeoutMilliseconds
-                }
-                $listenerCleanupFailure = Stop-ProcessTree @listenerCleanupParameters
-                if ($null -ne $listenerCleanupFailure) {
-                    $harnessCleanupFailure = if ($null -eq $harnessCleanupFailure) {
-                        $listenerCleanupFailure
-                    } else {
-                        "$harnessCleanupFailure`n$listenerCleanupFailure"
-                    }
-                }
-            } finally {
-                $listenerProcess.Dispose()
-            }
-        }
-    }
-
     if (-not (Wait-ConformancePortClosed -TimeoutMilliseconds $portCloseTimeoutMilliseconds)) {
         $portCloseFailure = "Conformance port $conformancePort did not close within $($portCloseTimeoutMilliseconds / 1000) seconds."
         $harnessCleanupFailure = if ($null -eq $harnessCleanupFailure) {
@@ -288,7 +312,6 @@ try {
         }
     }
 
-    [Environment]::SetEnvironmentVariable($shutdownEnvironmentVariable, $previousShutdownFile, "Process")
     $resolvedShutdownDirectory = [IO.Path]::GetFullPath($shutdownDirectory)
     $shutdownRootPrefix = $shutdownRoot.TrimEnd(
         [IO.Path]::DirectorySeparatorChar,

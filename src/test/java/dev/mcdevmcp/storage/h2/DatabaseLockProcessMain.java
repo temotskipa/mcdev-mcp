@@ -9,6 +9,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 /**
  * Subprocess entry point for real multi-process lock, query, and recovery tests.
  */
+@SuppressWarnings("JavaPrintToLogpoint")
 final class DatabaseLockProcessMain {
     private DatabaseLockProcessMain() {
     }

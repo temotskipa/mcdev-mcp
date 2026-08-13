@@ -28,6 +28,7 @@ import java.util.jar.JarOutputStream;
  * Runs Tiny Remapper in process and publishes only a verified remapped JAR.
  */
 public final class MinecraftRemapper {
+    private static final int INITIAL_CONCURRENT_PROGRESS_PERCENT = 29;
     private static final LocalDateTime REPRODUCIBLE_TIMESTAMP = LocalDateTime.of(1980, 1, 1, 0, 0);
     private final int threads;
 
@@ -44,7 +45,7 @@ public final class MinecraftRemapper {
             checkCancelled(cancellation);
             progress.report("remap", 30, "Remapping " + expectedClasses + " classes");
             AtomicInteger mappedClasses = new AtomicInteger();
-            ConcurrentProgress concurrentProgress = new ConcurrentProgress(progress, 29);
+            ConcurrentProgress concurrentProgress = new ConcurrentProgress(progress);
             remapper.apply((className, bytecode) -> {
                 checkCancelledUnchecked(cancellation);
                 output.accept(className, bytecode);
@@ -391,11 +392,10 @@ public final class MinecraftRemapper {
     private static final class ConcurrentProgress {
         private final ProgressSink progress;
         private final Object reportLock = new Object();
-        private int lastPercent;
+        private int lastPercent = INITIAL_CONCURRENT_PROGRESS_PERCENT;
 
-        private ConcurrentProgress(ProgressSink progress, int initialPercent) {
+        private ConcurrentProgress(ProgressSink progress) {
             this.progress = progress;
-            lastPercent = initialPercent;
         }
 
         private void report(int percent, String message) {

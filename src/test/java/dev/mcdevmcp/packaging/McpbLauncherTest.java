@@ -121,32 +121,36 @@ class McpbLauncherTest {
     private static void writeInstrumentedLauncher(Path bundle, Path command) throws Exception {
         String source = Files.readString(Path.of("packaging/mcpb/bootstrap.cjs"), StandardCharsets.UTF_8);
         String escapedCommand = command.toString().replace("\\", "\\\\");
-        source = source.replace("const javaCommand = \"java\";", "const javaCommand = process.env.ComSpec;").replace("return commandArguments;", "return [\"/d\", \"/c\", \"" + escapedCommand + "\", ...commandArguments];");
+        source = source.replace("const javaCommand = \"java\";", "const javaCommand = process.execPath;").replace("return commandArguments;", "return [\"" + escapedCommand + "\", ...commandArguments];");
         Files.writeString(bundle.resolve("bootstrap.cjs"), source, StandardCharsets.UTF_8);
     }
 
     private ProcessResult runLauncher(String feature, String childExit, Map<String, String> additions) throws Exception {
-        Path fakeJava = temporaryDirectory.resolve("fake-java");
-        Files.createDirectories(fakeJava);
+        Path fakeJava = temporaryDirectory.resolve("fake-java.cjs");
         Path bundle = temporaryDirectory.resolve("bundle");
         Files.createDirectories(bundle);
-        writeInstrumentedLauncher(bundle, fakeJava.resolve("java.cmd"));
+        writeInstrumentedLauncher(bundle, fakeJava);
         Files.writeString(bundle.resolve("mcdev-mcp.jar"), "");
-        Files.writeString(fakeJava.resolve("java.cmd"), """
-                                                        @echo off
-                                                        if "%1"=="-version" (
-                                                          echo java version "%FAKE_JAVA_VERSION%" 1>&2
-                                                          exit /b 0
-                                                        )
-                                                        > "%FAKE_ENV_FILE%" echo %MCDEV_SESSION_LOG_DIR%^|%MCDEV_MCP_DEBUG_LOG%^|%MCDEV_RUN_COMMAND%^|%MCDEV_INDEX_THREADS%^|%DEBUGBRIDGE_PORT%
-                                                        exit /b %FAKE_JAVA_EXIT%
-                                                        """, StandardCharsets.UTF_8);
+        Files.writeString(fakeJava, """
+                                    "use strict";
+                                    const fs = require("node:fs");
+                                    if (process.argv[2] === "-version") {
+                                      process.stderr.write(`java version "${process.env.FAKE_JAVA_VERSION}"\\n`);
+                                      process.exit(0);
+                                    }
+                                    const names = [
+                                      "MCDEV_SESSION_LOG_DIR",
+                                      "MCDEV_MCP_DEBUG_LOG",
+                                      "MCDEV_RUN_COMMAND",
+                                      "MCDEV_INDEX_THREADS",
+                                      "DEBUGBRIDGE_PORT"
+                                    ];
+                                    fs.writeFileSync(process.env.FAKE_ENV_FILE, names.map((name) => process.env[name] ?? "").join("|"));
+                                    process.exit(Number.parseInt(process.env.FAKE_JAVA_EXIT, 10));
+                                    """, StandardCharsets.UTF_8);
 
         var builder = new ProcessBuilder("node", "bootstrap.cjs").directory(bundle.toFile());
         Map<String, String> environment = builder.environment();
-        String path = environment.entrySet().stream().filter(entry -> entry.getKey().equalsIgnoreCase("PATH")).map(Map.Entry::getValue).findFirst().orElseThrow();
-        environment.put("PATH", fakeJava + java.io.File.pathSeparator + path);
-        environment.put("Path", fakeJava + java.io.File.pathSeparator + path);
         environment.put("FAKE_JAVA_VERSION", feature);
         environment.put("FAKE_JAVA_EXIT", childExit);
         environment.put("FAKE_ENV_FILE", temporaryDirectory.resolve("environment.txt").toString());

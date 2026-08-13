@@ -53,6 +53,7 @@ public final class Main {
         return text.replace("\n", System.lineSeparator());
     }
 
+    @SuppressWarnings("SameReturnValue")
     private static int rejectOldJava(int javaFeature, PrintWriter error) {
         Objects.requireNonNull(error, "error");
         error.printf("Java 25 or newer is required; detected Java %d.%n", javaFeature);

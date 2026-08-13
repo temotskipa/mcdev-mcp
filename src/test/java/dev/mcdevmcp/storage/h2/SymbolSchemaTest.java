@@ -18,6 +18,8 @@ import static org.junit.jupiter.api.Assertions.*;
 //noinspection SqlNoDataSourceInspection,SqlResolve
 class SymbolSchemaTest {
     private static final MinecraftVersion VERSION = new MinecraftVersion("1.21.5");
+    private static final String DROP_METHODS_INDEX_SQL = "DROP INDEX idx_methods_type_name";
+    private static final String WEAK_PACKAGE_IDENTITY_SQL = "ALTER TABLE packages ADD CONSTRAINT ck_packages_source_identity CHECK (TRUE)";
 
     @TempDir
     Path temporaryDirectory;
@@ -107,14 +109,6 @@ class SymbolSchemaTest {
         return statement;
     }
 
-    private static String dropMethodsIndexSql() {
-        return "DROP INDEX idx_methods_type_name";
-    }
-
-    private static String weakPackageIdentitySql() {
-        return "ALTER TABLE packages ADD CONSTRAINT ck_packages_source_identity CHECK (TRUE)";
-    }
-
     @Test
     void createsTypedH2MetadataAndNormalizedSchema() throws Exception {
         Path database = temporaryDirectory.resolve("symbols.mv.db");
@@ -175,7 +169,7 @@ class SymbolSchemaTest {
         Path database = paths.symbolDatabase(VERSION);
         try (Connection connection = DriverManager.getConnection(H2DatabaseUrls.writer(database));
              var statement = connection.createStatement()) {
-            statement.execute(dropMethodsIndexSql());
+            statement.execute(DROP_METHODS_INDEX_SQL);
         }
 
         assertRejectedByValidationAndState(paths);
@@ -189,7 +183,7 @@ class SymbolSchemaTest {
              var statement = connection.createStatement()) {
             String identityConstraint = packageIdentityConstraint(connection);
             statement.execute("ALTER TABLE packages DROP CONSTRAINT " + identityConstraint);
-            statement.execute(weakPackageIdentitySql());
+            statement.execute(WEAK_PACKAGE_IDENTITY_SQL);
         }
 
         assertRejectedByValidationAndState(paths);

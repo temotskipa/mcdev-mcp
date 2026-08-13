@@ -12,6 +12,7 @@ import java.util.*;
  * Short-lived, deterministic, read-only access to an indexed symbol database.
  */
 public final class SymbolRepository {
+    private static final String CLASSES_ORDER = " ORDER BY CASE t.source_namespace WHEN 'minecraft' THEN 0 ELSE 1 END, p.id, t.id";
     private final Path database;
 
     public SymbolRepository(Path database) {
@@ -26,10 +27,6 @@ public final class SymbolRepository {
         String base = classesSelect();
         int from = base.indexOf(" FROM ");
         return base.substring(0, from) + ", (SELECT COUNT(*) FROM fields f WHERE f.type_id=t.id)" + ", (SELECT COUNT(*) FROM methods m WHERE m.type_id=t.id)" + base.substring(from);
-    }
-
-    private static String classesOrder() {
-        return " ORDER BY CASE t.source_namespace WHEN 'minecraft' THEN 0 ELSE 1 END, p.id, t.id";
     }
 
     private static int countPackages(Connection connection, String namespace, String where) throws SQLException {
@@ -150,7 +147,7 @@ public final class SymbolRepository {
     }
 
     public List<ClassSymbol> classesUnder(String packagePath, int limitPlusOne) throws IOException, SQLException {
-        String sql = classesSelect() + " WHERE LOWER(p.name) = LOWER(?) OR LOWER(p.name) LIKE LOWER(?) ESCAPE '\\'" + classesOrder() + " LIMIT ?";
+        String sql = classesSelect() + " WHERE LOWER(p.name) = LOWER(?) OR LOWER(p.name) LIKE LOWER(?) ESCAPE '\\'" + CLASSES_ORDER + " LIMIT ?";
         return query(connection -> classes(connection, sql, statement -> {
             statement.setString(1, packagePath);
             statement.setString(2, escapeLike(packagePath) + ".%");
@@ -222,7 +219,7 @@ public final class SymbolRepository {
     public List<ClassSymbol> hierarchy(String binaryName, boolean subclasses, int limitPlusOne) throws IOException, SQLException {
         String join = subclasses ? "" : " JOIN type_interfaces i ON i.type_id = t.id";
         String predicate = subclasses ? "t.superclass_binary_name = ?" : "i.interface_binary_name = ?";
-        return query(connection -> classes(connection, classesSelect() + join + " WHERE " + predicate + classesOrder() + " LIMIT ?", statement -> {
+        return query(connection -> classes(connection, classesSelect() + join + " WHERE " + predicate + CLASSES_ORDER + " LIMIT ?", statement -> {
             statement.setString(1, binaryName);
             statement.setInt(2, limitPlusOne);
         }));
@@ -248,7 +245,7 @@ public final class SymbolRepository {
                         "LOWER(t.simple_name) LIKE ? ESCAPE '\\'" + " OR EXISTS (SELECT 1 FROM fields f WHERE f.type_id=t.id" + " AND LOWER(f.name) LIKE ? ESCAPE '\\')" + " OR EXISTS (SELECT 1 FROM methods m WHERE m.type_id=t.id" + " AND LOWER(m.name) LIKE ? ESCAPE '\\')";
             };
             boolean needsCounts = kind == null || kind.equals("class");
-            String sql = (needsCounts ? classesSelectWithCounts() : classesSelect()) + " WHERE " + predicate + classesOrder() + " LIMIT ?";
+            String sql = (needsCounts ? classesSelectWithCounts() : classesSelect()) + " WHERE " + predicate + CLASSES_ORDER + " LIMIT ?";
             List<SearchHit> hits = new ArrayList<>();
             try (PreparedStatement statement = connection.prepareStatement(sql)) {
                 int next = 1;

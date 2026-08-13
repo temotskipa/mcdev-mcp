@@ -513,6 +513,7 @@ public final class CallgraphBundleWriter implements AutoCloseable {
 
     @FunctionalInterface
     interface PointerPublisher {
+        @SuppressWarnings("unused")
         void replace(Path source, Path target) throws IOException;
     }
 

@@ -35,6 +35,22 @@ abstract class Sha256FileTask : DefaultTask() {
 }
 
 @CacheableTask
+abstract class Utf8TextFileTask : DefaultTask() {
+    @get:Input
+    abstract val content: Property<String>
+
+    @get:OutputFile
+    abstract val outputFile: RegularFileProperty
+
+    @TaskAction
+    fun writeText() {
+        val output = outputFile.get().asFile.toPath()
+        Files.createDirectories(output.parent)
+        Files.writeString(output, content.get(), StandardCharsets.UTF_8)
+    }
+}
+
+@CacheableTask
 abstract class DependencyPolicyCheck : DefaultTask() {
     @get:Input
     abstract val declaredExternalSelectors: ListProperty<String>
@@ -130,6 +146,9 @@ java {
         languageVersion.set(JavaLanguageVersion.of(25))
     }
 }
+val conformanceJavaLauncher = javaToolchains.launcherFor {
+    languageVersion.set(JavaLanguageVersion.of(25))
+}
 
 dependencies {
     implementation(project(":mcp-tool-binding"))
@@ -221,6 +240,7 @@ tasks.register<JavaExec>("conformanceRun") {
     description = "Runs the test-only Streamable HTTP conformance server."
     classpath = conformance.runtimeClasspath
     mainClass.set("dev.mcdevmcp.conformance.ConformanceServerMain")
+    javaLauncher.set(conformanceJavaLauncher)
     jvmArgs(
         "--add-opens=java.base/java.lang=ALL-UNNAMED",
         "--add-opens=java.rmi/sun.rmi.transport=ALL-UNNAMED"
@@ -229,6 +249,41 @@ tasks.register<JavaExec>("conformanceRun") {
     systemProperty("mcdevMcpVersion", applicationVersion)
     providers.environmentVariable("MCDEV_MCP_CONFORMANCE_SHUTDOWN_FILE").orNull?.let { shutdownFile ->
         systemProperty("dev.mcdevmcp.conformance.shutdownFile", shutdownFile)
+    }
+}
+
+val conformanceJavaExecutable = tasks.register<Utf8TextFileTask>("conformanceJavaExecutable") {
+    description = "Records the Java 25 executable used to launch the conformance harness."
+    content.set(conformanceJavaLauncher.map { launcher -> launcher.executablePath.asFile.absolutePath })
+    outputFile.set(layout.buildDirectory.file("conformance/java-executable.txt"))
+}
+
+tasks.register<ShadowJar>("conformanceHarnessJar") {
+    group = "verification"
+    description = "Builds the test-only executable Streamable HTTP conformance harness."
+    dependsOn(tasks.named(conformance.classesTaskName), conformanceJavaExecutable)
+    archiveFileName.set("mcdev-mcp-conformance.jar")
+    destinationDirectory.set(layout.buildDirectory.dir("conformance"))
+    from(sourceSets.main.get().output)
+    from(conformance.output)
+    configurations = listOf(
+        project.configurations.runtimeClasspath.get(),
+        project.configurations.getByName(conformance.runtimeClasspathConfigurationName)
+    )
+    duplicatesStrategy = DuplicatesStrategy.INCLUDE
+    mergeServiceFiles()
+    append("META-INF/LICENSE")
+    append("META-INF/LICENSE.txt")
+    append("META-INF/NOTICE")
+    exclude("module-info.class", "META-INF/versions/*/module-info.class")
+    exclude("META-INF/*.SF", "META-INF/*.RSA", "META-INF/*.DSA")
+    exclude(
+        "META-INF/services/io.micrometer.context.ContextAccessor",
+        "META-INF/services/reactor.blockhound.integration.BlockHoundIntegration"
+    )
+    manifest {
+        attributes["Main-Class"] = "dev.mcdevmcp.conformance.ConformanceServerMain"
+        attributes["Implementation-Version"] = applicationVersion
     }
 }
 

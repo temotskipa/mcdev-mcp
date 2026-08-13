@@ -138,6 +138,7 @@ public record CorpusProbeProjectionV1(String schema, CorpusProbeKind kind, Strin
 
     @FunctionalInterface
     private interface ElementWriter<T> {
+        @SuppressWarnings("unused")
         void write(ByteArrayOutputStream output, T value);
     }
 }

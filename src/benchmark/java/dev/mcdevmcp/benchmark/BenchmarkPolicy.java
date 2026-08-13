@@ -89,10 +89,10 @@ public final class BenchmarkPolicy {
         if (result.javaFeature() != (runtime.equals("Java 25") ? 25 : 26)) {
             reasons.add(runtime + " feature must be " + (runtime.equals("Java 25") ? 25 : 26) + " for workflow run " + runNumber);
         }
-        if (!isPositive(result.indexClassesPerSecond())) {
+        if (isNotPositive(result.indexClassesPerSecond())) {
             reasons.add(runtime + " index throughput must be positive for workflow run " + runNumber);
         }
-        if (!isPositive(result.callEdgesPerSecond())) {
+        if (isNotPositive(result.callEdgesPerSecond())) {
             reasons.add(runtime + " callgraph throughput must be positive for workflow run " + runNumber);
         }
         if (result.indexPeakRssBytes() <= 0) {
@@ -103,7 +103,7 @@ public final class BenchmarkPolicy {
         }
     }
 
-    private static boolean isPositive(double value) {
-        return Double.isFinite(value) && value > 0.0d;
+    private static boolean isNotPositive(double value) {
+        return !Double.isFinite(value) || value <= 0.0d;
     }
 }

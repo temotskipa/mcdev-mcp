@@ -32,7 +32,7 @@ class ScriptLoggerTest {
         Path recent = logs.resolve("all." + (now - 60_000L) + ".jsonl");
         Files.writeString(recent, "recent");
 
-        // Make the live file exceed the rotation cap so rotating triggers cleanup.
+        // Make the live file exceed the rotation cap so that rotation triggers cleanup.
         Files.write(logger.allLogPath(), new byte[(int) ScriptLogger.MAX_LOG_BYTES + 1]);
         logger.rotateIfNeeded();
 

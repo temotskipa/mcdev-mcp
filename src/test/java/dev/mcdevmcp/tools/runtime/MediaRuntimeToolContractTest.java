@@ -175,6 +175,7 @@ class MediaRuntimeToolContractTest {
     private record ResultFixture(String label, List<ContentFixture> content, boolean isError) {
     }
 
+    @SuppressWarnings("unused")
     private record ContentFixture(String type, String text, String mimeType, String data) {
     }
 }

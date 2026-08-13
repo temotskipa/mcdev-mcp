@@ -34,6 +34,7 @@ public final class McpbManifestGenerator {
         generate(Path.of(arguments[0]), Path.of(arguments[1]), Path.of(arguments[2]), arguments[3]);
     }
 
+    @SuppressWarnings("unused")
     public static void generate(Path template, Path rootManifest, Path stagingManifest) {
         generate(template, rootManifest, stagingManifest, AppVersion.current());
     }

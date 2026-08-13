@@ -7,6 +7,7 @@ import java.sql.Driver;
 import java.sql.DriverManager;
 import java.util.ServiceLoader;
 
+@SuppressWarnings("JavaPrintToLogpoint")
 final class H2ServiceLoaderProbeMain {
     private H2ServiceLoaderProbeMain() {
     }
@@ -42,14 +43,17 @@ final class H2ServiceLoaderProbeMain {
         System.out.println("H2_SERVICE_OK");
     }
 
+    @SuppressWarnings("SameReturnValue")
     private static String insertSql() {
         return "INSERT INTO smoke(id) VALUES (1)";
     }
 
+    @SuppressWarnings("SameReturnValue")
     private static String selectSql() {
         return "SELECT id FROM smoke";
     }
 
+    @SuppressWarnings("SameReturnValue")
     private static String checkpointSql() {
         return "CHECKPOINT SYNC";
     }

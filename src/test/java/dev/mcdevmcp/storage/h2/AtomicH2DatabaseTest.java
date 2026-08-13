@@ -73,14 +73,17 @@ class AtomicH2DatabaseTest {
         }
     }
 
+    @SuppressWarnings("SameReturnValue")
     private static String markerSelectSql() {
         return "SELECT marker_value FROM marker";
     }
 
+    @SuppressWarnings("SameReturnValue")
     private static String genericMarkerInsertSql() {
         return "INSERT INTO generic_marker(marker_value) VALUES ('generic')";
     }
 
+    @SuppressWarnings("SameReturnValue")
     private static String genericMarkerSelectSql() {
         return "SELECT marker_value FROM generic_marker";
     }

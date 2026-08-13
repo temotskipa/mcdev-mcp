@@ -53,7 +53,7 @@ public final class AnalysisBenchmarkMain {
     private AnalysisBenchmarkMain() {
     }
 
-    @SuppressWarnings("RedundantModifiers")
+    @SuppressWarnings("UnnecessaryModifier")
     public static void main(String[] arguments) throws Exception {
         if (arguments.length > 0 && CHILD_COMMAND.equals(arguments[0])) {
             runChild(ChildArguments.parse(Arrays.copyOfRange(arguments, 1, arguments.length)));
@@ -313,8 +313,7 @@ public final class AnalysisBenchmarkMain {
         Process process = new ProcessBuilder(command).start();
         AtomicReference<IOException> stdoutFailure = new AtomicReference<>();
         AtomicReference<IOException> stderrFailure = new AtomicReference<>();
-        try (BoundedOutput stdout = new BoundedOutput(MAXIMUM_CHILD_OUTPUT_BYTES);
-             BoundedOutput stderr = new BoundedOutput(MAXIMUM_CHILD_OUTPUT_BYTES)) {
+        try (BoundedOutput stdout = new BoundedOutput(); BoundedOutput stderr = new BoundedOutput()) {
             Thread stdoutReader = Thread.ofVirtual().name("benchmark-child-stdout").start(() -> copy(process.getInputStream(), stdout, stdoutFailure));
             Thread stderrReader = Thread.ofVirtual().name("benchmark-child-stderr").start(() -> copy(process.getErrorStream(), stderr, stderrFailure));
             boolean exited;
@@ -467,17 +466,12 @@ public final class AnalysisBenchmarkMain {
     }
 
     private static final class BoundedOutput extends OutputStream {
-        private final int limit;
         private final ByteArrayOutputStream bytes = new ByteArrayOutputStream();
         private boolean overflowed;
 
-        private BoundedOutput(int limit) {
-            this.limit = limit;
-        }
-
         @Override
         public synchronized void write(int value) {
-            if (bytes.size() < limit) {
+            if (bytes.size() < MAXIMUM_CHILD_OUTPUT_BYTES) {
                 bytes.write(value);
             }
             else {
@@ -488,7 +482,7 @@ public final class AnalysisBenchmarkMain {
         @Override
         @SuppressWarnings("NullableProblems")
         public synchronized void write(byte[] buffer, int offset, int length) {
-            int accepted = Math.min(length, limit - bytes.size());
+            int accepted = Math.min(length, MAXIMUM_CHILD_OUTPUT_BYTES - bytes.size());
             if (accepted > 0) {
                 bytes.write(buffer, offset, accepted);
             }

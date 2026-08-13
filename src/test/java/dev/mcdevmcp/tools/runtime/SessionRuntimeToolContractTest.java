@@ -153,8 +153,8 @@ class SessionRuntimeToolContractTest {
             default ->
                     CompletableFuture.failedFuture(new AssertionError("Unexpected endpoint: " + request.endpoint().wireName()));
         })) {
-            // Session logging is opt-in: with no MCDEV_SESSION_LOG_DIR the logger is not
-            // constructed and no script-log files are written anywhere.
+            // Session logging is opt-in. Without MCDEV_SESSION_LOG_DIR, the logger is not
+            // constructed, and no script-log files are written anywhere.
             AppEnvironment disabled = new AppEnvironment(Map.of());
             ToolCatalog disabledCatalog = ToolCatalog.load(disabled, CompleteToolBindings.including(MAPPER, RuntimeToolModule.handlers(harness.session(), MAPPER, disabled)), MAPPER);
             assertEquals("2", dispatch(disabledCatalog, "mc_execute", Map.of("code", "return 2")).content().getFirst().text());

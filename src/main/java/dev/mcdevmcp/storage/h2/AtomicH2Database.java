@@ -12,6 +12,7 @@ import java.util.Objects;
 
 public final class AtomicH2Database {
     public static final Duration WRITE_LOCK_TIMEOUT = Duration.ofSeconds(30);
+    private static final String CHECKPOINT_SQL = "CHECKPOINT SYNC";
 
     private final H2DatabasePromotion promotion;
 
@@ -31,7 +32,7 @@ public final class AtomicH2Database {
                 validator.validate(connection);
                 connection.commit();
                 try (Statement statement = connection.createStatement()) {
-                    statement.execute(checkpointSql());
+                    statement.execute(CHECKPOINT_SQL);
                 }
                 return result;
             } catch (Exception exception) {
@@ -43,10 +44,6 @@ public final class AtomicH2Database {
                 throw exception;
             }
         }
-    }
-
-    private static String checkpointSql() {
-        return "CHECKPOINT SYNC";
     }
 
     public <T> T rebuild(Path target, Duration lockTimeout, DatabaseBuilder<T> builder, DatabaseValidator validator) throws IOException, SQLException {

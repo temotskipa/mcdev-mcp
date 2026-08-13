@@ -70,6 +70,7 @@ public final class BundleFiles {
         }
     }
 
+    @SuppressWarnings("unused")
     public static void force(Path file) throws IOException {
         try (FileChannel channel = FileChannel.open(file, StandardOpenOption.WRITE)) {
             channel.force(true);
