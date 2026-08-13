@@ -5,6 +5,7 @@ import dev.mcdevmcp.mcp.tool.ToolBinding;
 import dev.mcdevmcp.mcp.tool.ToolResult;
 import dev.mcdevmcp.storage.callgraph.CallgraphRepository;
 import dev.mcdevmcp.storage.model.MethodReference;
+import dev.mcdevmcp.support.AppVersion;
 
 import java.io.IOException;
 import java.util.List;
@@ -26,10 +27,10 @@ final class McFindRefsTool {
             String methodName = arguments.methodName().display();
             CallgraphRepository.PublicationStatus publicationStatus = CallgraphRepository.publicationStatus(support.paths().callgraphBundle(version));
             if (publicationStatus == CallgraphRepository.PublicationStatus.CORRUPT) {
-                return ToolResult.text("Version " + version.value() + " has corrupt callgraph data.\n\n" + "STOP and ask the USER to run this command in their terminal:\n" + "  java -jar mcdev-mcp-3.0.0.jar callgraph -v " + version.value() + "\n\n" + "Or for full reinitialization:\n  java -jar mcdev-mcp-3.0.0.jar init -v " + version.value());
+                return ToolResult.text("Version " + version.value() + " has corrupt callgraph data.\n\n" + "STOP and ask the USER to run this command in their terminal:\n" + "  java -jar " + AppVersion.executableJarName() + " callgraph -v " + version.value() + "\n\n" + "Or for full reinitialization:\n  java -jar " + AppVersion.executableJarName() + " init -v " + version.value());
             }
             if (publicationStatus == CallgraphRepository.PublicationStatus.ABSENT) {
-                return ToolResult.text("Version " + version.value() + " does not have callgraph data.\n\n" + "STOP and ask the USER to run this command in their terminal:\n" + "  java -jar mcdev-mcp-3.0.0.jar callgraph -v " + version.value() + "\n\n" + "Or for full reinitialization:\n  java -jar mcdev-mcp-3.0.0.jar init -v " + version.value());
+                return ToolResult.text("Version " + version.value() + " does not have callgraph data.\n\n" + "STOP and ask the USER to run this command in their terminal:\n" + "  java -jar " + AppVersion.executableJarName() + " callgraph -v " + version.value() + "\n\n" + "Or for full reinitialization:\n  java -jar " + AppVersion.executableJarName() + " init -v " + version.value());
             }
             var limit = LIMIT.normalize(arguments.limit().value());
             int queryLimit = limit.value() + 1;

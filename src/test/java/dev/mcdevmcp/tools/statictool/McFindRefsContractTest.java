@@ -9,6 +9,7 @@ import dev.mcdevmcp.storage.callgraph.CallgraphDataRecord;
 import dev.mcdevmcp.storage.h2.SymbolSchema;
 import dev.mcdevmcp.storage.model.MinecraftVersion;
 import dev.mcdevmcp.support.AppEnvironment;
+import dev.mcdevmcp.support.AppVersion;
 import dev.mcdevmcp.support.Cancellation;
 import io.modelcontextprotocol.json.McpJsonDefaults;
 import org.junit.jupiter.api.AfterEach;
@@ -182,10 +183,10 @@ class McFindRefsContractTest {
                      Version 1.21.nocg does not have callgraph data.
                      
                      STOP and ask the USER to run this command in their terminal:
-                       java -jar mcdev-mcp-3.0.0.jar callgraph -v 1.21.nocg
+                       java -jar %s callgraph -v 1.21.nocg
                      
                      Or for full reinitialization:
-                       java -jar mcdev-mcp-3.0.0.jar init -v 1.21.nocg""", text(catalog, "mc_find_refs", Map.of("className", "x.Y", "methodName", "z", "direction", "callers", "version", NO_GRAPH.value())));
+                       java -jar %s init -v 1.21.nocg""".formatted(AppVersion.executableJarName(), AppVersion.executableJarName()), text(catalog, "mc_find_refs", Map.of("className", "x.Y", "methodName", "z", "direction", "callers", "version", NO_GRAPH.value())));
 
         ToolResult missingClass = result(catalog, Map.of("methodName", "hit", "direction", "callers"));
         assertTrue(missingClass.isError());
@@ -195,11 +196,11 @@ class McFindRefsContractTest {
         assertEquals("Failed to query callgraph for undefined#undefined (undefined): Wrong API use : tried to bind a " + "value of an unknown type (undefined).", missingAll.content().getFirst().text());
         assertEquals("No callers found for 42#hit", text(catalog, "mc_find_refs", Map.of("className", 42, "methodName", "hit", "direction", "callers")));
 
-        assertEquals("Active version set to 1.21.bad.\nIndexed: yes\nCallgraph: corrupt\n\nSTOP and ask the USER to run this command in their terminal:\n  java -jar mcdev-mcp-3.0.0.jar callgraph -v 1.21.bad\n\nOr for full reinitialization:\n  java -jar mcdev-mcp-3.0.0.jar init -v 1.21.bad", text(catalog, "mc_version", Map.of("action", "set", "version", BAD_GRAPH.value())));
+        assertEquals("Active version set to 1.21.bad.\nIndexed: yes\nCallgraph: corrupt\n\nSTOP and ask the USER to run this command in their terminal:\n  java -jar " + AppVersion.executableJarName() + " callgraph -v 1.21.bad\n\nOr for full reinitialization:\n  java -jar " + AppVersion.executableJarName() + " init -v 1.21.bad", text(catalog, "mc_version", Map.of("action", "set", "version", BAD_GRAPH.value())));
 
         ToolResult corrupt = result(catalog, Map.of("className", "x.Y", "methodName", "z", "direction", "callers", "version", BAD_GRAPH.value()));
         assertFalse(corrupt.isError());
-        assertEquals("Version 1.21.bad has corrupt callgraph data.\n\nSTOP and ask the USER to run this command in their terminal:\n  java -jar mcdev-mcp-3.0.0.jar callgraph -v 1.21.bad\n\nOr for full reinitialization:\n  java -jar mcdev-mcp-3.0.0.jar init -v 1.21.bad", corrupt.content().getFirst().text());
+        assertEquals("Version 1.21.bad has corrupt callgraph data.\n\nSTOP and ask the USER to run this command in their terminal:\n  java -jar " + AppVersion.executableJarName() + " callgraph -v 1.21.bad\n\nOr for full reinitialization:\n  java -jar " + AppVersion.executableJarName() + " init -v 1.21.bad", corrupt.content().getFirst().text());
     }
 
     @Test

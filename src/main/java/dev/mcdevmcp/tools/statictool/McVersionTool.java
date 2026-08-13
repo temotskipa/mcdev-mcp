@@ -1,12 +1,15 @@
 package dev.mcdevmcp.tools.statictool;
 
+import dev.mcdevmcp.app.MinecraftVersionValidator;
 import dev.mcdevmcp.mcp.binding.ArgumentDecoder;
 import dev.mcdevmcp.mcp.tool.ToolBinding;
 import dev.mcdevmcp.mcp.tool.ToolResult;
 import dev.mcdevmcp.storage.callgraph.CallgraphRepository;
 import dev.mcdevmcp.storage.model.MinecraftVersion;
+import dev.mcdevmcp.support.AppVersion;
 
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.util.ArrayList;
 import java.util.stream.Collectors;
 
@@ -33,15 +36,15 @@ final class McVersionTool {
         }
         MinecraftVersion version = new MinecraftVersion(arguments.version());
         if (!Files.isDirectory(support.paths().sourceRoot(version))) {
-            return ToolResult.text("Version " + arguments.version() + " not initialized.\n\n" + "STOP and ask the USER to run this command in their terminal:\n" + "  java -jar mcdev-mcp-3.0.0.jar init -v " + arguments.version() + "\n\n" + "This will download, decompile, and index Minecraft " + arguments.version() + " sources.");
+            return ToolResult.text("Version " + arguments.version() + " not initialized.\n\n" + "STOP and ask the USER to run this command in their terminal:\n" + "  java -jar " + AppVersion.executableJarName() + " init -v " + arguments.version() + "\n\n" + "This will download, decompile, and index Minecraft " + arguments.version() + " sources.");
         }
         if (!support.indexed(version)) {
-            return ToolResult.text("Version " + arguments.version() + " not indexed.\n\n" + "STOP and ask the USER to run this command in their terminal:\n" + "  java -jar mcdev-mcp-3.0.0.jar init -v " + arguments.version() + "\n\n" + "This will index Minecraft " + arguments.version() + " sources.");
+            return ToolResult.text("Version " + arguments.version() + " not indexed.\n\n" + "STOP and ask the USER to run this command in their terminal:\n" + "  java -jar " + AppVersion.executableJarName() + " init -v " + arguments.version() + "\n\n" + "This will index Minecraft " + arguments.version() + " sources.");
         }
         support.activate(version);
         CallgraphRepository.PublicationStatus status = CallgraphRepository.publicationStatus(support.paths().callgraphBundle(version));
         if (status == CallgraphRepository.PublicationStatus.CORRUPT) {
-            return ToolResult.text("Active version set to " + arguments.version() + ".\nIndexed: yes\nCallgraph: corrupt\n\n" + "STOP and ask the USER to run this command in their terminal:\n" + "  java -jar mcdev-mcp-3.0.0.jar callgraph -v " + arguments.version() + "\n\n" + "Or for full reinitialization:\n  java -jar mcdev-mcp-3.0.0.jar init -v " + arguments.version());
+            return ToolResult.text("Active version set to " + arguments.version() + ".\nIndexed: yes\nCallgraph: corrupt\n\n" + "STOP and ask the USER to run this command in their terminal:\n" + "  java -jar " + AppVersion.executableJarName() + " callgraph -v " + arguments.version() + "\n\n" + "Or for full reinitialization:\n  java -jar " + AppVersion.executableJarName() + " init -v " + arguments.version());
         }
         String callgraph = status == CallgraphRepository.PublicationStatus.PUBLISHED ? "yes" : "no";
         return ToolResult.text("Active version set to " + arguments.version() + ".\nIndexed: yes\nCallgraph: " + callgraph);
@@ -50,8 +53,9 @@ final class McVersionTool {
     private static ToolResult list(StaticToolSupport support) {
         var versions = new ArrayList<String>();
         PathWalker.listDirectories(support.paths().cacheRoot().resolve("cache"), versions);
+        versions.removeIf(value -> !isInitializedVersion(support, value));
         if (versions.isEmpty()) {
-            return ToolResult.text("No Minecraft versions found.\n\nRun this command to initialize a version:\n  java -jar mcdev-mcp-3.0.0.jar init -v <version>\n\nExample:\n  java -jar mcdev-mcp-3.0.0.jar init -v 1.21.11");
+            return ToolResult.text("No Minecraft versions found.\n\nRun this command to initialize a version:\n  java -jar " + AppVersion.executableJarName() + " init -v <version>\n\nExample:\n  java -jar " + AppVersion.executableJarName() + " init -v 1.21.11");
         }
         versions.sort(String::compareTo);
         String lines = versions.stream().map(value -> {
@@ -68,5 +72,18 @@ final class McVersionTool {
         }).collect(Collectors.joining("\n"));
         String active = support.active().map(version -> "\n\nActive version: " + version.value()).orElse("\n\nNo active version set. Use mc_version with action=\"set\".");
         return ToolResult.text("Available Minecraft versions:\n" + lines + active);
+    }
+
+    private static boolean isInitializedVersion(StaticToolSupport support, String value) {
+        if (!MinecraftVersionValidator.isSupported(value)) {
+            return false;
+        }
+        try {
+            MinecraftVersion version = new MinecraftVersion(value);
+            return Files.isDirectory(support.paths().versionCache(version), LinkOption.NOFOLLOW_LINKS)
+                    && Files.isDirectory(support.paths().sourceRoot(version), LinkOption.NOFOLLOW_LINKS);
+        } catch (IllegalArgumentException ignored) {
+            return false;
+        }
     }
 }

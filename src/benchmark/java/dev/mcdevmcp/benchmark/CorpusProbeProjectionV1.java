@@ -1,10 +1,6 @@
 package dev.mcdevmcp.benchmark;
 
-import dev.mcdevmcp.storage.model.ClassSymbol;
-import dev.mcdevmcp.storage.model.FieldSymbol;
-import dev.mcdevmcp.storage.model.MethodReference;
-import dev.mcdevmcp.storage.model.MethodSymbol;
-import dev.mcdevmcp.storage.model.ParameterSymbol;
+import dev.mcdevmcp.storage.model.*;
 
 import java.io.ByteArrayOutputStream;
 import java.nio.ByteBuffer;

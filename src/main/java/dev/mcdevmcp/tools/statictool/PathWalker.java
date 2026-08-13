@@ -2,6 +2,7 @@ package dev.mcdevmcp.tools.statictool;
 
 import java.io.IOException;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.util.List;
 
@@ -10,9 +11,9 @@ final class PathWalker {
     }
 
     static void listDirectories(Path root, List<String> result) {
-        if (!Files.isDirectory(root)) return;
+        if (!Files.isDirectory(root, LinkOption.NOFOLLOW_LINKS)) return;
         try (var files = Files.list(root)) {
-            files.filter(Files::isDirectory).forEach(path -> result.add(path.getFileName().toString()));
+            files.filter(path -> Files.isDirectory(path, LinkOption.NOFOLLOW_LINKS)).forEach(path -> result.add(path.getFileName().toString()));
         } catch (IOException ignored) {
         }
     }

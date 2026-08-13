@@ -9,6 +9,7 @@ import dev.mcdevmcp.storage.model.ClassSymbol;
 import dev.mcdevmcp.storage.model.MinecraftVersion;
 import dev.mcdevmcp.storage.model.SourceNamespace;
 import dev.mcdevmcp.support.AppEnvironment;
+import dev.mcdevmcp.support.AppVersion;
 import dev.mcdevmcp.support.Cancellation;
 import io.modelcontextprotocol.json.McpJsonDefaults;
 import io.modelcontextprotocol.json.TypeRef;
@@ -193,7 +194,37 @@ class StaticToolContractTest {
         assertTrue(text(catalog, "mc_get_method", Map.of("className", "alpha.Alpha", "methodName", "NEEDLE")).startsWith("// Method: alpha.Alpha#needle\n"));
         assertTrue(text(catalog, "mc_get_class", Map.of("className", "alpha.Alpha", "view", "full")).endsWith("public void Needle() { }\n}\n"));
         assertEquals("Class not found: Alpha", text(catalog, "mc_get_class", Map.of("className", "Alpha")));
-        assertEquals("Version 9.9.9 not initialized. STOP and ask the USER to run this command in their terminal:\n  java -jar mcdev-mcp-3.0.0.jar init -v 9.9.9\n\nThis will download, decompile, and index Minecraft 9.9.9 sources (including callgraph).", text(catalog, "mc_search", Map.of("query", "needle", "version", "9.9.9")));
+        String executableJar = AppVersion.executableJarName();
+        assertEquals("Version 9.9.9 not initialized.\n\nSTOP and ask the USER to run this command in their terminal:\n  java -jar " + executableJar + " init -v 9.9.9\n\nThis will download, decompile, and index Minecraft 9.9.9 sources.", text(catalog, "mc_version", Map.of("action", "set", "version", "9.9.9")));
+        assertEquals("Version 9.9.9 not initialized. STOP and ask the USER to run this command in their terminal:\n  java -jar " + executableJar + " init -v 9.9.9\n\nThis will download, decompile, and index Minecraft 9.9.9 sources (including callgraph).", text(catalog, "mc_search", Map.of("query", "needle", "version", "9.9.9")));
+    }
+
+    @Test
+    void versionListIgnoresForeignIncompleteAndLinkedCacheDirectories() throws Exception {
+        PlatformPaths paths = fixture();
+        Path cache = paths.cacheRoot().resolve("cache");
+        Files.createDirectories(cache.resolve("not-a-version/client"));
+        Files.createDirectories(cache.resolve("fabric-api-0.102.0+1.21.5/client"));
+        Files.createDirectories(paths.versionCache(new MinecraftVersion("1.21.7")));
+
+        ToolCatalog catalog = catalog(paths);
+        String expected = """
+                          Available Minecraft versions:
+                          1.21.4: not decompiled, not indexed, no callgraph
+                          1.21.5: not decompiled, indexed, no callgraph
+                          1.21.6: not decompiled, indexed, no callgraph
+
+                          No active version set. Use mc_version with action="set".""";
+        assertEquals(expected, text(catalog, "mc_version", Map.of("action", "list")));
+
+        Path outside = temporaryDirectory.resolve("outside-version");
+        Files.createDirectories(outside.resolve("client"));
+        try {
+            Files.createSymbolicLink(paths.versionCache(new MinecraftVersion("1.21.8")), outside);
+            assertEquals(expected, text(catalog, "mc_version", Map.of("action", "list")));
+        } catch (UnsupportedOperationException | java.io.IOException | SecurityException ignored) {
+            // Windows developer-mode policy can disallow symlink creation in test environments.
+        }
     }
 
     @Test

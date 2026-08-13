@@ -56,9 +56,17 @@ public final class AnalysisPipeline implements AnalysisOperations {
     }
 
     public static AnalysisPipeline production(PlatformPaths paths) {
+        return production(paths, System.getenv());
+    }
+
+    static AnalysisPipeline production(PlatformPaths paths, Map<String, String> environment) {
         Objects.requireNonNull(paths, "paths");
-        int threads = Math.max(1, Runtime.getRuntime().availableProcessors());
+        int threads = IndexRequest.threadsFromEnvironment(environment);
         return new AnalysisPipeline(paths, VersionManifestClient.production(), DownloadService.production(), new MappingConverter(), new MinecraftRemapper(threads), new MinecraftDecompiler(), new SourceIndexer(), new CallgraphScanner(), threads);
+    }
+
+    int parallelism() {
+        return threads;
     }
 
     private static boolean javaSourceCacheMissing(Path root, Cancellation cancellation) throws IOException, InterruptedException {

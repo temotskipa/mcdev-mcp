@@ -4,6 +4,7 @@ import dev.mcdevmcp.mcp.McpContractTestSupport;
 import dev.mcdevmcp.mcp.binding.ArgumentDecoder;
 import dev.mcdevmcp.mcp.resource.ResourceCatalog;
 import dev.mcdevmcp.mcp.tool.*;
+import dev.mcdevmcp.support.AppVersion;
 import dev.mcdevmcp.support.Cancellation;
 import io.modelcontextprotocol.json.McpJsonDefaults;
 import io.modelcontextprotocol.json.McpJsonMapper;
@@ -127,7 +128,8 @@ class McpStdioIntegrationTest {
                     assertProtocolMatches("tools-list-default.json", tools, false);
                     var versionResult = MAPPER.convertValue(versionList.get("result"), MAP_TYPE);
                     var versionContent = MAPPER.convertValue(versionResult.get("content"), LIST_OF_MAPS_TYPE);
-                    assertEquals("No Minecraft versions found.\n\nRun this command to initialize a version:\n  java -jar mcdev-mcp-3.0.0.jar init -v <version>\n\nExample:\n  java -jar mcdev-mcp-3.0.0.jar init -v 1.21.11", versionContent.getFirst().get("text"));
+                    String executableJar = AppVersion.executableJarName();
+                    assertEquals("No Minecraft versions found.\n\nRun this command to initialize a version:\n  java -jar " + executableJar + " init -v <version>\n\nExample:\n  java -jar " + executableJar + " init -v 1.21.11", versionContent.getFirst().get("text"));
                     assertNotEquals(Boolean.TRUE, versionResult.get("isError"));
                     assertProtocolMatches("resources-list.json", resources, false);
                     var resourceResult = MAPPER.convertValue(resource.get("result"), MAP_TYPE);

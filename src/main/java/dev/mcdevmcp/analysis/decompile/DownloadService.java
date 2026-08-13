@@ -1,5 +1,6 @@
 package dev.mcdevmcp.analysis.decompile;
 
+import dev.mcdevmcp.support.AppVersion;
 import dev.mcdevmcp.support.Cancellation;
 import dev.mcdevmcp.support.ProgressSink;
 
@@ -49,7 +50,7 @@ public final class DownloadService {
             cancellation.throwIfCancelled();
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
-            throw new IOException("download cancelled; retry with java -jar mcdev-mcp-3.0.0.jar init", exception);
+            throw new IOException("download cancelled; retry with java -jar " + AppVersion.executableJarName() + " init", exception);
         }
     }
 

@@ -12,6 +12,17 @@ $source = Join-Path $scratchRoot "source"
 $fixtures = Join-Path $scratchRoot "fixtures"
 $verify = Join-Path $PSScriptRoot "verify-release-assets.ps1"
 $expectedNames = @("mcdev-mcp-$version.jar", "mcdev-mcp-$version.jar.sha256", "mcdev-mcp-$version.mcpb")
+$releaseWorkflow = Get-Content -LiteralPath (Join-Path $root ".github\workflows\release.yml") -Raw
+$publishStep = [regex]::Match(
+    $releaseWorkflow,
+    '(?ms)^      - name: Publish GitHub Release\r?\n(?<body>.*?)(?=^      - name:|\z)'
+)
+if (-not $publishStep.Success) {
+    throw "Release workflow has no publish step"
+}
+if ($publishStep.Groups["body"].Value -notmatch '(?m)^          GH_REPO: \$\{\{ github\.repository \}\}\r?$') {
+    throw "Release publish step must identify the repository explicitly"
+}
 
 function Reset-Fixtures {
     Remove-Item -LiteralPath $fixtures -Recurse -Force -ErrorAction SilentlyContinue

@@ -9,6 +9,7 @@ import java.util.Properties;
 
 public final class AppVersion {
     public static final String TEST_FALLBACK_PROPERTY = "dev.mcdevmcp.test.versionFallback";
+    private static final String ARTIFACT_NAME = "mcdev-mcp";
 
     private AppVersion() {
     }
@@ -36,5 +37,9 @@ public final class AppVersion {
         } catch (IOException exception) {
             throw new IllegalStateException("Unable to read application version", exception);
         }
+    }
+
+    public static String executableJarName() {
+        return ARTIFACT_NAME + "-" + current() + ".jar";
     }
 }

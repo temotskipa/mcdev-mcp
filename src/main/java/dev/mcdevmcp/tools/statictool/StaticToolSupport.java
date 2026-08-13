@@ -8,6 +8,7 @@ import dev.mcdevmcp.storage.h2.VersionStateRepository;
 import dev.mcdevmcp.storage.model.ClassSymbol;
 import dev.mcdevmcp.storage.model.MinecraftVersion;
 import dev.mcdevmcp.storage.model.SourceNamespace;
+import dev.mcdevmcp.support.AppVersion;
 
 import javax.lang.model.element.Modifier;
 import java.io.IOException;
@@ -58,10 +59,10 @@ final class StaticToolSupport {
         if (explicit != null && !explicit.isBlank()) {
             MinecraftVersion version = new MinecraftVersion(explicit);
             if (!Files.isDirectory(paths.sourceRoot(version))) {
-                throw new ExpectedVersionException("Version " + explicit + " not initialized. STOP and ask the USER to run this command in their terminal:\n" + "  java -jar mcdev-mcp-3.0.0.jar init -v " + explicit + "\n\n" + "This will download, decompile, and index Minecraft " + explicit + " sources (including callgraph).");
+                throw new ExpectedVersionException("Version " + explicit + " not initialized. STOP and ask the USER to run this command in their terminal:\n" + "  java -jar " + AppVersion.executableJarName() + " init -v " + explicit + "\n\n" + "This will download, decompile, and index Minecraft " + explicit + " sources (including callgraph).");
             }
             if (!states.isH2Ready(version)) {
-                throw new ExpectedVersionException("Version " + explicit + " not indexed. STOP and ask the USER to run this command in their terminal:\n" + "  java -jar mcdev-mcp-3.0.0.jar init -v " + explicit + "\n\n" + "This will index Minecraft " + explicit + " sources (including callgraph).");
+                throw new ExpectedVersionException("Version " + explicit + " not indexed. STOP and ask the USER to run this command in their terminal:\n" + "  java -jar " + AppVersion.executableJarName() + " init -v " + explicit + "\n\n" + "This will index Minecraft " + explicit + " sources (including callgraph).");
             }
             return version;
         }

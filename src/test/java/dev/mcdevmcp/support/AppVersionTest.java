@@ -15,6 +15,11 @@ class AppVersionTest {
     }
 
     @Test
+    void derivesTheExecutableJarNameFromTheApplicationVersion() {
+        assertEquals("mcdev-mcp-" + System.getProperty("mcdevMcpVersion") + ".jar", AppVersion.executableJarName());
+    }
+
+    @Test
     void rejectsTestResourceFallbackWhenTheTestGuardIsDisabled() {
         String property = AppVersion.TEST_FALLBACK_PROPERTY;
         String previous = System.getProperty(property);

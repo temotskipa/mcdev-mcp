@@ -10,10 +10,7 @@ import io.modelcontextprotocol.json.TypeRef;
 
 import javax.tools.JavaCompiler;
 import javax.tools.ToolProvider;
-import java.io.BufferedReader;
-import java.io.IOException;
-import java.io.InputStreamReader;
-import java.io.OutputStreamWriter;
+import java.io.*;
 import java.net.URL;
 import java.net.URLClassLoader;
 import java.nio.charset.StandardCharsets;
@@ -25,25 +22,9 @@ import java.nio.file.attribute.BasicFileAttributes;
 import java.sql.Driver;
 import java.sql.DriverManager;
 import java.time.Duration;
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
-import java.util.List;
-import java.util.Locale;
-import java.util.Map;
-import java.util.Objects;
-import java.util.ServiceLoader;
-import java.util.Set;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
-import java.util.jar.Attributes;
-import java.util.jar.JarEntry;
-import java.util.jar.JarFile;
-import java.util.jar.JarOutputStream;
-import java.util.jar.Manifest;
+import java.util.*;
+import java.util.concurrent.*;
+import java.util.jar.*;
 
 /**
  * Exercises release-critical behavior using only these precompiled harness classes and the exact shaded artifact.
@@ -338,7 +319,7 @@ public final class RuntimeArtifactSmokeMain {
         return McpJsonDefaults.getMapper().convertValue(value, LIST_OF_MAPS_TYPE);
     }
 
-    private static Future<String> readAll(ExecutorService executor, java.io.InputStream stream) {
+    private static Future<String> readAll(ExecutorService executor, InputStream stream) {
         return executor.submit(() -> new String(stream.readAllBytes(), StandardCharsets.UTF_8));
     }
 

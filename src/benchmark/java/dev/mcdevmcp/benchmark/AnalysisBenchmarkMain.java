@@ -22,18 +22,11 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
+import java.security.DigestOutputStream;
 import java.security.MessageDigest;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Comparator;
-import java.util.HashMap;
-import java.util.HexFormat;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Optional;
+import java.util.*;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -239,7 +232,7 @@ public final class AnalysisBenchmarkMain {
     static String sha256(Path file) throws Exception {
         MessageDigest digest = MessageDigest.getInstance("SHA-256");
         try (InputStream input = Files.newInputStream(file);
-             OutputStream output = new java.security.DigestOutputStream(OutputStream.nullOutputStream(), digest)) {
+             OutputStream output = new DigestOutputStream(OutputStream.nullOutputStream(), digest)) {
             input.transferTo(output);
         }
         return HexFormat.of().formatHex(digest.digest());

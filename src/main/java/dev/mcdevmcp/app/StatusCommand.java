@@ -12,6 +12,7 @@ import picocli.CommandLine.Spec;
 
 import java.io.IOException;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
@@ -40,7 +41,7 @@ public final class StatusCommand implements Callable<Integer> {
             return 0;
         }
 
-        List<MinecraftVersion> versions = new CacheCleaner(paths).cachedVersions().stream().filter(candidate -> MinecraftVersionValidator.isSupported(candidate.value())).filter(candidate -> Files.isDirectory(paths.versionCache(candidate))).toList();
+        List<MinecraftVersion> versions = new CacheCleaner(paths).cachedVersions().stream().filter(candidate -> MinecraftVersionValidator.isSupported(candidate.value())).filter(this::hasSourceDirectory).toList();
         if (versions.isEmpty()) {
             spec.commandLine().getOut().println("Status: Not initialized");
             spec.commandLine().getOut().println("Run `mcdev-mcp init -v <version>` to set up.");
@@ -51,6 +52,11 @@ public final class StatusCommand implements Callable<Integer> {
         versions.forEach(candidate -> printCachedVersion(states, candidate));
         spec.commandLine().getOut().printf("Total: %d version(s) cached%n", versions.size());
         return 0;
+    }
+
+    private boolean hasSourceDirectory(MinecraftVersion candidate) {
+        return Files.isDirectory(paths.versionCache(candidate), LinkOption.NOFOLLOW_LINKS)
+                && Files.isDirectory(paths.sourceRoot(candidate), LinkOption.NOFOLLOW_LINKS);
     }
 
     private void printVersion(VersionStateRepository states, MinecraftVersion value) {
