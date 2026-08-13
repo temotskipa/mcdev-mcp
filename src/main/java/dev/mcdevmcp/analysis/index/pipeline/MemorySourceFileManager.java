@@ -192,4 +192,9 @@ final class MemorySourceFileManager extends ForwardingJavaFileManager<StandardJa
         }
         return super.getJavaFileForOutput(location, className, kind, sibling);
     }
+
+    @Override
+    public void close() throws IOException {
+        fileManager.flush();
+    }
 }

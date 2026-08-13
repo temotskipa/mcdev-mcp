@@ -5,7 +5,16 @@ import dev.mcdevmcp.analysis.index.IndexRequest;
 import dev.mcdevmcp.support.Cancellation;
 
 import java.io.IOException;
+import java.lang.classfile.AnnotationValue;
 import java.lang.classfile.ClassFile;
+import java.lang.classfile.ClassModel;
+import java.lang.classfile.attribute.AnnotationDefaultAttribute;
+import java.lang.classfile.attribute.InnerClassInfo;
+import java.lang.classfile.attribute.InnerClassesAttribute;
+import java.lang.constant.ClassDesc;
+import java.lang.constant.ConstantDescs;
+import java.lang.constant.MethodTypeDesc;
+import java.lang.reflect.AccessFlag;
 import java.nio.file.Path;
 import java.util.*;
 import java.util.zip.ZipEntry;
@@ -17,7 +26,7 @@ record CompilerClasspath(List<CompilerClassFile> classes) {
         this(List.copyOf(sorted.values()));
     }
 
-    private static final List<String> BUILTIN_ANNOTATIONS = List.of("org.jetbrains.annotations.Nullable", "org.jetbrains.annotations.NotNull", "org.jetbrains.annotations.Contract", "org.jetbrains.annotations.Range", "org.jetbrains.annotations.NonNls", "org.jetbrains.annotations.UnknownNullability", "org.jspecify.annotations.Nullable", "org.jspecify.annotations.NonNull", "org.jspecify.annotations.NullMarked", "org.jspecify.annotations.NullUnmarked", "javax.annotation.Nullable", "javax.annotation.Nonnull", "javax.annotation.CheckForNull", "javax.annotation.ParametersAreNonnullByDefault");
+    private static final List<String> BUILTIN_ANNOTATIONS = List.of("org.jetbrains.annotations.Nullable", "org.jetbrains.annotations.NotNull", "org.jetbrains.annotations.Contract", "org.jetbrains.annotations.Range", "org.jetbrains.annotations.NonNls", "org.jetbrains.annotations.UnknownNullability", "org.jetbrains.annotations.ApiStatus", "org.jetbrains.annotations.ApiStatus$Internal", "org.jetbrains.annotations.ApiStatus$Experimental", "org.jetbrains.annotations.ApiStatus$ScheduledForRemoval", "org.jetbrains.annotations.ApiStatus$NonExtendable", "org.jetbrains.annotations.ApiStatus$OverrideOnly", "org.jetbrains.annotations.ApiStatus$AvailableSince", "org.jetbrains.annotations.ApiStatus$Obsolete", "org.jspecify.annotations.Nullable", "org.jspecify.annotations.NonNull", "org.jspecify.annotations.NullMarked", "org.jspecify.annotations.NullUnmarked", "javax.annotation.Nullable", "javax.annotation.Nonnull", "javax.annotation.CheckForNull", "javax.annotation.CheckReturnValue", "javax.annotation.ParametersAreNonnullByDefault", "javax.annotation.concurrent.Immutable", "javax.annotation.concurrent.ThreadSafe", "javax.annotation.concurrent.NotThreadSafe", "javax.annotation.concurrent.GuardedBy");
 
     static CompilerClasspath read(IndexRequest request) throws IOException, InterruptedException {
         Map<String, CompilerClassFile> classes = new LinkedHashMap<>();
@@ -33,19 +42,34 @@ record CompilerClasspath(List<CompilerClassFile> classes) {
 
     private static void registerBuiltinAnnotations(Map<String, CompilerClassFile> classes) {
         ClassFile classFile = ClassFile.of();
+        ClassDesc apiStatusDesc = ClassDesc.of("org.jetbrains.annotations.ApiStatus");
+        List<String> apiStatusInners = List.of("Internal", "Experimental", "ScheduledForRemoval", "NonExtendable", "OverrideOnly", "AvailableSince", "Obsolete");
+        List<InnerClassInfo> apiStatusInnerInfos = new ArrayList<>();
+        for (String innerName : apiStatusInners) {
+            apiStatusInnerInfos.add(InnerClassInfo.of(ClassDesc.of("org.jetbrains.annotations.ApiStatus$" + innerName), java.util.Optional.of(apiStatusDesc), java.util.Optional.of(innerName), AccessFlag.PUBLIC.mask() | AccessFlag.STATIC.mask() | AccessFlag.INTERFACE.mask() | AccessFlag.ANNOTATION.mask() | AccessFlag.ABSTRACT.mask()));
+        }
+
         for (String binaryName : BUILTIN_ANNOTATIONS) {
             if (!classes.containsKey(binaryName)) {
-                byte[] bytes = classFile.build(java.lang.constant.ClassDesc.of(binaryName), clb -> {
-                    clb.withFlags(java.lang.reflect.AccessFlag.PUBLIC, java.lang.reflect.AccessFlag.INTERFACE, java.lang.reflect.AccessFlag.ANNOTATION, java.lang.reflect.AccessFlag.ABSTRACT);
-                    clb.withInterfaceSymbols(java.lang.constant.ClassDesc.of("java.lang.annotation.Annotation"));
+                byte[] bytes = classFile.build(ClassDesc.of(binaryName), clb -> {
+                    clb.withFlags(AccessFlag.PUBLIC, AccessFlag.INTERFACE, AccessFlag.ANNOTATION, AccessFlag.ABSTRACT);
+                    clb.withInterfaceSymbols(ClassDesc.of("java.lang.annotation.Annotation"));
                     if (binaryName.equals("org.jetbrains.annotations.Contract")) {
-                        clb.withMethod("value", java.lang.constant.MethodTypeDesc.of(java.lang.constant.ClassDesc.of("java.lang.String")), java.lang.reflect.AccessFlag.PUBLIC.mask() | java.lang.reflect.AccessFlag.ABSTRACT.mask(), mb -> {});
-                        clb.withMethod("pure", java.lang.constant.MethodTypeDesc.of(java.lang.constant.ConstantDescs.CD_boolean), java.lang.reflect.AccessFlag.PUBLIC.mask() | java.lang.reflect.AccessFlag.ABSTRACT.mask(), mb -> {});
-                    } else if (binaryName.equals("org.jetbrains.annotations.Range")) {
-                        clb.withMethod("from", java.lang.constant.MethodTypeDesc.of(java.lang.constant.ConstantDescs.CD_long), java.lang.reflect.AccessFlag.PUBLIC.mask() | java.lang.reflect.AccessFlag.ABSTRACT.mask(), mb -> {});
-                        clb.withMethod("to", java.lang.constant.MethodTypeDesc.of(java.lang.constant.ConstantDescs.CD_long), java.lang.reflect.AccessFlag.PUBLIC.mask() | java.lang.reflect.AccessFlag.ABSTRACT.mask(), mb -> {});
-                    } else if (binaryName.equals("org.jetbrains.annotations.NonNls") || binaryName.equals("org.jetbrains.annotations.UnknownNullability")) {
-                        clb.withMethod("value", java.lang.constant.MethodTypeDesc.of(java.lang.constant.ClassDesc.of("java.lang.String")), java.lang.reflect.AccessFlag.PUBLIC.mask() | java.lang.reflect.AccessFlag.ABSTRACT.mask(), mb -> {});
+                        clb.withMethod("value", MethodTypeDesc.of(ClassDesc.of("java.lang.String")), AccessFlag.PUBLIC.mask() | AccessFlag.ABSTRACT.mask(), mb -> mb.with(AnnotationDefaultAttribute.of(AnnotationValue.ofString(""))));
+                        clb.withMethod("pure", MethodTypeDesc.of(ConstantDescs.CD_boolean), AccessFlag.PUBLIC.mask() | AccessFlag.ABSTRACT.mask(), mb -> mb.with(AnnotationDefaultAttribute.of(AnnotationValue.ofBoolean(false))));
+                        clb.withMethod("mutates", MethodTypeDesc.of(ClassDesc.of("java.lang.String")), AccessFlag.PUBLIC.mask() | AccessFlag.ABSTRACT.mask(), mb -> mb.with(AnnotationDefaultAttribute.of(AnnotationValue.ofString(""))));
+                    }
+                    else if (binaryName.equals("org.jetbrains.annotations.Range")) {
+                        clb.withMethod("from", MethodTypeDesc.of(ConstantDescs.CD_long), AccessFlag.PUBLIC.mask() | AccessFlag.ABSTRACT.mask(), mb -> mb.with(AnnotationDefaultAttribute.of(AnnotationValue.ofLong(Long.MIN_VALUE))));
+                        clb.withMethod("to", MethodTypeDesc.of(ConstantDescs.CD_long), AccessFlag.PUBLIC.mask() | AccessFlag.ABSTRACT.mask(), mb -> mb.with(AnnotationDefaultAttribute.of(AnnotationValue.ofLong(Long.MAX_VALUE))));
+                    }
+                    else if (binaryName.startsWith("org.jetbrains.annotations.ApiStatus")) {
+                        clb.with(InnerClassesAttribute.of(apiStatusInnerInfos));
+                        clb.withMethod("value", MethodTypeDesc.of(ClassDesc.of("java.lang.String")), AccessFlag.PUBLIC.mask() | AccessFlag.ABSTRACT.mask(), mb -> mb.with(AnnotationDefaultAttribute.of(AnnotationValue.ofString(""))));
+                        clb.withMethod("inVersion", MethodTypeDesc.of(ClassDesc.of("java.lang.String")), AccessFlag.PUBLIC.mask() | AccessFlag.ABSTRACT.mask(), mb -> mb.with(AnnotationDefaultAttribute.of(AnnotationValue.ofString(""))));
+                    }
+                    else if (binaryName.equals("org.jetbrains.annotations.NonNls") || binaryName.equals("org.jetbrains.annotations.UnknownNullability") || binaryName.equals("org.jetbrains.annotations.Nullable") || binaryName.equals("org.jetbrains.annotations.NotNull") || binaryName.equals("javax.annotation.concurrent.GuardedBy")) {
+                        clb.withMethod("value", MethodTypeDesc.of(ClassDesc.of("java.lang.String")), AccessFlag.PUBLIC.mask() | AccessFlag.ABSTRACT.mask(), mb -> mb.with(AnnotationDefaultAttribute.of(AnnotationValue.ofString(""))));
                     }
                 });
                 String packageName = binaryName.contains(".") ? binaryName.substring(0, binaryName.lastIndexOf('.')) : "";
@@ -57,14 +81,19 @@ record CompilerClasspath(List<CompilerClassFile> classes) {
     private static void readJar(Path jar, Cancellation cancellation, Map<String, CompilerClassFile> classes) throws IOException, InterruptedException {
         ClassFile classFile = ClassFile.of();
         try (ZipFile zip = new ZipFile(jar.toFile())) {
-            List<? extends ZipEntry> entries = zip.stream().filter(entry -> !entry.isDirectory() && entry.getName().endsWith(".class")).sorted(Comparator.comparing(ZipEntry::getName)).toList();
+            List<? extends ZipEntry> entries = zip.stream().filter(entry -> !entry.isDirectory() && entry.getName().endsWith(".class") && !entry.getName().startsWith("META-INF/")).sorted(Comparator.comparing(ZipEntry::getName)).toList();
             for (ZipEntry entry : entries) {
                 cancellation.throwIfCancelled();
                 byte[] bytes;
                 try (var input = zip.getInputStream(entry)) {
                     bytes = input.readAllBytes();
                 }
-                var model = classFile.parse(bytes);
+                var model = (ClassModel) null;
+                try {
+                    model = classFile.parse(bytes);
+                } catch (IllegalArgumentException ignored) {
+                    continue;
+                }
                 if (model.isModuleInfo()) {
                     continue;
                 }
