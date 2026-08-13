@@ -34,6 +34,11 @@ final class JavacBatchParser {
                 try {
                     List<? extends CompilationUnitTree> units = stream(task.parse());
                     JavacDiagnostics.failOnSyntaxErrors(diagnostics.getDiagnostics(), corpus);
+                    Set<URI> ownedSources = batch.stream().map(DecodedSource::uri).collect(Collectors.toUnmodifiableSet());
+                    Set<URI> explicitlyParsedSources = units.stream().map(unit -> unit.getSourceFile().toUri()).collect(Collectors.toUnmodifiableSet());
+                    if (!explicitlyParsedSources.equals(ownedSources)) {
+                        throw new IndexBuildException("Javac batch did not parse exactly its owned compilation units");
+                    }
                     Map<ClassTree, List<? extends Tree>> declaredMembers = new IdentityHashMap<>();
                     Map<MethodTree, List<? extends VariableTree>> declaredMethodParameters = new IdentityHashMap<>();
                     Map<Tree, SourceRange> declaredRanges = new IdentityHashMap<>();
@@ -76,8 +81,7 @@ final class JavacBatchParser {
                     for (CompilationUnitTree unit : parsedUnits.values()) {
                         executableBodies.put(unit.getSourceFile().toUri(), new ExecutableBodyScanner(unit, trees.getSourcePositions()).scan());
                     }
-                    Set<URI> ownedSources = batch.stream().map(DecodedSource::uri).collect(Collectors.toUnmodifiableSet());
-                    return new ParsedBatch(parsedTypes, JavacDiagnostics.classifyDiagnostics(diagnostics.getDiagnostics(), corpus, executableBodies, ownedSources));
+                    return new ParsedBatch(parsedTypes, units.stream().map(unit -> corpus.require(unit.getSourceFile().toUri()).relativeName()).toList(), JavacDiagnostics.classifyDiagnostics(diagnostics.getDiagnostics(), corpus, executableBodies, ownedSources));
                 } finally {
                     if (!finishAttempted && !Thread.currentThread().isInterrupted() && !request.cancellation().isCancelled()) {
                         finish(task);

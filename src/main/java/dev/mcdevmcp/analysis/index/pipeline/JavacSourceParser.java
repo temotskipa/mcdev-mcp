@@ -32,7 +32,7 @@ final class JavacSourceParser {
 
     ParsedIndex parse(IndexRequest request, ClassFileTypeCatalog catalog, CompilerClasspath classpath, SourceCorpus discovered) throws IndexBuildException, InterruptedException {
         if (discovered.sources().isEmpty()) {
-            return new ParsedIndex(List.of(), List.of());
+            return new ParsedIndex(List.of(), List.of(), List.of());
         }
         SourceCorpus corpus = preflight(request, classpath, discovered);
         List<DecodedSource> sources = corpus.sources();
@@ -50,12 +50,14 @@ final class JavacSourceParser {
 
     private ParsedIndex assembleParsedIndex(List<ParsedBatch> batches) {
         List<ParsedType> types = new ArrayList<>();
+        List<String> units = new ArrayList<>();
         List<IndexDiagnostic> diagnostics = new ArrayList<>();
         for (ParsedBatch batch : batches) {
             types.addAll(batch.types());
+            units.addAll(batch.parsedCompilationUnits());
             diagnostics.addAll(batch.diagnostics());
         }
-        return new ParsedIndex(types, diagnostics);
+        return new ParsedIndex(types, units, diagnostics);
     }
 
     private SourceCorpus preflight(IndexRequest request, CompilerClasspath classpath, SourceCorpus discovered) throws IndexBuildException, InterruptedException {

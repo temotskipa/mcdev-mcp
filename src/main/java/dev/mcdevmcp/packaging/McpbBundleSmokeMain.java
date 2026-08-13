@@ -25,7 +25,8 @@ public final class McpbBundleSmokeMain {
     private McpbBundleSmokeMain() {
     }
 
-    static void main(String[] arguments) throws Exception {
+    @SuppressWarnings("all")
+    public static void main(String[] arguments) throws Exception {
         if (arguments.length != 1) {
             throw new IllegalArgumentException("Usage: McpbBundleSmokeMain <extracted-bundle-directory>");
         }

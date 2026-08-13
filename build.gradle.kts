@@ -2,6 +2,66 @@ import com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar
 import groovy.json.JsonSlurper
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
+import java.security.MessageDigest
+import java.util.HexFormat
+import kotlin.collections.ArrayDeque
+
+@CacheableTask
+abstract class Sha256FileTask : DefaultTask() {
+    @get:InputFile
+    @get:PathSensitive(PathSensitivity.NONE)
+    abstract val inputFile: RegularFileProperty
+
+    @get:OutputFile
+    abstract val checksumFile: RegularFileProperty
+
+    @TaskAction
+    fun writeChecksum() {
+        val input = inputFile.get().asFile.toPath()
+        val digest = MessageDigest.getInstance("SHA-256")
+        Files.newInputStream(input).use { stream ->
+            val buffer = ByteArray(16 * 1024)
+            while (true) {
+                val read = stream.read(buffer)
+                if (read < 0) break
+                digest.update(buffer, 0, read)
+            }
+        }
+        val text = "${HexFormat.of().formatHex(digest.digest())}  ${input.fileName}${System.lineSeparator()}"
+        val output = checksumFile.get().asFile.toPath()
+        Files.createDirectories(output.parent)
+        Files.writeString(output, text, StandardCharsets.US_ASCII)
+    }
+}
+
+@CacheableTask
+abstract class DependencyPolicyCheck : DefaultTask() {
+    @get:Input
+    abstract val declaredExternalSelectors: ListProperty<String>
+
+    @get:Input
+    abstract val productionRuntimeModules: SetProperty<String>
+
+    @TaskAction
+    fun verifyDependencyPolicy() {
+        val dynamic = declaredExternalSelectors.get().filter { selector ->
+            val version = selector.substringAfterLast(':')
+            version.contains('+') || version.startsWith("latest.") ||
+                    version.startsWith('[') || version.startsWith('(') ||
+                    version.endsWith(']') || version.endsWith(')')
+        }
+        check(dynamic.isEmpty()) {
+            "Dynamic or ranged dependency selectors are forbidden: ${dynamic.joinToString()}"
+        }
+
+        val containerModules = productionRuntimeModules.get().filter { module ->
+            module.startsWith("org.apache.tomcat") || module.startsWith("jakarta.servlet")
+        }
+        check(containerModules.isEmpty()) {
+            "Conformance HTTP container leaked into production runtimeClasspath: ${containerModules.joinToString()}"
+        }
+    }
+}
 
 abstract class McpSdkSnapshotCheck : DefaultTask() {
     @get:Input
@@ -109,6 +169,45 @@ val conformance = sourceSets.create("conformance") {
     runtimeClasspath += output + compileClasspath
 }
 
+val benchmark = sourceSets.create("benchmark") {
+    java.srcDir("src/benchmark/java")
+    resources.srcDir("src/benchmark/resources")
+    compileClasspath += sourceSets.main.get().output + configurations.runtimeClasspath.get()
+    runtimeClasspath += output + compileClasspath
+}
+
+val runtimeTest = sourceSets.create("runtimeTest") {
+    java.srcDir("src/runtimeTest/java")
+    resources.srcDir("src/runtimeTest/resources")
+    compileClasspath += sourceSets.main.get().output + configurations.runtimeClasspath.get()
+    runtimeClasspath += output + compileClasspath
+}
+
+dependencies {
+    add(benchmark.implementationConfigurationName, sourceSets.main.get().output)
+    add(sourceSets.test.get().implementationConfigurationName, benchmark.output)
+    add(runtimeTest.implementationConfigurationName, sourceSets.main.get().output)
+}
+
+tasks.named<JavaCompile>(sourceSets.test.get().compileJavaTaskName) {
+    dependsOn(tasks.named(benchmark.classesTaskName))
+    options.release.set(25)
+    options.encoding = "UTF-8"
+    options.compilerArgs.addAll(listOf("-Xlint:all", "-Werror"))
+}
+
+tasks.named<JavaCompile>(benchmark.compileJavaTaskName) {
+    options.release.set(25)
+    options.encoding = "UTF-8"
+    options.compilerArgs.addAll(listOf("-Xlint:all", "-Werror"))
+}
+
+tasks.named<JavaCompile>(runtimeTest.compileJavaTaskName) {
+    options.release.set(25)
+    options.encoding = "UTF-8"
+    options.compilerArgs.addAll(listOf("-Xlint:all", "-Werror"))
+}
+
 tasks.named(conformance.processResourcesTaskName) {
     dependsOn(generateTestVersionProperties)
 }
@@ -181,6 +280,10 @@ tasks.named<ShadowJar>("shadowJar") {
     append("META-INF/LICENSE.txt")
     append("META-INF/NOTICE")
     exclude("META-INF/*.SF", "META-INF/*.RSA", "META-INF/*.DSA")
+    exclude(
+        "META-INF/services/io.micrometer.context.ContextAccessor",
+        "META-INF/services/reactor.blockhound.integration.BlockHoundIntegration"
+    )
     manifest {
         attributes[
             "Main-Class"
@@ -225,6 +328,99 @@ tasks.named("assemble") {
     dependsOn(generateMcpbManifest)
 }
 
+val shadedJarOutput = layout.buildDirectory.file("libs/mcdev-mcp-$applicationVersion.jar")
+val releaseJar = layout.buildDirectory.file("distributions/mcdev-mcp-$applicationVersion.jar")
+val jarChecksum = layout.buildDirectory.file("distributions/mcdev-mcp-$applicationVersion.jar.sha256")
+val generatedMcpbManifest = layout.buildDirectory.file("mcpb/manifest.json")
+
+val stageReleaseJar = tasks.register<Copy>("stageReleaseJar") {
+    group = "distribution"
+    description = "Copies the exact shaded server JAR into the release-asset directory."
+    dependsOn(tasks.named("shadowJar"))
+    from(shadedJarOutput)
+    into(layout.buildDirectory.dir("distributions"))
+}
+
+val generateJarChecksum = tasks.register<Sha256FileTask>("generateJarChecksum") {
+    group = "distribution"
+    description = "Writes the SHA-256 checksum for the exact shaded server JAR."
+    dependsOn(stageReleaseJar)
+    inputFile.set(releaseJar)
+    checksumFile.set(jarChecksum)
+}
+
+val runtimeTestBundle = tasks.register<Zip>("runtimeTestBundle") {
+    group = "distribution"
+    description = "Packages the Java-25-built JAR, checksum, manifest, and compiled runtime smoke harness."
+    dependsOn(tasks.named(runtimeTest.classesTaskName), generateJarChecksum, generateMcpbManifest)
+    archiveBaseName.set("mcdev-mcp-runtime-test")
+    archiveVersion.set(applicationVersion)
+    isPreserveFileTimestamps = false
+    isReproducibleFileOrder = true
+    archiveClassifier.set("")
+    destinationDirectory.set(layout.buildDirectory.dir("bundles"))
+    isPreserveFileTimestamps = false
+    isReproducibleFileOrder = true
+    from(releaseJar) { into("server") }
+    from(jarChecksum) { into("server") }
+    from(generatedMcpbManifest) { into("server") }
+    from(runtimeTest.output) { into("harness") }
+    duplicatesStrategy = DuplicatesStrategy.FAIL
+}
+
+val benchmarkBundle = tasks.register<Zip>("benchmarkBundle") {
+    group = "distribution"
+    description = "Packages the Java-25-built JAR, checksum, and compiled benchmark harness."
+    dependsOn(tasks.named(benchmark.classesTaskName), generateJarChecksum)
+    archiveBaseName.set("mcdev-mcp-benchmark")
+    archiveVersion.set(applicationVersion)
+    archiveClassifier.set("")
+    destinationDirectory.set(layout.buildDirectory.dir("bundles"))
+    isPreserveFileTimestamps = false
+    isReproducibleFileOrder = true
+    from(releaseJar) { into("server") }
+    from(jarChecksum) { into("server") }
+    from(benchmark.output) { into("harness") }
+    duplicatesStrategy = DuplicatesStrategy.FAIL
+}
+
+tasks.register<Sync>("java25ArtifactBundle") {
+    group = "distribution"
+    description = "Stages the complete Java-25 build-once provenance payload for CI consumers."
+    dependsOn(runtimeTestBundle, benchmarkBundle, generateMcpbManifest)
+    into(layout.buildDirectory.dir("artifacts/java25"))
+    from(releaseJar)
+    from(jarChecksum)
+    from(generatedMcpbManifest) {
+        rename { "manifest.json" }
+    }
+    from(runtimeTestBundle)
+    from(benchmarkBundle)
+    duplicatesStrategy = DuplicatesStrategy.FAIL
+}
+
+tasks.register<JavaExec>("runtimeArtifactSmoke") {
+    group = "verification"
+    description = "Runs the build-once runtime smoke against the exact shaded JAR without compilation."
+    dependsOn(tasks.named(runtimeTest.classesTaskName), generateJarChecksum)
+    classpath = files(runtimeTest.output, releaseJar)
+    mainClass.set("dev.mcdevmcp.packaging.RuntimeArtifactSmokeMain")
+    args(releaseJar.get().asFile.absolutePath)
+}
+
+tasks.register<Exec>("releaseVerifierTest") {
+    group = "verification"
+    description = "Exercises positive and negative release-provenance verifier fixtures."
+    dependsOn(generateJarChecksum, generateMcpbManifest)
+    commandLine(
+        "pwsh",
+        "-NoLogo",
+        "-NoProfile",
+        "-File",
+        layout.projectDirectory.file("scripts/test-verify-release-assets.ps1").asFile.absolutePath
+    )
+}
+
 tasks.named("build") {
     dependsOn(tasks.named("shadowJar"))
 }
@@ -246,6 +442,19 @@ val mcpSdkSnapshotCheck = tasks.register<McpSdkSnapshotCheck>("mcpSdkSnapshotChe
     group = "verification"
     description = "Verifies the reviewed MCP SDK snapshot runtime dependencies."
     resolvedModules.set(runtimeModuleVersions)
+}
+
+val externalDependencySelectors = configurations.flatMap { configuration ->
+    configuration.dependencies.withType<ExternalModuleDependency>().map { dependency ->
+        "${dependency.group}:${dependency.name}:${dependency.version.orEmpty()}"
+    }
+}.distinct().sorted()
+
+val dependencyPolicyCheck = tasks.register<DependencyPolicyCheck>("dependencyPolicyCheck") {
+    group = "verification"
+    description = "Rejects dynamic dependencies and production-scoped conformance containers."
+    declaredExternalSelectors.set(externalDependencySelectors)
+    productionRuntimeModules.set(runtimeModuleVersions.map { modules -> modules.keys })
 }
 
 val cutoverCheck = tasks.register("cutoverCheck") {
@@ -328,9 +537,11 @@ val cutoverCheck = tasks.register("cutoverCheck") {
                 violations += "forbidden tracked file: $normalizedPath"
             }
 
+            val isPackagingLockfile = normalizedPath == "packaging/mcpb/package-lock.json"
             val mustInspectContents =
                 (lowercasePath.endsWith(".json") &&
                         normalizedPath != "contracts/node-oracle.json" &&
+                        !isPackagingLockfile &&
                         !normalizedPath.startsWith("src/test/resources/contracts/") &&
                         !normalizedPath.startsWith("src/test/resources/oracle/") &&
                         !normalizedPath.startsWith("docs/superpowers/")) ||
@@ -802,5 +1013,7 @@ val cutoverCheck = tasks.register("cutoverCheck") {
 
 tasks.named("check") {
     dependsOn(cutoverCheck)
+    dependsOn(dependencyPolicyCheck)
     dependsOn(mcpSdkSnapshotCheck)
+    dependsOn(tasks.named("releaseVerifierTest"))
 }

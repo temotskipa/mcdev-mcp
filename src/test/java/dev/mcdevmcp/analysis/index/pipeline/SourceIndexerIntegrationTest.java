@@ -99,6 +99,10 @@ class SourceIndexerIntegrationTest {
         IndexSummary one = new SourceIndexer().build(IndexerTestSupport.request(sources, jar, oneDatabase, 1));
         IndexSummary four = new SourceIndexer().build(IndexerTestSupport.request(sources, jar, fourDatabase, 4));
 
+        assertEquals(one.evidence().discoveredCompilationUnits(), one.evidence().parsedCompilationUnits());
+        assertEquals(List.of("index/module/package-info.java", "module-info.java"), one.evidence().typeFreeCompilationUnits());
+        assertEquals(one.evidence(), four.evidence());
+
         assertEquals(0, one.types());
         assertEquals(0, four.types());
         assertEquals(IndexerTestSupport.dump(oneDatabase), IndexerTestSupport.dump(fourDatabase));

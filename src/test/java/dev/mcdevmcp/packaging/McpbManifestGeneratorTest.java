@@ -68,6 +68,26 @@ class McpbManifestGeneratorTest {
         assertTrue(generatedStaging.containsKey("server"));
     }
 
+    @Test
+    void repeatedGenerationProducesIdenticalBytesAndTemplateOrder() throws Exception {
+        var root = Files.createTempDirectory("mcpb-manifest-reproducibility");
+        var template = root.resolve("template.json");
+        Files.writeString(template, new JsonResourceReader(McpJsonDefaults.getMapper()).readText("/contracts/mcpb/manifest.json"));
+        var firstRoot = root.resolve("first/manifest.json");
+        var firstStaging = root.resolve("first/staging/manifest.json");
+        var secondRoot = root.resolve("second/manifest.json");
+        var secondStaging = root.resolve("second/staging/manifest.json");
+
+        McpbManifestGenerator.generate(template, firstRoot, firstStaging, "3.0.0");
+        McpbManifestGenerator.generate(template, secondRoot, secondStaging, "3.0.0");
+
+        assertArrayEquals(Files.readAllBytes(firstRoot), Files.readAllBytes(secondRoot));
+        assertArrayEquals(Files.readAllBytes(firstStaging), Files.readAllBytes(secondStaging));
+        Map<String, Object> generated = McpJsonDefaults.getMapper().readValue(Files.readString(firstRoot), new TypeRef<>() {
+        });
+        assertEquals(List.of("manifest_version", "name", "display_name", "description", "author", "version", "tools", "user_config"), List.copyOf(generated.keySet()));
+    }
+
     @SuppressWarnings("unchecked")
     private static Map<String, Object> map(Object value) {
         assertInstanceOf(Map.class, value);

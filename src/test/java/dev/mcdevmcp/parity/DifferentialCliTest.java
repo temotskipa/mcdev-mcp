@@ -96,7 +96,7 @@ final class DifferentialCliTest {
     Stream<DynamicTest> offlineValidationAndMissingCacheBehaviorMatchesNodeOracle() {
         // Task 13 requires CLI help, validation, missing-cache, legacy-status, and clean parity,
         // while static-tool success/error/empty/truncation is exercised over STDIO. Successful init
-        // requires downloads, and Node callgraph success clones/builds java-callgraph2, so neither
+        // requires downloads, and Node callgraph success builds an external generator, so neither
         // belongs in this offline process gate. The rebuild-success test below exercises the
         // feasible stateful command against one shared source fixture despite the intentionally
         // different JSON and H2 index layouts.
@@ -827,7 +827,7 @@ final class DifferentialCliTest {
             Path legacyCallgraph = cacheRoot.resolve("cache").resolve(version).resolve("callgraph");
             writeArtifact(legacyCallgraph.resolve("callgraph.db"), "legacy");
             writeArtifact(legacyCallgraph.resolve("client-remapped.jar"), "remapped");
-            writeArtifact(legacyCallgraph.resolve("_javacg2_config").resolve("config.properties"), "output.dir=fixture\n");
+            writeArtifact(legacyCallgraph.resolve("_generator_config").resolve("config.properties"), "output.dir=fixture\n");
         }
 
         static void populateJsonlCallgraph(Path cacheRoot, String version) throws IOException {

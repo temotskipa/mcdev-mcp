@@ -10,62 +10,135 @@ permissions:
   contents: read
 
 jobs:
-  build:
-    name: Java ${{ matrix.runtime }} tests
+  build-java25:
+    name: Build once on Java 25
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        runtime: [ 25, 26 ]
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-java@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
         with:
           distribution: temurin
-          java-version: |
-            25
-            26
-      - name: Test with Java ${{ matrix.runtime }}
+          java-version: '25'
+          cache: gradle
+      - name: Test and produce the Java 25 provenance payload
         run: >-
-          ./gradlew
-          -Dorg.gradle.java.installations.paths="$JAVA_HOME_25_X64,$JAVA_HOME_26_X64"
-          clean check cutoverCheck shadowJar --console=plain
-          -PtestJavaVersion=${{ matrix.runtime }}
-      - uses: actions/upload-artifact@v7
-        if: matrix.runtime == '25'
+          ./gradlew clean test check shadowJar runtimeTestBundle benchmarkBundle
+          java25ArtifactBundle --console=plain
+      - name: Verify staged JAR checksum
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd build/artifacts/java25
+          test "$(find . -maxdepth 1 -name 'mcdev-mcp-*.jar' -type f | wc -l)" -eq 1
+          test "$(find . -maxdepth 1 -name 'mcdev-mcp-*.jar.sha256' -type f | wc -l)" -eq 1
+          sha256sum --check mcdev-mcp-*.jar.sha256
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: mcdev-mcp-java-25
-          path: build/libs/mcdev-mcp-*.jar
+          name: java25-build
+          path: build/artifacts/java25/*
+          if-no-files-found: error
           retention-days: 7
 
-  conformance:
-    name: Official MCP conformance
+  runtime-matrix:
+    name: Exact JAR on ${{ matrix.os }} Java ${{ matrix.java }}
+    needs: build-java25
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            java: '25'
+          - os: ubuntu-latest
+            java: '26'
+          - os: macos-latest
+            java: '25'
+    steps:
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
+        with:
+          distribution: temurin
+          java-version: ${{ matrix.java }}
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: java25-build
+          path: downloaded
+      - name: Verify and execute the compiled runtime harness
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          bundles=(downloaded/mcdev-mcp-runtime-test-*.zip)
+          test "${#bundles[@]}" -eq 1
+          rm -rf runtime
+          mkdir runtime
+          unzip -q "${bundles[0]}" -d runtime
+          cd runtime/server
+          checksums=(mcdev-mcp-*.jar.sha256)
+          test "${#checksums[@]}" -eq 1
+          recorded="$(awk '{print $1}' "${checksums[0]}")"
+          jars=(mcdev-mcp-*.jar)
+          test "${#jars[@]}" -eq 1
+          if command -v sha256sum >/dev/null 2>&1; then
+            actual="$(sha256sum "${jars[0]}" | awk '{print $1}')"
+          else
+            actual="$(shasum -a 256 "${jars[0]}" | awk '{print $1}')"
+          fi
+          test "$actual" = "$recorded"
+          cd ../..
+          java --illegal-native-access=deny \
+            -cp "runtime/harness:runtime/server/${jars[0]#./}" \
+            dev.mcdevmcp.packaging.RuntimeArtifactSmokeMain \
+            "runtime/server/${jars[0]#./}"
+
+  mcpb:
+    name: Pack exact Java 25 JAR as MCPB
+    needs: build-java25
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-java@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
         with:
           distribution: temurin
-          java-version: 25
-      - uses: actions/setup-node@v6
+          java-version: '25'
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
-          node-version: 24
-      - name: Run official MCP conformance 0.1.16
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: packaging/mcpb/package-lock.json
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: java25-build
+          path: downloaded
+      - name: Pack, extract, and smoke the downloaded bytes
+        shell: pwsh
+        run: |
+          $jar = @(Get-ChildItem downloaded\mcdev-mcp-*.jar)
+          $checksum = @(Get-ChildItem downloaded\mcdev-mcp-*.jar.sha256)
+          if ($jar.Count -ne 1 -or $checksum.Count -ne 1) { throw "Expected one JAR and checksum" }
+          .\scripts\build-mcpb.ps1 -SkipBuild -Jar $jar[0].FullName -Checksum $checksum[0].FullName -Manifest downloaded\manifest.json
+          Copy-Item $jar[0].FullName build\distributions\$($jar[0].Name)
+          Copy-Item $checksum[0].FullName build\distributions\$($checksum[0].Name)
+          $version = (Get-Content gradle.properties | Where-Object { $_ -like 'version=*' }).Substring(8)
+          .\scripts\verify-release-assets.ps1 -DryRun -Version $version -Directory build\distributions
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: mcpb
+          path: build/distributions/*.mcpb
+          if-no-files-found: error
+
+  conformance:
+    name: Official MCP conformance 0.1.16
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: gradle
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: '24'
+      - name: Run pinned official MCP conformance
         shell: pwsh
         run: .\scripts\run-conformance.ps1
-
-
-  macos:
-    name: macOS (symlink-prefix regression)
-    runs-on: macos-latest
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-java@v5
-        with:
-          distribution: temurin
-          java-version: "25"
-      - name: Test with Java 25 on macOS
-        run: >-
-          ./gradlew
-          -Dorg.gradle.java.installations.paths="$JAVA_HOME_25_AARCH64"
-          clean check cutoverCheck shadowJar --console=plain
-          -PtestJavaVersion=25

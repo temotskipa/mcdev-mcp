@@ -2,6 +2,7 @@ package dev.mcdevmcp.analysis.index.pipeline;
 
 import dev.mcdevmcp.analysis.classfile.ClassFileTypeCatalog;
 import dev.mcdevmcp.analysis.index.IndexBuildException;
+import dev.mcdevmcp.analysis.index.IndexBuildEvidence;
 import dev.mcdevmcp.analysis.index.IndexRequest;
 import dev.mcdevmcp.analysis.index.IndexSummary;
 
@@ -88,7 +89,12 @@ public final class SourceIndexPipeline {
             IndexCounts counts = writer.write(request, parsed, remappedJarSha256, Instant.now());
             Duration elapsed = Duration.ofNanos(System.nanoTime() - started);
             request.progress().report("index", 100, "Indexed " + counts.types() + " Java types");
-            return new IndexSummary(counts.packages(), counts.types(), counts.fields(), counts.methods(), counts.parameters(), elapsed);
+            var discovered = corpus.sources().stream().map(DecodedSource::relativeName).toList();
+            var parsedUnits = parsed.parsedCompilationUnits();
+            var typed = parsed.types().stream().map(type -> new PortablePath(type.sourcePath()).value()).distinct().toList();
+            var typeFree = parsedUnits.stream().filter(path -> !typed.contains(path)).toList();
+            var diagnostics = parsed.diagnostics().stream().map(IndexDiagnostic::display).toList();
+            return new IndexSummary(counts.packages(), counts.types(), counts.fields(), counts.methods(), counts.parameters(), elapsed, new IndexBuildEvidence(discovered, parsedUnits, typed, typeFree, diagnostics));
         } catch (IndexBuildException exception) {
             throw exception;
         } catch (InterruptedException exception) {

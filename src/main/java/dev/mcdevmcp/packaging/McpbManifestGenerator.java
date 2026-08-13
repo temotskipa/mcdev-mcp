@@ -12,6 +12,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -54,15 +55,15 @@ public final class McpbManifestGenerator {
         var manifest = new LinkedHashMap<>(template);
         manifest.put("version", version);
         manifest.put("tools", toolMetadata(tools));
-        return Map.copyOf(manifest);
+        return Collections.unmodifiableMap(manifest);
     }
 
     static Map<String, Object> stagingManifest(Map<String, Object> rootManifest) {
         Objects.requireNonNull(rootManifest, "rootManifest");
         var staging = new LinkedHashMap<>(rootManifest);
         staging.computeIfPresent("tools", (_, tools) -> stagingTools(tools));
-        staging.put("server", Map.of("type", "node", "entry_point", STAGING_ENTRY_POINT, "mcp_config", Map.of("command", "node", "args", List.of(STAGING_ENTRY_POINT), "env", Map.of("MCDEV_SESSION_LOG_DIR", "${user_config.script_logs}", "MCDEV_RUN_COMMAND", "${user_config.run_command}", "MCDEV_MCP_DEBUG_LOG", "${user_config.debug_log}", "MCDEV_INDEX_THREADS", "${user_config.index_threads}", "DEBUGBRIDGE_PORT", "${user_config.debugbridge_port}"))));
-        return Map.copyOf(staging);
+        staging.put("server", stagingServer());
+        return Collections.unmodifiableMap(staging);
     }
 
     private static List<Map<String, Object>> stagingTools(Object value) {
@@ -74,7 +75,10 @@ public final class McpbManifestGenerator {
             if (!(tool instanceof Map<?, ?> metadata) || !(metadata.get("name") instanceof String name) || !(metadata.get("description") instanceof String description)) {
                 throw new IllegalArgumentException("MCPB root manifest tool metadata is malformed");
             }
-            result.add(Map.of("name", name, "description", description));
+            var entry = new LinkedHashMap<String, Object>();
+            entry.put("name", name);
+            entry.put("description", description);
+            result.add(Collections.unmodifiableMap(entry));
         }
         return List.copyOf(result);
     }
@@ -86,7 +90,7 @@ public final class McpbManifestGenerator {
             if (!"0.3".equals(result.get("manifest_version"))) {
                 throw new IllegalArgumentException("MCPB manifest template must use manifest_version 0.3");
             }
-            return Map.copyOf(result);
+            return Collections.unmodifiableMap(new LinkedHashMap<>(result));
         } catch (IOException exception) {
             throw new IllegalStateException("Unable to read MCPB manifest template: " + template, exception);
         }
@@ -95,9 +99,33 @@ public final class McpbManifestGenerator {
     private static List<Map<String, Object>> toolMetadata(ToolMetadata[] tools) {
         var result = new ArrayList<Map<String, Object>>(tools.length);
         for (ToolMetadata tool : tools) {
-            result.add(Map.of("name", tool.name(), "description", tool.description(), "inputSchema", tool.inputSchema()));
+            var entry = new LinkedHashMap<String, Object>();
+            entry.put("name", tool.name());
+            entry.put("description", tool.description());
+            entry.put("inputSchema", tool.inputSchema());
+            result.add(Collections.unmodifiableMap(entry));
         }
         return List.copyOf(result);
+    }
+
+    private static Map<String, Object> stagingServer() {
+        var environment = new LinkedHashMap<String, Object>();
+        environment.put("MCDEV_SESSION_LOG_DIR", "${user_config.script_logs}");
+        environment.put("MCDEV_RUN_COMMAND", "${user_config.run_command}");
+        environment.put("MCDEV_MCP_DEBUG_LOG", "${user_config.debug_log}");
+        environment.put("MCDEV_INDEX_THREADS", "${user_config.index_threads}");
+        environment.put("DEBUGBRIDGE_PORT", "${user_config.debugbridge_port}");
+
+        var configuration = new LinkedHashMap<String, Object>();
+        configuration.put("command", "node");
+        configuration.put("args", List.of(STAGING_ENTRY_POINT));
+        configuration.put("env", Collections.unmodifiableMap(environment));
+
+        var server = new LinkedHashMap<String, Object>();
+        server.put("type", "node");
+        server.put("entry_point", STAGING_ENTRY_POINT);
+        server.put("mcp_config", Collections.unmodifiableMap(configuration));
+        return Collections.unmodifiableMap(server);
     }
 
     private static void write(McpJsonMapper mapper, Path target, Map<String, Object> value) {
