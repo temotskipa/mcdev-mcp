@@ -35,22 +35,6 @@ abstract class Sha256FileTask : DefaultTask() {
 }
 
 @CacheableTask
-abstract class Utf8TextFileTask : DefaultTask() {
-    @get:Input
-    abstract val content: Property<String>
-
-    @get:OutputFile
-    abstract val outputFile: RegularFileProperty
-
-    @TaskAction
-    fun writeText() {
-        val output = outputFile.get().asFile.toPath()
-        Files.createDirectories(output.parent)
-        Files.writeString(output, content.get(), StandardCharsets.UTF_8)
-    }
-}
-
-@CacheableTask
 abstract class DependencyPolicyCheck : DefaultTask() {
     @get:Input
     abstract val declaredExternalSelectors: ListProperty<String>
@@ -146,12 +130,8 @@ java {
         languageVersion.set(JavaLanguageVersion.of(25))
     }
 }
-val conformanceJavaLauncher = javaToolchains.launcherFor {
-    languageVersion.set(JavaLanguageVersion.of(25))
-}
-
 dependencies {
-    implementation(project(":mcp-tool-binding"))
+    implementation(project(":mcp-tool-api"))
     implementation("io.modelcontextprotocol.sdk:mcp:2.0.1-SNAPSHOT")
     implementation("info.picocli:picocli:4.7.7")
     implementation("com.h2database:h2:2.4.240")
@@ -181,20 +161,6 @@ sourceSets {
     }
 }
 
-val conformance = sourceSets.create("conformance") {
-    java.srcDir("src/conformance/java")
-    resources.srcDir(layout.buildDirectory.dir("generated-test-resources"))
-    compileClasspath += sourceSets.main.get().output + configurations.runtimeClasspath.get()
-    runtimeClasspath += output + compileClasspath
-}
-
-val benchmark = sourceSets.create("benchmark") {
-    java.srcDir("src/benchmark/java")
-    resources.srcDir("src/benchmark/resources")
-    compileClasspath += sourceSets.main.get().output + configurations.runtimeClasspath.get()
-    runtimeClasspath += output + compileClasspath
-}
-
 val runtimeTest = sourceSets.create("runtimeTest") {
     java.srcDir("src/runtimeTest/java")
     resources.srcDir("src/runtimeTest/resources")
@@ -203,19 +169,10 @@ val runtimeTest = sourceSets.create("runtimeTest") {
 }
 
 dependencies {
-    add(benchmark.implementationConfigurationName, sourceSets.main.get().output)
-    add(sourceSets.test.get().implementationConfigurationName, benchmark.output)
     add(runtimeTest.implementationConfigurationName, sourceSets.main.get().output)
 }
 
 tasks.named<JavaCompile>(sourceSets.test.get().compileJavaTaskName) {
-    dependsOn(tasks.named(benchmark.classesTaskName))
-    options.release.set(25)
-    options.encoding = "UTF-8"
-    options.compilerArgs.addAll(listOf("-Xlint:all", "-Werror"))
-}
-
-tasks.named<JavaCompile>(benchmark.compileJavaTaskName) {
     options.release.set(25)
     options.encoding = "UTF-8"
     options.compilerArgs.addAll(listOf("-Xlint:all", "-Werror"))
@@ -227,64 +184,28 @@ tasks.named<JavaCompile>(runtimeTest.compileJavaTaskName) {
     options.compilerArgs.addAll(listOf("-Xlint:all", "-Werror"))
 }
 
-tasks.named(conformance.processResourcesTaskName) {
-    dependsOn(generateTestVersionProperties)
+val benchmarkClasses = tasks.register("benchmarkClasses") {
+    group = "build"
+    description = "Compatibility alias for the benchmark module classes task."
+    dependsOn(":benchmark:classes")
 }
 
-dependencies {
-    add(conformance.implementationConfigurationName, "org.apache.tomcat.embed:tomcat-embed-core:11.0.24")
-}
-
-tasks.register<JavaExec>("conformanceRun") {
+tasks.register("conformanceRun") {
     group = "verification"
-    description = "Runs the test-only Streamable HTTP conformance server."
-    classpath = conformance.runtimeClasspath
-    mainClass.set("dev.mcdevmcp.conformance.ConformanceServerMain")
-    javaLauncher.set(conformanceJavaLauncher)
-    jvmArgs(
-        "--add-opens=java.base/java.lang=ALL-UNNAMED",
-        "--add-opens=java.rmi/sun.rmi.transport=ALL-UNNAMED"
-    )
-    systemProperty("dev.mcdevmcp.test.versionFallback", "true")
-    systemProperty("mcdevMcpVersion", applicationVersion)
-    providers.environmentVariable("MCDEV_MCP_CONFORMANCE_SHUTDOWN_FILE").orNull?.let { shutdownFile ->
-        systemProperty("dev.mcdevmcp.conformance.shutdownFile", shutdownFile)
-    }
+    description = "Compatibility alias for the conformance module run task."
+    dependsOn(":conformance:conformanceRun")
 }
 
-val conformanceJavaExecutable = tasks.register<Utf8TextFileTask>("conformanceJavaExecutable") {
-    description = "Records the Java 25 executable used to launch the conformance harness."
-    content.set(conformanceJavaLauncher.map { launcher -> launcher.executablePath.asFile.absolutePath })
-    outputFile.set(layout.buildDirectory.file("conformance/java-executable.txt"))
-}
-
-tasks.register<ShadowJar>("conformanceHarnessJar") {
+tasks.register("conformanceJavaExecutable") {
     group = "verification"
-    description = "Builds the test-only executable Streamable HTTP conformance harness."
-    dependsOn(tasks.named(conformance.classesTaskName), conformanceJavaExecutable)
-    archiveFileName.set("mcdev-mcp-conformance.jar")
-    destinationDirectory.set(layout.buildDirectory.dir("conformance"))
-    from(sourceSets.main.get().output)
-    from(conformance.output)
-    configurations = listOf(
-        project.configurations.runtimeClasspath.get(),
-        project.configurations.getByName(conformance.runtimeClasspathConfigurationName)
-    )
-    duplicatesStrategy = DuplicatesStrategy.INCLUDE
-    mergeServiceFiles()
-    append("META-INF/LICENSE")
-    append("META-INF/LICENSE.txt")
-    append("META-INF/NOTICE")
-    exclude("module-info.class", "META-INF/versions/*/module-info.class")
-    exclude("META-INF/*.SF", "META-INF/*.RSA", "META-INF/*.DSA")
-    exclude(
-        "META-INF/services/io.micrometer.context.ContextAccessor",
-        "META-INF/services/reactor.blockhound.integration.BlockHoundIntegration"
-    )
-    manifest {
-        attributes["Main-Class"] = "dev.mcdevmcp.conformance.ConformanceServerMain"
-        attributes["Implementation-Version"] = applicationVersion
-    }
+    description = "Compatibility alias for the conformance Java executable record."
+    dependsOn(":conformance:conformanceJavaExecutable")
+}
+
+tasks.register("conformanceHarnessJar") {
+    group = "verification"
+    description = "Compatibility alias for the conformance module harness JAR."
+    dependsOn(":conformance:conformanceHarnessJar")
 }
 
 tasks.processTestResources {
@@ -329,11 +250,14 @@ tasks.named<ShadowJar>("shadowJar") {
     archiveBaseName.set("mcdev-mcp")
     archiveClassifier.set("")
     archiveVersion.set(applicationVersion)
+    isPreserveFileTimestamps = false
+    isReproducibleFileOrder = true
     duplicatesStrategy = DuplicatesStrategy.INCLUDE
     mergeServiceFiles()
     append("META-INF/LICENSE")
     append("META-INF/LICENSE.txt")
     append("META-INF/NOTICE")
+    exclude("module-info.class", "META-INF/versions/*/module-info.class")
     exclude("META-INF/*.SF", "META-INF/*.RSA", "META-INF/*.DSA")
     exclude(
         "META-INF/services/io.micrometer.context.ContextAccessor",
@@ -345,6 +269,10 @@ tasks.named<ShadowJar>("shadowJar") {
         ] = application.mainClass.get()
         attributes["Implementation-Version"] = applicationVersion
     }
+}
+
+tasks.jar {
+    archiveClassifier.set("plain")
 }
 
 val generateMcpbManifest = tasks.register<JavaExec>("generateMcpbManifest") {
@@ -426,7 +354,7 @@ val runtimeTestBundle = tasks.register<Zip>("runtimeTestBundle") {
 val benchmarkBundle = tasks.register<Zip>("benchmarkBundle") {
     group = "distribution"
     description = "Packages the Java-25-built JAR, checksum, and compiled benchmark harness."
-    dependsOn(tasks.named(benchmark.classesTaskName), generateJarChecksum)
+    dependsOn(benchmarkClasses, generateJarChecksum)
     archiveBaseName.set("mcdev-mcp-benchmark")
     archiveVersion.set(applicationVersion)
     archiveClassifier.set("")
@@ -435,7 +363,8 @@ val benchmarkBundle = tasks.register<Zip>("benchmarkBundle") {
     isReproducibleFileOrder = true
     from(releaseJar) { into("server") }
     from(jarChecksum) { into("server") }
-    from(benchmark.output) { into("harness") }
+    from(project(":benchmark").layout.buildDirectory.dir("classes/java/main")) { into("harness") }
+    from(project(":benchmark").layout.buildDirectory.dir("resources/main")) { into("harness") }
     duplicatesStrategy = DuplicatesStrategy.FAIL
 }
 
@@ -499,16 +428,18 @@ val mcpSdkSnapshotCheck = tasks.register<McpSdkSnapshotCheck>("mcpSdkSnapshotChe
     resolvedModules.set(runtimeModuleVersions)
 }
 
-val externalDependencySelectors = configurations.flatMap { configuration ->
-    configuration.dependencies.withType<ExternalModuleDependency>().map { dependency ->
-        "${dependency.group}:${dependency.name}:${dependency.version.orEmpty()}"
-    }
-}.distinct().sorted()
-
 val dependencyPolicyCheck = tasks.register<DependencyPolicyCheck>("dependencyPolicyCheck") {
     group = "verification"
     description = "Rejects dynamic dependencies and production-scoped conformance containers."
-    declaredExternalSelectors.set(externalDependencySelectors)
+    declaredExternalSelectors.set(providers.provider {
+        allprojects.flatMap { candidate ->
+            candidate.configurations.flatMap { configuration ->
+                configuration.dependencies.withType<ExternalModuleDependency>().map { dependency ->
+                    "${dependency.group}:${dependency.name}:${dependency.version.orEmpty()}"
+                }
+            }
+        }.distinct().sorted()
+    })
     productionRuntimeModules.set(runtimeModuleVersions.map { modules -> modules.keys })
 }
 
@@ -1264,6 +1195,9 @@ val cutoverCheckBypassTest = registerCutoverScan(
 )
 
 tasks.named("check") {
+    dependsOn(":mcp-tool-api:check")
+    dependsOn(":benchmark:test")
+    dependsOn(":conformance:classes")
     dependsOn(cutoverCheck)
     dependsOn(cutoverCheckBypassTest)
     dependsOn(dependencyPolicyCheck)

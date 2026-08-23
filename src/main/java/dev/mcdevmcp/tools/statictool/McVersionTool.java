@@ -1,9 +1,9 @@
 package dev.mcdevmcp.tools.statictool;
 
 import dev.mcdevmcp.app.MinecraftVersionValidator;
-import dev.mcdevmcp.mcp.binding.ArgumentDecoder;
 import dev.mcdevmcp.mcp.tool.ToolBinding;
-import dev.mcdevmcp.mcp.tool.ToolResult;
+import dev.mcdevmcp.mcp.tool.api.ArgumentDecoder;
+import dev.mcdevmcp.mcp.tool.api.ToolResult;
 import dev.mcdevmcp.storage.callgraph.CallgraphRepository;
 import dev.mcdevmcp.storage.model.MinecraftVersion;
 import dev.mcdevmcp.support.AppVersion;
@@ -80,8 +80,7 @@ final class McVersionTool {
         }
         try {
             MinecraftVersion version = new MinecraftVersion(value);
-            return Files.isDirectory(support.paths().versionCache(version), LinkOption.NOFOLLOW_LINKS)
-                    && Files.isDirectory(support.paths().sourceRoot(version), LinkOption.NOFOLLOW_LINKS);
+            return Files.isDirectory(support.paths().versionCache(version), LinkOption.NOFOLLOW_LINKS) && Files.isDirectory(support.paths().sourceRoot(version), LinkOption.NOFOLLOW_LINKS);
         } catch (IllegalArgumentException ignored) {
             return false;
         }

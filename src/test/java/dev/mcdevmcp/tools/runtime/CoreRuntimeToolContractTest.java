@@ -3,9 +3,9 @@ package dev.mcdevmcp.tools.runtime;
 import dev.mcdevmcp.bridge.BridgeRequest;
 import dev.mcdevmcp.bridge.BridgeResponse;
 import dev.mcdevmcp.bridge.BridgeTestHarness;
-import dev.mcdevmcp.mcp.tool.ToolCatalog;
 import dev.mcdevmcp.mcp.tool.CompleteToolBindings;
-import dev.mcdevmcp.mcp.tool.ToolResult;
+import dev.mcdevmcp.mcp.tool.ToolCatalog;
+import dev.mcdevmcp.mcp.tool.api.ToolResult;
 import dev.mcdevmcp.support.AppEnvironment;
 import dev.mcdevmcp.support.Cancellation;
 import io.modelcontextprotocol.json.McpJsonDefaults;
@@ -14,7 +14,8 @@ import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
 import java.time.Duration;
-import java.util.*;
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 

@@ -148,7 +148,8 @@ class JavaSourceLayoutTest {
 
     @Test
     void repositoryJavaSourcesFollowTheLayoutInvariant() throws IOException {
-        for (Path sourceRoot : List.of(Path.of("src/main/java"), Path.of("src/test/java"), Path.of("mcp-tool-binding/src/main/java"), Path.of("mcp-tool-binding/src/test/java"))) {
+        var sourceRoots = List.of(Path.of("src/main/java"), Path.of("src/test/java"), Path.of("mcp-tool-api/src/main/java"), Path.of("mcp-tool-api/src/test/java"), Path.of("mcp-tool-api/src/jpmsSmoke/java"), Path.of("benchmark/src/main/java"), Path.of("benchmark/src/test/java"), Path.of("conformance/src/main/java"));
+        for (Path sourceRoot : sourceRoots) {
             assertSourceLayout(sourceRoot);
         }
     }

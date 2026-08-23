@@ -87,7 +87,8 @@ final class VersionManifestClientTest {
                                                                                  "client_mappings":{"url":"http://127.0.0.1:%1$d/client.txt","sha1":"%2$s","size":45}
                                                                                },
                                                                                "libraries":[
-                                                                                 {"downloads":{"artifact":{"url":"http://127.0.0.1:%1$d/lib.jar","sha1":"%2$s","size":789}},"name":"test:lib:1.0"}
+                                                                                 {"downloads":{"artifact":{"url":"http://127.0.0.1:%1$d/lib.jar","sha1":"%2$s","size":789}},"name":"test:lib:1.0"},
+                                                                                 {"downloads":{"artifact":{"url":"http://127.0.0.1:%1$d/lib-1.0-natives-linux.jar","sha1":"%2$s","size":456}},"name":"test:lib:1.0:natives-linux"}
                                                                                ]}
                                                                                """.formatted(port, SHA1)));
 

@@ -1,13 +1,9 @@
 package dev.mcdevmcp.mcp;
 
-import dev.mcdevmcp.mcp.binding.ArgumentDecoder;
 import dev.mcdevmcp.mcp.resource.ResourceCatalog;
-import dev.mcdevmcp.mcp.tool.TestEmptyArguments;
-import dev.mcdevmcp.mcp.tool.ToolBinding;
-import dev.mcdevmcp.mcp.tool.ToolCatalog;
-import dev.mcdevmcp.mcp.tool.ToolHandlers;
-import dev.mcdevmcp.mcp.tool.ToolMetadata;
-import dev.mcdevmcp.mcp.tool.ToolResult;
+import dev.mcdevmcp.mcp.tool.*;
+import dev.mcdevmcp.mcp.tool.api.ArgumentDecoder;
+import dev.mcdevmcp.mcp.tool.api.ToolResult;
 import dev.mcdevmcp.support.AppEnvironment;
 import dev.mcdevmcp.support.Cancellation;
 import io.modelcontextprotocol.json.McpJsonDefaults;
@@ -16,8 +12,8 @@ import org.junit.jupiter.api.Test;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
-import java.util.Map;
 import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;

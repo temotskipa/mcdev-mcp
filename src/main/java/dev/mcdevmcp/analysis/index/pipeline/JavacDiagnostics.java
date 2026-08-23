@@ -9,6 +9,8 @@ import java.nio.file.Path;
 import java.util.*;
 
 final class JavacDiagnostics {
+    private static final Set<String> RECOVERABLE_DECLARATION_ERRORS = Set.of("compiler.err.override.weaker.access");
+
     private JavacDiagnostics() {
     }
 
@@ -20,7 +22,7 @@ final class JavacDiagnostics {
             if (diagnostic.getKind() == Diagnostic.Kind.ERROR) {
                 List<OffsetRange> ranges = diagnostic.getSource() == null ? List.of() : executableBodies.getOrDefault(diagnostic.getSource().toUri(), List.of());
                 boolean insideBody = diagnostic.getStartPosition() >= 0 && ranges.stream().anyMatch(range -> range.contains(diagnostic.getStartPosition(), diagnostic.getEndPosition()));
-                if (!insideBody) {
+                if (!insideBody && !RECOVERABLE_DECLARATION_ERRORS.contains(diagnostic.getCode())) {
                     fatal.add(converted);
                     continue;
                 }

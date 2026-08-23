@@ -29,4 +29,6 @@ dependencyResolutionManagement {
 
 rootProject.name = "mcdev-mcp"
 
-include("mcp-tool-binding")
+include("mcp-tool-api")
+include("benchmark")
+include("conformance")

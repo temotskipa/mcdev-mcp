@@ -182,4 +182,40 @@ class JavacSourceParserTest {
         assertEquals(2, summary.fields());
         assertEquals(1, summary.methods());
     }
+
+    @Test
+    void indexesTypeQualifierDefaultWithoutTheCompileOnlyJsr305Jar() throws Exception {
+        Path sources = Files.createDirectories(temporaryDirectory.resolve("type-qualifier/com/mojang/blaze3d"));
+        Files.writeString(sources.resolve("DontObfuscate.java"), """
+                                                                 package com.mojang.blaze3d;
+                                                                 import java.lang.annotation.ElementType;
+                                                                 import java.lang.annotation.Retention;
+                                                                 import java.lang.annotation.RetentionPolicy;
+                                                                 import javax.annotation.meta.TypeQualifierDefault;
+                                                                 @TypeQualifierDefault({ElementType.TYPE, ElementType.METHOD})
+                                                                 @Retention(RetentionPolicy.CLASS)
+                                                                 public @interface DontObfuscate {}
+                                                                 """, StandardCharsets.UTF_8);
+        Path jar = IndexerTestSupport.createJar(temporaryDirectory.resolve("type-qualifier-empty.jar"), Map.of());
+
+        IndexSummary summary = new SourceIndexer().build(IndexerTestSupport.request(sources.getParent().getParent().getParent(), jar, temporaryDirectory.resolve("type-qualifier.mv.db"), 1));
+
+        assertEquals(1, summary.types());
+        assertEquals(0, summary.fields());
+        assertEquals(0, summary.methods());
+    }
+
+    @Test
+    void retainsDecompilerWeakerAccessDiagnosticsWithoutDiscardingDeclarations() throws Exception {
+        Path sources = Files.createDirectories(temporaryDirectory.resolve("weaker-access/sample"));
+        Files.writeString(sources.resolve("Base.java"), "package sample; public class Base<T> { public void run(T task) {} }", StandardCharsets.UTF_8);
+        Files.writeString(sources.resolve("Server.java"), "package sample; public class Server extends Base<String> { protected void run(String task) {} }", StandardCharsets.UTF_8);
+        Path jar = IndexerTestSupport.createJar(temporaryDirectory.resolve("weaker-access-empty.jar"), Map.of());
+
+        IndexSummary summary = new SourceIndexer().build(IndexerTestSupport.request(sources.getParent(), jar, temporaryDirectory.resolve("weaker-access.mv.db"), 1));
+
+        assertEquals(2, summary.types());
+        assertEquals(2, summary.methods());
+        assertTrue(summary.evidence().diagnostics().stream().anyMatch(diagnostic -> diagnostic.contains("compiler.err.override.weaker.access")));
+    }
 }

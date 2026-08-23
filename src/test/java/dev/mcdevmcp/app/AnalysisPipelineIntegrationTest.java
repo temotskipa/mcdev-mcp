@@ -207,8 +207,9 @@ final class AnalysisPipelineIntegrationTest {
             try (JarFile centralDirectoryOnly = new JarFile(remapped.toFile())) {
                 assertNotNull(centralDirectoryOnly.getEntry("sample/Example.class"));
             }
-            assertThrows(IllegalStateException.class, () -> pipeline.rebuildIndex(version, (_, _, _) -> {
+            IllegalStateException rebuildFailure = assertThrows(IllegalStateException.class, () -> pipeline.rebuildIndex(version, (_, _, _) -> {
             }, Cancellation.none()));
+            assertTrue(rebuildFailure.getMessage().contains("No prepared remapped JAR cache"), rebuildFailure.getMessage());
             PreparedSources repaired = pipeline.prepareSources(version, (_, _, _) -> {
             }, Cancellation.none());
             assertEquals(prepared, repaired);

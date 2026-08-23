@@ -39,6 +39,35 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+  parity:
+    name: Frozen Node parity
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: gradle
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: '24'
+      - name: Materialize the immutable master oracle worktree
+        shell: bash
+        run: |
+          set -euo pipefail
+          oracle_commit='7b98bdb4a1d885d588cd141d8eb21e3c5c18b2b6'
+          oracle_worktree="$RUNNER_TEMP/mcdev-mcp-node-oracle"
+          git checkout --detach "$GITHUB_SHA"
+          git branch -f master "$oracle_commit"
+          git worktree add "$oracle_worktree" master
+          test "$(git -C "$oracle_worktree" rev-parse HEAD)" = "$oracle_commit"
+          test -z "$(git -C "$oracle_worktree" status --porcelain=v1 --untracked-files=all)"
+      - name: Compare the Java CLI and complete MCP surface with the frozen Node server
+        run: ./gradlew parityTest --no-configuration-cache --console=plain
+
   runtime-matrix:
     name: Exact JAR on ${{ matrix.os }} Java ${{ matrix.java }}
     needs: build-java25

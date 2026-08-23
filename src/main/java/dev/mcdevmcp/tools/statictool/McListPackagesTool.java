@@ -1,8 +1,8 @@
 package dev.mcdevmcp.tools.statictool;
 
-import dev.mcdevmcp.mcp.binding.ArgumentDecoder;
 import dev.mcdevmcp.mcp.tool.ToolBinding;
-import dev.mcdevmcp.mcp.tool.ToolResult;
+import dev.mcdevmcp.mcp.tool.api.ArgumentDecoder;
+import dev.mcdevmcp.mcp.tool.api.ToolResult;
 
 final class McListPackagesTool {
     private static final LimitSpec LIMIT = new LimitSpec(500, 5000);

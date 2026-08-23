@@ -232,6 +232,7 @@ public final class DownloadService {
                 MessageDigest digest = sha1();
                 byte[] buffer = new byte[BUFFER_BYTES];
                 long written = 0;
+                int lastReportedPercent = -1;
                 while (true) {
                     checkCancelled(cancellation);
                     int read = input.read(buffer);
@@ -250,7 +251,11 @@ public final class DownloadService {
                     digest.update(buffer, 0, read);
                     written += read;
                     int percent = artifact.byteLength() == 0 ? 0 : (int) Math.min(99, written * 100 / artifact.byteLength());
-                    progress.report("download", percent, "Downloaded " + written + " bytes");
+                    int reportPercent = percent / 5 * 5;
+                    if (reportPercent != lastReportedPercent) {
+                        lastReportedPercent = reportPercent;
+                        progress.report("download", percent, "Downloaded " + written + " bytes");
+                    }
                 }
                 output.force(true);
                 verify(written, HexFormat.of().formatHex(digest.digest()), artifact, normalizedTarget);

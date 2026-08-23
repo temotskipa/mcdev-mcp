@@ -4,6 +4,9 @@
 /.gradle/
 /build/
 /mcp-tool-binding/build/
+/mcp-tool-api/build/
+/benchmark/build/
+/conformance/build/
 
 # IDE
 .vscode/

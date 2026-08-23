@@ -138,6 +138,11 @@ public final class AnalysisPipeline implements AnalysisOperations {
         }
     }
 
+    private static String failureMessage(String summary, Throwable failure) {
+        String detail = failure.getMessage();
+        return detail == null || detail.isBlank() ? summary : summary + ": " + detail;
+    }
+
     @Override
     public PreparedSources prepareSources(MinecraftVersion version, ProgressSink progress, Cancellation cancellation) {
         try {
@@ -200,7 +205,7 @@ public final class AnalysisPipeline implements AnalysisOperations {
             if (exception instanceof InterruptedException) {
                 Thread.currentThread().interrupt();
             }
-            throw new IllegalStateException("Unable to prepare Minecraft " + version.value() + " sources", exception);
+            throw new IllegalStateException(failureMessage("Unable to prepare Minecraft " + version.value() + " sources", exception), exception);
         }
     }
 
@@ -217,7 +222,7 @@ public final class AnalysisPipeline implements AnalysisOperations {
             return indexer.build(new IndexRequest(version, sourceRoots, remapped, classpath, paths.symbolDatabase(version), threads, progress, cancellation));
         } catch (Exception exception) {
             preserveInterruption(exception);
-            throw new IllegalStateException("Unable to rebuild index for " + version.value(), exception);
+            throw new IllegalStateException(failureMessage("Unable to rebuild index for " + version.value(), exception), exception);
         }
     }
 
@@ -252,7 +257,7 @@ public final class AnalysisPipeline implements AnalysisOperations {
             return callgraph.scan(new CallgraphRequest(version, remapped, paths.callgraphBundle(version), threads, progress, cancellation));
         } catch (IOException | InterruptedException exception) {
             preserveInterruption(exception);
-            throw new IllegalStateException("Unable to rebuild callgraph for " + version.value(), exception);
+            throw new IllegalStateException(failureMessage("Unable to rebuild callgraph for " + version.value(), exception), exception);
         }
     }
 

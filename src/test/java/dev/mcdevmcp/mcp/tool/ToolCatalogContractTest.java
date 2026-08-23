@@ -1,7 +1,8 @@
 package dev.mcdevmcp.mcp.tool;
 
 import dev.mcdevmcp.mcp.McpContractTestSupport;
-import dev.mcdevmcp.mcp.binding.ArgumentDecoder;
+import dev.mcdevmcp.mcp.tool.api.ArgumentDecoder;
+import dev.mcdevmcp.mcp.tool.api.ToolResult;
 import dev.mcdevmcp.support.AppEnvironment;
 import dev.mcdevmcp.support.Cancellation;
 import io.modelcontextprotocol.json.McpJsonDefaults;

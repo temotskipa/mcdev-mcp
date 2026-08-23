@@ -128,6 +128,7 @@ public final class CallgraphScanner {
         private final Map<String, String> firstEntryByClass = new HashMap<>();
         private int submitted;
         private int completed;
+        private int lastReportedPercent = -1;
         private long inFlightClassBytes;
 
         private OrderedBatchSource(ZipFile jar, List<String> entries, ExecutorService executor, CallgraphRequest request) {
@@ -169,7 +170,10 @@ public final class CallgraphScanner {
                 }
                 completed++;
                 int percent = entries.isEmpty() ? 75 : 5 + (int) (70L * completed / entries.size());
-                request.progress().report("callgraph", percent, "Extracted " + completed + " of " + entries.size() + " classes");
+                if (percent != lastReportedPercent) {
+                    lastReportedPercent = percent;
+                    request.progress().report("callgraph", percent, "Extracted " + completed + " of " + entries.size() + " classes");
+                }
                 return extraction;
             } catch (ExecutionException exception) {
                 Throwable cause = exception.getCause();

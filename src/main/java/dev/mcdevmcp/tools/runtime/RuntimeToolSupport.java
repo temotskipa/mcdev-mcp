@@ -4,7 +4,7 @@ import dev.mcdevmcp.bridge.BridgeEndpoint;
 import dev.mcdevmcp.bridge.BridgeResponse;
 import dev.mcdevmcp.bridge.BridgeSession;
 import dev.mcdevmcp.bridge.SessionInfo;
-import dev.mcdevmcp.mcp.tool.ToolResult;
+import dev.mcdevmcp.mcp.tool.api.ToolResult;
 import io.modelcontextprotocol.json.McpJsonMapper;
 
 import java.io.IOException;

@@ -37,9 +37,44 @@ Production code lives below `dev.mcdevmcp`:
 | `packaging` | Deterministic MCPB metadata and packed-artifact smoke tests. |
 | `support` | Environment, JSON, logging, cancellation, and version helpers. |
 
-`mcp-tool-binding` is an internal typed binding library in the same Gradle
-build. It is not a second server artifact. The root project still produces the
-only release JAR.
+The Gradle build has four projects with one-way dependencies:
+
+```text
+benchmark ----\
+               -> root application -> mcp-tool-api
+conformance --/
+```
+
+`mcp-tool-api` is the only production library boundary. `benchmark` and
+`conformance` are independently buildable harness projects that consume the
+root application; the root never depends on them. They are not server
+artifacts, and their JSON/reporting and Tomcat dependencies cannot enter the
+production runtime. The root project still produces the only release JAR.
+
+`mcp-tool-api` is an explicit JPMS module named
+`dev.mcdevmcp.mcp.tool.api`. Its public descriptor exports whole-value JSON and
+argument decoders, explicit Java JSON type tokens, protocol content values,
+ordinary results, and generic `StructuredToolResult<T>` values. A `TypedJson<T>`
+keeps raw JSON beside the `Class<T>` or `TypeRef<T>` it is meant to become.
+Structured payloads remain Java records or objects until `McpSdkAdapter` places
+only their value in MCP `structuredContent`; Java class names never enter wire
+JSON. Execution, cancellation, catalogs, transport, and Minecraft policy stay
+in the root application. The module requires the official MCP core API
+transitively. The reviewed MCP SDK
+snapshot publishes invalid automatic module names, so this subproject uses a
+build-scoped Gradle artifact transform to supply complete descriptors for
+`mcp-core` and the test-only Jackson 3 provider. A named-module smoke test
+verifies mapper and schema-validator service loading without
+`ALL-MODULE-PATH`, `--add-reads`, or `--add-exports`.
+Because transformed dependencies are not republished, external publication of
+the tool API module remains deferred until the SDK fixes its own metadata or the
+same transform is supplied as a consumer build convention.
+
+The root executable deliberately remains a classpath application. Its shaded
+JAR is a deployment format for direct `java -jar` and MCPB use, not the unit of
+source architecture; module descriptors from library inputs are excluded when
+the fat JAR is assembled. Future optional runtime backends may ship in a
+separate modular distribution without changing the single-JAR baseline.
 
 ## Analysis Pipeline
 

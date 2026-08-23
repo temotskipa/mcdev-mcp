@@ -1,8 +1,8 @@
 package dev.mcdevmcp.tools.statictool;
 
-import dev.mcdevmcp.mcp.tool.ToolCatalog;
 import dev.mcdevmcp.mcp.tool.CompleteToolBindings;
-import dev.mcdevmcp.mcp.tool.ToolResult;
+import dev.mcdevmcp.mcp.tool.ToolCatalog;
+import dev.mcdevmcp.mcp.tool.api.ToolResult;
 import dev.mcdevmcp.storage.PlatformPaths;
 import dev.mcdevmcp.storage.h2.SymbolSchema;
 import dev.mcdevmcp.storage.model.ClassSymbol;

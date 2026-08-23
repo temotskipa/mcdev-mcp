@@ -1,16 +1,19 @@
 package dev.mcdevmcp.mcp.transport;
 
-import dev.mcdevmcp.mcp.binding.ArgumentDecoder;
 import dev.mcdevmcp.mcp.ServerDefinition;
 import dev.mcdevmcp.mcp.resource.ResourceCatalog;
 import dev.mcdevmcp.mcp.tool.*;
+import dev.mcdevmcp.mcp.tool.api.ArgumentDecoder;
+import dev.mcdevmcp.mcp.tool.api.StructuredToolResult;
+import dev.mcdevmcp.mcp.tool.api.ToolContent;
+import dev.mcdevmcp.mcp.tool.api.ToolResult;
 import dev.mcdevmcp.support.AppEnvironment;
 import io.modelcontextprotocol.json.McpJsonDefaults;
 import io.modelcontextprotocol.json.McpJsonMapper;
 import io.modelcontextprotocol.server.McpServerFeatures;
+import io.modelcontextprotocol.spec.McpSchema;
 import io.modelcontextprotocol.spec.McpStreamableServerSession;
 import io.modelcontextprotocol.spec.McpStreamableServerTransportProvider;
-import io.modelcontextprotocol.spec.McpSchema;
 import org.junit.jupiter.api.Test;
 import reactor.core.publisher.Mono;
 
@@ -69,7 +72,7 @@ class McpSdkAdapterTest {
 
     @Test
     void imageContentMapsToTheSdkProtocolTypeWithoutDecodingBase64() throws Exception {
-        var definition = new ToolDefinition("image", "image", Map.of("type", "object"), new ToolBinding<>(ArgumentDecoder.sdk(TestEmptyArguments.class), (_, _) -> ToolHandlers.completed(new ToolResult(List.of(ToolContent.image("iVBORw0KGgo=", "image/png")), false))), ToolAvailability.ALWAYS);
+        var definition = new ToolDefinition("image", "image", Map.of("type", "object"), new ToolBinding<>(ArgumentDecoder.sdk(TestEmptyArguments.class), (_, _) -> ToolHandlers.completed(ToolResult.content(List.of(ToolContent.image("iVBORw0KGgo=", "image/png")), false))), ToolAvailability.ALWAYS);
 
         try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
             var result = new McpSdkAdapter(MAPPER, executor).callHandler(definition).apply(null, McpSchema.CallToolRequest.builder("image").arguments(Map.of()).build()).toFuture().get(5, TimeUnit.SECONDS);
@@ -77,6 +80,23 @@ class McpSdkAdapterTest {
             var image = assertInstanceOf(McpSchema.ImageContent.class, result.content().getFirst());
             assertEquals("iVBORw0KGgo=", image.data());
             assertEquals("image/png", image.mimeType());
+            assertNull(result.isError());
+        }
+    }
+
+    @Test
+    void typedJavaResultBecomesStructuredContentOnlyAtTheSdkBoundary() throws Exception {
+        var value = new TestStructuredResult("minecraft:diamond", 3);
+        var definition = new ToolDefinition("inventory", "inventory", Map.of("type", "object"), new ToolBinding<>(ArgumentDecoder.sdk(TestEmptyArguments.class), (_, _) -> {
+            StructuredToolResult<TestStructuredResult> result = ToolResult.structured(TestStructuredResult.class, value, "minecraft:diamond x3");
+            return ToolHandlers.completed(result);
+        }), ToolAvailability.ALWAYS);
+
+        try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
+            var result = new McpSdkAdapter(MAPPER, executor).callHandler(definition).apply(null, McpSchema.CallToolRequest.builder("inventory").arguments(Map.of()).build()).toFuture().get(5, TimeUnit.SECONDS);
+
+            assertSame(value, result.structuredContent());
+            assertEquals("minecraft:diamond x3", assertInstanceOf(McpSchema.TextContent.class, result.content().getFirst()).text());
             assertNull(result.isError());
         }
     }
@@ -133,6 +153,9 @@ class McpSdkAdapterTest {
         var bindings = CompleteToolBindings.including(MAPPER, Map.of());
         var tools = ToolCatalog.load(new AppEnvironment(Map.of()), bindings, MAPPER);
         return new ServerDefinition("test", "1", "test", tools, ResourceCatalog.withMapper(MAPPER));
+    }
+
+    private record TestStructuredResult(String itemId, int count) {
     }
 
     private static final class RecordingStreamableTransport implements McpStreamableServerTransportProvider {

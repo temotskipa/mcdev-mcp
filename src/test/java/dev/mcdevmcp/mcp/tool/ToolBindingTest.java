@@ -1,6 +1,7 @@
 package dev.mcdevmcp.mcp.tool;
 
-import dev.mcdevmcp.mcp.binding.ArgumentDecoder;
+import dev.mcdevmcp.mcp.tool.api.ArgumentDecoder;
+import dev.mcdevmcp.mcp.tool.api.ToolResult;
 import dev.mcdevmcp.mcp.transport.SdkJsonMode;
 import dev.mcdevmcp.support.Cancellation;
 import dev.mcdevmcp.support.JsonValues;

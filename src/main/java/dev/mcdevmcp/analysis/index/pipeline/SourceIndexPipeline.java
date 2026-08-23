@@ -1,8 +1,8 @@
 package dev.mcdevmcp.analysis.index.pipeline;
 
 import dev.mcdevmcp.analysis.classfile.ClassFileTypeCatalog;
-import dev.mcdevmcp.analysis.index.IndexBuildException;
 import dev.mcdevmcp.analysis.index.IndexBuildEvidence;
+import dev.mcdevmcp.analysis.index.IndexBuildException;
 import dev.mcdevmcp.analysis.index.IndexRequest;
 import dev.mcdevmcp.analysis.index.IndexSummary;
 
@@ -16,10 +16,14 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.HashSet;
 import java.util.HexFormat;
+import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 
 public final class SourceIndexPipeline {
+    private static final int REPORTED_DIAGNOSTIC_LIMIT = 20;
+    private static final int REPORTED_DIAGNOSTIC_CHARACTERS = 512;
+
     private final JavacSourceParser parser;
     private final SymbolIndexWriter writer;
 
@@ -66,6 +70,15 @@ public final class SourceIndexPipeline {
         return HexFormat.of().formatHex(digest.digest());
     }
 
+    private static String reportedDiagnostic(IndexDiagnostic diagnostic) {
+        String display = diagnostic.display().replace('\r', ' ').replace('\n', ' ');
+        if (display.length() <= REPORTED_DIAGNOSTIC_CHARACTERS) {
+            return display;
+        }
+        String suffix = "... [" + diagnostic.code() + "]";
+        return display.substring(0, REPORTED_DIAGNOSTIC_CHARACTERS - suffix.length()) + suffix;
+    }
+
     public IndexSummary build(IndexRequest request) throws IndexBuildException {
         Objects.requireNonNull(request, "request");
         long started = System.nanoTime();
@@ -80,8 +93,12 @@ public final class SourceIndexPipeline {
             request.progress().report("index", 30, "Parsing and attributing Java sources with Javac");
             ParsedIndex parsed = parser.parse(request, catalog, classpath, corpus);
             rejectDuplicateBinaryNames(parsed);
-            for (IndexDiagnostic diagnostic : parsed.diagnostics()) {
-                request.progress().report("index", 70, diagnostic.display());
+            List<IndexDiagnostic> diagnosticsToReport = parsed.diagnostics().stream().limit(REPORTED_DIAGNOSTIC_LIMIT).toList();
+            for (IndexDiagnostic diagnostic : diagnosticsToReport) {
+                request.progress().report("index", 70, reportedDiagnostic(diagnostic));
+            }
+            if (parsed.diagnostics().size() > diagnosticsToReport.size()) {
+                request.progress().report("index", 70, "Retained " + parsed.diagnostics().size() + " Javac diagnostics; showing the first " + diagnosticsToReport.size());
             }
             request.cancellation().throwIfCancelled();
             String remappedJarSha256 = sha256(request.remappedJar());

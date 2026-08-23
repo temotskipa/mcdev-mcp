@@ -2,8 +2,8 @@ package dev.mcdevmcp.tools.runtime;
 
 import dev.mcdevmcp.bridge.BridgeEndpoint;
 import dev.mcdevmcp.bridge.BridgeResponse;
-import dev.mcdevmcp.mcp.tool.ToolContent;
-import dev.mcdevmcp.mcp.tool.ToolResult;
+import dev.mcdevmcp.mcp.tool.api.ToolContent;
+import dev.mcdevmcp.mcp.tool.api.ToolResult;
 
 import java.math.BigDecimal;
 import java.math.BigInteger;
@@ -149,7 +149,7 @@ final class MediaToolSupport {
             }
             TextureResult result = textureResult(endpoint, response);
             checkBase64Bound(result.base64Png(), endpoint);
-            return new ToolResult(List.of(ToolContent.image(result.base64Png(), "image/png"), ToolContent.text(number(result.width()) + "x" + number(result.height()) + " sprite=" + result.spriteName())), false);
+            return ToolResult.content(List.of(ToolContent.image(result.base64Png(), "image/png"), ToolContent.text(number(result.width()) + "x" + number(result.height()) + " sprite=" + result.spriteName())), false);
         });
     }
 

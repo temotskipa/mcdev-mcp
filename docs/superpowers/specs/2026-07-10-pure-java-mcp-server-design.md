@@ -67,7 +67,7 @@ boundaries. Internal indexer and callgraph worker protocols disappear.
   calls that are absent from bytecode invocation instructions.
 - Do not publish a DebugBridge protocol artifact before the fixture-backed wire
   boundary has remained stable across two independent releases.
-- Do not publish the typed argument-binding library or claim an upstream MCP
+- Do not publish the typed tool API library or claim an upstream MCP
   SDK namespace before multiple static and runtime tool families prove its API
   and error model.
 
@@ -78,7 +78,7 @@ and one internal Java library rather than multiple runtime workers. The root
 still produces the only server and release JAR:
 
 ```text
-:mcp-tool-binding       SDK/JDK-only typed argument decoding
+:mcp-tool-api       SDK/JDK-only typed argument decoding
 
 dev.mcdevmcp
 |-- app              executable entry point, CLI, lifecycle
@@ -233,29 +233,26 @@ at the MCP transport boundary to adapt SDK-specific typed responses required by
 the frozen Node contract; DebugBridge and other application code always receive
 the unwrapped mapper.
 
-The SDK/JDK-only argument decoder lives in the internal `mcp-tool-binding`
-`java-library` subproject under `dev.mcdevmcp.mcp.binding`. Its first public
-contract is `ArgumentDecoder<A>`; it may gain further generic binding contracts
-only after several static and runtime tool families prove that those contracts
-do not require application policy. The root application retains
-`ToolBinding`, `Cancellation`, `ToolResult`, executor selection, catalogs,
-transport adaptation, and Minecraft behavior. The child cannot depend on or
+The SDK/JDK-only typed tool contracts live in the internal `mcp-tool-api`
+`java-library` subproject under `dev.mcdevmcp.mcp.tool.api`. They carry Java
+type tokens beside arbitrary JSON, decode complete argument maps, and represent
+ordinary or typed structured tool results. The root application retains
+`ToolBinding`, `Cancellation`, executor selection, catalogs, transport
+adaptation, and Minecraft behavior. The child cannot depend on or
 import those root-project types, while the application has the only project
 dependency direction. Production declares only the official SDK `mcp-core`
 module as an API dependency because `McpJsonMapper` appears in the public
 signature; the official Jackson 3 mapper module is test-only in the child.
 
 This enforced Gradle boundary is the rehearsal for possible extraction to a
-separate repository. The library reserves `dev.mcdevmcp.mcp.binding` as its
-future JPMS name and declares it through `Automatic-Module-Name`, but it does
-not yet contain `module-info.java`. The reviewed MCP SDK snapshot and current
+separate repository. The library is the explicit JPMS module
+`dev.mcdevmcp.mcp.tool.api`. The reviewed MCP SDK snapshot and current
 upstream source derive invalid automatic names containing hyphens for
 `mcp-core` and `mcp-json-jackson3`, tracked by
 [MCP Java SDK issue #560](https://github.com/modelcontextprotocol/java-sdk/issues/560).
-The build does not patch those descriptors or add module-path workarounds.
-Once the SDK becomes module-path-valid, a focused compatibility task may add an
-explicit descriptor that exports only the binding API package. The shaded
-application remains classpath-based throughout.
+The library build supplies complete replacement descriptors through a scoped
+artifact transform and verifies service discovery in a named-module smoke. The
+shaded application remains classpath-based throughout.
 
 The library is not split into another repository, published, or proposed
 upstream until real tool usage stabilizes the abstraction and its error model.

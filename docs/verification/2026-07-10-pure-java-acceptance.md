@@ -2,11 +2,156 @@
 
 Audit date: 2026-08-13
 
+Continuation verification: 2026-08-20
+
+Module completion verification: 2026-08-23
+
 Design: `docs/superpowers/specs/2026-07-10-pure-java-mcp-server-design.md`
 
 Execution plan: `docs/superpowers/plans/2026-07-10-pure-java-mcp-server.md`
 Audited branch snapshot: `codex/java25-indexer-callgraph` at
 `64d5149bf7f054a2b98656d2ffbb52607dc17117`
+
+Continuation base snapshot: `codex/java25-indexer-callgraph` at
+`077bfe7e1b11a0045cebfe834e28ad750e2962e7`, plus the uncommitted
+benchmark/conformance Gradle-project split described below.
+
+## 2026-08-20 Continuation Addendum
+
+The interrupted Windows handoff and the later module-creation handoff were
+reconciled in the active Linux checkout. Benchmark sources, tests, and corpus
+probe resources now live in the independently buildable `:benchmark` project;
+the HTTP conformance harness lives in `:conformance`; and both consume the root
+application without becoming production dependencies. The root remains the
+only release application and continues to compile and publish Java 25 bytecode.
+
+The continuation verification passed:
+
+```text
+./gradlew projects
+./gradlew :benchmark:test :conformance:conformanceHarnessJar test
+./gradlew clean test check shadowJar runtimeTestBundle benchmarkBundle benchmarkClasses generateMcpbManifest conformanceHarnessJar -x releaseVerifierTest
+./gradlew test :benchmark:test -PtestJavaVersion=26 --rerun-tasks
+./gradlew parityTest --no-configuration-cache
+npx --yes @modelcontextprotocol/conformance@0.1.16 server --url http://127.0.0.1:3000/mcp --suite active
+actionlint .github/workflows/ci.yml .github/workflows/benchmark.yml .github/workflows/release.yml
+```
+
+The parity run compared the current Java server against the clean frozen
+`master` oracle at `7b98bdb4a1d885d588cd141d8eb21e3c5c18b2b6` and passed. The
+official active conformance suite reported 40 passed and zero failed. The
+SHA-verified build-once JAR passed `RuntimeArtifactSmokeMain` under OpenJDK 25
+and OpenJDK 26, and both harness JARs expose stable automatic module names.
+IntelliJ reformat, changed-file inspection, and full project rebuild also
+completed with zero reported problems.
+
+The continuation artifact SHA-256 is
+`1e2c62025b316239bff46f9b9d19fd445323d29da931629afede583e75f9330c`.
+The Windows-only `releaseVerifierTest`/MCPB PowerShell lanes were not repeated
+locally because PowerShell is unavailable; the published base snapshot's
+GitHub CI run `31752839386` is green, but it predates this uncommitted module
+split. A dedicated frozen-Node parity job is now present in the working-tree CI
+workflow and has passed locally; it has not yet run remotely.
+
+This addendum does not change the release-readiness verdict. Full real-corpus
+qualification, live DebugBridge smoke evidence, the scheduled benchmark
+history, independent review of the continuation diff, and an authorized
+reviewed commit/push remain outstanding.
+
+## 2026-08-23 JPMS Completion Addendum
+
+`mcp-tool-api` now contains an explicit `module-info.java`. Its build-scoped
+Gradlex transform replaces the invalid names published by the reviewed MCP SDK
+snapshot and supplies complete core and Jackson 3 descriptors, including the
+JSON service `uses` and provider metadata. The module-path smoke compiles and
+runs as a separate named consumer, decodes a record, and resolves both default
+JSON services without `ALL-MODULE-PATH`, `--add-reads`, or `--add-exports`.
+
+The release architecture remains intentionally dual-purpose: Gradle and JPMS
+boundaries govern compilation and verification, while the root shaded JAR is
+the classpath deployment artifact required by direct `java -jar` and MCPB. The
+shaded JAR excludes dependency module descriptors.
+
+The completion verification passed:
+
+```text
+./gradlew :mcp-tool-api:check
+./gradlew :mcp-tool-api:check -PtestJavaVersion=26 --rerun-tasks
+./gradlew clean test check shadowJar runtimeTestBundle benchmarkBundle benchmarkClasses generateMcpbManifest conformanceHarnessJar -x releaseVerifierTest
+./gradlew test :benchmark:test :mcp-tool-api:check -PtestJavaVersion=26 --rerun-tasks
+./gradlew parityTest --no-configuration-cache
+```
+
+`jar --describe-module` reports the explicit binding descriptor and its
+transitive MCP core requirement. The shaded JAR contains no `module-info.class`
+entry and passed `RuntimeArtifactSmokeMain` on OpenJDK 25 and OpenJDK 26. Its
+SHA-256 remains
+`1e2c62025b316239bff46f9b9d19fd445323d29da931629afede583e75f9330c`,
+demonstrating that the JPMS build boundary did not alter the reviewed release
+bytes. The frozen Node parity suite also passed after materializing the clean
+`master` oracle worktree at `7b98bdb4a1d885d588cd141d8eb21e3c5c18b2b6`.
+
+## 2026-08-24 Typed Tool API Addendum
+
+The former one-interface `mcp-tool-binding` scope is now `mcp-tool-api` and owns
+the reusable input and output contracts. `JsonType<T>` carries a runtime Java
+`Type`, backed by either `Class<T>` or SDK `TypeRef<T>`; `TypedJson<T>` keeps
+that target beside the raw JSON value and performs conversion only through
+`McpJsonMapper`. This preserves generic targets such as
+`List<InventoryItem>` without adding Jackson APIs or embedding Java class names
+in protocol JSON.
+
+`StructuredToolResult<T>` carries its `JsonType<T>`, typed Java value, explicit
+fallback MCP content, and error state. The root SDK adapter passes only the
+typed value to `CallToolResult.structuredContent`; existing content-only tools
+retain their exact output. Module tests cover raw and generic Java targets, the
+adapter test proves the Java object reaches the SDK boundary unchanged, and
+the named-module smoke covers decoding, structured-result serialization, and
+SDK service loading.
+
+## 2026-08-24 Minecraft 1.21.11 Analysis Debug Addendum
+
+An ignored project-local cache was initialized from the real Mojang 1.21.11
+metadata under Java 25. Remapping verified and published a 29,231-entry JAR and
+Vineflower published 6,622 Java files. The first index attempt exposed a
+missing compile-only `javax.annotation.meta.TypeQualifierDefault`; the compiler
+classpath shim now synthesizes that annotation with its required
+`ElementType[] value()` method. The next attempt exposed Vineflower's
+weaker-access reconstruction of `MinecraftServer.doRunTask(TickTask)`; the
+indexer now retains the narrow `compiler.err.override.weaker.access` diagnostic
+without treating otherwise valid bytecode declarations as a fatal index error.
+Unresolved stored field, method, and hierarchy types remain fatal.
+
+The completed corpus accounts for all units exactly: 6,622 discovered and
+parsed units equal 6,107 typed units plus 515 package-only units. The symbol
+database contains 511 packages, 6,107 types, 36,304 fields, 45,975 methods, and
+67,070 parameters. Java 25 and Java 26 rebuilds produced the same logical
+symbol hash,
+`620af66ff150db1033a207705c939745b552cc2c052aa3c9e3d849db40210d9b`.
+Both runtimes also produced the same callgraph generation
+`8a93b2745d6a10095b6d5a16dadac7f5771247222bbfa7b375db2615e8a357f2`
+with 10,291 classes, 89,557 methods, 387,125 edges, and identical artifact
+hashes.
+
+A real shaded-JAR STDIO session successfully exercised `mc_version`,
+`mc_search`, `mc_get_class`, `mc_get_method`, `mc_list_packages`,
+`mc_list_classes`, `mc_find_hierarchy`, and both directions of `mc_find_refs`
+against the published index/callgraph. Interactive progress is now bounded by
+percentage transitions, index progress shows at most 20 compact diagnostics
+while retaining all 842 in evidence, and the Mojang resolver excludes 52
+explicit `natives-*` classifier artifacts from compiler-library downloads.
+Wrapped analysis failures now include their immediate cause in CLI error text.
+The resulting shaded JAR SHA-256 is
+`402f12bf6129b060a1c716b941ac5902e23ed9a67fa07d80fb03213c467d10cb`;
+unlike the descriptor-only JPMS amendment, the API relocation and analysis
+hardening intentionally change application bytecode.
+Two consecutive forced `shadowJar` builds produced that same hash after the
+task was made timestamp-free and reproducibly ordered.
+
+This is strong exploratory evidence for 1.21.11, not the formal corpus gate:
+the reviewed Node baseline/expectation artifacts, required one-versus-four
+worker reports, 26.1 corpus, memory limits, and scheduled history remain
+outstanding.
 
 ## Verdict
 
@@ -31,7 +176,7 @@ The final IntelliJ rebuild completed without a visible build error. The final
 whole-project inspection reported zero Java errors and zero Java file
 diagnostics. Its only Java-category
 findings were three accepted project-model warnings caused by the intentional
-`mcp-tool-binding.main` dependency in the synthetic benchmark, conformance, and
+`mcp-tool-api.main` dependency in the synthetic benchmark, conformance, and
 runtime-test modules, where production runtime-classpath parity is required.
 
 `PASS` below means the cited repository-owned check or inspected artifact
@@ -59,11 +204,11 @@ alone is not treated as acceptance.
 | Shaded JAR services, signatures, and embedded resources | PASS | `ShadedJarSmokeTest` and `RuntimeArtifactSmokeMain` cover merged service descriptors, H2 `ServiceLoader` and `DriverManager`, H2 read/write/close under `--illegal-native-access=deny`, Tiny Remapper resource preservation, Vineflower output and recompilation, and signed-archive failure prevention. Direct archive inspection found 6,216 entries, one `META-INF/services/java.sql.Driver`, zero stale `.SF`/`.RSA`/`.DSA`, zero Gson entries, zero Tomcat/container entries, and zero TypeScript entries. |
 | MCPB contains the exact release JAR and only the minimal launcher surface | PASS | `McpbLauncherTest`, `McpbManifestGeneratorTest`, `McpbBundleIntegrationTest`, `scripts/build-mcpb.ps1`, and the extracted-bundle smoke verify Java 25 preflight, literal `java -jar ... serve`, optional-placeholder removal, signal/exit forwarding, exact staged/extracted JAR SHA-256, server identity, and tool names. The packed archive is constrained to `bootstrap.cjs`, `manifest.json`, and the shaded JAR. Node and npm are packaging-only. |
 | Release asset set and dry-run provenance | PASS | `releaseVerifierTest` exercises positive and negative provenance fixtures. `scripts/verify-release-assets.ps1 -DryRun` accepts exactly `mcdev-mcp-3.0.0.jar`, `.jar.sha256`, and `.mcpb`, checks versioned names, manifest version, checksum, and inner-JAR identity. `.github/workflows/release.yml` builds once on Java 25, tests the downloaded artifact on Java 25/26, builds MCPB from that artifact, and publishes only after read-only verification. No tag, release, or publication was performed by this audit. |
-| Dependency updates, exact coordinates, and test-container isolation | PASS | `.github/dependabot.yml` schedules daily Gradle and GitHub Actions updates. `dependencyPolicyCheck`, `mcpSdkSnapshotCheck`, and `ConformanceDependencyIsolationTest` reject dynamic/ranged selectors, unused or mismatched SDK components, Gson, and production-scoped conformance containers. The only HTTP container dependency is Tomcat in the `conformance` source set; direct shaded-JAR inspection found zero Tomcat entries. GitHub Actions are pinned by commit SHA. |
+| Dependency updates, exact coordinates, and test-container isolation | PASS | `.github/dependabot.yml` schedules daily Gradle and GitHub Actions updates. `dependencyPolicyCheck`, `mcpSdkSnapshotCheck`, and `ConformanceDependencyIsolationTest` reject dynamic/ranged selectors, unused or mismatched SDK components, Gson, and production-scoped conformance containers. The only HTTP container dependency is Tomcat in the test-only `:conformance` project; direct shaded-JAR inspection found zero Tomcat entries. GitHub Actions are pinned by commit SHA. |
 | Single version authority and one executable JAR | PASS | `gradle.properties` defines `3.0.0`; `AppVersionTest`, generated manifest tests, packaging scripts, and release verifier prove propagation to CLI/MCP metadata, `Implementation-Version`, filenames, checksum, and MCPB metadata. The shaded manifest names `dev.mcdevmcp.app.Main`; there is no second production server artifact. |
 | SDK `McpJsonMapper` is the sole application JSON API | PASS | `SdkJsonMapperTest`, `ToolBindingTest`, `GsonAbsenceTest`, `mcpSdkSnapshotCheck`, and archive inspection cover typed whole-map binding, explicit wire/domain conversion, Jackson/Gson source policy, runtime graph constraints, and zero `com/google/gson/` classes in the shaded JAR. Application source does not directly import Jackson implementation, annotations, or `JsonNode`. |
 | No TypeScript/Bun/Kotlin/Jest/ESLint/runtime npm/worker protocol remains | PASS | `cutoverCheck` and its synthetic bypass tests reject retired tracked implementation surfaces, legacy package-index readers/writers, and worker JSON protocols. Tracked code has no TypeScript or Kotlin application source; `package.json` and its lockfile exist only under `packaging/mcpb` for the pinned MCPB packer. The shaded JAR contains zero TypeScript entries. Legacy JSON cache data is ignored except for explicit `clean --index`. |
-| Java structure, semantic values, formatting, and diagnostics | PASS | `JavaSourceLayoutTest` enforces package/path, one top-level declaration, and filename/type ownership across both projects using Javac trees. Source and tests use typed domain values and all Gradle compilation runs pass with `-Xlint:all -Werror`. IntelliJ Rebuild Project completed without a visible build error. Whole-project inspection reported zero Java errors and zero Java file diagnostics. The only Java-category findings were three accepted project-model warnings for the intentional `mcp-tool-binding.main` dependency in the synthetic benchmark, conformance, and runtime-test modules; those modules deliberately mirror the production runtime classpath. Generated/build/report inspection noise was excluded from the Java result. |
+| Java structure, semantic values, formatting, and diagnostics | PASS | `JavaSourceLayoutTest` enforces package/path, one top-level declaration, and filename/type ownership across all four Gradle projects using Javac trees. Source and tests use typed domain values and all Gradle compilation runs pass with `-Xlint:all -Werror`. IntelliJ Rebuild Project completed without a visible build error. Whole-project inspection reported zero Java errors and zero Java file diagnostics. The original audit's only Java-category findings were three accepted project-model warnings for the intentional `mcp-tool-api.main` dependency in the synthetic benchmark, conformance, and runtime-test modules; the continuation replaces benchmark and conformance with ordinary consumer projects. Generated/build/report inspection noise was excluded from the Java result. |
 | Original checkout, preservation stash, branch, and remote target | PASS | Original `master` is clean at `7b98bdb4a1d885d588cd141d8eb21e3c5c18b2b6`. The preservation stash is `724872e927c8d4f3dd2290d4df4c4e94fe655e9b` (`preserve-bun-ts7-dependency-experiment-before-java-runtime-task`). Immediately before this document was created, the production snapshot was clean on `codex/java25-indexer-callgraph` and equal to its origin tracking branch. The worktree then became intentionally untracked-dirty only for `docs/verification/2026-07-10-pure-java-acceptance.md`. No merge, tag, release, npm deprecation, or worktree deletion occurred. |
 
 ## Verification Run Ledger
@@ -90,7 +235,7 @@ was created:
 .\scripts\verify-release-assets.ps1 -DryRun -Version 3.0.0 -Directory build\distributions
 ```
 
-Recorded result: 456 root tests plus one `mcp-tool-binding` test on each Java
+Recorded result: 456 root tests plus one `mcp-tool-api` test on each Java
 correctness matrix, with zero failures, errors, or skips. `check`,
 `cutoverCheck`, the runtime-artifact smoke, MCPB schema/extraction/launch smoke,
 and positive/negative release-verifier tests passed. The same build-once JAR was
@@ -99,7 +244,7 @@ documentation/cutover commit, so the current-snapshot hash and repeat results
 below are the authoritative release-artifact evidence.
 
 The current clean aggregate ran the Java 25 correctness suite. Its JUnit XML
-reports 464 root tests in 67 suites plus one `mcp-tool-binding` test, with zero
+reports 464 root tests in 67 suites plus one `mcp-tool-api` test, with zero
 failures, errors, or skips. The additional eight root tests are the final
 cutover/environment, index thread, and path validation regressions added after
 the earlier 456-test Task 15 matrix.
@@ -111,7 +256,7 @@ The current-snapshot Java 26 repeat ran:
 ```
 
 Its JUnit XML likewise reports 464 root tests in 67 suites plus one
-`mcp-tool-binding` test, with zero failures, errors, or skips.
+`mcp-tool-api` test, with zero failures, errors, or skips.
 
 The current clean aggregate and distribution gates ran:
 
@@ -241,7 +386,7 @@ This is a release-readiness blocker, not a waived test.
 
 ## Evidence Sources
 
-- `build.gradle.kts`: Java/toolchain/warning policy, source-set isolation,
+- `build.gradle.kts` and the subproject build files: Java/toolchain/warning policy, project isolation,
   archive construction, runtime bundle, dependency policy, and cutover gates.
 - `.github/workflows/ci.yml`, `.github/workflows/benchmark.yml`, and
   `.github/workflows/release.yml`: correctness matrix, corpus/benchmark policy,
@@ -249,11 +394,13 @@ This is a release-readiness blocker, not a waived test.
 - `scripts/run-conformance.ps1`, `scripts/build-mcpb.ps1`,
   `scripts/verify-release-assets.ps1`, and
   `scripts/test-verify-release-assets.ps1`: protocol, MCPB, and release gates.
-- `src/test/java/dev/mcdevmcp`: repository-owned unit, integration, parity,
-  archive, dependency, indexer, callgraph, CLI, MCP, and DebugBridge evidence.
+- `src/test/java/dev/mcdevmcp` and `benchmark/src/test`: repository-owned unit,
+  integration, parity, benchmark, corpus-harness, archive, dependency, indexer,
+  callgraph, CLI, MCP, and DebugBridge evidence.
 - `src/runtimeTest/java/dev/mcdevmcp/packaging/RuntimeArtifactSmokeMain.java`:
   exact-artifact cross-runtime checks.
-- `src/test/resources/contracts` and the immutable Node oracle materializer:
+- `src/test/resources/contracts`, `benchmark/src/test/resources/contracts`, and
+  the immutable Node oracle materializer:
   frozen tool/resource and parity contracts.
 - `.superpowers/sdd/progress.md` and task-specific review reports: historical
   task gates, independent reviews, runtime identities, and test counts.
@@ -267,6 +414,7 @@ recorded and independently reviewed:
 
 1. Complete Minecraft 1.21.11 and 26.1 qualification reports described above.
 2. Live DebugBridge v2.0.0 non-mutating smoke evidence.
-3. The independent whole-branch review required by Task 17.
+3. An independent review of the interrupted Task 17 fixes and the continuation
+   module/CI diff.
 4. A clean reviewed acceptance-evidence commit and guarded branch push, without
    merging or publishing a release.

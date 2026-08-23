@@ -161,6 +161,11 @@ public final class VersionManifestClient {
         return value.substring(0, MAXIMUM_ERROR_URI_CHARACTERS) + "...";
     }
 
+    private static boolean compilerClasspathLibrary(LibraryEntry library) {
+        String[] coordinate = library.name().split(":", -1);
+        return coordinate.length < 4 || !coordinate[3].startsWith("natives-");
+    }
+
     public MinecraftDownloads resolve(MinecraftVersion version) throws IOException {
         Objects.requireNonNull(version, "version");
         GlobalManifest manifest = read(manifestUri, GlobalManifest.class);
@@ -186,7 +191,7 @@ public final class VersionManifestClient {
         }
         List<DownloadArtifact> libraryArtifacts = new java.util.ArrayList<>();
         for (LibraryEntry library : detailBody.libraries()) {
-            if (library.downloads() != null && library.downloads().artifact() != null && library.downloads().artifact().url() != null) {
+            if (compilerClasspathLibrary(library) && library.downloads() != null && library.downloads().artifact() != null && library.downloads().artifact().url() != null) {
                 try {
                     libraryArtifacts.add(library.downloads().artifact().toArtifact(ArtifactKind.JAR));
                 } catch (IllegalArgumentException ignored) {

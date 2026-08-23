@@ -26,7 +26,7 @@ record CompilerClasspath(List<CompilerClassFile> classes) {
         this(List.copyOf(sorted.values()));
     }
 
-    private static final List<String> BUILTIN_ANNOTATIONS = List.of("org.jetbrains.annotations.Nullable", "org.jetbrains.annotations.NotNull", "org.jetbrains.annotations.Contract", "org.jetbrains.annotations.Range", "org.jetbrains.annotations.NonNls", "org.jetbrains.annotations.UnknownNullability", "org.jetbrains.annotations.ApiStatus", "org.jetbrains.annotations.ApiStatus$Internal", "org.jetbrains.annotations.ApiStatus$Experimental", "org.jetbrains.annotations.ApiStatus$ScheduledForRemoval", "org.jetbrains.annotations.ApiStatus$NonExtendable", "org.jetbrains.annotations.ApiStatus$OverrideOnly", "org.jetbrains.annotations.ApiStatus$AvailableSince", "org.jetbrains.annotations.ApiStatus$Obsolete", "org.jspecify.annotations.Nullable", "org.jspecify.annotations.NonNull", "org.jspecify.annotations.NullMarked", "org.jspecify.annotations.NullUnmarked", "javax.annotation.Nullable", "javax.annotation.Nonnull", "javax.annotation.CheckForNull", "javax.annotation.CheckReturnValue", "javax.annotation.ParametersAreNonnullByDefault", "javax.annotation.concurrent.Immutable", "javax.annotation.concurrent.ThreadSafe", "javax.annotation.concurrent.NotThreadSafe", "javax.annotation.concurrent.GuardedBy");
+    private static final List<String> BUILTIN_ANNOTATIONS = List.of("org.jetbrains.annotations.Nullable", "org.jetbrains.annotations.NotNull", "org.jetbrains.annotations.Contract", "org.jetbrains.annotations.Range", "org.jetbrains.annotations.NonNls", "org.jetbrains.annotations.UnknownNullability", "org.jetbrains.annotations.ApiStatus", "org.jetbrains.annotations.ApiStatus$Internal", "org.jetbrains.annotations.ApiStatus$Experimental", "org.jetbrains.annotations.ApiStatus$ScheduledForRemoval", "org.jetbrains.annotations.ApiStatus$NonExtendable", "org.jetbrains.annotations.ApiStatus$OverrideOnly", "org.jetbrains.annotations.ApiStatus$AvailableSince", "org.jetbrains.annotations.ApiStatus$Obsolete", "org.jspecify.annotations.Nullable", "org.jspecify.annotations.NonNull", "org.jspecify.annotations.NullMarked", "org.jspecify.annotations.NullUnmarked", "javax.annotation.Nullable", "javax.annotation.Nonnull", "javax.annotation.CheckForNull", "javax.annotation.CheckReturnValue", "javax.annotation.ParametersAreNonnullByDefault", "javax.annotation.concurrent.Immutable", "javax.annotation.concurrent.ThreadSafe", "javax.annotation.concurrent.NotThreadSafe", "javax.annotation.concurrent.GuardedBy", "javax.annotation.meta.TypeQualifierDefault");
 
     static CompilerClasspath read(IndexRequest request) throws IOException, InterruptedException {
         Map<String, CompilerClassFile> classes = new LinkedHashMap<>();
@@ -62,6 +62,10 @@ record CompilerClasspath(List<CompilerClassFile> classes) {
                     else if (binaryName.equals("org.jetbrains.annotations.Range")) {
                         clb.withMethod("from", MethodTypeDesc.of(ConstantDescs.CD_long), AccessFlag.PUBLIC.mask() | AccessFlag.ABSTRACT.mask(), mb -> mb.with(AnnotationDefaultAttribute.of(AnnotationValue.ofLong(Long.MIN_VALUE))));
                         clb.withMethod("to", MethodTypeDesc.of(ConstantDescs.CD_long), AccessFlag.PUBLIC.mask() | AccessFlag.ABSTRACT.mask(), mb -> mb.with(AnnotationDefaultAttribute.of(AnnotationValue.ofLong(Long.MAX_VALUE))));
+                    }
+                    else if (binaryName.equals("javax.annotation.meta.TypeQualifierDefault")) {
+                        clb.withMethod("value", MethodTypeDesc.of(ClassDesc.ofDescriptor("[Ljava/lang/annotation/ElementType;")), AccessFlag.PUBLIC.mask() | AccessFlag.ABSTRACT.mask(), _ -> {
+                        });
                     }
                     else if (binaryName.startsWith("org.jetbrains.annotations.ApiStatus")) {
                         clb.with(InnerClassesAttribute.of(apiStatusInnerInfos));

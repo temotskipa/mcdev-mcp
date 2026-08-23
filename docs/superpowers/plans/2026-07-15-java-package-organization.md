@@ -2,14 +2,25 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Reorganize the current Java rewrite into shallow feature capsules, establish an extraction-ready MCP argument-binding library, split every named top-level declaration into its own file, and reduce responsibility concentration without changing behavior.
+**Goal:** Reorganize the current Java rewrite into shallow feature capsules, establish an extraction-ready typed MCP tool API, split every named top-level declaration into its own file, and reduce responsibility concentration without changing behavior.
 
-**Architecture:** The repository becomes a two-project Gradle build: the root application still produces the only shaded server JAR, while `mcp-tool-binding` is a small SDK/JDK-only `java-library` consumed by the root. Application packages are organized into MCP transport/tool/resource, class-file/source-index, and H2/model capsules. The library reserves a stable automatic JPMS name but remains classpath-consumed until the official MCP SDK becomes module-path-valid.
+**Architecture:** The repository is a four-project Gradle build. The root application still produces the only shaded server JAR; `mcp-tool-api` is a small explicit JPMS `java-library` consumed by the root; and the independently buildable `benchmark` and `conformance` harness projects consume the root without becoming production dependencies. Application packages are organized into MCP transport/tool/resource, class-file/source-index, and H2/model capsules. A build-scoped artifact transform supplies complete descriptors for the reviewed MCP SDK snapshot while the root release remains classpath-based.
 
-**Tech Stack:** Java 25 language/bytecode, Java 25 and 26 test runtimes, Gradle 9.6.1, MCP Java SDK 2.0.1-SNAPSHOT, H2 2.4.240, JUnit 6.1.0, Javac compiler-tree APIs, IntelliJ MCP.
+**Tech Stack:** Java 25 language/bytecode, Java 25 and 26 test runtimes, Gradle 9.7.0, MCP Java SDK 2.0.1-SNAPSHOT, H2 2.4.240, JUnit 6.1.3, Javac compiler-tree APIs, IntelliJ MCP.
 
-**Status:** Complete. Implementation, focused reviews, history consolidation,
-local verification, and final independent review all passed.
+**Status:** Package reorganization complete. The later benchmark/conformance
+harness-module and focused JPMS amendments are implemented and locally verified; independent
+review and an authorized commit/push remain pending.
+
+**2026-08-24 typed API amendment:** The initially narrow decoder project proved
+too shallow after both static and runtime tool families adopted it. It is now
+`mcp-tool-api`, and Task 1's original one-interface scope is superseded by a
+cohesive typed boundary: `JsonType<T>` and `TypedJson<T>` associate raw JSON
+with a `Class<T>` or `TypeRef<T>`; `ArgumentDecoder<A>` handles complete tool
+argument objects; and content, ordinary results, and
+`StructuredToolResult<T>` handle output. Java type names remain build/runtime
+metadata and are not serialized into MCP JSON. Root-only execution,
+cancellation, catalog, transport, and Minecraft policy remain unchanged.
 
 ## Global Constraints
 
@@ -21,11 +32,12 @@ local verification, and final independent review all passed.
 - Use top-level classes, interfaces, records, and enums by default. Every named top-level declaration gets one matching source file. Do not add nested types to avoid files.
 - Do not make implementation helpers public solely to cross a cosmetic package boundary.
 - Use Javac APIs, not regex, for Java source-layout enforcement.
-- Do not add ArchUnit, Spring, a formatter, a source parser, or another dependency.
+- Do not add ArchUnit, Spring, a formatter, a source parser, or another production/runtime dependency. The build-only JPMS descriptor transform is the sole amendment.
 - Keep `ArgumentDecoder<A>` whole-map and SDK-mapper-backed. Do not add a field-by-field typed-getter facade or a second JSON representation.
-- `mcp-tool-binding` may depend only on JDK APIs and the narrow official MCP SDK module needed by its public API. It must not depend on the root project or import application packages.
-- Keep `ToolBinding`, `Cancellation`, `ToolResult`, executor policy, catalogs, transport adaptation, and Minecraft behavior in the root application.
-- Set `Automatic-Module-Name` to `dev.mcdevmcp.mcp.binding`, but do not add `module-info.java`, patch MCP SDK descriptors, or add `--add-reads`/`--add-exports` workarounds.
+- `mcp-tool-api` may expose only JDK APIs and the narrow official MCP SDK module needed by its public API. A compile-only Servlet API is permitted solely to resolve the SDK core descriptor and must not become a runtime dependency. It must not depend on the root project or import application packages.
+- `benchmark` and `conformance` depend on the root application. The root application and `mcp-tool-api` must not depend on either harness project.
+- Keep `ToolBinding`, `Cancellation`, executor policy, catalogs, transport adaptation, and Minecraft behavior in the root application. Reusable JSON type tokens, typed JSON values, content, ordinary results, and structured results belong to `mcp-tool-api`.
+- Name the explicit tool API module `dev.mcdevmcp.mcp.tool.api`; inject reviewed descriptors only for the broken MCP SDK artifacts used by that module, and do not add `--add-reads`/`--add-exports` workarounds or modularize the shaded root application.
 - Run IntelliJ MCP `build_project` and warnings-enabled `get_file_problems` for every changed Java file before each review gate.
 - Use one Terra/high implementer for broad package/visibility integration, then an independent Terra/high reviewer. Do not use Sol for mechanical relocation.
 
@@ -36,17 +48,17 @@ local verification, and final independent review all passed.
 **Files:**
 - Modify: `settings.gradle.kts`
 - Modify: `build.gradle.kts`
-- Create: `mcp-tool-binding/build.gradle.kts`
+- Create: `mcp-tool-api/build.gradle.kts`
 - Move: `src/main/java/dev/mcdevmcp/mcp/ArgumentDecoder.java`
-- Create: `mcp-tool-binding/src/main/java/dev/mcdevmcp/mcp/binding/package-info.java`
-- Create: `mcp-tool-binding/src/test/java/dev/mcdevmcp/mcp/binding/ArgumentDecoderTest.java`
-- Create: `mcp-tool-binding/src/test/java/dev/mcdevmcp/mcp/binding/WireArguments.java`
-- Create: `mcp-tool-binding/src/test/java/dev/mcdevmcp/mcp/binding/DomainArguments.java`
+- Create: `mcp-tool-api/src/main/java/dev/mcdevmcp/mcp/binding/package-info.java`
+- Create: `mcp-tool-api/src/test/java/dev/mcdevmcp/mcp/binding/ArgumentDecoderTest.java`
+- Create: `mcp-tool-api/src/test/java/dev/mcdevmcp/mcp/binding/WireArguments.java`
+- Create: `mcp-tool-api/src/test/java/dev/mcdevmcp/mcp/binding/DomainArguments.java`
 - Modify: current `ToolBinding` and tests that import `ArgumentDecoder`
 
 **Interfaces:**
-- Produces: `dev.mcdevmcp.mcp.binding.ArgumentDecoder<A>` with `sdk(Class<A>)`, `decode(McpJsonMapper, Map<String,Object>)`, and `map(Function<A,B>)`.
-- Produces: independently buildable `:mcp-tool-binding` JAR with automatic module name `dev.mcdevmcp.mcp.binding`.
+- Produces: `dev.mcdevmcp.mcp.tool.api.ArgumentDecoder<A>` with `sdk(Class<A>)`, `decode(McpJsonMapper, Map<String,Object>)`, and `map(Function<A,B>)`.
+- Produces: independently buildable explicit `:mcp-tool-api` module named `dev.mcdevmcp.mcp.tool.api`.
 - Consumes: `io.modelcontextprotocol.sdk:mcp-core:2.0.1-SNAPSHOT` as an API dependency.
 
 - [x] **Step 1: Write the failing typed-decoder test**
@@ -88,14 +100,14 @@ class ArgumentDecoderTest {
 
 - [x] **Step 2: Configure the child project without production source**
 
-Add `include("mcp-tool-binding")`. Apply `java-library`; configure the Java 25 toolchain/release/lint flags and Java 25/26 test launcher; declare `mcp-core` as `api`, Jackson3 mapper only for tests, and JUnit; set the JAR manifest's `Automatic-Module-Name` exactly.
+Add `include("mcp-tool-api")`. Apply `java-library`; configure the Java 25 toolchain/release/lint flags and Java 25/26 test launcher; declare `mcp-core` as `api`, Jackson3 mapper only for tests, and JUnit; set the JAR manifest's `Automatic-Module-Name` exactly.
 
 - [x] **Step 3: Run the red test**
 
 Run:
 
 ```powershell
-.\gradlew.bat :mcp-tool-binding:test --console=plain
+.\gradlew.bat :mcp-tool-api:test --console=plain
 ```
 
 Expected: `compileTestJava` fails because `ArgumentDecoder` does not exist in the child package.
@@ -105,7 +117,7 @@ Expected: `compileTestJava` fails because `ArgumentDecoder` does not exist in th
 Move the existing interface unchanged except for package declaration:
 
 ```java
-package dev.mcdevmcp.mcp.binding;
+package dev.mcdevmcp.mcp.tool.api;
 
 @FunctionalInterface
 public interface ArgumentDecoder<A> {
@@ -124,21 +136,21 @@ public interface ArgumentDecoder<A> {
 }
 ```
 
-Add `implementation(project(":mcp-tool-binding"))` to the root and update imports. Do not move application handler/result/cancellation types.
+Add `implementation(project(":mcp-tool-api"))` to the root and update imports. Do not move application handler/result/cancellation types.
 
 - [x] **Step 5: Run green and verify the boundary**
 
 Run:
 
 ```powershell
-.\gradlew.bat :mcp-tool-binding:clean :mcp-tool-binding:test :mcp-tool-binding:jar --console=plain
-jar --describe-module --file mcp-tool-binding\build\libs\mcp-tool-binding-3.0.0.jar
-jdeps --ignore-missing-deps --recursive mcp-tool-binding\build\libs\mcp-tool-binding-3.0.0.jar
-.\gradlew.bat :mcp-tool-binding:dependencies --configuration runtimeClasspath --console=plain
+.\gradlew.bat :mcp-tool-api:clean :mcp-tool-api:test :mcp-tool-api:jar --console=plain
+jar --describe-module --file mcp-tool-api\build\libs\mcp-tool-api-3.0.0.jar
+jdeps --ignore-missing-deps --recursive mcp-tool-api\build\libs\mcp-tool-api-3.0.0.jar
+.\gradlew.bat :mcp-tool-api:dependencies --configuration runtimeClasspath --console=plain
 ```
 
 Expected: tests pass; `jar` reports automatic module
-`dev.mcdevmcp.mcp.binding`; `jdeps` contains no root application package; the
+`dev.mcdevmcp.mcp.tool.api`; `jdeps` contains no root application package; the
 child runtime graph contains only its direct MCP core dependency and that
 module's transitive graph, with no root-project output.
 
@@ -191,7 +203,7 @@ Move `McpSdkAdapter`, `StdioServer`, `NodeParityJsonMapper`, `EofTrackingInputSt
 
 - [x] **Step 3: Move tool production and mirrored tests**
 
-Move all application-specific `Tool*`, `BlockingToolHandler`, and `UnavailableToolArguments` types. Import `dev.mcdevmcp.mcp.binding.ArgumentDecoder` from the child. Keep all signatures and visibility unchanged, then run all MCP tests.
+Move all application-specific `Tool*`, `BlockingToolHandler`, and `UnavailableToolArguments` types. Import `dev.mcdevmcp.mcp.tool.api.ArgumentDecoder` from the child. Keep all signatures and visibility unchanged, then run all MCP tests.
 
 - [x] **Step 4: Move resources and update the factory**
 
@@ -399,8 +411,8 @@ policy explicitly.
 Run:
 
 ```powershell
-.\gradlew.bat :mcp-tool-binding:clean :mcp-tool-binding:test :mcp-tool-binding:jar clean test shadowJar cutoverCheck mcpSdkSnapshotCheck --console=plain
-.\gradlew.bat :mcp-tool-binding:test test shadowJar cutoverCheck mcpSdkSnapshotCheck -PtestJavaVersion=26 --console=plain
+.\gradlew.bat :mcp-tool-api:clean :mcp-tool-api:test :mcp-tool-api:jar clean test shadowJar cutoverCheck mcpSdkSnapshotCheck --console=plain
+.\gradlew.bat :mcp-tool-api:test test shadowJar cutoverCheck mcpSdkSnapshotCheck -PtestJavaVersion=26 --console=plain
 ```
 
 Also run exact shaded-JAR launches on Java 25/26, runtime dependency/archive audits, the Node oracle, no-fallback audit, IntelliJ full build, and warnings-enabled inspections for every changed Java file. Confirm original `master` and the preserved stash are unchanged.

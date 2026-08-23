@@ -1,20 +1,21 @@
 package dev.mcdevmcp.mcp.transport;
 
+import dev.mcdevmcp.mcp.ServerDefinition;
 import dev.mcdevmcp.mcp.resource.ResourceCatalog;
 import dev.mcdevmcp.mcp.resource.ResourceRead;
-import dev.mcdevmcp.mcp.ServerDefinition;
 import dev.mcdevmcp.mcp.tool.ToolCatalog;
-import dev.mcdevmcp.mcp.tool.ToolContent;
 import dev.mcdevmcp.mcp.tool.ToolDefinition;
-import dev.mcdevmcp.mcp.tool.ToolResult;
+import dev.mcdevmcp.mcp.tool.api.StructuredToolResult;
+import dev.mcdevmcp.mcp.tool.api.ToolContent;
+import dev.mcdevmcp.mcp.tool.api.ToolResult;
 import io.modelcontextprotocol.json.McpJsonMapper;
 import io.modelcontextprotocol.server.McpAsyncServer;
 import io.modelcontextprotocol.server.McpAsyncServerExchange;
 import io.modelcontextprotocol.server.McpServer;
 import io.modelcontextprotocol.server.McpServerFeatures;
-import io.modelcontextprotocol.spec.McpStreamableServerTransportProvider;
 import io.modelcontextprotocol.server.transport.StdioServerTransportProvider;
 import io.modelcontextprotocol.spec.McpSchema;
+import io.modelcontextprotocol.spec.McpStreamableServerTransportProvider;
 import reactor.core.publisher.Mono;
 
 import java.io.InputStream;
@@ -241,7 +242,8 @@ public final class McpSdkAdapter {
 
     private McpSchema.CallToolResult toSdkResult(ToolResult result) {
         Boolean isError = result.isError() ? Boolean.TRUE : null;
-        return new McpSchema.CallToolResult(result.content().stream().map(this::toSdkContent).toList(), isError, null, null);
+        Object structuredContent = result instanceof StructuredToolResult<?> structured ? structured.structuredContent() : null;
+        return new McpSchema.CallToolResult(result.content().stream().map(this::toSdkContent).toList(), isError, structuredContent, null);
     }
 
     private McpSchema.Content toSdkContent(ToolContent content) {

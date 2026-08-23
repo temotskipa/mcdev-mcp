@@ -158,6 +158,7 @@ public final class MinecraftRemapper {
              JarOutputStream output = new JarOutputStream(new BufferedOutputStream(file))) {
             output.setLevel(9);
             List<JarEntry> entries = input.stream().sorted(Comparator.comparing(JarEntry::getName)).toList();
+            int lastPercent = -1;
             for (int index = 0; index < entries.size(); index++) {
                 checkCancelled(cancellation);
                 JarEntry entry = entries.get(index);
@@ -183,7 +184,10 @@ public final class MinecraftRemapper {
                 }
                 output.closeEntry();
                 int percent = 80 + (index + 1) * 14 / entries.size();
-                progress.report("remap", percent, "Normalized " + (index + 1) + " JAR entries");
+                if (percent != lastPercent) {
+                    lastPercent = percent;
+                    progress.report("remap", percent, "Normalized " + (index + 1) + " JAR entries");
+                }
             }
         }
         if (classes != expectedClasses) {

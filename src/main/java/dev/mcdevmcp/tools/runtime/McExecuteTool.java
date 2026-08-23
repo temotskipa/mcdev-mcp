@@ -1,8 +1,8 @@
 package dev.mcdevmcp.tools.runtime;
 
 import dev.mcdevmcp.bridge.BridgeEndpoint;
-import dev.mcdevmcp.mcp.binding.ArgumentDecoder;
 import dev.mcdevmcp.mcp.tool.ToolBinding;
+import dev.mcdevmcp.mcp.tool.api.ArgumentDecoder;
 
 final class McExecuteTool {
     static final BridgeEndpoint ENDPOINT = new BridgeEndpoint("execute");

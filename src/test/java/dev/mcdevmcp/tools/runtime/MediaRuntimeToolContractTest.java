@@ -3,11 +3,11 @@ package dev.mcdevmcp.tools.runtime;
 import dev.mcdevmcp.bridge.BridgeRequest;
 import dev.mcdevmcp.bridge.BridgeResponse;
 import dev.mcdevmcp.bridge.BridgeTestHarness;
-import dev.mcdevmcp.mcp.tool.ToolCatalog;
 import dev.mcdevmcp.mcp.tool.CompleteToolBindings;
-import dev.mcdevmcp.mcp.tool.ToolContent;
-import dev.mcdevmcp.mcp.tool.ToolContentType;
-import dev.mcdevmcp.mcp.tool.ToolResult;
+import dev.mcdevmcp.mcp.tool.ToolCatalog;
+import dev.mcdevmcp.mcp.tool.api.ToolContent;
+import dev.mcdevmcp.mcp.tool.api.ToolContentType;
+import dev.mcdevmcp.mcp.tool.api.ToolResult;
 import dev.mcdevmcp.support.AppEnvironment;
 import dev.mcdevmcp.support.Cancellation;
 import io.modelcontextprotocol.json.McpJsonDefaults;
@@ -22,9 +22,7 @@ import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 
-import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.*;
 
 class MediaRuntimeToolContractTest {
     private static final McpJsonMapper MAPPER = McpJsonDefaults.getMapper();
