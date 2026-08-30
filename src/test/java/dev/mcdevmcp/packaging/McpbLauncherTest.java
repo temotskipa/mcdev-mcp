@@ -34,6 +34,22 @@ class McpbLauncherTest {
     }
 
     @Test
+    void ignoresNumericJavaToolOptionsPreambleWhenDetectingTheFeatureVersion() throws Exception {
+        ProcessResult result = runLauncher("25", "17", Map.of("FAKE_JAVA_VERSION_PREAMBLE", "Picked up JAVA_TOOL_OPTIONS: -Dfile.encoding=UTF-8"));
+
+        assertEquals(17, result.exitCode(), result.error());
+    }
+
+    @Test
+    void rejectsAFailedVersionProbeEvenWhenItPrintsASupportedVersion() throws Exception {
+        ProcessResult result = runLauncher("25", "17", Map.of("FAKE_JAVA_VERSION_EXIT", "7"));
+
+        assertEquals(1, result.exitCode(), result.error());
+        assertTrue(result.error().contains("Unable to determine Java version"));
+        assertFalse(Files.exists(temporaryDirectory.resolve("environment.txt")));
+    }
+
+    @Test
     void stripsOnlyUnresolvedOptionalConfigurationValues() throws Exception {
         ProcessResult result = runLauncher("25", "0", Map.of("MCDEV_SESSION_LOG_DIR", "${user_config.script_logs}", "MCDEV_RUN_COMMAND", "false", "MCDEV_MCP_DEBUG_LOG", "${user_config.debug_log}", "MCDEV_INDEX_THREADS", "${user_config.index_threads}", "DEBUGBRIDGE_PORT", "${user_config.debugbridge_port}"));
 
@@ -135,8 +151,12 @@ class McpbLauncherTest {
                                     "use strict";
                                     const fs = require("node:fs");
                                     if (process.argv[2] === "-version") {
+                                      const preamble = process.env.FAKE_JAVA_VERSION_PREAMBLE;
+                                      if (preamble) {
+                                        process.stderr.write(`${preamble}\\n`);
+                                      }
                                       process.stderr.write(`java version "${process.env.FAKE_JAVA_VERSION}"\\n`);
-                                      process.exit(0);
+                                      process.exit(Number.parseInt(process.env.FAKE_JAVA_VERSION_EXIT ?? "0", 10));
                                     }
                                     const names = [
                                       "MCDEV_SESSION_LOG_DIR",

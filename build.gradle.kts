@@ -853,26 +853,26 @@ fun registerCutoverScan(
                             val arguments = words.drop(executableIndex + 1)
                             if (isNodeCommand(executable)) {
                                 return !isPackagingMetadata ||
-                                    arguments.size != 1 ||
-                                    normalizedEntrypoint(arguments.single()) !in allowedEntrypoints
+                                        arguments.size != 1 ||
+                                        normalizedEntrypoint(arguments.single()) !in allowedEntrypoints
                             }
                             return words.drop(executableIndex).any { word ->
                                 nodeToken.containsMatchIn(word) ||
-                                    javascriptEntrypoint.containsMatchIn(word)
+                                        javascriptEntrypoint.containsMatchIn(word)
                             }
                         }
 
                         fun hasForbiddenNodeCommandText(value: String): Boolean {
                             val segments = parseCommandSegments(value)
                                 ?: return nodeToken.containsMatchIn(value) ||
-                                    nodeOptionsToken.containsMatchIn(value) ||
-                                    javascriptEntrypoint.containsMatchIn(value)
+                                        nodeOptionsToken.containsMatchIn(value) ||
+                                        javascriptEntrypoint.containsMatchIn(value)
                             if (isPackagingMetadata &&
                                 segments.size != 1 &&
                                 segments.flatten().any { word ->
                                     nodeToken.containsMatchIn(word) ||
-                                        nodeOptionsToken.containsMatchIn(word) ||
-                                        javascriptEntrypoint.containsMatchIn(word)
+                                            nodeOptionsToken.containsMatchIn(word) ||
+                                            javascriptEntrypoint.containsMatchIn(word)
                                 }
                             ) {
                                 return true
@@ -914,6 +914,7 @@ fun registerCutoverScan(
                                             } else {
                                                 command to stringArguments(explicitArguments)
                                             }
+
                                             is Iterable<*> -> {
                                                 val commandParts = command.toList()
                                                 (commandParts.firstOrNull() as? String) to

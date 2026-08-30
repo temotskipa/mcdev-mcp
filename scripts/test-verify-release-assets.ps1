@@ -23,6 +23,20 @@ if (-not $publishStep.Success) {
 if ($publishStep.Groups["body"].Value -notmatch '(?m)^          GH_REPO: \$\{\{ github\.repository \}\}\r?$') {
     throw "Release publish step must identify the repository explicitly"
 }
+$parityJob = [regex]::Match(
+    $releaseWorkflow,
+    '(?ms)^  parity:\r?\n(?<body>.*?)(?=^  [a-z0-9-]+:\r?$|\z)'
+)
+if (-not $parityJob.Success -or $parityJob.Groups["body"].Value -notmatch '(?m)^        run: ./gradlew parityTest ') {
+    throw "Release workflow must run the frozen Node parity suite"
+}
+$verifyReleaseJob = [regex]::Match(
+    $releaseWorkflow,
+    '(?ms)^  verify-release:\r?\n(?<body>.*?)(?=^  [a-z0-9-]+:\r?$|\z)'
+)
+if (-not $verifyReleaseJob.Success -or $verifyReleaseJob.Groups["body"].Value -notmatch '(?m)^    needs: \[[^\]]*\bparity\b[^\]]*\]\r?$') {
+    throw "Release verification must wait for frozen Node parity"
+}
 
 function Reset-Fixtures {
     Remove-Item -LiteralPath $fixtures -Recurse -Force -ErrorAction SilentlyContinue

@@ -38,11 +38,15 @@ function forwardSignal(signal, child) {
 
 const version = spawnSync(javaCommand, javaArguments(["-version"]), {encoding: "utf8"});
 const versionText = `${version.stdout}\n${version.stderr}`;
-const match = versionText.match(/(?:version\s+)?["']?(\d+)(?:[._]\d+)?/i);
+const match = versionText.match(/^\s*(?:openjdk|java)\s+version\s+["']?(\d+)(?=[.\-+_'"\s]|$)/im);
 const feature = match === null ? NaN : Number.parseInt(match[1], 10);
 
 if (version.error !== undefined) {
     process.stderr.write(`Unable to start Java: ${version.error.message}\n`);
+    process.exitCode = 1;
+} else if (version.status !== 0) {
+    const outcome = version.signal === null ? `status ${version.status}` : `signal ${version.signal}`;
+    process.stderr.write(`Unable to determine Java version: java -version exited with ${outcome}.\n`);
     process.exitCode = 1;
 } else if (!Number.isInteger(feature) || feature < 25) {
     process.stderr.write(`Java 25 or newer is required; detected ${Number.isInteger(feature) ? `Java ${feature}` : "an unknown Java version"}.\n`);
