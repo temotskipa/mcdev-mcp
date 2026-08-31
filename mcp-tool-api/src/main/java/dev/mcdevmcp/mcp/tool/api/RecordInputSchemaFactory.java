@@ -1,22 +1,13 @@
 package dev.mcdevmcp.mcp.tool.api;
 
+import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.annotation.JsonValue;
 
-import java.lang.reflect.ParameterizedType;
-import java.lang.reflect.RecordComponent;
-import java.lang.reflect.Type;
-import java.lang.reflect.TypeVariable;
-import java.lang.reflect.WildcardType;
+import java.lang.reflect.*;
 import java.math.BigDecimal;
 import java.math.BigInteger;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.HashSet;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Set;
+import java.util.*;
 
 public final class RecordInputSchemaFactory implements InputSchemaFactory {
     private static final RecordInputSchemaFactory STANDARD = new RecordInputSchemaFactory();
@@ -68,17 +59,9 @@ public final class RecordInputSchemaFactory implements InputSchemaFactory {
         if (isDecimal(componentType)) {
             return schemaWithType("number");
         }
-        if (componentType.isEnum()) {
-            Map<String, Object> schema = schemaWithType("string");
-            List<String> values = new ArrayList<>();
-            for (Object constant : componentType.getEnumConstants()) {
-                values.add(((Enum<?>) constant).name());
-            }
-            schema.put("enum", values);
-            return schema;
-        }
+        if (componentType.isEnum()) return enumSchema(componentType, activeRecords);
         if (componentType.isRecord()) {
-            return objectSchema(componentType, activeRecords);
+            return recordSchema(componentType, activeRecords);
         }
         throw new IllegalArgumentException("Unsupported input component type: " + componentType.getTypeName());
     }
@@ -130,6 +113,102 @@ public final class RecordInputSchemaFactory implements InputSchemaFactory {
         }
     }
 
+    private static Map<String, Object> recordSchema(Class<?> recordType, Set<Class<?>> activeRecords) {
+        Type delegatingType = delegatingCreatorType(recordType);
+        JsonValueAccessor jsonValue = jsonValueAccessor(recordType);
+        if (delegatingType == null) {
+            if (jsonValue != null) {
+                throw new IllegalArgumentException("JsonValue records require one delegating JsonCreator: " + recordType.getTypeName());
+            }
+            return objectSchema(recordType, activeRecords);
+        }
+        Map<String, Object> schema = schemaFor(delegatingType, activeRecords);
+        if (jsonValue != null && !schema.get("type").equals(schemaFor(jsonValue.type(), activeRecords).get("type"))) {
+            throw new IllegalArgumentException("JsonValue type must match the delegating JsonCreator input: " + recordType.getTypeName());
+        }
+        return schema;
+    }
+
+    private static Map<String, Object> enumSchema(Class<?> enumType, Set<Class<?>> activeRecords) {
+        Type delegatingType = delegatingCreatorType(enumType);
+        JsonValueAccessor jsonValue = jsonValueAccessor(enumType);
+        if (delegatingType != null && jsonValue == null) {
+            throw new IllegalArgumentException("Enums with JsonCreator require JsonValue schema metadata: " + enumType.getTypeName());
+        }
+        Map<String, Object> schema = jsonValue == null ? schemaWithType("string") : schemaFor(jsonValue.type(), activeRecords);
+        List<Object> values = new ArrayList<>();
+        for (Object constant : enumType.getEnumConstants()) {
+            values.add(jsonValue == null ? enumPropertyName((Enum<?>) constant) : jsonValue.read(constant));
+        }
+        schema.put("enum", values);
+        return schema;
+    }
+
+    private static String enumPropertyName(Enum<?> constant) {
+        try {
+            JsonProperty annotation = constant.getDeclaringClass().getField(constant.name()).getAnnotation(JsonProperty.class);
+            return annotation == null || annotation.value().isEmpty() ? constant.name() : annotation.value();
+        } catch (NoSuchFieldException exception) {
+            throw new IllegalStateException("Enum constant field was not found: " + constant.name(), exception);
+        }
+    }
+
+    private static Type delegatingCreatorType(Class<?> type) {
+        List<Type> creatorTypes = new ArrayList<>();
+        for (Constructor<?> constructor : type.getDeclaredConstructors()) {
+            JsonCreator annotation = constructor.getAnnotation(JsonCreator.class);
+            if (annotation != null) {
+                creatorTypes.add(creatorParameterType(type, annotation, constructor.getParameterCount(), constructor.getGenericParameterTypes()));
+            }
+        }
+        for (Method method : type.getDeclaredMethods()) {
+            JsonCreator annotation = method.getAnnotation(JsonCreator.class);
+            if (annotation != null) {
+                if (!Modifier.isStatic(method.getModifiers()) || !type.isAssignableFrom(method.getReturnType())) {
+                    throw new IllegalArgumentException("JsonCreator factory must be static and return " + type.getTypeName());
+                }
+                creatorTypes.add(creatorParameterType(type, annotation, method.getParameterCount(), method.getGenericParameterTypes()));
+            }
+        }
+        if (creatorTypes.size() > 1) {
+            throw new IllegalArgumentException("Only one JsonCreator is supported for input type: " + type.getTypeName());
+        }
+        return creatorTypes.isEmpty() ? null : creatorTypes.getFirst();
+    }
+
+    private static Type creatorParameterType(Class<?> type, JsonCreator annotation, int parameterCount, Type[] parameterTypes) {
+        if (annotation.mode() != JsonCreator.Mode.DELEGATING || parameterCount != 1) {
+            throw new IllegalArgumentException("JsonCreator must be a one-parameter delegating creator: " + type.getTypeName());
+        }
+        return parameterTypes[0];
+    }
+
+    private static JsonValueAccessor jsonValueAccessor(Class<?> type) {
+        List<JsonValueAccessor> accessors = new ArrayList<>();
+        for (Method method : type.getDeclaredMethods()) {
+            JsonValue annotation = method.getAnnotation(JsonValue.class);
+            if (annotation != null && annotation.value()) {
+                if (Modifier.isStatic(method.getModifiers()) || method.getParameterCount() != 0 || method.getReturnType() == void.class) {
+                    throw new IllegalArgumentException("JsonValue method must be a non-static zero-argument value: " + type.getTypeName());
+                }
+                accessors.add(JsonValueAccessor.forMethod(method));
+            }
+        }
+        for (Field field : type.getDeclaredFields()) {
+            JsonValue annotation = field.getAnnotation(JsonValue.class);
+            if (annotation != null && annotation.value()) {
+                if (Modifier.isStatic(field.getModifiers())) {
+                    throw new IllegalArgumentException("JsonValue field must be an instance value: " + type.getTypeName());
+                }
+                accessors.add(JsonValueAccessor.forField(field));
+            }
+        }
+        if (accessors.size() > 1) {
+            throw new IllegalArgumentException("Only one JsonValue accessor is supported for input type: " + type.getTypeName());
+        }
+        return accessors.isEmpty() ? null : accessors.getFirst();
+    }
+
     private static String propertyName(RecordComponent component) {
         JsonProperty annotation = component.getAnnotation(JsonProperty.class);
         if (annotation == null) {
@@ -145,8 +224,7 @@ public final class RecordInputSchemaFactory implements InputSchemaFactory {
         if (!metadata.description().isEmpty()) {
             schema.put("description", metadata.description());
         }
-        if ((!metadata.minimum().isEmpty() || !metadata.maximum().isEmpty())
-                && !"integer".equals(schema.get("type")) && !"number".equals(schema.get("type"))) {
+        if ((!metadata.minimum().isEmpty() || !metadata.maximum().isEmpty()) && !"integer".equals(schema.get("type")) && !"number".equals(schema.get("type"))) {
             throw new IllegalArgumentException("Bounds are only supported for numeric input properties");
         }
         if (!metadata.minimum().isEmpty()) {
@@ -155,8 +233,7 @@ public final class RecordInputSchemaFactory implements InputSchemaFactory {
         if (!metadata.maximum().isEmpty()) {
             schema.put("maximum", parseDecimal(metadata.maximum(), "maximum"));
         }
-        if (schema.containsKey("minimum") && schema.containsKey("maximum")
-                && ((BigDecimal) schema.get("maximum")).compareTo((BigDecimal) schema.get("minimum")) < 0) {
+        if (schema.containsKey("minimum") && schema.containsKey("maximum") && ((BigDecimal) schema.get("maximum")).compareTo((BigDecimal) schema.get("minimum")) < 0) {
             throw new IllegalArgumentException("Input property maximum must not be below minimum");
         }
         if (!metadata.defaultValue().isEmpty()) {
@@ -199,22 +276,43 @@ public final class RecordInputSchemaFactory implements InputSchemaFactory {
     }
 
     private static boolean isIntegral(Class<?> type) {
-        return type == byte.class || type == Byte.class
-                || type == short.class || type == Short.class
-                || type == int.class || type == Integer.class
-                || type == long.class || type == Long.class
-                || type == BigInteger.class;
+        return type == byte.class || type == Byte.class || type == short.class || type == Short.class || type == int.class || type == Integer.class || type == long.class || type == Long.class || type == BigInteger.class;
     }
 
     private static boolean isDecimal(Class<?> type) {
-        return type == float.class || type == Float.class
-                || type == double.class || type == Double.class
-                || type == BigDecimal.class;
+        return type == float.class || type == Float.class || type == double.class || type == Double.class || type == BigDecimal.class;
     }
 
     private static Map<String, Object> schemaWithType(String type) {
         Map<String, Object> schema = new LinkedHashMap<>();
         schema.put("type", type);
         return schema;
+    }
+
+    private record JsonValueAccessor(Type type, Method method, Field field) {
+        static JsonValueAccessor forMethod(Method method) {
+            return new JsonValueAccessor(method.getGenericReturnType(), method, null);
+        }
+
+        static JsonValueAccessor forField(Field field) {
+            return new JsonValueAccessor(field.getGenericType(), null, field);
+        }
+
+        Object read(Object target) {
+            try {
+                if (method != null) {
+                    if (!method.trySetAccessible()) {
+                        throw new IllegalArgumentException("JsonValue method is inaccessible: " + method);
+                    }
+                    return method.invoke(target);
+                }
+                if (!field.trySetAccessible()) {
+                    throw new IllegalArgumentException("JsonValue field is inaccessible: " + field);
+                }
+                return field.get(target);
+            } catch (IllegalAccessException | InvocationTargetException exception) {
+                throw new IllegalArgumentException("Cannot read JsonValue metadata", exception);
+            }
+        }
     }
 }

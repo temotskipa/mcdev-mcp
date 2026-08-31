@@ -8,6 +8,7 @@ import dev.mcdevmcp.mcp.transport.McpSdkAdapter;
 import dev.mcdevmcp.mcp.transport.StdioServer;
 import dev.mcdevmcp.storage.PlatformPaths;
 import dev.mcdevmcp.support.AppEnvironment;
+import dev.mcdevmcp.support.AppVersion;
 import dev.mcdevmcp.support.DebugLog;
 import dev.mcdevmcp.tools.runtime.RuntimeToolModule;
 import dev.mcdevmcp.tools.statictool.StaticToolModule;
@@ -118,7 +119,7 @@ public final class McpServerFactory implements AutoCloseable {
 
     public synchronized ServerDefinition loadServerDefinition(ExecutorService blockingExecutor) {
         requireOpen();
-        return new ServerDefinition("mcdev-mcp", dev.mcdevmcp.support.AppVersion.current(), ResourceCatalog.INSTRUCTIONS, loadToolCatalog(blockingExecutor), resourceCatalog);
+        return new ServerDefinition("mcdev-mcp", AppVersion.current(), ResourceCatalog.INSTRUCTIONS, loadToolCatalog(blockingExecutor), resourceCatalog);
     }
 
     public synchronized StdioServer startStdio(InputStream input, OutputStream output) {

@@ -70,6 +70,8 @@ class RecordInputSchemaFactoryTest {
         assertThrows(IllegalArgumentException.class, () -> factory.generate(JsonType.of(InvalidMinimumInput.class)));
         assertThrows(IllegalArgumentException.class, () -> factory.generate(JsonType.of(ReversedBoundsInput.class)));
         assertThrows(IllegalArgumentException.class, () -> factory.generate(JsonType.of(NonNumericBoundsInput.class)));
+        assertThrows(IllegalArgumentException.class, () -> factory.generate(JsonType.of(JsonValueWithoutDelegatingCreatorInput.class)));
+        assertThrows(IllegalArgumentException.class, () -> factory.generate(JsonType.of(InvalidDelegatingCreatorInput.class)));
     }
 
     private record ObjectComponentInput(Object value) {
@@ -98,5 +100,24 @@ class RecordInputSchemaFactoryTest {
     }
 
     private record NonNumericBoundsInput(@InputProperty(minimum = "1") String value) {
+    }
+
+    private record JsonValueWithoutDelegatingCreatorInput(JsonValueWithoutDelegatingCreator value) {
+    }
+
+    private record JsonValueWithoutDelegatingCreator(String value) {
+        @com.fasterxml.jackson.annotation.JsonValue
+        String wireValue() {
+            return value;
+        }
+    }
+
+    private record InvalidDelegatingCreatorInput(InvalidDelegatingCreator value) {
+    }
+
+    private record InvalidDelegatingCreator(String first, String second) {
+        @com.fasterxml.jackson.annotation.JsonCreator(mode = com.fasterxml.jackson.annotation.JsonCreator.Mode.DELEGATING)
+        InvalidDelegatingCreator {
+        }
     }
 }
