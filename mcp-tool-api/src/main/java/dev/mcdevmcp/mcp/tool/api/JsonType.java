@@ -31,6 +31,10 @@ public final class JsonType<T> {
         return javaType;
     }
 
+    public Class<?> rawClass() {
+        return javaType instanceof Class<?> type ? type : null;
+    }
+
     public T decode(McpJsonMapper mapper, Object value) {
         McpJsonMapper required = Objects.requireNonNull(mapper, "mapper");
         return rawType == null ? required.convertValue(value, typeRef) : required.convertValue(value, rawType);
