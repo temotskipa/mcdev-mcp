@@ -137,8 +137,13 @@ public final class RecordInputSchemaFactory implements InputSchemaFactory {
         }
         Map<String, Object> schema = jsonValue == null ? schemaWithType("string") : schemaFor(jsonValue.type(), activeRecords);
         List<Object> values = new ArrayList<>();
+        Set<Object> wireValues = new HashSet<>();
         for (Object constant : enumType.getEnumConstants()) {
-            values.add(jsonValue == null ? enumPropertyName((Enum<?>) constant) : jsonValue.read(constant));
+            Object wireValue = jsonValue == null ? enumPropertyName((Enum<?>) constant) : jsonValue.read(constant);
+            if (!wireValues.add(wireValue)) {
+                throw new IllegalArgumentException("Duplicate effective enum wire value: " + wireValue + " for " + enumType.getTypeName());
+            }
+            values.add(wireValue);
         }
         schema.put("enum", values);
         return schema;

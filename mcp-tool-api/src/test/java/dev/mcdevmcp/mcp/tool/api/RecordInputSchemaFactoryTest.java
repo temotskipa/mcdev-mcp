@@ -17,26 +17,7 @@ class RecordInputSchemaFactoryTest {
         JsonObjectSchema schema = RecordInputSchemaFactory.standard().generate(JsonType.of(SchemaInput.class));
 
         assertEquals(List.of("type", "properties", "required"), List.copyOf(schema.value().keySet()));
-        assertEquals(
-                Map.of(
-                        "type", "object",
-                        "properties", Map.of(
-                                "query", Map.of("type", "string", "description", "Search text", "default", "all"),
-                                "includeDetails", Map.of("type", "boolean", "default", true),
-                                "threshold", Map.of(
-                                        "type", "number",
-                                        "minimum", new BigDecimal("0.25"),
-                                        "maximum", new BigDecimal("4.50"),
-                                        "default", new BigDecimal("1.50")
-                                ),
-                                "mode", Map.of("type", "string", "enum", List.of("FAST", "THOROUGH"), "default", "THOROUGH"),
-                                "limit", Map.of("type", "integer", "default", new BigInteger("42")),
-                                "optionalFilter", Map.of("type", "string")
-                        ),
-                        "required", List.of("query")
-                ),
-                schema.value()
-        );
+        assertEquals(Map.of("type", "object", "properties", Map.of("query", Map.of("type", "string", "description", "Search text", "default", "all"), "includeDetails", Map.of("type", "boolean", "default", true), "threshold", Map.of("type", "number", "minimum", new BigDecimal("0.25"), "maximum", new BigDecimal("4.50"), "default", new BigDecimal("1.50")), "mode", Map.of("type", "string", "enum", List.of("FAST", "THOROUGH"), "default", "THOROUGH"), "limit", Map.of("type", "integer", "default", new BigInteger("42")), "optionalFilter", Map.of("type", "string")), "required", List.of("query")), schema.value());
 
         Object propertiesValue = schema.value().get("properties");
         if (!(propertiesValue instanceof Map<?, ?> properties)) {
@@ -72,6 +53,8 @@ class RecordInputSchemaFactoryTest {
         assertThrows(IllegalArgumentException.class, () -> factory.generate(JsonType.of(NonNumericBoundsInput.class)));
         assertThrows(IllegalArgumentException.class, () -> factory.generate(JsonType.of(JsonValueWithoutDelegatingCreatorInput.class)));
         assertThrows(IllegalArgumentException.class, () -> factory.generate(JsonType.of(InvalidDelegatingCreatorInput.class)));
+        assertThrows(IllegalArgumentException.class, () -> factory.generate(JsonType.of(DuplicateJsonPropertyEnumInput.class)));
+        assertThrows(IllegalArgumentException.class, () -> factory.generate(JsonType.of(DuplicateJsonValueEnumInput.class)));
     }
 
     private record ObjectComponentInput(Object value) {
@@ -118,6 +101,25 @@ class RecordInputSchemaFactoryTest {
     private record InvalidDelegatingCreator(String first, String second) {
         @com.fasterxml.jackson.annotation.JsonCreator(mode = com.fasterxml.jackson.annotation.JsonCreator.Mode.DELEGATING)
         InvalidDelegatingCreator {
+        }
+    }
+
+    private record DuplicateJsonPropertyEnumInput(DuplicateJsonPropertyEnum value) {
+    }
+
+    private enum DuplicateJsonPropertyEnum {
+        @JsonProperty("same") FIRST, @JsonProperty("same") SECOND
+    }
+
+    private record DuplicateJsonValueEnumInput(DuplicateJsonValueEnum value) {
+    }
+
+    private enum DuplicateJsonValueEnum {
+        FIRST, SECOND;
+
+        @com.fasterxml.jackson.annotation.JsonValue
+        String wireValue() {
+            return "same";
         }
     }
 }
