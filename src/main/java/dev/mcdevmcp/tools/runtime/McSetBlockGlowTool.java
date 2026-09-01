@@ -1,7 +1,7 @@
 package dev.mcdevmcp.tools.runtime;
 
 import dev.mcdevmcp.bridge.BridgeEndpoint;
-import dev.mcdevmcp.mcp.tool.ToolBinding;
+import dev.mcdevmcp.mcp.tool.api.ToolBinding;
 import dev.mcdevmcp.mcp.tool.api.ArgumentDecoder;
 
 final class McSetBlockGlowTool {
@@ -12,6 +12,6 @@ final class McSetBlockGlowTool {
 
     static ToolBinding<BlockGlowArguments> binding(MediaToolSupport support) {
         var decoder = ArgumentDecoder.sdk(BlockGlowWireArguments.class).map(BlockGlowArguments::from);
-        return new ToolBinding<>(decoder, (arguments, _) -> support.acknowledgement(ENDPOINT, RuntimeToolSupport.payload("x", arguments.x(), "y", arguments.y(), "z", arguments.z(), "glow", arguments.glow())));
+        return ToolBinding.compatibility(decoder, (arguments, _) -> support.acknowledgement(ENDPOINT, RuntimeToolSupport.payload("x", arguments.x(), "y", arguments.y(), "z", arguments.z(), "glow", arguments.glow())));
     }
 }

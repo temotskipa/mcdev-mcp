@@ -19,8 +19,9 @@ java {
 
 dependencies {
     implementation(project(":"))
-    implementation("io.modelcontextprotocol.sdk:mcp-core:2.0.1-SNAPSHOT")
-    implementation("io.modelcontextprotocol.sdk:mcp-json-jackson3:2.0.1-SNAPSHOT")
+    implementation(project(":mcp-tool-api"))
+    implementation("io.modelcontextprotocol.sdk:mcp-core:2.0.1")
+    implementation("io.modelcontextprotocol.sdk:mcp-json-jackson3:2.0.1")
 
     testImplementation(platform("org.junit:junit-bom:6.1.3"))
     testImplementation("org.junit.jupiter:junit-jupiter")

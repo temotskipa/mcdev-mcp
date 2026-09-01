@@ -1,6 +1,6 @@
 package dev.mcdevmcp.tools.statictool;
 
-import dev.mcdevmcp.mcp.tool.ToolBinding;
+import dev.mcdevmcp.mcp.tool.api.ToolBinding;
 import dev.mcdevmcp.mcp.tool.api.ArgumentDecoder;
 import dev.mcdevmcp.mcp.tool.api.ToolResult;
 import dev.mcdevmcp.storage.h2.SymbolRepository;
@@ -18,7 +18,7 @@ final class McGetClassTool {
 
     static ToolBinding<GetClassArguments> binding(StaticToolSupport support) {
         var decoder = ArgumentDecoder.sdk(GetClassWireArguments.class).map(GetClassArguments::from);
-        return ToolBinding.blocking(decoder, (arguments, _) -> support.execute("mc_get_class", () -> {
+        return ToolBinding.blockingCompatibility(decoder, (arguments, _) -> support.execute("mc_get_class", () -> {
             if (arguments.className().isMissing()) {
                 return ToolResult.error("Error executing mc_get_class: Cannot read properties of undefined (reading 'split')");
             }

@@ -1,8 +1,8 @@
 package dev.mcdevmcp.tools.runtime;
 
 import dev.mcdevmcp.bridge.BridgeEndpoint;
-import dev.mcdevmcp.mcp.tool.ToolBinding;
-import dev.mcdevmcp.mcp.tool.ToolHandlers;
+import dev.mcdevmcp.mcp.tool.api.ToolBinding;
+import dev.mcdevmcp.mcp.tool.api.ToolHandlers;
 import dev.mcdevmcp.mcp.tool.api.ArgumentDecoder;
 import dev.mcdevmcp.mcp.tool.api.ToolResult;
 
@@ -15,7 +15,7 @@ final class McLeaveServerTool {
     }
 
     static ToolBinding<RuntimeEmptyArguments> binding(RuntimeToolSupport runtime, SessionControlSupport sessionControl) {
-        return new ToolBinding<>(ArgumentDecoder.sdk(RuntimeEmptyArguments.class), (_, _) -> SessionControlSupport.recoverTool(SessionControlSupport.composeCancellable(sessionControl.checkSessionControlEnabled(), disabled -> {
+        return ToolBinding.compatibility(ArgumentDecoder.sdk(RuntimeEmptyArguments.class), (_, _) -> SessionControlSupport.recoverTool(SessionControlSupport.composeCancellable(sessionControl.checkSessionControlEnabled(), disabled -> {
             if (disabled != null) {
                 return ToolHandlers.completed(ToolResult.error(disabled));
             }

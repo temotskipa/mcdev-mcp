@@ -1,6 +1,6 @@
 package dev.mcdevmcp.tools.statictool;
 
-import dev.mcdevmcp.mcp.tool.ToolBinding;
+import dev.mcdevmcp.mcp.tool.api.ToolBinding;
 import dev.mcdevmcp.mcp.tool.api.ArgumentDecoder;
 import dev.mcdevmcp.mcp.tool.api.ToolResult;
 import dev.mcdevmcp.storage.callgraph.CallgraphRepository;
@@ -20,7 +20,7 @@ final class McFindRefsTool {
 
     static ToolBinding<FindRefsArguments> binding(StaticToolSupport support) {
         var decoder = ArgumentDecoder.sdk(FindRefsWireArguments.class).map(FindRefsArguments::from);
-        return ToolBinding.blocking(decoder, (arguments, _) -> support.execute("mc_find_refs", () -> {
+        return ToolBinding.blockingCompatibility(decoder, (arguments, _) -> support.execute("mc_find_refs", () -> {
             var version = support.resolve(arguments.version());
             String direction = arguments.directionText().display();
             String className = arguments.className().display();

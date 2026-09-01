@@ -1,17 +1,10 @@
 package dev.mcdevmcp.support;
 
+import dev.mcdevmcp.mcp.tool.api.ToolCancellation;
+
 @FunctionalInterface
-public interface Cancellation {
+public interface Cancellation extends ToolCancellation {
     static Cancellation none() {
         return () -> false;
-    }
-
-    boolean isCancelled();
-
-    @SuppressWarnings("unused")
-    default void throwIfCancelled() throws InterruptedException {
-        if (isCancelled() || Thread.currentThread().isInterrupted()) {
-            throw new InterruptedException("Operation cancelled");
-        }
     }
 }

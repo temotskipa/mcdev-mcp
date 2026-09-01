@@ -36,8 +36,9 @@ java {
 
 dependencies {
     implementation(project(":"))
-    implementation("io.modelcontextprotocol.sdk:mcp:2.0.1-SNAPSHOT")
-    implementation("org.apache.tomcat.embed:tomcat-embed-core:11.0.24")
+    implementation(project(":mcp-tool-api"))
+    implementation("io.modelcontextprotocol.sdk:mcp:2.0.1")
+    implementation("org.apache.tomcat.embed:tomcat-embed-core:11.0.25")
 }
 
 application {

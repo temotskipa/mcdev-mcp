@@ -3,6 +3,8 @@ package dev.mcdevmcp.mcp;
 import dev.mcdevmcp.mcp.resource.ResourceCatalog;
 import dev.mcdevmcp.mcp.tool.*;
 import dev.mcdevmcp.mcp.tool.api.ArgumentDecoder;
+import dev.mcdevmcp.mcp.tool.api.ToolBinding;
+import dev.mcdevmcp.mcp.tool.api.ToolHandlers;
 import dev.mcdevmcp.mcp.tool.api.ToolResult;
 import dev.mcdevmcp.support.AppEnvironment;
 import dev.mcdevmcp.support.Cancellation;
@@ -28,7 +30,7 @@ class McpServerFactoryTest {
     private static Map<String, ToolBinding<?>> completeBindings(ToolBinding<?> versionBinding) {
         var bindings = new LinkedHashMap<String, ToolBinding<?>>();
         for (ToolMetadata metadata : ToolCatalog.loadMetadata(MAPPER)) {
-            bindings.put(metadata.name(), new ToolBinding<>(ArgumentDecoder.sdk(TestEmptyArguments.class), (_, _) -> ToolHandlers.completed(ToolResult.text("unused"))));
+            bindings.put(metadata.name(), ToolBinding.compatibility(ArgumentDecoder.sdk(TestEmptyArguments.class), (_, _) -> ToolHandlers.completed(ToolResult.text("unused"))));
         }
         if (versionBinding != null) {
             bindings.put("mc_version", versionBinding);
@@ -41,7 +43,7 @@ class McpServerFactoryTest {
         var started = new CountDownLatch(1);
         var interrupted = new CountDownLatch(1);
         var virtualThread = new AtomicReference<Thread>();
-        var binding = ToolBinding.blocking(ArgumentDecoder.sdk(TestEmptyArguments.class), (_, _) -> {
+        var binding = ToolBinding.blockingCompatibility(ArgumentDecoder.sdk(TestEmptyArguments.class), (_, _) -> {
             virtualThread.set(Thread.currentThread());
             started.countDown();
             try {
@@ -105,7 +107,7 @@ class McpServerFactoryTest {
     @Test
     void startupFailureClosesTheOwnedRuntime() {
         var runtimeCloses = new AtomicInteger();
-        var unexpectedBinding = new ToolBinding<>(ArgumentDecoder.sdk(TestEmptyArguments.class), (_, _) -> ToolHandlers.completed(ToolResult.text("unused")));
+        var unexpectedBinding = ToolBinding.compatibility(ArgumentDecoder.sdk(TestEmptyArguments.class), (_, _) -> ToolHandlers.completed(ToolResult.text("unused")));
         try (var factory = new McpServerFactory(new AppEnvironment(Map.of()), Map.of("not_in_metadata", unexpectedBinding), ResourceCatalog.withMapper(MAPPER), MAPPER, runtimeCloses::incrementAndGet)) {
             assertThrows(IllegalArgumentException.class, () -> factory.startStdio(new ByteArrayInputStream(new byte[0]), new ByteArrayOutputStream()));
             try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
@@ -117,7 +119,7 @@ class McpServerFactoryTest {
 
     @Test
     void startupFailurePreservesTheOriginalFailureWhenRuntimeCloseThrowsAnError() {
-        var unexpectedBinding = new ToolBinding<>(ArgumentDecoder.sdk(TestEmptyArguments.class), (_, _) -> ToolHandlers.completed(ToolResult.text("unused")));
+        var unexpectedBinding = ToolBinding.compatibility(ArgumentDecoder.sdk(TestEmptyArguments.class), (_, _) -> ToolHandlers.completed(ToolResult.text("unused")));
         try (var factory = new McpServerFactory(new AppEnvironment(Map.of()), Map.of("not_in_metadata", unexpectedBinding), ResourceCatalog.withMapper(MAPPER), MAPPER, () -> {
             throw new AssertionError("runtime close failed");
         })) {

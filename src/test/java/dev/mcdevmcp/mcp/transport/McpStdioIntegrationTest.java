@@ -3,10 +3,8 @@ package dev.mcdevmcp.mcp.transport;
 import dev.mcdevmcp.mcp.McpContractTestSupport;
 import dev.mcdevmcp.mcp.resource.ResourceCatalog;
 import dev.mcdevmcp.mcp.tool.*;
-import dev.mcdevmcp.mcp.tool.api.ArgumentDecoder;
-import dev.mcdevmcp.mcp.tool.api.ToolResult;
+import dev.mcdevmcp.mcp.tool.api.*;
 import dev.mcdevmcp.support.AppVersion;
-import dev.mcdevmcp.support.Cancellation;
 import io.modelcontextprotocol.json.McpJsonDefaults;
 import io.modelcontextprotocol.json.McpJsonMapper;
 import io.modelcontextprotocol.json.TypeRef;
@@ -88,7 +86,7 @@ class McpStdioIntegrationTest {
     }
 
     private static ToolBinding<TestEmptyArguments> binding(ToolHandler<TestEmptyArguments> handler) {
-        return new ToolBinding<>(ArgumentDecoder.sdk(TestEmptyArguments.class), handler);
+        return ToolBinding.compatibility(ArgumentDecoder.sdk(TestEmptyArguments.class), handler);
     }
 
     @Test
@@ -179,7 +177,7 @@ class McpStdioIntegrationTest {
     @Test
     void incompleteHandlerDoesNotBlockAnotherRequestAndCancellationCancelsItsFuture() throws Exception {
         var pending = new CompletableFuture<ToolResult>();
-        var cancellation = new AtomicReference<Cancellation>();
+        AtomicReference<ToolCancellation> cancellation = new AtomicReference<>();
         try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
             var adapter = new McpSdkAdapter(MAPPER, executor);
             var slow = new ToolDefinition("slow", "slow", Map.of("type", "object"), binding((_, signal) -> {

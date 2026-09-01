@@ -4,10 +4,10 @@ import dev.mcdevmcp.bridge.BridgeEndpoint;
 import dev.mcdevmcp.bridge.BridgeResponse;
 import dev.mcdevmcp.bridge.BridgeSession;
 import dev.mcdevmcp.bridge.SessionInfo;
+import dev.mcdevmcp.mcp.tool.api.ToolCancellation;
 import dev.mcdevmcp.mcp.tool.api.ToolResult;
 import dev.mcdevmcp.storage.model.MinecraftVersion;
 import dev.mcdevmcp.support.AppEnvironment;
-import dev.mcdevmcp.support.Cancellation;
 
 import java.io.IOException;
 import java.math.BigDecimal;
@@ -313,33 +313,31 @@ final class SessionControlSupport {
         return port -> {
             List<String> command = System.getProperty("os.name").toLowerCase(Locale.ROOT).contains("win") ? List.of("powershell.exe", "-NoProfile", "-Command", "(Get-NetTCPConnection -LocalPort " + port + " -State Listen -ErrorAction SilentlyContinue).OwningProcess") : List.of("lsof", "-t", "-iTCP:" + port, "-sTCP:LISTEN");
             var result = new CompletableFuture<Long>();
-            Process process;
-            try {
-                process = new ProcessBuilder(command).redirectError(ProcessBuilder.Redirect.DISCARD).start();
-            } catch (IOException exception) {
+            try (var process = new ProcessBuilder(command).redirectError(ProcessBuilder.Redirect.DISCARD).start()) {
+                ScheduledFuture<?> timeout = scheduler.schedule(() -> {
+                    process.destroyForcibly();
+                    result.complete(null);
+                }, PID_PROBE_TIMEOUT.toMillis(), TimeUnit.MILLISECONDS);
+                result.whenComplete((_, _) -> {
+                    timeout.cancel(false);
+                    if (result.isCancelled()) {
+                        process.destroyForcibly();
+                    }
+                });
+                process.onExit().whenComplete((exited, failure) -> {
+                    if (failure != null || exited.exitValue() != 0) {
+                        result.complete(null);
+                        return;
+                    }
+                    try {
+                        result.complete(parseListeningPid(new String(exited.getInputStream().readAllBytes(), StandardCharsets.UTF_8)));
+                    } catch (IOException ioException) {
+                        result.complete(null);
+                    }
+                });
+            } catch (IOException ioException) {
                 return CompletableFuture.completedFuture(null);
             }
-            ScheduledFuture<?> timeout = scheduler.schedule(() -> {
-                process.destroyForcibly();
-                result.complete(null);
-            }, PID_PROBE_TIMEOUT.toMillis(), TimeUnit.MILLISECONDS);
-            result.whenComplete((_, _) -> {
-                timeout.cancel(false);
-                if (result.isCancelled()) {
-                    process.destroyForcibly();
-                }
-            });
-            process.onExit().whenComplete((exited, failure) -> {
-                if (failure != null || exited.exitValue() != 0) {
-                    result.complete(null);
-                    return;
-                }
-                try {
-                    result.complete(parseListeningPid(new String(exited.getInputStream().readAllBytes(), StandardCharsets.UTF_8)));
-                } catch (IOException exception) {
-                    result.complete(null);
-                }
-            });
             return result;
         };
     }
@@ -379,7 +377,7 @@ final class SessionControlSupport {
         return info.thenApply(sessionInfo -> sessionInfo.sessionControlEnabled().filter(enabled -> !enabled).map(_ -> sessionControlDisabledMessage(sessionInfo.gameDir().orElse(null))).orElse(null));
     }
 
-    CompletionStage<InWorldWaitResult> waitUntilInWorld(BigDecimal timeoutSeconds, boolean requireAbsenceFirst, Cancellation cancellation) {
+    CompletionStage<InWorldWaitResult> waitUntilInWorld(BigDecimal timeoutSeconds, boolean requireAbsenceFirst, ToolCancellation cancellation) {
         long timeoutMillis = milliseconds(timeoutSeconds);
         long started = currentTimeMillis.getAsLong();
         var operation = new CancellableOperation<InWorldWaitResult>();
@@ -389,7 +387,7 @@ final class SessionControlSupport {
         return operation;
     }
 
-    CompletionStage<FoundBridge> waitForBridge(ExpectedInstance expected, BigDecimal timeoutSeconds, List<String> notes, Cancellation cancellation) {
+    CompletionStage<FoundBridge> waitForBridge(ExpectedInstance expected, BigDecimal timeoutSeconds, List<String> notes, ToolCancellation cancellation) {
         long timeoutMillis = milliseconds(timeoutSeconds);
         long started = currentTimeMillis.getAsLong();
         var operation = new CancellableOperation<FoundBridge>();
@@ -423,7 +421,7 @@ final class SessionControlSupport {
         session.disconnect();
     }
 
-    CompletionStage<ClientExitResult> waitForClientExit(int port, Long pid, BigDecimal timeoutSeconds, Cancellation cancellation) {
+    CompletionStage<ClientExitResult> waitForClientExit(int port, Long pid, BigDecimal timeoutSeconds, ToolCancellation cancellation) {
         long timeoutMillis = milliseconds(timeoutSeconds);
         long started = currentTimeMillis.getAsLong();
         var operation = new CancellableOperation<ClientExitResult>();
@@ -433,7 +431,7 @@ final class SessionControlSupport {
         return operation;
     }
 
-    private void pollPortClosed(CancellableOperation<ClientExitResult> operation, Cancellation cancellation, int port, Long pid, long started, long timeoutMillis, AtomicReference<ClientExitResult.Phase> phase) {
+    private void pollPortClosed(CancellableOperation<ClientExitResult> operation, ToolCancellation cancellation, int port, Long pid, long started, long timeoutMillis, AtomicReference<ClientExitResult.Phase> phase) {
         if (operation.stopIfCancelled(cancellation)) {
             return;
         }
@@ -462,7 +460,7 @@ final class SessionControlSupport {
         });
     }
 
-    private void pollProcessExit(CancellableOperation<ClientExitResult> operation, Cancellation cancellation, long pid, long started, long timeoutMillis) {
+    private void pollProcessExit(CancellableOperation<ClientExitResult> operation, ToolCancellation cancellation, long pid, long started, long timeoutMillis) {
         if (operation.stopIfCancelled(cancellation)) {
             return;
         }
@@ -551,7 +549,7 @@ final class SessionControlSupport {
             }
         }
 
-        private boolean stopIfCancelled(Cancellation cancellation) {
+        private boolean stopIfCancelled(ToolCancellation cancellation) {
             if (isDone()) {
                 return true;
             }
@@ -587,13 +585,13 @@ final class SessionControlSupport {
 
     private final class InWorldPoller {
         private final CancellableOperation<InWorldWaitResult> operation;
-        private final Cancellation cancellation;
+        private final ToolCancellation cancellation;
         private final long started;
         private final long timeoutMillis;
         private final boolean requireAbsenceFirst;
         private final InWorldWaitProgress progress = new InWorldWaitProgress();
 
-        private InWorldPoller(CancellableOperation<InWorldWaitResult> operation, Cancellation cancellation, long started, long timeoutMillis, boolean requireAbsenceFirst) {
+        private InWorldPoller(CancellableOperation<InWorldWaitResult> operation, ToolCancellation cancellation, long started, long timeoutMillis, boolean requireAbsenceFirst) {
             this.operation = operation;
             this.cancellation = cancellation;
             this.started = started;
@@ -644,7 +642,7 @@ final class SessionControlSupport {
 
     private final class BridgeWaiter {
         private final CancellableOperation<FoundBridge> operation;
-        private final Cancellation cancellation;
+        private final ToolCancellation cancellation;
         private final ExpectedInstance expected;
         private final List<String> notes;
         private final long started;
@@ -653,7 +651,7 @@ final class SessionControlSupport {
         private List<Integer> ports;
         private int index;
 
-        private BridgeWaiter(CancellableOperation<FoundBridge> operation, Cancellation cancellation, ExpectedInstance expected, List<String> notes, long started, long timeoutMillis) {
+        private BridgeWaiter(CancellableOperation<FoundBridge> operation, ToolCancellation cancellation, ExpectedInstance expected, List<String> notes, long started, long timeoutMillis) {
             this.operation = operation;
             this.cancellation = cancellation;
             this.expected = expected;

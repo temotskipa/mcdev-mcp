@@ -71,9 +71,9 @@ abstract class McpSdkSnapshotCheck : DefaultTask() {
     fun verifyRuntimeClasspath() {
         val gsonModuleName = String(charArrayOf('g', 's', 'o', 'n'))
         val expectedVersions = mapOf(
-            "io.modelcontextprotocol.sdk:mcp" to "2.0.1-SNAPSHOT",
-            "io.modelcontextprotocol.sdk:mcp-core" to "2.0.1-SNAPSHOT",
-            "io.modelcontextprotocol.sdk:mcp-json-jackson3" to "2.0.1-SNAPSHOT",
+            "io.modelcontextprotocol.sdk:mcp" to "2.0.1",
+            "io.modelcontextprotocol.sdk:mcp-core" to "2.0.1",
+            "io.modelcontextprotocol.sdk:mcp-json-jackson3" to "2.0.1",
             "tools.jackson.core:jackson-core" to "3.1.4",
             "tools.jackson.core:jackson-databind" to "3.1.4",
             "com.networknt:json-schema-validator" to "3.0.6"
@@ -132,11 +132,11 @@ java {
 }
 dependencies {
     implementation(project(":mcp-tool-api"))
-    implementation("io.modelcontextprotocol.sdk:mcp:2.0.1-SNAPSHOT")
+    implementation("io.modelcontextprotocol.sdk:mcp:2.0.1")
     implementation("info.picocli:picocli:4.7.7")
     implementation("com.h2database:h2:2.4.240")
     implementation("org.vineflower:vineflower:1.12.0")
-    implementation("net.fabricmc:tiny-remapper:0.14.0")
+    implementation("net.fabricmc:tiny-remapper:0.14.1")
     implementation("net.fabricmc:mapping-io:0.9.1")
     implementation("org.slf4j:slf4j-nop:2.0.18")
 

@@ -20,10 +20,10 @@ java {
 }
 
 dependencies {
-    api("io.modelcontextprotocol.sdk:mcp-core:2.0.1-SNAPSHOT")
+    api("io.modelcontextprotocol.sdk:mcp-core:2.0.1")
     compileOnly("jakarta.servlet:jakarta.servlet-api:6.1.0")
 
-    testImplementation("io.modelcontextprotocol.sdk:mcp-json-jackson3:2.0.1-SNAPSHOT")
+    testImplementation("io.modelcontextprotocol.sdk:mcp-json-jackson3:2.0.1")
     testImplementation(platform("org.junit:junit-bom:6.1.3"))
     testImplementation("org.junit.jupiter:junit-jupiter")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
@@ -68,7 +68,7 @@ dependencies {
     add(jpmsSmoke.compileOnlyConfigurationName, "jakarta.servlet:jakarta.servlet-api:6.1.0")
     add(
         jpmsSmoke.implementationConfigurationName,
-        "io.modelcontextprotocol.sdk:mcp-json-jackson3:2.0.1-SNAPSHOT"
+        "io.modelcontextprotocol.sdk:mcp-json-jackson3:2.0.1"
     )
 }
 

@@ -1,6 +1,8 @@
 package dev.mcdevmcp.mcp.tool;
 
 import dev.mcdevmcp.mcp.tool.api.ArgumentDecoder;
+import dev.mcdevmcp.mcp.tool.api.ToolBinding;
+import dev.mcdevmcp.mcp.tool.api.ToolHandlers;
 import dev.mcdevmcp.mcp.tool.api.ToolResult;
 import dev.mcdevmcp.mcp.transport.SdkJsonMode;
 import dev.mcdevmcp.support.Cancellation;
@@ -40,7 +42,7 @@ class ToolBindingTest {
         arguments.put("options", options);
         var mapper = new CountingMcpJsonMapper(MAPPER);
         var received = new CompletableFuture<DomainArguments>();
-        var binding = new ToolBinding<>(ArgumentDecoder.sdk(WireArguments.class).map(wire -> new DomainArguments(URI.create(wire.uri()), Path.of(wire.path()), Duration.ofMillis(wire.timeoutMs()), wire.startedAt(), wire.mode(), JsonValues.freezeMap(wire.options()))), (domain, _) -> {
+        var binding = ToolBinding.compatibility(ArgumentDecoder.sdk(WireArguments.class).map(wire -> new DomainArguments(URI.create(wire.uri()), Path.of(wire.path()), Duration.ofMillis(wire.timeoutMs()), wire.startedAt(), wire.mode(), JsonValues.freezeMap(wire.options()))), (domain, _) -> {
             received.complete(domain);
             return ToolHandlers.completed(ToolResult.text("ok"));
         });
@@ -63,7 +65,7 @@ class ToolBindingTest {
     @Test
     void propagatesSynchronousDecoderFailureBeforeCallingTheHandler() {
         var handlerCalled = new CompletableFuture<Void>();
-        var binding = new ToolBinding<TestEmptyArguments>((_, _) -> {
+        var binding = ToolBinding.compatibility((_, _) -> {
             throw new IllegalArgumentException("bad arguments");
         }, (_, _) -> {
             handlerCalled.complete(null);
@@ -78,7 +80,7 @@ class ToolBindingTest {
 
     @Test
     void preservesAsynchronousHandlerFailure() {
-        var binding = new ToolBinding<>(ArgumentDecoder.sdk(TestEmptyArguments.class), (_, _) -> CompletableFuture.failedFuture(new IllegalStateException("async failure")));
+        var binding = ToolBinding.compatibility(ArgumentDecoder.sdk(TestEmptyArguments.class), (_, _) -> CompletableFuture.failedFuture(new IllegalStateException("async failure")));
 
         var exception = assertThrows(CompletionException.class, () -> binding.invoke(MAPPER, Map.of(), Cancellation.none()).toCompletableFuture().join());
 
@@ -90,7 +92,7 @@ class ToolBindingTest {
         var started = new CountDownLatch(1);
         var interrupted = new CountDownLatch(1);
         var virtualThread = new AtomicBoolean();
-        var binding = ToolBinding.blocking(ArgumentDecoder.sdk(TestEmptyArguments.class), (_, _) -> {
+        var binding = ToolBinding.blockingCompatibility(ArgumentDecoder.sdk(TestEmptyArguments.class), (_, _) -> {
             virtualThread.set(Thread.currentThread().isVirtual());
             started.countDown();
             try {

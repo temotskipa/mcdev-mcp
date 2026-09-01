@@ -2,11 +2,11 @@ package dev.mcdevmcp.tools.runtime;
 
 import dev.mcdevmcp.bridge.BridgeEndpoint;
 import dev.mcdevmcp.bridge.BridgeResponse;
-import dev.mcdevmcp.mcp.tool.ToolBinding;
-import dev.mcdevmcp.mcp.tool.ToolHandlers;
+import dev.mcdevmcp.mcp.tool.api.ToolBinding;
+import dev.mcdevmcp.mcp.tool.api.ToolHandlers;
 import dev.mcdevmcp.mcp.tool.api.ArgumentDecoder;
 import dev.mcdevmcp.mcp.tool.api.ToolResult;
-import dev.mcdevmcp.support.Cancellation;
+import dev.mcdevmcp.mcp.tool.api.ToolCancellation;
 
 import java.util.Locale;
 import java.util.concurrent.CompletableFuture;
@@ -21,7 +21,7 @@ final class McQuitClientTool {
 
     static ToolBinding<QuitClientArguments> binding(SessionControlSupport support) {
         var decoder = ArgumentDecoder.sdk(QuitClientWireArguments.class).map(QuitClientArguments::from);
-        return new ToolBinding<>(decoder, (arguments, cancellation) -> SessionControlSupport.recoverTool(SessionControlSupport.composeCancellable(support.checkSessionControlEnabled(), disabled -> {
+        return ToolBinding.compatibility(decoder, (arguments, cancellation) -> SessionControlSupport.recoverTool(SessionControlSupport.composeCancellable(support.checkSessionControlEnabled(), disabled -> {
             if (disabled != null) {
                 return ToolHandlers.completed(ToolResult.error(disabled));
             }
@@ -32,7 +32,7 @@ final class McQuitClientTool {
         })));
     }
 
-    private static CompletionStage<ToolResult> quit(SessionControlSupport support, QuitClientArguments arguments, Cancellation cancellation, int port, boolean wait, Long pid) {
+    private static CompletionStage<ToolResult> quit(SessionControlSupport support, QuitClientArguments arguments, ToolCancellation cancellation, int port, boolean wait, Long pid) {
         CompletionStage<QuitAck> ack = SessionControlSupport.handleCancellable(support.send(ENDPOINT, RuntimeToolSupport.EMPTY_PAYLOAD, null), McQuitClientTool::classifyAck);
         return SessionControlSupport.composeCancellable(ack, result -> {
             if (result.failure() != null) {

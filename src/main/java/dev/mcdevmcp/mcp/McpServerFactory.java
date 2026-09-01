@@ -2,7 +2,7 @@ package dev.mcdevmcp.mcp;
 
 import dev.mcdevmcp.bridge.BridgeSession;
 import dev.mcdevmcp.mcp.resource.ResourceCatalog;
-import dev.mcdevmcp.mcp.tool.ToolBinding;
+import dev.mcdevmcp.mcp.tool.api.ToolBinding;
 import dev.mcdevmcp.mcp.tool.ToolCatalog;
 import dev.mcdevmcp.mcp.transport.McpSdkAdapter;
 import dev.mcdevmcp.mcp.transport.StdioServer;

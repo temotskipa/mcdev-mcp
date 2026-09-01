@@ -1,7 +1,7 @@
 package dev.mcdevmcp.tools.runtime;
 
 import dev.mcdevmcp.bridge.BridgeEndpoint;
-import dev.mcdevmcp.mcp.tool.ToolBinding;
+import dev.mcdevmcp.mcp.tool.api.ToolBinding;
 import dev.mcdevmcp.mcp.tool.api.ArgumentDecoder;
 
 final class McChatHistoryTool {
@@ -12,6 +12,6 @@ final class McChatHistoryTool {
 
     static ToolBinding<ChatHistoryArguments> binding(RuntimeToolSupport support) {
         var decoder = ArgumentDecoder.sdk(ChatHistoryWireArguments.class).map(ChatHistoryArguments::from);
-        return new ToolBinding<>(decoder, (arguments, _) -> support.container(ENDPOINT, RuntimeToolSupport.payload("limit", arguments.limit(), "includeJson", arguments.includeJson())));
+        return ToolBinding.compatibility(decoder, (arguments, _) -> support.container(ENDPOINT, RuntimeToolSupport.payload("limit", arguments.limit(), "includeJson", arguments.includeJson())));
     }
 }

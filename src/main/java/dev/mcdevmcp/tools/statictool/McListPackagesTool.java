@@ -1,6 +1,6 @@
 package dev.mcdevmcp.tools.statictool;
 
-import dev.mcdevmcp.mcp.tool.ToolBinding;
+import dev.mcdevmcp.mcp.tool.api.ToolBinding;
 import dev.mcdevmcp.mcp.tool.api.ArgumentDecoder;
 import dev.mcdevmcp.mcp.tool.api.ToolResult;
 
@@ -12,7 +12,7 @@ final class McListPackagesTool {
 
     static ToolBinding<ListPackagesArguments> binding(StaticToolSupport support) {
         var decoder = ArgumentDecoder.sdk(ListPackagesWireArguments.class).map(ListPackagesArguments::from);
-        return ToolBinding.blocking(decoder, (arguments, _) -> support.execute("mc_list_packages", () -> {
+        return ToolBinding.blockingCompatibility(decoder, (arguments, _) -> support.execute("mc_list_packages", () -> {
             var version = support.resolve(arguments.version());
             var limit = LIMIT.normalize(arguments.limit().value());
             String namespace = arguments.namespace() == null ? null : arguments.namespace().wireName();

@@ -1,6 +1,6 @@
 package dev.mcdevmcp.tools.statictool;
 
-import dev.mcdevmcp.mcp.tool.ToolBinding;
+import dev.mcdevmcp.mcp.tool.api.ToolBinding;
 import dev.mcdevmcp.mcp.tool.api.ArgumentDecoder;
 import dev.mcdevmcp.mcp.tool.api.ToolResult;
 import dev.mcdevmcp.storage.model.ClassSymbol;
@@ -18,7 +18,7 @@ final class McSearchTool {
 
     static ToolBinding<SearchArguments> binding(StaticToolSupport support) {
         var decoder = ArgumentDecoder.sdk(SearchWireArguments.class).map(SearchArguments::from);
-        return ToolBinding.blocking(decoder, (arguments, _) -> support.execute("mc_search", () -> {
+        return ToolBinding.blockingCompatibility(decoder, (arguments, _) -> support.execute("mc_search", () -> {
             if (arguments.query().isMissing()) {
                 return ToolResult.error("Error executing mc_search: Cannot read properties of undefined (reading 'toLowerCase')");
             }

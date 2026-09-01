@@ -1,8 +1,8 @@
 package dev.mcdevmcp.tools.runtime;
 
 import dev.mcdevmcp.bridge.SessionInfo;
-import dev.mcdevmcp.mcp.tool.ToolBinding;
-import dev.mcdevmcp.mcp.tool.ToolHandlers;
+import dev.mcdevmcp.mcp.tool.api.ToolBinding;
+import dev.mcdevmcp.mcp.tool.api.ToolHandlers;
 import dev.mcdevmcp.mcp.tool.api.ArgumentDecoder;
 import dev.mcdevmcp.mcp.tool.api.ToolResult;
 
@@ -18,7 +18,7 @@ final class McWaitForBridgeTool {
 
     static ToolBinding<WaitForBridgeArguments> binding(SessionControlSupport support) {
         var decoder = ArgumentDecoder.sdk(WaitForBridgeWireArguments.class).map(WaitForBridgeArguments::from);
-        return new ToolBinding<>(decoder, (arguments, cancellation) -> {
+        return ToolBinding.compatibility(decoder, (arguments, cancellation) -> {
             List<String> notes = new CopyOnWriteArrayList<>();
             SessionControlSupport.ExpectedInstance expected = expectedInstance(support, arguments);
             CompletionStage<SessionControlSupport.FoundBridge> wait = support.waitForBridge(expected, arguments.timeoutSeconds(), notes, cancellation);

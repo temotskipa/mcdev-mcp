@@ -1,7 +1,7 @@
 package dev.mcdevmcp.tools.runtime;
 
-import dev.mcdevmcp.mcp.tool.ToolBinding;
-import dev.mcdevmcp.mcp.tool.ToolHandlers;
+import dev.mcdevmcp.mcp.tool.api.ToolBinding;
+import dev.mcdevmcp.mcp.tool.api.ToolHandlers;
 import dev.mcdevmcp.mcp.tool.api.ArgumentDecoder;
 import dev.mcdevmcp.mcp.tool.api.ToolResult;
 
@@ -13,7 +13,7 @@ final class McScriptLogsTool {
 
     static ToolBinding<ScriptLogsArguments> binding(ScriptLogger logger) {
         var decoder = ArgumentDecoder.sdk(ScriptLogsWireArguments.class).map(ScriptLogsArguments::from);
-        return new ToolBinding<>(decoder, (arguments, _) -> ToolHandlers.completed(render(logger, arguments)));
+        return ToolBinding.compatibility(decoder, (arguments, _) -> ToolHandlers.completed(render(logger, arguments)));
     }
 
     private static ToolResult render(ScriptLogger logger, ScriptLogsArguments arguments) {

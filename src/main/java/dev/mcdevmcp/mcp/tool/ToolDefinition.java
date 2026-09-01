@@ -1,5 +1,6 @@
 package dev.mcdevmcp.mcp.tool;
 
+import dev.mcdevmcp.mcp.tool.api.ToolBinding;
 import dev.mcdevmcp.support.JsonValues;
 
 import java.util.Map;

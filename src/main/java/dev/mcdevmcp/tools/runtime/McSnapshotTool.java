@@ -1,7 +1,7 @@
 package dev.mcdevmcp.tools.runtime;
 
 import dev.mcdevmcp.bridge.BridgeEndpoint;
-import dev.mcdevmcp.mcp.tool.ToolBinding;
+import dev.mcdevmcp.mcp.tool.api.ToolBinding;
 import dev.mcdevmcp.mcp.tool.api.ArgumentDecoder;
 
 final class McSnapshotTool {
@@ -11,6 +11,6 @@ final class McSnapshotTool {
     }
 
     static ToolBinding<RuntimeEmptyArguments> binding(RuntimeToolSupport support) {
-        return new ToolBinding<>(ArgumentDecoder.sdk(RuntimeEmptyArguments.class), (_, _) -> support.container(ENDPOINT, RuntimeToolSupport.EMPTY_PAYLOAD));
+        return ToolBinding.compatibility(ArgumentDecoder.sdk(RuntimeEmptyArguments.class), (_, _) -> support.container(ENDPOINT, RuntimeToolSupport.EMPTY_PAYLOAD));
     }
 }

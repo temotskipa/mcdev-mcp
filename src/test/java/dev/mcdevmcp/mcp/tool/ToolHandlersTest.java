@@ -1,7 +1,8 @@
 package dev.mcdevmcp.mcp.tool;
 
+import dev.mcdevmcp.mcp.tool.api.ToolHandler;
+import dev.mcdevmcp.mcp.tool.api.ToolHandlers;
 import dev.mcdevmcp.mcp.tool.api.ToolResult;
-
 import dev.mcdevmcp.support.Cancellation;
 import org.junit.jupiter.api.Test;
 

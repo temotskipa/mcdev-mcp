@@ -1,7 +1,7 @@
 package dev.mcdevmcp.parity;
 
 import dev.mcdevmcp.bridge.BridgeTestHarness;
-import dev.mcdevmcp.mcp.tool.ToolBinding;
+import dev.mcdevmcp.mcp.tool.api.ToolBinding;
 import dev.mcdevmcp.mcp.tool.ToolCatalog;
 import dev.mcdevmcp.mcp.tool.ToolMetadata;
 import dev.mcdevmcp.storage.PlatformPaths;

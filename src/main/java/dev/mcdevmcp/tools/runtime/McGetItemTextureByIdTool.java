@@ -1,7 +1,7 @@
 package dev.mcdevmcp.tools.runtime;
 
 import dev.mcdevmcp.bridge.BridgeEndpoint;
-import dev.mcdevmcp.mcp.tool.ToolBinding;
+import dev.mcdevmcp.mcp.tool.api.ToolBinding;
 import dev.mcdevmcp.mcp.tool.api.ArgumentDecoder;
 
 final class McGetItemTextureByIdTool {
@@ -12,6 +12,6 @@ final class McGetItemTextureByIdTool {
 
     static ToolBinding<ItemTextureByIdArguments> binding(MediaToolSupport support) {
         var decoder = ArgumentDecoder.sdk(ItemTextureByIdWireArguments.class).map(ItemTextureByIdArguments::from);
-        return new ToolBinding<>(decoder, (arguments, _) -> support.itemTextureById(arguments));
+        return ToolBinding.compatibility(decoder, (arguments, _) -> support.itemTextureById(arguments));
     }
 }

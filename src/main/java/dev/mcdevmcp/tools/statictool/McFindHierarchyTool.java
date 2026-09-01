@@ -1,6 +1,6 @@
 package dev.mcdevmcp.tools.statictool;
 
-import dev.mcdevmcp.mcp.tool.ToolBinding;
+import dev.mcdevmcp.mcp.tool.api.ToolBinding;
 import dev.mcdevmcp.mcp.tool.api.ArgumentDecoder;
 import dev.mcdevmcp.mcp.tool.api.ToolResult;
 import dev.mcdevmcp.storage.model.ClassSymbol;
@@ -15,7 +15,7 @@ final class McFindHierarchyTool {
 
     static ToolBinding<FindHierarchyArguments> binding(StaticToolSupport support) {
         var decoder = ArgumentDecoder.sdk(FindHierarchyWireArguments.class).map(FindHierarchyArguments::from);
-        return ToolBinding.blocking(decoder, (arguments, _) -> support.execute("mc_find_hierarchy", () -> {
+        return ToolBinding.blockingCompatibility(decoder, (arguments, _) -> support.execute("mc_find_hierarchy", () -> {
             var version = support.resolve(arguments.version());
             var limit = LIMIT.normalize(arguments.limit().value());
             if (arguments.direction() == HierarchyDirection.UNKNOWN) {

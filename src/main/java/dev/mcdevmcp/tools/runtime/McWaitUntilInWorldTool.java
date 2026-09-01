@@ -1,6 +1,6 @@
 package dev.mcdevmcp.tools.runtime;
 
-import dev.mcdevmcp.mcp.tool.ToolBinding;
+import dev.mcdevmcp.mcp.tool.api.ToolBinding;
 import dev.mcdevmcp.mcp.tool.api.ArgumentDecoder;
 import dev.mcdevmcp.mcp.tool.api.ToolResult;
 
@@ -10,7 +10,7 @@ final class McWaitUntilInWorldTool {
 
     static ToolBinding<WaitUntilInWorldArguments> binding(SessionControlSupport support) {
         var decoder = ArgumentDecoder.sdk(WaitUntilInWorldWireArguments.class).map(WaitUntilInWorldArguments::from);
-        return new ToolBinding<>(decoder, (arguments, cancellation) -> SessionControlSupport.recoverTool(SessionControlSupport.mapCancellable(support.waitUntilInWorld(arguments.timeoutSeconds(), arguments.requireAbsenceFirst(), cancellation), McWaitUntilInWorldTool::render)));
+        return ToolBinding.compatibility(decoder, (arguments, cancellation) -> SessionControlSupport.recoverTool(SessionControlSupport.mapCancellable(support.waitUntilInWorld(arguments.timeoutSeconds(), arguments.requireAbsenceFirst(), cancellation), McWaitUntilInWorldTool::render)));
     }
 
     private static ToolResult render(InWorldWaitResult outcome) {

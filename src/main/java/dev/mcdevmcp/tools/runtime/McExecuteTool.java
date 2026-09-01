@@ -1,7 +1,7 @@
 package dev.mcdevmcp.tools.runtime;
 
 import dev.mcdevmcp.bridge.BridgeEndpoint;
-import dev.mcdevmcp.mcp.tool.ToolBinding;
+import dev.mcdevmcp.mcp.tool.api.ToolBinding;
 import dev.mcdevmcp.mcp.tool.api.ArgumentDecoder;
 
 final class McExecuteTool {
@@ -12,6 +12,6 @@ final class McExecuteTool {
 
     static ToolBinding<ExecuteArguments> binding(RuntimeToolSupport support, ScriptLogger scriptLogger, boolean scriptLogsEnabled) {
         var decoder = ArgumentDecoder.sdk(ExecuteWireArguments.class).map(ExecuteArguments::from);
-        return new ToolBinding<>(decoder, (arguments, _) -> support.execute(arguments, scriptLogger, scriptLogsEnabled));
+        return ToolBinding.compatibility(decoder, (arguments, _) -> support.execute(arguments, scriptLogger, scriptLogsEnabled));
     }
 }

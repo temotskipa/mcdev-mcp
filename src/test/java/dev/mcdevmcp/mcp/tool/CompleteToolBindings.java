@@ -1,5 +1,7 @@
 package dev.mcdevmcp.mcp.tool;
 
+import dev.mcdevmcp.mcp.tool.api.ToolBinding;
+import dev.mcdevmcp.mcp.tool.api.ToolHandlers;
 import dev.mcdevmcp.mcp.tool.api.ToolResult;
 
 import io.modelcontextprotocol.json.McpJsonMapper;
@@ -14,7 +16,7 @@ public final class CompleteToolBindings {
     public static Map<String, ToolBinding<?>> including(McpJsonMapper mapper, Map<String, ToolBinding<?>> selectedBindings) {
         var bindings = new LinkedHashMap<String, ToolBinding<?>>();
         for (ToolMetadata metadata : ToolCatalog.loadMetadata(mapper)) {
-            bindings.put(metadata.name(), new ToolBinding<>((_, arguments) -> Map.copyOf(arguments), (_, _) -> ToolHandlers.completed(ToolResult.error("Unexpected test handler invocation"))));
+            bindings.put(metadata.name(), ToolBinding.compatibility((_, arguments) -> Map.copyOf(arguments), (_, _) -> ToolHandlers.completed(ToolResult.error("Unexpected test handler invocation"))));
         }
         selectedBindings.forEach((name, binding) -> {
             if (!bindings.containsKey(name)) {

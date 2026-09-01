@@ -5,7 +5,9 @@ import dev.mcdevmcp.mcp.resource.ResourceCatalog;
 import dev.mcdevmcp.mcp.tool.*;
 import dev.mcdevmcp.mcp.tool.api.ArgumentDecoder;
 import dev.mcdevmcp.mcp.tool.api.StructuredToolResult;
+import dev.mcdevmcp.mcp.tool.api.ToolBinding;
 import dev.mcdevmcp.mcp.tool.api.ToolContent;
+import dev.mcdevmcp.mcp.tool.api.ToolHandlers;
 import dev.mcdevmcp.mcp.tool.api.ToolResult;
 import dev.mcdevmcp.support.AppEnvironment;
 import io.modelcontextprotocol.json.McpJsonDefaults;
@@ -56,7 +58,7 @@ class McpSdkAdapterTest {
     @Test
     void nullableSdkArgumentsReachTheTypedBindingAsAnEmptyRecord() throws Exception {
         var received = new CompletableFuture<TestEmptyArguments>();
-        var definition = new ToolDefinition("mc_list_packages", "legacy optional arguments", Map.of("type", "object", "properties", Map.of()), new ToolBinding<>(ArgumentDecoder.sdk(TestEmptyArguments.class), (arguments, _) -> {
+        var definition = new ToolDefinition("mc_list_packages", "legacy optional arguments", Map.of("type", "object", "properties", Map.of()), ToolBinding.compatibility(ArgumentDecoder.sdk(TestEmptyArguments.class), (arguments, _) -> {
             received.complete(arguments);
             return ToolHandlers.completed(ToolResult.text("legacy packages"));
         }), ToolAvailability.ALWAYS);
@@ -72,7 +74,7 @@ class McpSdkAdapterTest {
 
     @Test
     void imageContentMapsToTheSdkProtocolTypeWithoutDecodingBase64() throws Exception {
-        var definition = new ToolDefinition("image", "image", Map.of("type", "object"), new ToolBinding<>(ArgumentDecoder.sdk(TestEmptyArguments.class), (_, _) -> ToolHandlers.completed(ToolResult.content(List.of(ToolContent.image("iVBORw0KGgo=", "image/png")), false))), ToolAvailability.ALWAYS);
+        var definition = new ToolDefinition("image", "image", Map.of("type", "object"), ToolBinding.compatibility(ArgumentDecoder.sdk(TestEmptyArguments.class), (_, _) -> ToolHandlers.completed(ToolResult.content(List.of(ToolContent.image("iVBORw0KGgo=", "image/png")), false))), ToolAvailability.ALWAYS);
 
         try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
             var result = new McpSdkAdapter(MAPPER, executor).callHandler(definition).apply(null, McpSchema.CallToolRequest.builder("image").arguments(Map.of()).build()).toFuture().get(5, TimeUnit.SECONDS);
@@ -87,7 +89,7 @@ class McpSdkAdapterTest {
     @Test
     void typedJavaResultBecomesStructuredContentOnlyAtTheSdkBoundary() throws Exception {
         var value = new TestStructuredResult("minecraft:diamond", 3);
-        var definition = new ToolDefinition("inventory", "inventory", Map.of("type", "object"), new ToolBinding<>(ArgumentDecoder.sdk(TestEmptyArguments.class), (_, _) -> {
+        var definition = new ToolDefinition("inventory", "inventory", Map.of("type", "object"), ToolBinding.compatibility(ArgumentDecoder.sdk(TestEmptyArguments.class), (_, _) -> {
             StructuredToolResult<TestStructuredResult> result = ToolResult.structured(TestStructuredResult.class, value, "minecraft:diamond x3");
             return ToolHandlers.completed(result);
         }), ToolAvailability.ALWAYS);

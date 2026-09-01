@@ -1,6 +1,4 @@
-package dev.mcdevmcp.mcp.tool;
-
-import dev.mcdevmcp.mcp.tool.api.ToolResult;
+package dev.mcdevmcp.mcp.tool.api;
 
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;

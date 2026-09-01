@@ -2,6 +2,9 @@ package dev.mcdevmcp.mcp.tool;
 
 import dev.mcdevmcp.mcp.McpContractTestSupport;
 import dev.mcdevmcp.mcp.tool.api.ArgumentDecoder;
+import dev.mcdevmcp.mcp.tool.api.ToolBinding;
+import dev.mcdevmcp.mcp.tool.api.ToolCancellation;
+import dev.mcdevmcp.mcp.tool.api.ToolHandlers;
 import dev.mcdevmcp.mcp.tool.api.ToolResult;
 import dev.mcdevmcp.support.AppEnvironment;
 import dev.mcdevmcp.support.Cancellation;
@@ -38,7 +41,7 @@ class ToolCatalogContractTest {
     }
 
     private static ToolBinding<TestEmptyArguments> binding() {
-        return new ToolBinding<>(ArgumentDecoder.sdk(TestEmptyArguments.class), (_, _) -> ToolHandlers.completed(ToolResult.text("ok")));
+        return ToolBinding.compatibility(ArgumentDecoder.sdk(TestEmptyArguments.class), (_, _) -> ToolHandlers.completed(ToolResult.text("ok")));
     }
 
     private static Map<String, ToolBinding<?>> completeBindings() {
@@ -112,7 +115,7 @@ class ToolCatalogContractTest {
 
     @Test
     void synchronousHandlerFailureUsesTheNodeErrorEnvelope() {
-        var synchronous = new ToolBinding<>(ArgumentDecoder.sdk(TestEmptyArguments.class), (TestEmptyArguments _, Cancellation _) -> {
+        var synchronous = ToolBinding.compatibility(ArgumentDecoder.sdk(TestEmptyArguments.class), (TestEmptyArguments _, ToolCancellation _) -> {
             throw new IllegalStateException("sync failure");
         });
         var syncCatalog = ToolCatalog.fromMetadata(new AppEnvironment(Map.of()), MAPPER, metadata("mc_version"), Map.<String, ToolBinding<?>>of("mc_version", synchronous).entrySet());

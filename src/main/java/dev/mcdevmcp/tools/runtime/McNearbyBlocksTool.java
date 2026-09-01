@@ -1,7 +1,7 @@
 package dev.mcdevmcp.tools.runtime;
 
 import dev.mcdevmcp.bridge.BridgeEndpoint;
-import dev.mcdevmcp.mcp.tool.ToolBinding;
+import dev.mcdevmcp.mcp.tool.api.ToolBinding;
 import dev.mcdevmcp.mcp.tool.api.ArgumentDecoder;
 
 final class McNearbyBlocksTool {
@@ -12,6 +12,6 @@ final class McNearbyBlocksTool {
 
     static ToolBinding<NearbyBlocksArguments> binding(RuntimeToolSupport support) {
         var decoder = ArgumentDecoder.sdk(NearbyBlocksWireArguments.class).map(NearbyBlocksArguments::from);
-        return new ToolBinding<>(decoder, (arguments, _) -> support.container(ENDPOINT, RuntimeToolSupport.payload("range", arguments.range(), "limit", arguments.limit())));
+        return ToolBinding.compatibility(decoder, (arguments, _) -> support.container(ENDPOINT, RuntimeToolSupport.payload("range", arguments.range(), "limit", arguments.limit())));
     }
 }

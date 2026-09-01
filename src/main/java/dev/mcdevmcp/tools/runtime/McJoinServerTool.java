@@ -1,11 +1,11 @@
 package dev.mcdevmcp.tools.runtime;
 
 import dev.mcdevmcp.bridge.BridgeEndpoint;
-import dev.mcdevmcp.mcp.tool.ToolBinding;
-import dev.mcdevmcp.mcp.tool.ToolHandlers;
+import dev.mcdevmcp.mcp.tool.api.ToolBinding;
+import dev.mcdevmcp.mcp.tool.api.ToolHandlers;
 import dev.mcdevmcp.mcp.tool.api.ArgumentDecoder;
 import dev.mcdevmcp.mcp.tool.api.ToolResult;
-import dev.mcdevmcp.support.Cancellation;
+import dev.mcdevmcp.mcp.tool.api.ToolCancellation;
 
 import java.time.Duration;
 import java.util.concurrent.CompletableFuture;
@@ -20,7 +20,7 @@ final class McJoinServerTool {
 
     static ToolBinding<JoinServerArguments> binding(RuntimeToolSupport runtime, SessionControlSupport sessionControl) {
         var decoder = ArgumentDecoder.sdk(JoinServerWireArguments.class).map(JoinServerArguments::from);
-        return new ToolBinding<>(decoder, (arguments, cancellation) -> SessionControlSupport.recoverTool(SessionControlSupport.composeCancellable(sessionControl.checkSessionControlEnabled(), disabled -> {
+        return ToolBinding.compatibility(decoder, (arguments, cancellation) -> SessionControlSupport.recoverTool(SessionControlSupport.composeCancellable(sessionControl.checkSessionControlEnabled(), disabled -> {
             if (disabled != null) {
                 return ToolHandlers.completed(ToolResult.error(disabled));
             }
@@ -33,7 +33,7 @@ final class McJoinServerTool {
         return SessionControlSupport.handleCancellable(sessionControl.send(SNAPSHOT, RuntimeToolSupport.EMPTY_PAYLOAD, null), (response, failure) -> failure == null && response.success() && SessionControlSupport.classifyInWorldPoll(response.result(), null) instanceof InWorldPollResult.Joined);
     }
 
-    private static CompletionStage<ToolResult> sendJoin(RuntimeToolSupport runtime, SessionControlSupport sessionControl, JoinServerArguments arguments, Cancellation cancellation, boolean requireAbsenceFirst) {
+    private static CompletionStage<ToolResult> sendJoin(RuntimeToolSupport runtime, SessionControlSupport sessionControl, JoinServerArguments arguments, ToolCancellation cancellation, boolean requireAbsenceFirst) {
         return SessionControlSupport.composeCancellable(sessionControl.send(ENDPOINT, RuntimeToolSupport.payload("address", arguments.address(), "acceptResourcePacks", arguments.acceptResourcePacks()), Duration.ofSeconds(65)), response -> {
             ToolResult failure = RuntimeToolSupport.declaredFailure(response);
             if (failure != null) {

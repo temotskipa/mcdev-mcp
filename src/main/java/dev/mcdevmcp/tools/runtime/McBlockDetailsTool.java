@@ -1,7 +1,7 @@
 package dev.mcdevmcp.tools.runtime;
 
 import dev.mcdevmcp.bridge.BridgeEndpoint;
-import dev.mcdevmcp.mcp.tool.ToolBinding;
+import dev.mcdevmcp.mcp.tool.api.ToolBinding;
 import dev.mcdevmcp.mcp.tool.api.ArgumentDecoder;
 
 final class McBlockDetailsTool {
@@ -12,6 +12,6 @@ final class McBlockDetailsTool {
 
     static ToolBinding<BlockDetailsArguments> binding(RuntimeToolSupport support) {
         var decoder = ArgumentDecoder.sdk(BlockDetailsWireArguments.class).map(BlockDetailsArguments::from);
-        return new ToolBinding<>(decoder, (arguments, _) -> support.container(ENDPOINT, RuntimeToolSupport.payload("x", arguments.x(), "y", arguments.y(), "z", arguments.z())));
+        return ToolBinding.compatibility(decoder, (arguments, _) -> support.container(ENDPOINT, RuntimeToolSupport.payload("x", arguments.x(), "y", arguments.y(), "z", arguments.z())));
     }
 }

@@ -1,7 +1,11 @@
 package dev.mcdevmcp.mcp.tool.api.smoke;
 
-import dev.mcdevmcp.mcp.tool.api.ArgumentDecoder;
+import dev.mcdevmcp.mcp.tool.api.RecordInputSchemaFactory;
 import dev.mcdevmcp.mcp.tool.api.StructuredToolResult;
+import dev.mcdevmcp.mcp.tool.api.ToolBinding;
+import dev.mcdevmcp.mcp.tool.api.ToolCancellation;
+import dev.mcdevmcp.mcp.tool.api.ToolHandlers;
+import dev.mcdevmcp.mcp.tool.api.ToolInput;
 import dev.mcdevmcp.mcp.tool.api.ToolResult;
 import dev.mcdevmcp.mcp.tool.api.TypedJson;
 import io.modelcontextprotocol.json.McpJsonDefaults;
@@ -14,9 +18,14 @@ public final class JpmsSmokeMain {
 
     static void main() throws Exception {
         var mapper = McpJsonDefaults.getMapper();
-        var decoded = ArgumentDecoder.sdk(Payload.class).decode(mapper, Map.of("value", "jpms-ok"));
+        var input = ToolInput.of(Payload.class, RecordInputSchemaFactory.standard());
+        var decoded = input.decode(mapper, Map.of("value", "jpms-ok"));
         if (!"jpms-ok".equals(decoded.value())) {
             throw new IllegalStateException("JPMS mapper round trip returned an unexpected value");
+        }
+        ToolResult bound = new ToolBinding<>(input, (payload, _) -> ToolHandlers.completed(ToolResult.text(payload.value()))).invoke(mapper, Map.of("value", "binding-ok"), ToolCancellation.none()).toCompletableFuture().resultNow();
+        if (bound.isError() || !"binding-ok".equals(bound.content().getFirst().text())) {
+            throw new IllegalStateException("JPMS typed binding returned an unexpected result");
         }
         var genericDecoded = TypedJson.of(Map.of("value", "json-ok"), Payload.class).decode(mapper);
         if (!"json-ok".equals(genericDecoded.value())) {

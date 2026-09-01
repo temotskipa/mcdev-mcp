@@ -1,7 +1,7 @@
 package dev.mcdevmcp.tools.statictool;
 
 import dev.mcdevmcp.app.MinecraftVersionValidator;
-import dev.mcdevmcp.mcp.tool.ToolBinding;
+import dev.mcdevmcp.mcp.tool.api.ToolBinding;
 import dev.mcdevmcp.mcp.tool.api.ArgumentDecoder;
 import dev.mcdevmcp.mcp.tool.api.ToolResult;
 import dev.mcdevmcp.storage.callgraph.CallgraphRepository;
@@ -19,7 +19,7 @@ final class McVersionTool {
 
     static ToolBinding<VersionArguments> binding(StaticToolSupport support) {
         var decoder = ArgumentDecoder.sdk(VersionWireArguments.class).map(VersionArguments::from);
-        return ToolBinding.blocking(decoder, (arguments, _) -> support.execute("mc_version", () -> {
+        return ToolBinding.blockingCompatibility(decoder, (arguments, _) -> support.execute("mc_version", () -> {
             if (arguments.action() == VersionAction.set) {
                 return set(support, arguments);
             }

@@ -1,6 +1,6 @@
 package dev.mcdevmcp.tools.statictool;
 
-import dev.mcdevmcp.mcp.tool.ToolBinding;
+import dev.mcdevmcp.mcp.tool.api.ToolBinding;
 import dev.mcdevmcp.mcp.tool.api.ArgumentDecoder;
 import dev.mcdevmcp.mcp.tool.api.ToolResult;
 import dev.mcdevmcp.storage.model.ClassSymbol;
@@ -15,7 +15,7 @@ final class McListClassesTool {
 
     static ToolBinding<ListClassesArguments> binding(StaticToolSupport support) {
         var decoder = ArgumentDecoder.sdk(ListClassesWireArguments.class).map(ListClassesArguments::from);
-        return ToolBinding.blocking(decoder, (arguments, _) -> support.execute("mc_list_classes", () -> {
+        return ToolBinding.blockingCompatibility(decoder, (arguments, _) -> support.execute("mc_list_classes", () -> {
             if (arguments.packagePath().isMissing()) {
                 return ToolResult.error("Error executing mc_list_classes: Cannot read properties of undefined (reading 'toLowerCase')");
             }

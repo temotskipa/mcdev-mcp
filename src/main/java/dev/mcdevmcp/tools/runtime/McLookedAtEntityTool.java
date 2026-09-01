@@ -1,7 +1,7 @@
 package dev.mcdevmcp.tools.runtime;
 
 import dev.mcdevmcp.bridge.BridgeEndpoint;
-import dev.mcdevmcp.mcp.tool.ToolBinding;
+import dev.mcdevmcp.mcp.tool.api.ToolBinding;
 import dev.mcdevmcp.mcp.tool.api.ArgumentDecoder;
 
 final class McLookedAtEntityTool {
@@ -12,6 +12,6 @@ final class McLookedAtEntityTool {
 
     static ToolBinding<LookedAtEntityArguments> binding(RuntimeToolSupport support) {
         var decoder = ArgumentDecoder.sdk(LookedAtEntityWireArguments.class).map(LookedAtEntityArguments::from);
-        return new ToolBinding<>(decoder, (arguments, _) -> support.lookedAtEntity(arguments));
+        return ToolBinding.compatibility(decoder, (arguments, _) -> support.lookedAtEntity(arguments));
     }
 }
