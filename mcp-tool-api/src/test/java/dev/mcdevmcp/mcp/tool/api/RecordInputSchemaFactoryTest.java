@@ -55,6 +55,8 @@ class RecordInputSchemaFactoryTest {
         assertThrows(IllegalArgumentException.class, () -> factory.generate(JsonType.of(InvalidDelegatingCreatorInput.class)));
         assertThrows(IllegalArgumentException.class, () -> factory.generate(JsonType.of(DuplicateJsonPropertyEnumInput.class)));
         assertThrows(IllegalArgumentException.class, () -> factory.generate(JsonType.of(DuplicateJsonValueEnumInput.class)));
+        assertThrows(IllegalArgumentException.class, () -> factory.generate(JsonType.of(EquivalentDecimalJsonValueEnumInput.class)));
+        assertThrows(IllegalArgumentException.class, () -> factory.generate(JsonType.of(SignedZeroJsonValueEnumInput.class)));
     }
 
     private record ObjectComponentInput(Object value) {
@@ -120,6 +122,44 @@ class RecordInputSchemaFactoryTest {
         @com.fasterxml.jackson.annotation.JsonValue
         String wireValue() {
             return "same";
+        }
+    }
+
+    private record EquivalentDecimalJsonValueEnumInput(EquivalentDecimalJsonValueEnum value) {
+    }
+
+    private enum EquivalentDecimalJsonValueEnum {
+        FIRST(new BigDecimal("1.0")),
+        SECOND(new BigDecimal("1.00"));
+
+        private final BigDecimal wireValue;
+
+        EquivalentDecimalJsonValueEnum(BigDecimal wireValue) {
+            this.wireValue = wireValue;
+        }
+
+        @com.fasterxml.jackson.annotation.JsonValue
+        BigDecimal wireValue() {
+            return wireValue;
+        }
+    }
+
+    private record SignedZeroJsonValueEnumInput(SignedZeroJsonValueEnum value) {
+    }
+
+    private enum SignedZeroJsonValueEnum {
+        NEGATIVE_ZERO(-0.0D),
+        POSITIVE_ZERO(0.0D);
+
+        private final double wireValue;
+
+        SignedZeroJsonValueEnum(double wireValue) {
+            this.wireValue = wireValue;
+        }
+
+        @com.fasterxml.jackson.annotation.JsonValue
+        double wireValue() {
+            return wireValue;
         }
     }
 }

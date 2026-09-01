@@ -140,13 +140,28 @@ public final class RecordInputSchemaFactory implements InputSchemaFactory {
         Set<Object> wireValues = new HashSet<>();
         for (Object constant : enumType.getEnumConstants()) {
             Object wireValue = jsonValue == null ? enumPropertyName((Enum<?>) constant) : jsonValue.read(constant);
-            if (!wireValues.add(wireValue)) {
+            if (!wireValues.add(jsonDataModelKey(wireValue))) {
                 throw new IllegalArgumentException("Duplicate effective enum wire value: " + wireValue + " for " + enumType.getTypeName());
             }
             values.add(wireValue);
         }
         schema.put("enum", values);
         return schema;
+    }
+
+    private static Object jsonDataModelKey(Object value) {
+        if (value instanceof BigDecimal decimal) return decimal.stripTrailingZeros();
+        if (value instanceof BigInteger integer) return new BigDecimal(integer);
+        if (value instanceof Byte || value instanceof Short || value instanceof Integer || value instanceof Long) {
+            return BigDecimal.valueOf(((Number) value).longValue());
+        }
+        if (value instanceof Float floatingPoint && Float.isFinite(floatingPoint)) {
+            return new BigDecimal(Float.toString(floatingPoint)).stripTrailingZeros();
+        }
+        if (value instanceof Double floatingPoint && Double.isFinite(floatingPoint)) {
+            return BigDecimal.valueOf(floatingPoint).stripTrailingZeros();
+        }
+        return value;
     }
 
     private static String enumPropertyName(Enum<?> constant) {
