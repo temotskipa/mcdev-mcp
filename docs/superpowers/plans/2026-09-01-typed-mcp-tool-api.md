@@ -1,24 +1,33 @@
 # Typed MCP Tool API Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:
+> executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Make `mcp-tool-api` the generic typed schema/deserialization layer missing from the MCP Java SDK and migrate every server tool to direct typed argument records.
+**Goal:** Make `mcp-tool-api` the generic typed schema/deserialization layer missing from the MCP Java SDK and migrate
+every server tool to direct typed argument records.
 
-**Architecture:** Java record metadata generates ordinary MCP JSON Schema and `ToolInput<A>` couples that schema with the exact `JsonType<A>` decoded by the SDK mapper. Generic binding and cancellation contracts live in `mcp-tool-api`; the root keeps catalogs, transport, availability, and Minecraft behavior. Migration preserves valid behavior and DebugBridge JSON while schema-invalid compatibility cases become boundary rejection tests.
+**Architecture:** Java record metadata generates ordinary MCP JSON Schema and `ToolInput<A>` couples that schema with
+the exact `JsonType<A>` decoded by the SDK mapper. Generic binding and cancellation contracts live in `mcp-tool-api`;
+the root keeps catalogs, transport, availability, and Minecraft behavior. Migration preserves valid behavior and
+DebugBridge JSON while schema-invalid compatibility cases become boundary rejection tests.
 
-**Tech Stack:** Java 25 language and bytecode, Java 25/26 tests, Gradle 9.7.0, MCP Java SDK 2.0.1-SNAPSHOT, SDK Jackson 3-backed `McpJsonMapper`, JUnit 6.1.3, IntelliJ MCP.
+**Tech Stack:** Java 25 language and bytecode, Java 25/26 tests, Gradle 9.7.0, MCP Java SDK 2.0.1-SNAPSHOT, SDK Jackson
+3-backed `McpJsonMapper`, JUnit 6.1.3, IntelliJ MCP.
 
 **Spec:** `docs/superpowers/specs/2026-09-01-typed-mcp-tool-api-design.md`
 
 ## Global Constraints
 
-- Use `McpJsonMapper` as the sole JSON implementation; do not use direct `ObjectMapper`, `JsonNode`, Gson, or another JSON/schema engine.
-- Keep Java type identity in server-side metadata only; never emit FQNs, `$javaType`, or Jackson class-name polymorphism.
+- Use `McpJsonMapper` as the sole JSON implementation; do not use direct `ObjectMapper`, `JsonNode`, Gson, or another
+  JSON/schema engine.
+- Keep Java type identity in server-side metadata only; never emit FQNs, `$javaType`, or Jackson class-name
+  polymorphism.
 - Add no production dependency beyond the existing `mcp-core` API dependency.
 - Keep DebugBridge endpoint names and serialized payload shapes unchanged.
 - Preserve valid-request functional parity; schema-invalid JavaScript coercion and exact error text may be removed.
 - Keep every named top-level declaration in its own matching Java file.
-- Reformat every edited file with IntelliJ MCP and run warnings-enabled IntelliJ diagnostics for every changed Java file before review.
+- Reformat every edited file with IntelliJ MCP and run warnings-enabled IntelliJ diagnostics for every changed Java file
+  before review.
 - Use TDD, one implementer and an independent reviewer per task, Java 25/26 verification, and the pinned Node oracle.
 
 ---
@@ -26,6 +35,7 @@
 ### Task 1: Add Typed Input Schema And Direct Decoding
 
 **Files:**
+
 - Create: `mcp-tool-api/src/main/java/dev/mcdevmcp/mcp/tool/api/JsonObjectSchema.java`
 - Create: `mcp-tool-api/src/main/java/dev/mcdevmcp/mcp/tool/api/InputProperty.java`
 - Create: `mcp-tool-api/src/main/java/dev/mcdevmcp/mcp/tool/api/InputSchemaFactory.java`
@@ -36,27 +46,43 @@
 - Modify: `mcp-tool-api/src/main/java/dev/mcdevmcp/mcp/tool/api/package-info.java`
 
 **Interfaces:**
-- Produces: `JsonObjectSchema.of(Map<String,Object>)`, `InputSchemaFactory.generate(JsonType<?>)`, `RecordInputSchemaFactory.standard()`, `ToolInput.of(Class<A>, InputSchemaFactory)`, and `ToolInput.decode(McpJsonMapper, Map<String,Object>)`.
-- `InputProperty` has `description`, `required`, `minimum`, `maximum`, and `defaultValue` string members with empty defaults.
 
-- [ ] Write failing tests proving a record with string, boolean, `BigDecimal`, enum, optional, required, bounds, and defaults generates the expected deeply immutable object schema.
-- [ ] Write a failing test proving `ToolInput` decodes the complete map directly into that same record using `McpJsonMapper`.
-- [ ] Run `./gradlew :mcp-tool-api:test --tests '*ToolInputTest' --tests '*RecordInputSchemaFactoryTest' --no-configuration-cache --console=plain` and verify the tests fail because the API is absent.
-- [ ] Implement the minimal API. Reject non-record roots, raw `Object`, maps, unbounded wildcards, unsupported parameterized types, duplicate JSON property names, invalid decimal bounds, and a maximum below minimum.
-- [ ] Preserve property declaration order and emit `required` in record-component order. Omit empty description, bounds, default, and required arrays.
-- [ ] Run IntelliJ reformat and warnings-enabled diagnostics for all Task 1 files.
-- [ ] Run `./gradlew :mcp-tool-api:clean :mcp-tool-api:check --no-configuration-cache --console=plain` on Java 25 and repeat `:mcp-tool-api:test` with `-PtestJavaVersion=26`.
-- [ ] Commit with message `feat(api): add typed MCP tool inputs`.
+- Produces: `JsonObjectSchema.of(Map<String,Object>)`, `InputSchemaFactory.generate(JsonType<?>)`,
+  `RecordInputSchemaFactory.standard()`, `ToolInput.of(Class<A>, InputSchemaFactory)`, and
+  `ToolInput.decode(McpJsonMapper, Map<String,Object>)`.
+- `InputProperty` has `description`, `required`, `minimum`, `maximum`, and `defaultValue` string members with empty
+  defaults.
+
+- [x] Write failing tests proving a record with string, boolean, `BigDecimal`, enum, optional, required, bounds, and
+  defaults generates the expected deeply immutable object schema.
+- [x] Write a failing test proving `ToolInput` decodes the complete map directly into that same record using
+  `McpJsonMapper`.
+- [x] Run
+  `./gradlew :mcp-tool-api:test --tests '*ToolInputTest' --tests '*RecordInputSchemaFactoryTest' --no-configuration-cache --console=plain`
+  and verify the tests fail because the API is absent.
+- [x] Implement the minimal API. Reject non-record roots, raw `Object`, maps, unbounded wildcards, unsupported
+  parameterized types, duplicate JSON property names, invalid decimal bounds, and a maximum below minimum.
+- [x] Preserve property declaration order and emit `required` in record-component order. Omit empty description, bounds,
+  default, and required arrays.
+- [x] Run IntelliJ reformat and warnings-enabled diagnostics for all Task 1 files.
+- [x] Run `./gradlew :mcp-tool-api:clean :mcp-tool-api:check --no-configuration-cache --console=plain` on Java 25 and
+  repeat `:mcp-tool-api:test` with `-PtestJavaVersion=26`.
+- [x] Commit with message `feat(api): add typed MCP tool inputs`.
 
 ### Task 2: Move Generic Binding Execution Into The Library
 
 **Files:**
-- Move generic equivalents of `Cancellation`, `ToolHandler`, `BlockingToolHandler`, `ToolHandlers`, and `ToolBinding` into `mcp-tool-api/src/main/java/dev/mcdevmcp/mcp/tool/api/`.
+
+- Move generic equivalents of `Cancellation`, `ToolHandler`, `BlockingToolHandler`, `ToolHandlers`, and `ToolBinding`
+  into `mcp-tool-api/src/main/java/dev/mcdevmcp/mcp/tool/api/`.
 - Modify all root imports and the API module JPMS smoke.
-- Add focused library tests for cancellation, blocking execution, failure propagation, future cancellation, and typed decode-before-handle order.
+- Add focused library tests for cancellation, blocking execution, failure propagation, future cancellation, and typed
+  decode-before-handle order.
 
 **Interfaces:**
-- Produces: `ToolCancellation`, `ToolHandler<A>`, `BlockingToolHandler<A>`, `ToolHandlers`, and `ToolBinding<A>` whose ordinary constructor consumes `ToolInput<A>`.
+
+- Produces: `ToolCancellation`, `ToolHandler<A>`, `BlockingToolHandler<A>`, `ToolHandlers`, and `ToolBinding<A>` whose
+  ordinary constructor consumes `ToolInput<A>`.
 - Keeps `ArgumentDecoder<A>` only as an explicitly named compatibility factory until all tools migrate.
 
 - [ ] Write failing library tests for direct typed invocation and blocking cancellation.
@@ -68,31 +94,39 @@
 ### Task 3: Add The Catalog Schema Drift Gate
 
 **Files:**
+
 - Modify: `src/main/java/dev/mcdevmcp/mcp/tool/ToolMetadata.java`
 - Modify: `src/main/java/dev/mcdevmcp/mcp/tool/ToolDefinition.java`
 - Modify: `src/main/java/dev/mcdevmcp/mcp/tool/ToolCatalog.java`
 - Modify catalog/SDK adapter tests.
 
 **Interfaces:**
+
 - Consumes: `ToolBinding.input()` and `ToolInput.schema()`.
 - Produces: catalog construction that fails when checked-in metadata schema differs from the generated typed schema.
 
 - [ ] Write a failing catalog test with a mismatched property type and required list.
-- [ ] Make the binding's generated schema authoritative in `ToolDefinition` while comparing it to `tools.json` during transition.
+- [ ] Make the binding's generated schema authoritative in `ToolDefinition` while comparing it to `tools.json` during
+  transition.
 - [ ] Run catalog, adapter, tools/list, manifest, IntelliJ, Java 25, and Java 26 tests.
 - [ ] Commit with message `feat(mcp): enforce typed schema drift checks`.
 
 ### Task 4: Migrate Simple Runtime Tool Inputs
 
 **Files:**
-- Modify the runtime argument records and bindings for nearby entities, entity details, nearby blocks, block details, looked-at entity, chat history, screen inspect, screenshot, item textures, glow tools, and run command.
+
+- Modify the runtime argument records and bindings for nearby entities, entity details, nearby blocks, block details,
+  looked-at entity, chat history, screen inspect, screenshot, item textures, glow tools, and run command.
 - Delete their matching `*WireArguments` records after focused tests pass.
 
 **Interfaces:**
-- Produces direct `ToolInput<DomainArguments>` bindings with typed numbers, booleans, enums, and validated scalar records.
+
+- Produces direct `ToolInput<DomainArguments>` bindings with typed numbers, booleans, enums, and validated scalar
+  records.
 - Preserves the exact DebugBridge payload keys and JSON value representations.
 
-- [ ] Replace invalid-wire compatibility assertions with schema rejection tests while retaining valid request/result fixtures.
+- [ ] Replace invalid-wire compatibility assertions with schema rejection tests while retaining valid request/result
+  fixtures.
 - [ ] Add bridge fixture assertions for every migrated payload.
 - [ ] Migrate one tool family at a time, running its focused tests and IntelliJ reformat after each edit batch.
 - [ ] Run all runtime contract, bridge, MCP STDIO, Java 25/26, and differential valid-request parity tests.
@@ -101,11 +135,13 @@
 ### Task 5: Migrate Defaulted Runtime Inputs
 
 **Files:**
+
 - Modify connect, execute, join, quit, wait, and script-log argument records and bindings.
 - Add scalar JSON support to existing validated values where required.
 - Delete the matching wire records.
 
 **Interfaces:**
+
 - Applies defaults in compact constructors or delegating creators; JSON Schema `default` remains descriptive only.
 - Uses `Duration` or focused timeout values after deserialization while preserving bridge milliseconds/seconds.
 
@@ -117,11 +153,13 @@
 ### Task 6: Migrate Static Tool Inputs And Domain Values
 
 **Files:**
+
 - Modify all static argument records, enums, bindings, and handlers.
 - Modify: `src/main/java/dev/mcdevmcp/storage/model/MinecraftVersion.java`
 - Delete static wire records, `TextArgument`, `ArgumentShape`, `LimitInput`, and duplicate enum-text fields.
 
 **Interfaces:**
+
 - Uses nullable `MinecraftVersion`, direct enums, `BigDecimal` limits, and required strings.
 - Preserves all valid static outputs and complete `mc_find_refs` caller/callee behavior.
 
@@ -133,10 +171,12 @@
 ### Task 7: Replace The Record-Video Union
 
 **Files:**
+
 - Modify `RecordInterval`, record-video arguments, schema metadata, binding, and tests.
 - Delete `RecordVideoWireArguments`.
 
 **Interfaces:**
+
 - Produces a sealed semantic interval value using a `kind` discriminator with `frame` and `milliseconds` variants.
 - Serializes the same DebugBridge interval value expected by the mod.
 
@@ -148,17 +188,21 @@
 ### Task 8: Remove Transitional Schema And Decoder Scaffolding
 
 **Files:**
+
 - Remove `inputSchema` bodies from `src/main/resources/mcp/tools.json` after generated equality passes for every tool.
 - Remove production `ArgumentDecoder.map` use and then the compatibility method if no tests or consumers need it.
 - Update architecture, package organization, and acceptance documentation.
 
 **Interfaces:**
+
 - Java input records are the sole schema and deserialization authority.
 - `tools.json` retains names and long descriptions only unless those also move into typed definitions during review.
 
 - [ ] Add a whole-catalog test proving every enabled tool has a generated schema and direct typed binding.
-- [ ] Add a source-layout test rejecting production `*WireArguments`, raw `Object` argument components, and `ArgumentDecoder.map` calls.
+- [ ] Add a source-layout test rejecting production `*WireArguments`, raw `Object` argument components, and
+  `ArgumentDecoder.map` calls.
 - [ ] Remove transitional metadata and compatibility types.
-- [ ] Run independent module builds, JPMS smoke, full Java 25/26 checks, differential parity, conformance, MCPB, exact-JAR runtime, release verifier, IntelliJ whole-project build/inspection, and cutover checks.
+- [ ] Run independent module builds, JPMS smoke, full Java 25/26 checks, differential parity, conformance, MCPB,
+  exact-JAR runtime, release verifier, IntelliJ whole-project build/inspection, and cutover checks.
 - [ ] Commit with message `refactor(api): make Java tool inputs authoritative`.
 - [ ] Dispatch an independent whole-branch review and address every Critical or Important finding before push.
