@@ -94,7 +94,7 @@ class EmbeddedResourceLineEndingsTest {
         builder.environment().keySet().removeIf(name -> name.toUpperCase(Locale.ROOT).startsWith("GIT_"));
         builder.environment().put("GIT_CONFIG_NOSYSTEM", "1");
         builder.environment().put("GIT_CONFIG_GLOBAL", emptyConfiguration.toString());
-        @SuppressWarnings("resource") Process process = builder.start();
+        Process process = builder.start();
         Throwable failure = null;
         try {
             process.getOutputStream().close();
@@ -117,7 +117,8 @@ class EmbeddedResourceLineEndingsTest {
                 interrupted |= cleanupFailure instanceof InterruptedException;
                 if (failure == null) {
                     failure = cleanupFailure;
-                } else {
+                }
+                else {
                     failure.addSuppressed(cleanupFailure);
                 }
             } finally {
