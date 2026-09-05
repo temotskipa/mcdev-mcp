@@ -33,8 +33,7 @@ public final class BridgeResultDecoder {
         JsonSchemaValidator.ValidationResponse validation;
         try {
             validation = validator.validate(schema.value(), presentResult);
-        }
-        catch (RuntimeException exception) {
+        } catch (RuntimeException exception) {
             throw invalid(endpoint, resultType, "schema validation failed", exception);
         }
         if (!validation.valid()) {
@@ -46,8 +45,7 @@ public final class BridgeResultDecoder {
         }
         try {
             return resultType.targetType().decode(mapper, presentResult);
-        }
-        catch (RuntimeException exception) {
+        } catch (RuntimeException exception) {
             throw invalid(endpoint, resultType, "result could not be materialized", exception);
         }
     }

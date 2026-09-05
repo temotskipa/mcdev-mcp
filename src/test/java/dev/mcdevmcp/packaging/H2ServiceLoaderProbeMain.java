@@ -12,6 +12,7 @@ final class H2ServiceLoaderProbeMain {
     private H2ServiceLoaderProbeMain() {
     }
 
+    @SuppressWarnings("SqlNoDataSourceInspection") // The probe creates its own temporary database.
     static void main(String[] arguments) throws Exception {
         Path databaseBase = Path.of(arguments[0]).toAbsolutePath().normalize();
         Path expectedJar = Path.of(arguments[1]).toRealPath();

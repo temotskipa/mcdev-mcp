@@ -56,8 +56,7 @@ public final class StatusCommand implements Callable<Integer> {
     }
 
     private boolean hasSourceDirectory(MinecraftVersion candidate) {
-        return Files.isDirectory(paths.versionCache(candidate), LinkOption.NOFOLLOW_LINKS)
-                && Files.isDirectory(paths.sourceRoot(candidate), LinkOption.NOFOLLOW_LINKS);
+        return Files.isDirectory(paths.versionCache(candidate), LinkOption.NOFOLLOW_LINKS) && Files.isDirectory(paths.sourceRoot(candidate), LinkOption.NOFOLLOW_LINKS);
     }
 
     private void printVersion(VersionStateRepository states, MinecraftVersion value) {

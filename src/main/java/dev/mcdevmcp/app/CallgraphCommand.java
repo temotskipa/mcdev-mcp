@@ -17,9 +17,11 @@ public final class CallgraphCommand implements Callable<Integer> {
     private final PlatformPaths paths;
 
     @Option(names = {"-v", "--version"}, required = true, description = "Minecraft version")
+    @SuppressWarnings("unused") // Assigned by picocli.
     private String version;
 
     @Spec
+    @SuppressWarnings("unused") // Assigned by picocli.
     private picocli.CommandLine.Model.CommandSpec spec;
 
     public CallgraphCommand(AnalysisOperations operations, PlatformPaths paths) {

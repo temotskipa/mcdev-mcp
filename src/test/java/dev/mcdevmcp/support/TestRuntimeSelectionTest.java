@@ -26,10 +26,11 @@ class TestRuntimeSelectionTest {
         var probeExecutable = Path.of(configuredExecutable).toRealPath();
         assertEquals(testJvmExecutable, probeExecutable);
 
-        var process = new ProcessBuilder(probeExecutable.toString(), "-XshowSettings:properties", "-version").redirectErrorStream(true).start();
-        var output = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-        assertEquals(0, process.waitFor(), output);
-        assertTrue(output.contains("java.specification.version = " + Runtime.version().feature()), () -> "Spawned Java version did not match the test JVM:\n" + output);
+        try (var process = new ProcessBuilder(probeExecutable.toString(), "-XshowSettings:properties", "-version").redirectErrorStream(true).start()) {
+            var output = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+            assertEquals(0, process.waitFor(), output);
+            assertTrue(output.contains("java.specification.version = " + Runtime.version().feature()), () -> "Spawned Java version did not match the test JVM:\n" + output);
+        }
 
         System.out.printf("TEST_RUNTIME feature=%d testJvm=%s spawnedJarJava=%s%n", Runtime.version().feature(), testJvmExecutable, probeExecutable);
     }

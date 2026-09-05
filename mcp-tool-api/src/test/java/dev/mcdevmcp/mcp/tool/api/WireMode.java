@@ -4,8 +4,7 @@ import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonValue;
 
 enum WireMode {
-    FAST("quick"),
-    THOROUGH("deep");
+    FAST("quick"), THOROUGH("deep");
 
     private final String wireValue;
 

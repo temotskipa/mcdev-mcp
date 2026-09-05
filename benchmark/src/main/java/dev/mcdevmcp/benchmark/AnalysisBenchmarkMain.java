@@ -303,7 +303,8 @@ public final class AnalysisBenchmarkMain {
         if (deadline.isZero() || deadline.isNegative()) {
             throw new IllegalArgumentException("deadline must be positive");
         }
-        Process process = new ProcessBuilder(command).start();
+        // Process.close() waits without a deadline; termination below remains bounded.
+        @SuppressWarnings("resource") Process process = new ProcessBuilder(command).start();
         AtomicReference<IOException> stdoutFailure = new AtomicReference<>();
         AtomicReference<IOException> stderrFailure = new AtomicReference<>();
         try (BoundedOutput stdout = new BoundedOutput(); BoundedOutput stderr = new BoundedOutput()) {

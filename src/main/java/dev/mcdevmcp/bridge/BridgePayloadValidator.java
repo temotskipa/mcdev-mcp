@@ -1,6 +1,7 @@
 package dev.mcdevmcp.bridge;
 
 import dev.mcdevmcp.support.JsonValues;
+
 import java.util.Map;
 import java.util.Objects;
 
@@ -91,7 +92,9 @@ public final class BridgePayloadValidator {
         return response.result();
     }
 
-    /** Requires a successful response with a non-null result value. */
+    /**
+     * Requires a successful response with a non-null result value.
+     */
     public static Object requireResult(String endpoint, BridgeResponse response) {
         return requireResultValue(endpoint, response);
     }

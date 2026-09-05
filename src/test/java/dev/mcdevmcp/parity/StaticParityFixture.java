@@ -27,6 +27,7 @@ import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Stream;
 
+@SuppressWarnings("SqlNoDataSourceInspection") // Fixture databases are created at runtime.
 final class StaticParityFixture {
     static final MinecraftVersion VERSION = new MinecraftVersion("1.21.5");
     private static final Duration NODE_DATABASE_TIMEOUT = Duration.ofSeconds(30);

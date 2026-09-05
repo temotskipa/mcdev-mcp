@@ -14,6 +14,7 @@ import java.time.Duration;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+@SuppressWarnings("SqlNoDataSourceInspection") // Each test creates an isolated database.
 class AtomicH2DatabaseTest {
     @TempDir
     Path temporaryDirectory;

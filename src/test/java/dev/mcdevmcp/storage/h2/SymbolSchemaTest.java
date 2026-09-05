@@ -16,6 +16,7 @@ import java.util.Set;
 import static org.junit.jupiter.api.Assertions.*;
 
 //noinspection SqlNoDataSourceInspection,SqlResolve
+@SuppressWarnings("SqlNoDataSourceInspection") // Each test creates an isolated database.
 class SymbolSchemaTest {
     private static final MinecraftVersion VERSION = new MinecraftVersion("1.21.5");
     private static final String DROP_METHODS_INDEX_SQL = "DROP INDEX idx_methods_type_name";
