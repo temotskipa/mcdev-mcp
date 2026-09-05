@@ -330,7 +330,7 @@ jobs:
             signatures.push({ kind: probe.kind, key: probe.key, signature: signature(probe.kind, probe.key, rows) });
           }
           callgraph.closeDb();
-          await writeFile(output, JSON.stringify({ schemaVersion: 1, minecraftVersion: { value: version }, sourceLogicalHash: sourceHash, remappedJarSha256: jarHash, nodeCallgraphSha256: actualCallgraphSha256, nodeCallgraphPath: resolvedCallgraphPath, nodeCallgraphIdentity: reviewed.nodeCallgraphIdentity, oracleIdentity: { commit: expectedCommit, treeHash: expectedTree }, indexCounts: { packages: result.minecraftPackages.length, types: result.totalClasses, fields, methods, parameters }, callgraphCounts, probes: signatures }));
+          await writeFile(output, JSON.stringify({ schemaVersion: 1, minecraftVersion: version, sourceLogicalHash: sourceHash, remappedJarSha256: jarHash, nodeCallgraphSha256: actualCallgraphSha256, nodeCallgraphPath: resolvedCallgraphPath, nodeCallgraphIdentity: reviewed.nodeCallgraphIdentity, oracleIdentity: { commit: expectedCommit, treeHash: expectedTree }, indexCounts: { packages: result.minecraftPackages.length, types: result.totalClasses, fields, methods, parameters }, callgraphCounts, probes: signatures }));
           NODE_CAPTURE
             captured="$BENCHMARK_ROOT/node-oracle/$id-captured.json"
             (
@@ -353,7 +353,7 @@ jobs:
             )
             jq -e --arg commit "$oracle_commit" --arg treeHash "$oracle_tree" \
               --arg version "$version" --slurpfile captured "$captured" \
-              '(.schemaVersion == 1) and (.minecraftVersion.value == $version) and
+              '(.schemaVersion == 1) and (.minecraftVersion == $version) and
                (.oracleIdentity.commit == $commit) and (.oracleIdentity.treeHash == $treeHash) and
                (del(.nodeCallgraphPath) == ($captured[0] | del(.nodeCallgraphPath)))' \
                "$reviewed_baseline" >/dev/null
