@@ -15,4 +15,12 @@ public record VerifiedCorpusClasspath(Path manifestPath, MinecraftVersion minecr
             throw new IllegalArgumentException("Immutable corpus classpath changed");
         }
     }
+
+    public void verifyAfterFailure(List<Path> outputRoots, Throwable failure) {
+        try {
+            verifyUnchanged(outputRoots);
+        } catch (Exception | Error integrityFailure) {
+            failure.addSuppressed(integrityFailure);
+        }
+    }
 }

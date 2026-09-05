@@ -110,6 +110,19 @@ class AnalysisBenchmarkMainTest {
     }
 
     @Test
+    void failedChildStillChecksIntegrityWithoutMaskingOriginalFailure() throws Exception {
+        Fixture fixture = fixture();
+        IOException original = new IOException("original child failure");
+        IOException failure = assertThrows(IOException.class, () -> AnalysisBenchmarkMain.runParent(arguments(fixture, temporaryDirectory.resolve("failed-mutating-child"), fixture.cacheRoot()), command -> {
+            Files.writeString(command.classpathManifest(), Files.readString(command.classpathManifest()) + "\n");
+            throw original;
+        }));
+        assertSame(original, failure);
+        assertEquals(1, failure.getSuppressed().length);
+        assertTrue(failure.getSuppressed()[0].getMessage().contains("Immutable corpus classpath changed"));
+    }
+
+    @Test
     void calculatesEveryMedianIndependentlyAndRejectsChangingCounts() {
         BenchmarkWorkCounts indexCounts = indexCounts();
         BenchmarkWorkCounts callgraphCounts = callgraphCounts();

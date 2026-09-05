@@ -119,6 +119,9 @@ public final class CorpusQualificationMain {
             long postGcHeap = postGcLiveHeapBytes();
             memory.sample();
             report = new CorpusQualificationReport(2, failures.isEmpty(), failures, arguments.minecraftVersion(), arguments.workers(), inputs.sourceHash(), inputs.jarHash(), symbolHash, callgraphHashes.identity(), callgraphHashes.logicalHash(), unitCounts, evidence.discoveredCompilationUnits(), evidence.parsedCompilationUnits(), evidence.typedCompilationUnits(), evidence.typeFreeCompilationUnits(), evidence.diagnostics(), indexCounts, callgraphCounts, probeEvaluation.probes(), appliedDifferences, memory.peakLiveHeapBytes(), postGcHeap, rssProbe.peakRssBytes(), inputs.classpath().evidence(), System.getProperty("os.name"), ProcessPeakMemory.metric());
+        } catch (Exception | Error failure) {
+            inputs.classpath().verifyAfterFailure(List.of(arguments.outputRoot()), failure);
+            throw failure;
         }
 
         writeReport(arguments.outputRoot(), report);

@@ -105,7 +105,13 @@ public final class AnalysisBenchmarkMain {
 
     private static BenchmarkChildMeasurement runVerifiedChild(ChildProcessRunner runner, ChildCommand command, VerifiedCorpusClasspath classpath, Path outputRoot) throws Exception {
         classpath.verifyUnchanged(List.of(outputRoot));
-        BenchmarkChildMeasurement result = runner.run(command);
+        BenchmarkChildMeasurement result;
+        try {
+            result = runner.run(command);
+        } catch (Exception | Error failure) {
+            classpath.verifyAfterFailure(List.of(outputRoot), failure);
+            throw failure;
+        }
         classpath.verifyUnchanged(List.of(outputRoot));
         if (!classpath.evidence().identity().equals(result.classpathIdentity()) || !classpath.evidence().manifestSha256().equals(result.classpathManifestSha256())) {
             throw new IOException("Benchmark child classpath identity or manifest SHA-256 mismatch");
@@ -123,26 +129,40 @@ public final class AnalysisBenchmarkMain {
         if (!classpath.evidence().identity().equals(arguments.classpathIdentity()) || !classpath.evidence().manifestSha256().equals(arguments.classpathManifestSha256())) {
             throw new IOException("Benchmark child classpath identity or manifest SHA-256 mismatch");
         }
-        Files.createDirectories(arguments.outputRoot());
-        forceGarbageCollection();
-        GcSnapshot before = GcSnapshot.current();
-        long started = System.nanoTime();
-        BenchmarkWorkCounts counts = switch (arguments.phase()) {
-            case INDEX -> runIndex(arguments, classpath.paths());
-            case CALLGRAPH -> runCallgraph(arguments);
-        };
-        long elapsedNanos = System.nanoTime() - started;
-        GcSnapshot after = GcSnapshot.current();
-        long peakRss = peakRssBytes();
+        BenchmarkChildMeasurement result;
+        try {
+            Files.createDirectories(arguments.outputRoot());
+            forceGarbageCollection();
+            GcSnapshot before = GcSnapshot.current();
+            long started = System.nanoTime();
+            BenchmarkWorkCounts counts = switch (arguments.phase()) {
+                case INDEX -> runIndex(arguments, classpath.paths());
+                case CALLGRAPH -> runCallgraph(arguments);
+            };
+            long elapsedNanos = System.nanoTime() - started;
+            GcSnapshot after = GcSnapshot.current();
+            long peakRss = peakRssBytes();
+            result = new BenchmarkChildMeasurement(arguments.phase(), counts.units(), elapsedNanos, peakRss, Math.subtractExact(after.collections(), before.collections()), Math.subtractExact(after.collectionTimeMillis(), before.collectionTimeMillis()), counts, BenchmarkRuntimeMetadata.current(), 2, classpath.evidence().identity(), classpath.evidence().manifestSha256());
+        } catch (Exception | Error failure) {
+            classpath.verifyAfterFailure(List.of(arguments.outputRoot()), failure);
+            throw failure;
+        }
         classpath.verifyUnchanged(List.of(arguments.outputRoot()));
-        BenchmarkChildMeasurement result = new BenchmarkChildMeasurement(arguments.phase(), counts.units(), elapsedNanos, peakRss, Math.subtractExact(after.collections(), before.collections()), Math.subtractExact(after.collectionTimeMillis(), before.collectionTimeMillis()), counts, BenchmarkRuntimeMetadata.current(), 2, classpath.evidence().identity(), classpath.evidence().manifestSha256());
         System.out.write(McpJsonDefaults.getMapper().writeValueAsBytes(result));
         System.out.write('\n');
     }
 
     static BenchmarkWorkCounts runIndex(ChildArguments arguments) throws Exception {
         VerifiedCorpusClasspath classpath = CorpusClasspathManifest.verify(arguments.classpathManifest(), arguments.minecraftVersion(), List.of(arguments.outputRoot()));
-        return runIndex(arguments, classpath.paths());
+        BenchmarkWorkCounts counts;
+        try {
+            counts = runIndex(arguments, classpath.paths());
+        } catch (Exception | Error failure) {
+            classpath.verifyAfterFailure(List.of(arguments.outputRoot()), failure);
+            throw failure;
+        }
+        classpath.verifyUnchanged(List.of(arguments.outputRoot()));
+        return counts;
     }
 
     private static BenchmarkWorkCounts runIndex(ChildArguments arguments, List<Path> classpath) throws Exception {
