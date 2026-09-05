@@ -170,6 +170,7 @@ val runtimeTest = sourceSets.create("runtimeTest") {
 
 dependencies {
     add(runtimeTest.implementationConfigurationName, sourceSets.main.get().output)
+    testImplementation(runtimeTest.output)
 }
 
 tasks.named<JavaCompile>(sourceSets.test.get().compileJavaTaskName) {

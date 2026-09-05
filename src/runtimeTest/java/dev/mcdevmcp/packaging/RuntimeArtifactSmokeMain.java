@@ -262,13 +262,9 @@ public final class RuntimeArtifactSmokeMain {
             Map<String, Object> toolsResponse = readResponse(executor, output, "tools/list");
             verifyResponseEnvelope(toolsResponse, 2);
             List<Map<String, Object>> actualTools = requiredTools(requiredMap(toolsResponse, "result"));
-            List<Map<String, Object>> expectedTools = new ArrayList<>();
             try (var composition = McpServerFactory.declarativeComposition(new AppEnvironment(Map.of()), McpJsonDefaults.getMapper())) {
-                for (ToolDefinition definition : composition.definitions()) {
-                    expectedTools.add(Map.of("name", definition.name(), "description", definition.description(), "inputSchema", definition.inputSchema()));
-                }
+                verifyToolCatalog(actualTools, composition.definitions());
             }
-            require(actualTools.equals(expectedTools), "Exact JAR tools/list differs from Java-owned tools metadata");
 
             process.getOutputStream().close();
             require(process.waitFor(PROCESS_TIMEOUT.toNanos(), TimeUnit.NANOSECONDS), "Exact JAR STDIO server did not stop after stdin closed");
@@ -279,6 +275,22 @@ public final class RuntimeArtifactSmokeMain {
             stopProcess(process);
             deleteTree(runtimeHome);
         }
+    }
+
+    static void verifyToolCatalog(List<Map<String, Object>> actualTools, List<ToolDefinition> definitions) throws IOException {
+        List<Map<String, Object>> expectedTools = new ArrayList<>();
+        for (ToolDefinition definition : definitions) {
+            Map<String, Object> tool = new LinkedHashMap<>();
+            tool.put("name", definition.name());
+            tool.put("description", definition.description());
+            tool.put("inputSchema", definition.inputSchema());
+            definition.output().ifPresent(output -> tool.put("outputSchema", output.schema().value()));
+            expectedTools.add(tool);
+        }
+        // Compare both sides as parsed wire JSON, including the mapper's numeric representation.
+        var mapper = McpJsonDefaults.getMapper();
+        expectedTools = mapper.readValue(mapper.writeValueAsString(expectedTools), LIST_OF_MAPS_TYPE);
+        require(actualTools.equals(expectedTools), "Exact JAR tools/list differs from Java-owned tools metadata");
     }
 
     private static Map<String, Object> request(int id, String method, Map<String, Object> parameters) {
