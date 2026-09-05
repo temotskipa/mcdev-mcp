@@ -6,6 +6,8 @@ import dev.mcdevmcp.storage.PlatformPaths;
 import dev.mcdevmcp.storage.callgraph.CallgraphRepository;
 import dev.mcdevmcp.storage.h2.SymbolRepository;
 import dev.mcdevmcp.storage.h2.VersionStateRepository;
+import dev.mcdevmcp.storage.migration.VersionOperationLease;
+import dev.mcdevmcp.storage.model.VersionState;
 import dev.mcdevmcp.storage.model.ClassSymbol;
 import dev.mcdevmcp.storage.model.MinecraftVersion;
 import dev.mcdevmcp.storage.model.SourceNamespace;
@@ -16,22 +18,28 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.LinkOption;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.sql.SQLException;
 import java.util.Comparator;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
 final class StaticToolSupport {
     private final PlatformPaths paths;
     private final VersionStateRepository states;
-    private final ConcurrentHashMap<MinecraftVersion, CallgraphRepository> callgraphs = new ConcurrentHashMap<>();
+    private final Runnable beforeSourceRead;
     private volatile MinecraftVersion activeVersion;
 
     StaticToolSupport(PlatformPaths paths) {
+        this(paths, () -> {});
+    }
+
+    StaticToolSupport(PlatformPaths paths, Runnable beforeSourceRead) {
         this.paths = paths;
+        this.beforeSourceRead = java.util.Objects.requireNonNull(beforeSourceRead, "beforeSourceRead");
         states = new VersionStateRepository(paths);
     }
 
@@ -56,16 +64,34 @@ final class StaticToolSupport {
         }
     }
 
-    MinecraftVersion resolve(MinecraftVersion explicit) {
+    VersionOperationLease read(MinecraftVersion explicit) throws IOException {
+        MinecraftVersion version = explicit == null ? resolveActive() : explicit;
+        VersionOperationLease lease = VersionOperationLease.read(paths, version);
+        try {
+            validateExplicit(explicit, lease);
+            return lease;
+        } catch (IOException | RuntimeException exception) {
+            try {
+                lease.close();
+            } catch (IOException failure) {
+                exception.addSuppressed(failure);
+            }
+            throw exception;
+        }
+    }
+
+    private void validateExplicit(MinecraftVersion explicit, VersionOperationLease lease) throws IOException {
         if (explicit != null) {
-            if (!Files.isDirectory(paths.sourceRoot(explicit))) {
+            if (!Files.isDirectory(lease.boundary().require(lease.resolvedPaths().sourceRoot(explicit)))) {
                 throw new ExpectedVersionException("Version " + explicit.value() + " not initialized. STOP and ask the USER to run this command in their terminal:\n" + "  java -jar " + AppVersion.executableJarName() + " init -v " + explicit.value() + "\n\n" + "This will download, decompile, and index Minecraft " + explicit.value() + " sources (including callgraph).");
             }
-            if (!states.isH2Ready(explicit)) {
+            if (!indexed(explicit, lease)) {
                 throw new ExpectedVersionException("Version " + explicit.value() + " not indexed. STOP and ask the USER to run this command in their terminal:\n" + "  java -jar " + AppVersion.executableJarName() + " init -v " + explicit.value() + "\n\n" + "This will index Minecraft " + explicit.value() + " sources (including callgraph).");
             }
-            return explicit;
         }
+    }
+
+    private MinecraftVersion resolveActive() {
         if (activeVersion == null) {
             throw new ExpectedVersionException("""
                                                No Minecraft version is currently set.
@@ -87,16 +113,20 @@ final class StaticToolSupport {
         return Optional.ofNullable(activeVersion);
     }
 
-    SymbolRepository repository(MinecraftVersion version) {
-        return new SymbolRepository(paths.symbolDatabase(version));
+    SymbolRepository repository(VersionOperationLease lease) throws IOException {
+        lease.require(paths, lease.version());
+        Path database = lease.boundary().require(lease.resolvedPaths().symbolDatabase(lease.version()));
+        lease.boundary().require(database.resolveSibling(database.getFileName() + ".lock"));
+        return new SymbolRepository(database);
     }
 
-    CallgraphRepository callgraphRepository(MinecraftVersion version) {
-        return callgraphs.computeIfAbsent(version, value -> new CallgraphRepository(paths.callgraphBundle(value), value));
+    CallgraphRepository callgraphRepository(VersionOperationLease lease) throws IOException {
+        lease.require(paths, lease.version());
+        return new CallgraphRepository(lease.boundary().require(lease.resolvedPaths().callgraphBundle(lease.version())), lease.version());
     }
 
-    boolean indexed(MinecraftVersion version) {
-        return states.isH2Ready(version);
+    boolean indexed(MinecraftVersion version, VersionOperationLease lease) throws IOException {
+        return states.state(version, lease) == VersionState.READY;
     }
 
     PlatformPaths paths() {
@@ -104,7 +134,16 @@ final class StaticToolSupport {
     }
 
     String fullSource(MinecraftVersion version, ClassSymbol symbol) throws IOException {
-        Path root = symbol.namespace() == SourceNamespace.FABRIC ? paths.fabricSourceRoot(symbol.fabricApiVersion().orElseThrow()) : paths.sourceRoot(version);
+        try (var lease = VersionOperationLease.read(paths, version)) {
+            return fullSource(lease, symbol);
+        }
+    }
+
+    String fullSource(VersionOperationLease lease, ClassSymbol symbol) throws IOException {
+        beforeSourceRead.run();
+        lease.require(paths, lease.version());
+        PlatformPaths resolvedPaths = lease.resolvedPaths();
+        Path root = symbol.namespace() == SourceNamespace.FABRIC ? resolvedPaths.fabricSourceRoot(symbol.fabricApiVersion().orElseThrow()) : resolvedPaths.sourceRoot(lease.version());
         Path relative;
         try {
             relative = symbol.sourcePath().normalize();
@@ -114,8 +153,17 @@ final class StaticToolSupport {
         if (relative.isAbsolute() || relative.startsWith("..")) {
             throw new StaticToolException("Unsafe indexed source path: " + symbol.sourcePath());
         }
-        Path resolvedRoot = root.toRealPath();
-        Path file = root.resolve(relative).toRealPath();
+        Path resolvedRoot = lease.boundary().require(root).toRealPath();
+        Path current = resolvedRoot;
+        int depth = 0;
+        for (Path component : relative) {
+            current = current.resolve(component);
+            BasicFileAttributes attributes = Files.readAttributes(current, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
+            if (attributes.isSymbolicLink() || attributes.isOther() || ++depth < relative.getNameCount() && !attributes.isDirectory()) {
+                throw new StaticToolException("Unsafe indexed source path: " + symbol.sourcePath());
+            }
+        }
+        Path file = lease.boundary().require(root.resolve(relative)).toRealPath();
         if (!file.startsWith(resolvedRoot) || !Files.isRegularFile(file)) {
             throw new StaticToolException("Unsafe indexed source path: " + symbol.sourcePath());
         }

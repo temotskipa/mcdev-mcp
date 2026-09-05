@@ -2,6 +2,7 @@ package dev.mcdevmcp.analysis.index.pipeline;
 
 import dev.mcdevmcp.analysis.classfile.ClassDescriptors;
 import dev.mcdevmcp.analysis.index.IndexRequest;
+import dev.mcdevmcp.analysis.index.PublishedSourceRoot;
 import dev.mcdevmcp.storage.h2.AtomicH2Database;
 import dev.mcdevmcp.storage.h2.DatabaseValidator;
 import dev.mcdevmcp.storage.h2.SymbolSchema;
@@ -164,14 +165,14 @@ final class SymbolIndexWriter {
         return statement;
     }
 
-    IndexCounts write(IndexRequest request, ParsedIndex index, String remappedJarSha256, Instant builtAt) throws Exception {
+    IndexCounts write(IndexRequest request, ParsedIndex index, String remappedJarSha256, Instant builtAt, PublishedSourceRoot publishedSourceRoot) throws Exception {
         List<IndexedPackage> packages = packages(index.types());
         IndexCounts counts = counts(packages, index.types());
         Instant persistedBuiltAt = builtAt.truncatedTo(ChronoUnit.MICROS);
-        SymbolIndexSnapshot expected = SymbolIndexSnapshot.expected(request, remappedJarSha256, persistedBuiltAt, packages, index.types());
+        SymbolIndexSnapshot expected = SymbolIndexSnapshot.expected(request, remappedJarSha256, persistedBuiltAt, packages, index.types(), publishedSourceRoot);
         return databases.rebuild(request.outputDatabase(), AtomicH2Database.WRITE_LOCK_TIMEOUT, connection -> {
             request.cancellation().throwIfCancelled();
-            SymbolSchema.create(connection, request.minecraftVersion(), request.sourceRoots().getFirst().path(), remappedJarSha256, persistedBuiltAt);
+            SymbolSchema.create(connection, request.minecraftVersion(), publishedSourceRoot.path(), remappedJarSha256, persistedBuiltAt);
             insertPackages(connection, packages);
             insertTypesAndMembers(connection, packages, index.types(), request);
             SymbolSchema.createIndexes(connection);

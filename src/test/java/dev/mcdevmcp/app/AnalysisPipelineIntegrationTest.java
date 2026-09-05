@@ -12,12 +12,18 @@ import dev.mcdevmcp.storage.callgraph.CallgraphManifest;
 import dev.mcdevmcp.storage.callgraph.CallgraphPointer;
 import dev.mcdevmcp.storage.callgraph.CallgraphRepository;
 import dev.mcdevmcp.storage.h2.VersionStateRepository;
+import dev.mcdevmcp.storage.h2.SymbolRepository;
+import dev.mcdevmcp.storage.migration.SourceProvenance;
+import dev.mcdevmcp.storage.migration.SourceOwnership;
+import dev.mcdevmcp.storage.migration.DirectoryAliasFixture;
 import dev.mcdevmcp.storage.model.MinecraftVersion;
 import dev.mcdevmcp.storage.model.VersionState;
 import dev.mcdevmcp.support.Cancellation;
 import io.modelcontextprotocol.json.McpJsonDefaults;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import javax.tools.ToolProvider;
 import java.io.ByteArrayOutputStream;
@@ -34,7 +40,11 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HexFormat;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
 import java.util.jar.JarOutputStream;
@@ -65,7 +75,7 @@ final class AnalysisPipelineIntegrationTest {
         Files.createDirectories(source.getParent());
         Files.createDirectories(classes);
         Files.writeString(source, sourceText, StandardCharsets.UTF_8);
-        int result = ToolProvider.getSystemJavaCompiler().run(null, null, null, "--release", "21", "-g:none", "-d", classes.toString(), source.toString());
+        int result = ToolProvider.getSystemJavaCompiler().run(null, null, null, "--release", "21", "-g:source", "-d", classes.toString(), source.toString());
         if (result != 0) {
             throw new IOException("Fixture compilation failed with exit code " + result);
         }
@@ -145,8 +155,9 @@ final class AnalysisPipelineIntegrationTest {
         }
     }
 
-    @Test
-    void preparesMappedLayersOnceThenRebuildsIndexAndCallgraphOffline() throws Exception {
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void preparesMappedLayersOnceThenRebuildsIndexAndCallgraphOffline(boolean ancestorAlias) throws Exception {
         MinecraftVersion version = new MinecraftVersion("1.21.5");
         byte[] clientJar = compileJar(temporaryDirectory.resolve("mapped-fixture"), "a", "public class a { public int a(int left, int right) { return Math.addExact(left, right); } }");
         byte[] mapping = """
@@ -156,7 +167,10 @@ final class AnalysisPipelineIntegrationTest {
         AtomicInteger clientRequests = new AtomicInteger();
         AtomicInteger mappingRequests = new AtomicInteger();
         HttpServer server = server();
-        PlatformPaths paths = new PlatformPaths(temporaryDirectory.resolve("cache-root"));
+        Path physicalParent = Files.createDirectory(temporaryDirectory.resolve("physical-parent"));
+        Path alias = temporaryDirectory.resolve("alias-parent");
+        if (ancestorAlias) DirectoryAliasFixture.create(alias, physicalParent);
+        PlatformPaths paths = new PlatformPaths((ancestorAlias ? alias : physicalParent).resolve("cache-root"));
         List<String> progress = new ArrayList<>();
         PreparedSources prepared;
         String clientSha1 = sha1(clientJar);
@@ -182,9 +196,9 @@ final class AnalysisPipelineIntegrationTest {
             });
 
             AnalysisPipeline pipeline = pipeline(paths, server);
-            prepared = pipeline.prepareSources(version, (stage, percent, _) -> progress.add(stage + ":" + percent), Cancellation.none());
+            prepared = pipeline.initialize(version, SourceRefreshPolicy.NORMAL, (stage, percent, _) -> progress.add(stage + ":" + percent), Cancellation.none()).sources();
 
-            Path remapped = paths.remappedJar(version).toAbsolutePath().normalize();
+            Path remapped = paths.remappedJar(version).toRealPath();
             assertEquals(remapped, prepared.unobfuscatedJar());
             assertEquals(remapped, prepared.remappedJar());
             assertNotEquals(prepared.obfuscatedJar(), prepared.remappedJar());
@@ -195,8 +209,8 @@ final class AnalysisPipelineIntegrationTest {
             Path sourceMarker = prepared.sourceRoots().getFirst().path().resolve("cache-hit.marker");
             Files.writeString(sourceMarker, "preserve");
 
-            PreparedSources cached = pipeline.prepareSources(version, (_, _, _) -> {
-            }, Cancellation.none());
+            PreparedSources cached = pipeline.initialize(version, SourceRefreshPolicy.NORMAL, (_, _, _) -> {
+            }, Cancellation.none()).sources();
             assertEquals(prepared, cached);
             assertTrue(Files.exists(sourceMarker));
             assertEquals(1, clientRequests.get());
@@ -210,8 +224,8 @@ final class AnalysisPipelineIntegrationTest {
             IllegalStateException rebuildFailure = assertThrows(IllegalStateException.class, () -> pipeline.rebuildIndex(version, (_, _, _) -> {
             }, Cancellation.none()));
             assertTrue(rebuildFailure.getMessage().contains("No prepared remapped JAR cache"), rebuildFailure.getMessage());
-            PreparedSources repaired = pipeline.prepareSources(version, (_, _, _) -> {
-            }, Cancellation.none());
+            PreparedSources repaired = pipeline.initialize(version, SourceRefreshPolicy.NORMAL, (_, _, _) -> {
+            }, Cancellation.none()).sources();
             assertEquals(prepared, repaired);
             assertArrayEquals(completeRemapped, Files.readAllBytes(remapped));
             assertEquals(1, clientRequests.get());
@@ -234,6 +248,7 @@ final class AnalysisPipelineIntegrationTest {
             assertOrdered(progress, List.of("metadata:0", "mapping:0", "remap:0", "decompile:0", "index:0", "callgraph:0"));
         } finally {
             server.stop(0);
+            if (ancestorAlias) DirectoryAliasFixture.remove(alias);
         }
     }
 
@@ -276,8 +291,8 @@ final class AnalysisPipelineIntegrationTest {
             });
 
             AnalysisPipeline pipeline = pipeline(paths, server);
-            PreparedSources prepared = pipeline.prepareSources(version, (_, _, _) -> {
-            }, Cancellation.none());
+            PreparedSources prepared = pipeline.initialize(version, SourceRefreshPolicy.NORMAL, (_, _, _) -> {
+            }, Cancellation.none()).sources();
 
             Path stableRemapped = paths.remappedJar(version).toAbsolutePath().normalize();
             Path officialDownload = paths.versionCache(version).resolve("jars/client-unobfuscated.jar").toAbsolutePath().normalize();
@@ -290,8 +305,8 @@ final class AnalysisPipelineIntegrationTest {
             assertArrayEquals(unobfuscatedJar, Files.readAllBytes(prepared.remappedJar()));
             assertTrue(Files.isRegularFile(prepared.sourceRoots().getFirst().path().resolve("sample/Example.java")));
 
-            PreparedSources cached = pipeline.prepareSources(version, (_, _, _) -> {
-            }, Cancellation.none());
+            PreparedSources cached = pipeline.initialize(version, SourceRefreshPolicy.NORMAL, (_, _, _) -> {
+            }, Cancellation.none()).sources();
             assertEquals(prepared, cached);
             assertEquals(1, obfuscatedRequests.get());
             assertEquals(1, unobfuscatedRequests.get());
@@ -324,8 +339,8 @@ final class AnalysisPipelineIntegrationTest {
             });
 
             AnalysisPipeline pipeline = pipeline(paths, server);
-            PreparedSources prepared = pipeline.prepareSources(version, (_, _, _) -> {
-            }, Cancellation.none());
+            PreparedSources prepared = pipeline.initialize(version, SourceRefreshPolicy.NORMAL, (_, _, _) -> {
+            }, Cancellation.none()).sources();
 
             assertEquals(prepared.obfuscatedJar(), prepared.unobfuscatedJar());
             assertNotEquals(prepared.unobfuscatedJar(), prepared.remappedJar());
@@ -333,7 +348,7 @@ final class AnalysisPipelineIntegrationTest {
             assertArrayEquals(Files.readAllBytes(prepared.unobfuscatedJar()), Files.readAllBytes(prepared.remappedJar()));
             assertTrue(Files.isRegularFile(prepared.sourceRoots().getFirst().path().resolve("sample/Example.java")));
 
-            pipeline.prepareSources(version, (_, _, _) -> {
+            pipeline.initialize(version, SourceRefreshPolicy.NORMAL, (_, _, _) -> {
             }, Cancellation.none());
             assertEquals(1, clientRequests.get());
         } finally {
@@ -355,5 +370,113 @@ final class AnalysisPipelineIntegrationTest {
         assertTrue(prepared.obfuscatedJar().isAbsolute());
         assertTrue(prepared.unobfuscatedJar().isAbsolute());
         assertTrue(prepared.remappedJar().isAbsolute());
+    }
+
+    @Test
+    void explicitlyRepairsLegacyMalformedSourceWithoutLosingOriginalCacheBytes() throws Exception {
+        MinecraftVersion version = new MinecraftVersion("26.1");
+        String binaryName = "net.minecraft.client.gui.font.PlayerGlyphProvider";
+        String generated = "package net.minecraft.client.gui.font; public class PlayerGlyphProvider { public String value() { return \"generated\"; } }";
+        byte[] jar = compileJar(temporaryDirectory.resolve("legacy-fixture"), binaryName, generated);
+        PlatformPaths paths = new PlatformPaths(temporaryDirectory.resolve("legacy-cache"));
+        Path source = paths.sourceRoot(version).resolve(binaryName.replace('.', '/') + ".java");
+        Files.createDirectories(source.getParent());
+        String malformed = "package net.minecraft.client.gui.font; public class PlayerGlyphProvider { void value() { java.util.Objects.requireNonNull(<VAR_NAMELESS_ENCLOSURE>); } }";
+        Files.writeString(source, malformed);
+        Path marker = paths.sourceRoot(version).resolve("user-cache-marker.txt");
+        Files.writeString(marker, "original user content");
+        Path legacyManifest = paths.indexRoot(version).resolve("manifest.json");
+        Files.createDirectories(legacyManifest.getParent());
+        Files.writeString(legacyManifest, "{\"indexerVersion\":\"ast\"}");
+        Path legacyGraph = paths.remappedCallgraphJar(version).resolveSibling("callgraph.db");
+        Files.createDirectories(legacyGraph.getParent());
+        Files.writeString(legacyGraph, "original Node database sentinel");
+        Files.createDirectories(paths.remappedJar(version).getParent());
+        Files.write(paths.remappedJar(version), jar);
+        HttpServer server = server();
+        String jarSha1 = sha1(jar);
+        try {
+            String base = "http://127.0.0.1:" + server.getAddress().getPort();
+            server.createContext("/manifest", exchange -> respond(exchange, McpJsonDefaults.getMapper().writeValueAsBytes(Map.of("versions", List.of(Map.of("id", version.value(), "url", base + "/version"))))));
+            server.createContext("/version", exchange -> respond(exchange, McpJsonDefaults.getMapper().writeValueAsBytes(Map.of("downloads", Map.of("client", Map.of("url", base + "/client", "sha1", jarSha1, "size", jar.length))))));
+            server.createContext("/client", exchange -> respond(exchange, jar));
+            AnalysisPipeline pipeline = pipeline(paths, server);
+            IllegalStateException refusal = assertThrows(IllegalStateException.class, () -> pipeline.initialize(version, SourceRefreshPolicy.NORMAL, (_, _, _) -> {}, Cancellation.none()));
+            assertTrue(refusal.getMessage().contains("--refresh-sources"), refusal.getMessage());
+            assertEquals(malformed, Files.readString(source));
+            assertEquals("original user content", Files.readString(marker));
+            assertFalse(Files.exists(paths.symbolDatabase(version)));
+
+            InitializationResult initialized = pipeline.initialize(version, SourceRefreshPolicy.EXPLICIT_REFRESH, (_, _, _) -> {}, Cancellation.none());
+            Path retained = initialized.retainedMigration().orElseThrow();
+            assertEquals(malformed, Files.readString(retained.resolve("old/client").resolve(paths.sourceRoot(version).relativize(source))));
+            assertEquals("original user content", Files.readString(retained.resolve("old/client/user-cache-marker.txt")));
+            assertEquals("{\"indexerVersion\":\"ast\"}", Files.readString(legacyManifest));
+            assertEquals("original Node database sentinel", Files.readString(legacyGraph));
+            assertArrayEquals(jar, Files.readAllBytes(paths.remappedJar(version)));
+            assertFalse(Files.readString(source).contains("VAR_NAMELESS_ENCLOSURE"));
+            assertEquals(VersionState.READY, new VersionStateRepository(paths).state(version));
+            new SymbolRepository(paths.symbolDatabase(version)).query(connection -> {
+                try (var statement = connection.createStatement(); var rows = statement.executeQuery("SELECT source_root FROM metadata")) {
+                    assertTrue(rows.next());
+                    assertEquals(paths.sourceRoot(version).toAbsolutePath().normalize().toString(), rows.getString(1));
+                }
+                return null;
+            });
+            assertEquals(SourceOwnership.GENERATED, SourceProvenance.read(paths.versionCache(version).resolve("source-preparation.json")).orElseThrow().ownership());
+
+            Path editedMarker = paths.sourceRoot(version).resolve("new-user-marker.txt");
+            Files.writeString(editedMarker, "keep valid external edits");
+            byte[] validSource = Files.readAllBytes(source);
+            List<String> stages = new ArrayList<>();
+            pipeline.initialize(version, SourceRefreshPolicy.NORMAL, (stage, _, _) -> stages.add(stage), Cancellation.none());
+            assertArrayEquals(validSource, Files.readAllBytes(source));
+            assertEquals("keep valid external edits", Files.readString(editedMarker));
+            assertFalse(stages.contains("decompile"));
+            assertEquals(SourceOwnership.VALIDATED_EXTERNAL, SourceProvenance.read(paths.versionCache(version).resolve("source-preparation.json")).orElseThrow().ownership());
+            Files.writeString(source, "package net.minecraft.client.gui.font; public class PlayerGlyphProvider { public void oldOnly() {} public String value() { return \"edited\"; } }");
+            CountDownLatch parsedOldSources = new CountDownLatch(1);
+            CountDownLatch releaseOldRebuild = new CountDownLatch(1);
+            CountDownLatch refreshMetadataStarted = new CountDownLatch(1);
+            var executor = Executors.newFixedThreadPool(2);
+            try {
+                var rebuilding = executor.submit(() -> pipeline.rebuildIndex(version, (stage, percent, _) -> {
+                    if (stage.equals("index") && percent == 75) {
+                        parsedOldSources.countDown();
+                        try {
+                            if (!releaseOldRebuild.await(10, TimeUnit.SECONDS)) {
+                                throw new IllegalStateException("Rebuild fixture release timed out");
+                            }
+                        } catch (InterruptedException interruption) {
+                            Thread.currentThread().interrupt();
+                            throw new IllegalStateException(interruption);
+                        }
+                    }
+                }, Cancellation.none()));
+                assertTrue(parsedOldSources.await(10, TimeUnit.SECONDS));
+                var refreshing = executor.submit(() -> pipeline.initialize(version, SourceRefreshPolicy.EXPLICIT_REFRESH, (stage, _, _) -> {
+                    if (stage.equals("metadata")) refreshMetadataStarted.countDown();
+                }, Cancellation.none()));
+                assertFalse(refreshMetadataStarted.await(150, TimeUnit.MILLISECONDS));
+                assertFalse(refreshing.isDone());
+                releaseOldRebuild.countDown();
+                rebuilding.get(10, TimeUnit.SECONDS);
+                InitializationResult refreshed = refreshing.get(20, TimeUnit.SECONDS);
+                assertTrue(Files.readString(refreshed.retainedMigration().orElseThrow().resolve("old/client").resolve(paths.sourceRoot(version).relativize(source))).contains("oldOnly"));
+                SymbolRepository repository = new SymbolRepository(paths.symbolDatabase(version));
+                var owner = repository.classByName(binaryName);
+                assertNotNull(owner);
+                assertNull(repository.methodNamed(owner.id(), "oldOnly"));
+                assertFalse(Files.readString(source).contains("oldOnly"));
+            } finally {
+                releaseOldRebuild.countDown();
+                executor.shutdownNow();
+                assertTrue(executor.awaitTermination(10, TimeUnit.SECONDS));
+            }
+            server.stop(0);
+            assertEquals(1, pipeline.rebuildIndex(version, (_, _, _) -> {}, Cancellation.none()).types());
+        } finally {
+            server.stop(0);
+        }
     }
 }

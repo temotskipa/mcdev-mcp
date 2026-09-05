@@ -6,13 +6,17 @@ import dev.mcdevmcp.analysis.callgraph.CallgraphSummary;
 import dev.mcdevmcp.analysis.decompile.*;
 import dev.mcdevmcp.analysis.index.IndexRequest;
 import dev.mcdevmcp.analysis.index.IndexSummary;
+import dev.mcdevmcp.analysis.index.PublishedSourceRoot;
 import dev.mcdevmcp.analysis.index.SourceIndexer;
 import dev.mcdevmcp.analysis.index.SourceRoot;
 import dev.mcdevmcp.storage.PlatformPaths;
+import dev.mcdevmcp.storage.migration.*;
 import dev.mcdevmcp.storage.model.MinecraftVersion;
 import dev.mcdevmcp.storage.model.SourceNamespace;
 import dev.mcdevmcp.support.Cancellation;
 import dev.mcdevmcp.support.ProgressSink;
+import dev.mcdevmcp.support.AppVersion;
+import org.jetbrains.java.decompiler.main.Fernflower;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -33,6 +37,8 @@ public final class AnalysisPipeline implements AnalysisOperations {
     private final MinecraftDecompiler decompiler;
     private final SourceIndexer indexer;
     private final CallgraphScanner callgraph;
+    private final SourceIndexTransactionPublisher sourceTransactions = new SourceIndexTransactionPublisher();
+    private final SourceCacheValidator sourceValidator = new SourceCacheValidator();
     private final int threads;
 
     public AnalysisPipeline(PlatformPaths paths, VersionManifestClient manifests, DownloadService downloads, MappingConverter mappings, MinecraftRemapper remapper, MinecraftDecompiler decompiler, SourceIndexer indexer, CallgraphScanner callgraph, int threads) {
@@ -143,8 +149,7 @@ public final class AnalysisPipeline implements AnalysisOperations {
         return detail == null || detail.isBlank() ? summary : summary + ": " + detail;
     }
 
-    @Override
-    public PreparedSources prepareSources(MinecraftVersion version, ProgressSink progress, Cancellation cancellation) {
+    private PreparedSources prepareArtifacts(PlatformPaths paths, CachePathBoundary boundary, MinecraftVersion version, ProgressSink progress, Cancellation cancellation) {
         try {
             Objects.requireNonNull(version, "version");
             Objects.requireNonNull(progress, "progress");
@@ -154,13 +159,13 @@ public final class AnalysisPipeline implements AnalysisOperations {
             MinecraftDownloads metadata = manifests.resolve(version);
             checkCancelled(cancellation);
             progress.report("metadata", 100, "Resolved Minecraft " + version.value() + " metadata");
-            Path jars = paths.versionCache(version).resolve("jars");
-            Path client = downloads.download(metadata.client(), jars.resolve("client.jar"), progress, cancellation);
-            Path remapped = paths.remappedJar(version);
+            Path jars = boundary.require(paths.versionCache(version).resolve("jars"));
+            Path client = downloads.download(metadata.client(), boundary.require(jars.resolve("client.jar")), progress, cancellation);
+            Path remapped = boundary.require(paths.remappedJar(version));
             Path unobfuscated;
             OfficialUnobfuscatedClient officialUnobfuscatedClient = metadata.officialUnobfuscatedClient();
             if (officialUnobfuscatedClient != null) {
-                Path officialClient = downloads.download(officialUnobfuscatedClient.artifact(), jars.resolve("client-unobfuscated.jar"), progress, cancellation);
+                Path officialClient = downloads.download(officialUnobfuscatedClient.artifact(), boundary.require(jars.resolve("client-unobfuscated.jar")), progress, cancellation);
                 if (invalidJar(remapped, cancellation)) {
                     progress.report("remap", 0, "Publishing official unobfuscated client JAR");
                     publishCopy(officialClient, remapped, cancellation);
@@ -177,9 +182,9 @@ public final class AnalysisPipeline implements AnalysisOperations {
                 unobfuscated = client;
             }
             else if (invalidJar(remapped, cancellation)) {
-                Path mapping = downloads.download(metadata.clientMappings(), jars.resolve("client.txt"), progress, cancellation);
+                Path mapping = downloads.download(metadata.clientMappings(), boundary.require(jars.resolve("client.txt")), progress, cancellation);
                 checkCancelled(cancellation);
-                Path tiny = mappings.convert(mapping, jars.resolve("client.tiny"), progress, cancellation);
+                Path tiny = mappings.convert(mapping, boundary.require(jars.resolve("client.tiny")), progress, cancellation);
                 checkCancelled(cancellation);
                 remapper.remap(client, tiny, remapped, progress, cancellation);
                 checkCancelled(cancellation);
@@ -188,17 +193,14 @@ public final class AnalysisPipeline implements AnalysisOperations {
             else {
                 unobfuscated = remapped;
             }
-            Path librariesDir = paths.versionCache(version).resolve("libraries");
+            Path librariesDir = boundary.require(paths.versionCache(version).resolve("libraries"));
             for (DownloadArtifact library : metadata.libraries()) {
                 checkCancelled(cancellation);
                 String fileName = Path.of(library.uri().getPath()).getFileName().toString();
-                Path targetLib = librariesDir.resolve(fileName);
+                Path targetLib = boundary.require(librariesDir.resolve(fileName));
                 downloads.download(library, targetLib, progress, cancellation);
             }
-            Path source = paths.sourceRoot(version);
-            if (javaSourceCacheMissing(source, cancellation)) {
-                decompiler.decompile(remapped, source, progress, cancellation);
-            }
+            Path source = boundary.require(paths.sourceRoot(version));
             SourceRoot root = new SourceRoot(SourceNamespace.MINECRAFT, Optional.empty(), source);
             return new PreparedSources(version, List.of(root), client, unobfuscated, remapped);
         } catch (IOException | InterruptedException exception) {
@@ -210,25 +212,111 @@ public final class AnalysisPipeline implements AnalysisOperations {
     }
 
     @Override
+    public InitializationResult initialize(MinecraftVersion version, SourceRefreshPolicy refreshPolicy, ProgressSink progress, Cancellation cancellation) {
+        Objects.requireNonNull(version, "version");
+        Objects.requireNonNull(refreshPolicy, "refreshPolicy");
+        Objects.requireNonNull(progress, "progress");
+        Objects.requireNonNull(cancellation, "cancellation");
+        try (var lease = VersionOperationLease.write(paths, version)) {
+            PlatformPaths paths = lease.resolvedPaths();
+            CachePathBoundary boundary = lease.boundary();
+            sourceTransactions.recover(paths, version, lease);
+            checkCancelled(cancellation);
+            SourceIndexSnapshot before = sourceTransactions.captureBefore(paths, version, lease, cancellation);
+            PreparedSources prepared = prepareArtifacts(paths, boundary, version, progress, cancellation);
+            List<Path> classpath = cachedClasspath(paths, boundary, version, cancellation);
+            SourceInputIdentity inputs = SourceInputIdentity.capture(prepared.remappedJar(), classpath, cancellation);
+            SourceValidation validation = sourceValidator.validate(paths.sourceRoot(version), prepared.remappedJar(), cancellation);
+            Optional<SourcePreparationStamp> previous;
+            try {
+                previous = SourceProvenance.read(paths.versionCache(version).resolve("source-preparation.json"));
+            } catch (InvalidSourceStampException invalidStamp) {
+                previous = Optional.empty();
+                progress.report("migration", 0, "Source stamp is invalid; existing sources retain external ownership");
+            }
+            SourceSelection selection = SourceProvenance.select(before.source(), validation, previous, inputs, refreshPolicy == SourceRefreshPolicy.EXPLICIT_REFRESH);
+            if (selection == SourceSelection.REQUIRE_REFRESH) {
+                throw sourceRefreshRequired(version, validation);
+            }
+            Path transaction = boundary.require(paths.cacheRoot().resolve("migrations").resolve(version.value()).resolve(UUID.randomUUID().toString()));
+            Path candidate = Files.createDirectories(boundary.require(transaction.resolve("candidate")));
+            Path candidateSource = paths.sourceRoot(version);
+            SourceTreeInventory candidateInventory = before.source();
+            SourcePreparationStamp stamp;
+            SourcePublicationMode mode;
+            if (selection == SourceSelection.GENERATE) {
+                if (before.source().present()) {
+                    progress.report("migration", 0, "Regenerating sources with retained originals; do not edit this cache during migration");
+                }
+                candidateSource = boundary.require(candidate.resolve("client"));
+                decompiler.decompile(prepared.remappedJar(), candidateSource, progress, cancellation);
+                validation = sourceValidator.validate(candidateSource, prepared.remappedJar(), cancellation);
+                if (!validation.valid()) {
+                    throw new IOException("Generated sources failed complete source validation: " + validationMessage(validation));
+                }
+                candidateInventory = SourceTreeInventory.capture(candidateSource, boundary, cancellation);
+                SourceProducerIdentity producer = SourceProducerIdentity.capture(Fernflower.class, "1.12.0", MinecraftDecompiler.settings(), cancellation);
+                stamp = SourceProvenance.generated(inputs, candidateInventory, validation, producer);
+                mode = SourcePublicationMode.REPLACE_SOURCES;
+            } else {
+                stamp = SourceProvenance.observed(inputs, candidateInventory, validation, previous);
+                mode = SourcePublicationMode.REUSE_SOURCES;
+            }
+            Path candidateDatabase = boundary.require(candidate.resolve("index/symbols.mv.db"));
+            IndexRequest request = new IndexRequest(version, List.of(new SourceRoot(SourceNamespace.MINECRAFT, Optional.empty(), candidateSource)), prepared.remappedJar(), classpath, candidateDatabase, threads, progress, cancellation);
+            IndexSummary summary = indexer.build(request, new PublishedSourceRoot(paths.sourceRoot(version)));
+            Path candidateStamp = boundary.require(candidate.resolve("source-preparation.json"));
+            SourceProvenance.write(candidateStamp, stamp);
+            if (!inputs.equals(SourceInputIdentity.capture(prepared.remappedJar(), classpath, cancellation))) {
+                throw new IOException("Source/index inputs changed while staging; original source and index are preserved");
+            }
+            SourcePublicationResult published = sourceTransactions.publish(paths, version, lease, transaction, candidateSource, candidateDatabase, candidateStamp, before, mode, cancellation);
+            boolean hadOriginal = before.source().present() || before.index().entries().stream().anyMatch(entry -> entry.kind() == SourceEntryKind.FILE) || before.stamp().present();
+            return new InitializationResult(prepared, summary, published.sourceInventory().sha256(), hadOriginal ? Optional.of(published.retainedMigration()) : Optional.empty());
+        } catch (Exception failure) {
+            preserveInterruption(failure);
+            throw new IllegalStateException(failureMessage("Unable to initialize Minecraft " + version.value(), failure), failure);
+        }
+    }
+
+    private static IOException sourceRefreshRequired(MinecraftVersion version, SourceValidation validation) {
+        return new IOException("Cached sources require explicit refresh: " + validationMessage(validation) + ". Originals are unchanged. Run java -jar " + AppVersion.executableJarName() + " init -v " + version.value() + " --refresh-sources to regenerate with retained originals.");
+    }
+
+    private static String validationMessage(SourceValidation validation) {
+        String details = String.join("; ", validation.diagnostics().stream().limit(8).toList());
+        return validation.status() + (details.isEmpty() ? "" : ": " + details) + (validation.diagnostics().size() > 8 ? "; additional diagnostics: " + (validation.diagnostics().size() - 8) : "");
+    }
+
+    @Override
     public IndexSummary rebuildIndex(MinecraftVersion version, ProgressSink progress, Cancellation cancellation) {
-        try {
+        try (var lease = VersionOperationLease.write(paths, version)) {
+            PlatformPaths paths = lease.resolvedPaths();
+            CachePathBoundary boundary = lease.boundary();
             Objects.requireNonNull(version, "version");
             Objects.requireNonNull(progress, "progress");
             Objects.requireNonNull(cancellation, "cancellation");
+            sourceTransactions.recover(paths, version, lease);
             checkCancelled(cancellation);
-            List<SourceRoot> sourceRoots = cachedSourceRoots(version, cancellation);
-            Path remapped = cachedRemappedJar(version, cancellation);
-            List<Path> classpath = cachedClasspath(version, cancellation);
-            return indexer.build(new IndexRequest(version, sourceRoots, remapped, classpath, paths.symbolDatabase(version), threads, progress, cancellation));
+            List<SourceRoot> sourceRoots = cachedSourceRoots(paths, boundary, version, cancellation);
+            Path remapped = cachedRemappedJar(paths, boundary, version, cancellation);
+            SourceValidation validation = sourceValidator.validate(paths.sourceRoot(version), remapped, cancellation);
+            if (!validation.valid()) {
+                throw sourceRefreshRequired(version, validation);
+            }
+            List<Path> classpath = cachedClasspath(paths, boundary, version, cancellation);
+            Path database = boundary.require(paths.symbolDatabase(version));
+            SourceTreeInventory.capture(database.getParent(), boundary, cancellation);
+            return indexer.build(new IndexRequest(version, sourceRoots, remapped, classpath, database, threads, progress, cancellation));
         } catch (Exception exception) {
             preserveInterruption(exception);
             throw new IllegalStateException(failureMessage("Unable to rebuild index for " + version.value(), exception), exception);
         }
     }
 
-    private List<Path> cachedClasspath(MinecraftVersion version, Cancellation cancellation) throws IOException, InterruptedException {
+    private List<Path> cachedClasspath(PlatformPaths paths, CachePathBoundary boundary, MinecraftVersion version, Cancellation cancellation) throws IOException, InterruptedException {
         checkCancelled(cancellation);
-        Path librariesDir = paths.versionCache(version).resolve("libraries");
+        Path librariesDir = boundary.require(paths.versionCache(version).resolve("libraries"));
         if (!Files.isDirectory(librariesDir)) {
             return List.of();
         }
@@ -236,6 +324,7 @@ public final class AnalysisPipeline implements AnalysisOperations {
             List<Path> classpath = new ArrayList<>();
             for (Path jar : stream.filter(p -> p.getFileName().toString().endsWith(".jar")).toList()) {
                 checkCancelled(cancellation);
+                boundary.require(jar);
                 if (!invalidJar(jar, cancellation)) {
                     classpath.add(jar.toAbsolutePath().normalize());
                 }
@@ -247,31 +336,37 @@ public final class AnalysisPipeline implements AnalysisOperations {
 
     @Override
     public CallgraphSummary rebuildCallgraph(MinecraftVersion version, ProgressSink progress, Cancellation cancellation) {
-        try {
+        try (var lease = VersionOperationLease.write(paths, version)) {
+            PlatformPaths paths = lease.resolvedPaths();
+            CachePathBoundary boundary = lease.boundary();
             Objects.requireNonNull(version, "version");
             Objects.requireNonNull(progress, "progress");
             Objects.requireNonNull(cancellation, "cancellation");
+            sourceTransactions.recover(paths, version, lease);
             checkCancelled(cancellation);
-            cachedSourceRoots(version, cancellation);
-            Path remapped = cachedRemappedJar(version, cancellation);
-            return callgraph.scan(new CallgraphRequest(version, remapped, paths.callgraphBundle(version), threads, progress, cancellation));
+            cachedSourceRoots(paths, boundary, version, cancellation);
+            Path remapped = cachedRemappedJar(paths, boundary, version, cancellation);
+            Path bundle = boundary.require(paths.callgraphBundle(version));
+            SourceTreeInventory.capture(bundle, boundary, cancellation);
+            return callgraph.scan(new CallgraphRequest(version, remapped, bundle, threads, progress, cancellation));
         } catch (IOException | InterruptedException exception) {
             preserveInterruption(exception);
             throw new IllegalStateException(failureMessage("Unable to rebuild callgraph for " + version.value(), exception), exception);
         }
     }
 
-    private List<SourceRoot> cachedSourceRoots(MinecraftVersion version, Cancellation cancellation) throws IOException, InterruptedException {
-        Path source = paths.sourceRoot(version);
+    private List<SourceRoot> cachedSourceRoots(PlatformPaths paths, CachePathBoundary boundary, MinecraftVersion version, Cancellation cancellation) throws IOException, InterruptedException {
+        Path source = boundary.require(paths.sourceRoot(version));
+        SourceTreeInventory.capture(source, boundary, cancellation);
         if (javaSourceCacheMissing(source, cancellation)) {
             throw new IllegalStateException("No prepared Java source cache for " + version.value() + "; run init first");
         }
         return List.of(new SourceRoot(SourceNamespace.MINECRAFT, Optional.empty(), source));
     }
 
-    private Path cachedRemappedJar(MinecraftVersion version, Cancellation cancellation) throws IOException, InterruptedException {
+    private Path cachedRemappedJar(PlatformPaths paths, CachePathBoundary boundary, MinecraftVersion version, Cancellation cancellation) throws IOException, InterruptedException {
         checkCancelled(cancellation);
-        Path remapped = paths.remappedJar(version);
+        Path remapped = boundary.require(paths.remappedJar(version));
         if (invalidJar(remapped, cancellation)) {
             throw new IllegalStateException("No prepared remapped JAR cache for " + version.value() + "; run init first");
         }

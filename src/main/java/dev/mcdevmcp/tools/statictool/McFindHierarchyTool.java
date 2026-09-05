@@ -17,22 +17,23 @@ final class McFindHierarchyTool {
 
     static ToolBinding<FindHierarchyArguments> binding(StaticToolSupport support) {
         return DECLARATION.bindBlocking((arguments, _) -> support.execute("mc_find_hierarchy", () -> {
-            var version = support.resolve(arguments.version());
-            var limit = LIMIT.normalize(arguments.limit());
-            int queryLimit = limit.value() + 1;
-            var rows = support.repository(version).hierarchy(arguments.className(), arguments.direction() == HierarchyDirection.subclasses, queryLimit);
-            boolean truncated = rows.size() >= limit.value();
-            if (truncated) {
-                rows = rows.subList(0, limit.value());
+            try (var lease = support.read(arguments.version())) {
+                var limit = LIMIT.normalize(arguments.limit());
+                int queryLimit = limit.value() + 1;
+                var rows = support.repository(lease).hierarchy(arguments.className(), arguments.direction() == HierarchyDirection.subclasses, queryLimit);
+                boolean truncated = rows.size() >= limit.value();
+                if (truncated) {
+                    rows = rows.subList(0, limit.value());
+                }
+                String direction = arguments.direction().wireValue();
+                String className = arguments.className();
+                if (rows.isEmpty()) {
+                    return ToolResult.text("No " + direction + " found for " + className);
+                }
+                String heading = arguments.direction() == HierarchyDirection.subclasses ? "Subclasses" : "Implementors";
+                String renderedRows = rows.stream().map(ClassSymbol::binaryName).collect(Collectors.joining("\n"));
+                return ToolResult.text(heading + " of " + className + ":\n" + renderedRows + StaticTools.truncationNote(rows.size(), truncated, limit, direction));
             }
-            String direction = arguments.direction().wireValue();
-            String className = arguments.className();
-            if (rows.isEmpty()) {
-                return ToolResult.text("No " + direction + " found for " + className);
-            }
-            String heading = arguments.direction() == HierarchyDirection.subclasses ? "Subclasses" : "Implementors";
-            String renderedRows = rows.stream().map(ClassSymbol::binaryName).collect(Collectors.joining("\n"));
-            return ToolResult.text(heading + " of " + className + ":\n" + renderedRows + StaticTools.truncationNote(rows.size(), truncated, limit, direction));
         }));
     }
 }

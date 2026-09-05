@@ -25,7 +25,7 @@ class SymbolSchemaTest {
     @TempDir
     Path temporaryDirectory;
 
-    private static void assertRejectedByValidationAndState(PlatformPaths paths) {
+    private static void assertRejectedByValidationAndState(PlatformPaths paths) throws java.io.IOException {
         Path database = paths.symbolDatabase(VERSION);
         assertThrows(SQLException.class, () -> new SymbolRepository(database).query(connection -> {
             SymbolSchema.validate(connection);

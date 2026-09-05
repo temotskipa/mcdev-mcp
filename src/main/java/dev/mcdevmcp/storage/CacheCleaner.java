@@ -3,6 +3,8 @@ package dev.mcdevmcp.storage;
 import dev.mcdevmcp.storage.callgraph.CallgraphCleaner;
 import dev.mcdevmcp.storage.h2.IndexCleaner;
 import dev.mcdevmcp.storage.model.MinecraftVersion;
+import dev.mcdevmcp.storage.migration.VersionOperationLease;
+import dev.mcdevmcp.storage.migration.CachePathBoundary;
 
 import java.io.IOException;
 import java.nio.file.*;
@@ -14,17 +16,16 @@ import java.util.*;
  */
 public final class CacheCleaner {
     private final PlatformPaths paths;
-    private final IndexCleaner indexCleaner;
-    private final CallgraphCleaner callgraphCleaner;
+    private final CachePathBoundary boundary;
 
     public CacheCleaner(PlatformPaths paths) {
-        this(paths, new IndexCleaner(paths), new CallgraphCleaner());
+        this.paths = Objects.requireNonNull(paths, "paths");
+        boundary = null;
     }
 
-    CacheCleaner(PlatformPaths paths, IndexCleaner indexCleaner, CallgraphCleaner callgraphCleaner) {
-        this.paths = Objects.requireNonNull(paths, "paths");
-        this.indexCleaner = Objects.requireNonNull(indexCleaner, "indexCleaner");
-        this.callgraphCleaner = Objects.requireNonNull(callgraphCleaner, "callgraphCleaner");
+    public CacheCleaner(CachePathBoundary boundary) {
+        this.boundary = Objects.requireNonNull(boundary, "boundary");
+        paths = boundary.resolvedPaths();
     }
 
     private static void rejectLinkedDirectoryPath(Path root, Path candidate, String description) throws IOException {
@@ -45,21 +46,31 @@ public final class CacheCleaner {
         }
     }
 
-    private static void collectVersions(Path root, java.util.Map<String, MinecraftVersion> versions, boolean indexRoot) throws IOException {
+    private void collectVersions(Path root, java.util.Map<String, MinecraftVersion> versions, boolean indexRoot) throws IOException {
         if (!Files.exists(root, LinkOption.NOFOLLOW_LINKS)) {
             return;
         }
         try (var children = Files.list(root)) {
             for (Path child : children.toList()) {
-                if (Files.isSymbolicLink(child) || !Files.isDirectory(child, LinkOption.NOFOLLOW_LINKS)) {
+                BasicFileAttributes attributes;
+                try {
+                    attributes = Files.readAttributes(child, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
+                } catch (NoSuchFileException ignored) {
                     continue;
                 }
-                if (containsOnlyPersistentLocks(child, indexRoot)) {
+                if (attributes.isSymbolicLink() || attributes.isOther() || !attributes.isDirectory()) {
                     continue;
                 }
                 String name = child.getFileName().toString();
                 try {
-                    versions.putIfAbsent(name, new MinecraftVersion(name));
+                    MinecraftVersion version = new MinecraftVersion(name);
+                    boundary.require(child);
+                    try (var lease = VersionOperationLease.read(boundary, version)) {
+                        lease.require(paths, version);
+                        if (Files.isDirectory(child, LinkOption.NOFOLLOW_LINKS) && !containsOnlyPersistentLocks(child, indexRoot)) {
+                            versions.putIfAbsent(name, version);
+                        }
+                    }
                 } catch (IllegalArgumentException ignored) {
                     // Foreign or malformed directories are not safe version selectors.
                 }
@@ -67,10 +78,11 @@ public final class CacheCleaner {
         }
     }
 
-    private static boolean containsOnlyPersistentLocks(Path versionRoot, boolean indexRoot) throws IOException {
+    private boolean containsOnlyPersistentLocks(Path versionRoot, boolean indexRoot) throws IOException {
         boolean foundScaffold = false;
         try (var descendants = Files.walk(versionRoot)) {
             for (Path candidate : descendants.skip(1).toList()) {
+                boundary.require(candidate);
                 Path relative = versionRoot.relativize(candidate);
                 if (isPersistentLockScaffold(relative, candidate, indexRoot)) {
                     foundScaffold = true;
@@ -95,7 +107,7 @@ public final class CacheCleaner {
         return Files.isRegularFile(candidate, LinkOption.NOFOLLOW_LINKS) && relative.equals(Path.of("indexes", "callgraph", "publication.lock"));
     }
 
-    private static void deleteCacheArtifacts(Path root) throws IOException {
+    private void deleteCacheArtifacts(Path root) throws IOException {
         if (!Files.exists(root, LinkOption.NOFOLLOW_LINKS)) {
             return;
         }
@@ -119,7 +131,8 @@ public final class CacheCleaner {
         }
     }
 
-    private static void removeIfEmpty(Path root) throws IOException {
+    private void removeIfEmpty(Path root) throws IOException {
+        boundary.require(root);
         if (!Files.isDirectory(root, LinkOption.NOFOLLOW_LINKS) || Files.isSymbolicLink(root)) {
             return;
         }
@@ -130,7 +143,8 @@ public final class CacheCleaner {
         }
     }
 
-    private static void deleteTree(Path root) throws IOException {
+    private void deleteTree(Path root) throws IOException {
+        boundary.require(root);
         if (!Files.exists(root, LinkOption.NOFOLLOW_LINKS)) {
             return;
         }
@@ -159,13 +173,15 @@ public final class CacheCleaner {
                 if (failure != null) {
                     throw failure;
                 }
+                boundary.require(directory);
                 Files.delete(directory);
                 return FileVisitResult.CONTINUE;
             }
         });
     }
 
-    private static void preflightTree(Path root) throws IOException {
+    private void preflightTree(Path root) throws IOException {
+        boundary.require(root);
         if (!Files.exists(root, LinkOption.NOFOLLOW_LINKS)) {
             return;
         }
@@ -189,42 +205,87 @@ public final class CacheCleaner {
         });
     }
 
-    private static void rejectLink(Path root, Path path) throws IOException {
+    private void rejectLink(Path root, Path path) throws IOException {
+        boundary.require(path);
         if (!path.toAbsolutePath().normalize().startsWith(root) || Files.isSymbolicLink(path)) {
             throw new IOException("Refusing unsafe cache cleanup path: " + path);
         }
     }
 
     public void clean(MinecraftVersion version) throws IOException {
-        cleanAll(version);
-        removeIfEmpty(ownedDirectory(paths.versionCache(version), "version cache"));
+        try (var lease = VersionOperationLease.write(operationBoundary(), version)) {
+            lease.requireNoPending(paths, version);
+            CacheCleaner pinned = new CacheCleaner(lease.boundary());
+            pinned.cleanAllHeld(version);
+            pinned.removeIfEmpty(pinned.ownedDirectory(lease.resolvedPaths().versionCache(version), "version cache"));
+        }
     }
 
     public void cleanAll(MinecraftVersion version) throws IOException {
-        Objects.requireNonNull(version, "version");
+        try (var lease = VersionOperationLease.write(operationBoundary(), version)) {
+            lease.requireNoPending(paths, version);
+            new CacheCleaner(lease.boundary()).cleanAllHeld(version);
+        }
+    }
+
+    private void cleanAllHeld(MinecraftVersion version) throws IOException {
         Path root = ownedDirectory(paths.versionCache(version), "version cache");
         Path indexRoot = ownedDirectory(paths.indexRoot(version), "version index");
         Path callgraph = ownedDirectory(paths.callgraphBundle(version), "callgraph bundle");
         preflightTree(indexRoot);
         preflightTree(root);
-        indexCleaner.cleanIndex(version);
-        callgraphCleaner.clean(callgraph);
-        cleanCache(version);
+        boundary.revalidate();
+        new IndexCleaner(paths).cleanIndex(version);
+        boundary.revalidate();
+        new CallgraphCleaner().clean(callgraph);
+        deleteCacheArtifacts(root);
     }
 
     public void cleanCache(MinecraftVersion version) throws IOException {
-        Objects.requireNonNull(version, "version");
-        Path root = ownedDirectory(paths.versionCache(version), "version cache");
-        deleteCacheArtifacts(root);
+        try (var lease = VersionOperationLease.write(operationBoundary(), version)) {
+            lease.requireNoPending(paths, version);
+            CacheCleaner pinned = new CacheCleaner(lease.boundary());
+            Path root = pinned.ownedDirectory(lease.resolvedPaths().versionCache(version), "version cache");
+            pinned.deleteCacheArtifacts(root);
+        }
     }
 
     /**
      * Lists portable per-version directory names without following links. Semantic support policy remains a caller concern.
      */
     public List<MinecraftVersion> cachedVersions() throws IOException {
+        return new CacheCleaner(operationBoundary()).cachedVersionsHeld();
+    }
+
+    private CachePathBoundary operationBoundary() throws IOException {
+        if (boundary != null) {
+            boundary.revalidate();
+            return boundary;
+        }
+        return CachePathBoundary.open(paths);
+    }
+
+    private List<MinecraftVersion> cachedVersionsHeld() throws IOException {
         Map<String, MinecraftVersion> versions = new TreeMap<>();
         collectVersions(ownedDirectory(paths.cacheRoot().resolve("cache"), "cache versions"), versions, false);
         collectVersions(ownedDirectory(paths.cacheRoot().resolve("index"), "index versions"), versions, true);
+        Path migrations = ownedDirectory(paths.cacheRoot().resolve("migrations"), "migration versions");
+        if (Files.isDirectory(migrations, LinkOption.NOFOLLOW_LINKS)) {
+            try (var children = Files.list(migrations)) {
+                for (Path child : children.toList()) {
+                    boundary.require(child);
+                    boundary.require(child.resolve("pending.json"));
+                    if (Files.exists(child.resolve("pending.json"), LinkOption.NOFOLLOW_LINKS)) {
+                        String name = child.getFileName().toString();
+                        try {
+                            versions.putIfAbsent(name, new MinecraftVersion(name));
+                        } catch (IllegalArgumentException ignored) {
+                            // Foreign directories are not version selectors.
+                        }
+                    }
+                }
+            }
+        }
         return List.copyOf(versions.values());
     }
 
@@ -235,6 +296,6 @@ public final class CacheCleaner {
             throw new IOException("Refusing to access " + description + " outside configured cache root: " + normalized);
         }
         rejectLinkedDirectoryPath(root, normalized, description);
-        return normalized;
+        return boundary.require(normalized);
     }
 }

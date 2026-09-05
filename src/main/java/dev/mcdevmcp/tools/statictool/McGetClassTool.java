@@ -21,31 +21,32 @@ final class McGetClassTool {
     static ToolBinding<GetClassArguments> binding(StaticToolSupport support) {
         return DECLARATION.bindBlocking((arguments, _) -> support.execute("mc_get_class", () -> {
             String className = arguments.className();
-            var version = support.resolve(arguments.version());
-            SymbolRepository repository = support.repository(version);
-            ClassSymbol type = repository.classByName(className);
-            if (type == null) {
-                return ToolResult.text("Class not found: " + className);
+            try (var lease = support.read(arguments.version())) {
+                SymbolRepository repository = support.repository(lease);
+                ClassSymbol type = repository.classByName(className);
+                if (type == null) {
+                    return ToolResult.text("Class not found: " + className);
+                }
+                String source;
+                try {
+                    source = support.fullSource(lease, type);
+                } catch (java.nio.file.NoSuchFileException exception) {
+                    return ToolResult.text("Class not found: " + className);
+                }
+                if (source.isEmpty()) {
+                    return ToolResult.text("Class not found: " + className);
+                }
+                var fields = repository.fields(type.id());
+                var methods = repository.methods(type.id());
+                String header = header(type, className, fields.size(), methods.size());
+                String body = switch (arguments.view()) {
+                    case full -> source;
+                    case fields -> fields(fields);
+                    case methods -> methods(repository, methods);
+                    case summary -> fields(fields) + "\n" + methods(repository, methods);
+                };
+                return ToolResult.text(header + body);
             }
-            String source;
-            try {
-                source = support.fullSource(version, type);
-            } catch (java.nio.file.NoSuchFileException exception) {
-                return ToolResult.text("Class not found: " + className);
-            }
-            if (source.isEmpty()) {
-                return ToolResult.text("Class not found: " + className);
-            }
-            var fields = repository.fields(type.id());
-            var methods = repository.methods(type.id());
-            String header = header(type, className, fields.size(), methods.size());
-            String body = switch (arguments.view()) {
-                case full -> source;
-                case fields -> fields(fields);
-                case methods -> methods(repository, methods);
-                case summary -> fields(fields) + "\n" + methods(repository, methods);
-            };
-            return ToolResult.text(header + body);
         }));
     }
 

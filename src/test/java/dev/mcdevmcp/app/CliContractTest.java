@@ -122,6 +122,24 @@ final class CliContractTest {
     }
 
     @Test
+    void explicitRefreshReachesInitializationAndPostCommitGraphFailureIsClear() {
+        var operations = new RecordingOperations(temporaryDirectory);
+        operations.callgraphFailure = true;
+        CliResult result = execute(operations, "init", "-v", "26.1", "--refresh-sources");
+
+        assertEquals(1, result.exitCode());
+        assertEquals(SourceRefreshPolicy.EXPLICIT_REFRESH, operations.refreshPolicy);
+        assertEquals(List.of("prepare", "index", "callgraph"), operations.calls());
+        assertTrue(result.stdout().contains("Prepared 1 source root(s); indexed 7 types."));
+        assertTrue(result.stderr().contains("Source/index committed; callgraph failed"), result.stderr());
+
+        var skipped = new RecordingOperations(temporaryDirectory);
+        skipped.callgraphFailure = true;
+        assertEquals(0, execute(skipped, "init", "-v", "26.1", "--refresh-sources", "--skip-callgraph").exitCode());
+        assertEquals(List.of("prepare", "index"), skipped.calls());
+    }
+
+    @Test
     void commandFailuresAndParameterErrorsStayOnStderrWithoutStacks() throws Exception {
         var operations = new RecordingOperations(temporaryDirectory);
         operations.fail();
@@ -279,6 +297,25 @@ final class CliContractTest {
         return execute(operations, new PlatformPaths(temporaryDirectory.resolve("cache-root")), arguments);
     }
 
+    @Test
+    void statusAndCleanRefusePendingMigrationWithoutTouchingOriginals() throws Exception {
+        PlatformPaths paths = new PlatformPaths(temporaryDirectory.resolve("pending"));
+        MinecraftVersion version = new MinecraftVersion("1.21.11");
+        Path source = paths.sourceRoot(version).resolve("Original.java");
+        Files.createDirectories(source.getParent());
+        Files.writeString(source, "class Original {}");
+        Path pending = paths.cacheRoot().resolve("migrations").resolve(version.value()).resolve("pending.json");
+        Files.createDirectories(pending.getParent());
+        Files.writeString(pending, "incomplete");
+        for (List<String> arguments : List.of(List.of("status"), List.of("status", "-v", version.value()), List.of("clean", "-v", version.value()), List.of("clean", "--callgraph", "-v", version.value()), List.of("clean", "--all"))) {
+            CliResult result = execute(new RecordingOperations(temporaryDirectory), paths, arguments.toArray(String[]::new));
+            assertEquals(1, result.exitCode(), arguments.toString());
+            assertTrue(result.stderr().contains("Source/index recovery required"), result.stderr());
+            assertEquals("class Original {}", Files.readString(source));
+            assertEquals("incomplete", Files.readString(pending));
+        }
+    }
+
     private record CliResult(int exitCode, String stdout, String stderr) {
     }
 
@@ -286,6 +323,8 @@ final class CliContractTest {
         private final Path root;
         private final List<String> calls = new ArrayList<>();
         private String failure;
+        private boolean callgraphFailure;
+        private SourceRefreshPolicy refreshPolicy;
 
         private RecordingOperations(Path root) {
             this.root = root;
@@ -300,11 +339,12 @@ final class CliContractTest {
         }
 
         @Override
-        public PreparedSources prepareSources(MinecraftVersion version, ProgressSink progress, Cancellation cancellation) {
+        public InitializationResult initialize(MinecraftVersion version, SourceRefreshPolicy refreshPolicy, ProgressSink progress, Cancellation cancellation) {
+            this.refreshPolicy = refreshPolicy;
             before("prepare", progress, -20, "prepared sources");
             Path artifact = root.resolve("client.jar");
             SourceRoot sources = new SourceRoot(SourceNamespace.MINECRAFT, Optional.empty(), root.resolve("sources"));
-            return new PreparedSources(version, List.of(sources), artifact, artifact, artifact);
+            return new InitializationResult(new PreparedSources(version, List.of(sources), artifact, artifact, artifact), rebuildIndex(version, progress, cancellation), "fixture", Optional.empty());
         }
 
         @Override
@@ -316,6 +356,9 @@ final class CliContractTest {
         @Override
         public CallgraphSummary rebuildCallgraph(MinecraftVersion version, ProgressSink progress, Cancellation cancellation) {
             before("callgraph", progress, 120, "scanned bytecode");
+            if (callgraphFailure) {
+                throw new IllegalStateException("graph fixture failure");
+            }
             return new CallgraphSummary(2, 5, 11, Duration.ZERO);
         }
 

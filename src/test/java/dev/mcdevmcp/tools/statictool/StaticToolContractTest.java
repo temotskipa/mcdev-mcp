@@ -5,6 +5,8 @@ import dev.mcdevmcp.mcp.tool.ToolCatalog;
 import dev.mcdevmcp.mcp.tool.api.ToolResult;
 import dev.mcdevmcp.storage.PlatformPaths;
 import dev.mcdevmcp.storage.h2.SymbolSchema;
+import dev.mcdevmcp.storage.migration.VersionOperationLease;
+import dev.mcdevmcp.storage.migration.DirectoryAliasFixture;
 import dev.mcdevmcp.storage.model.ClassSymbol;
 import dev.mcdevmcp.storage.model.MinecraftVersion;
 import dev.mcdevmcp.storage.model.SourceNamespace;
@@ -25,6 +27,9 @@ import java.time.Instant;
 import java.util.*;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -326,9 +331,123 @@ class StaticToolContractTest {
         assertEquals("Error executing mc_search: index corrupt", contentText(sqlFailure));
     }
 
+    @Test
+    void methodReadKeepsItsGenerationThroughSourceAndLaterSqlQueries() throws Exception {
+        PlatformPaths paths = fixture();
+        CountDownLatch queriedType = new CountDownLatch(1);
+        CountDownLatch resumeSource = new CountDownLatch(1);
+        CountDownLatch writerStarted = new CountDownLatch(1);
+        StaticToolSupport support = new StaticToolSupport(paths, () -> {
+            queriedType.countDown();
+            try {
+                assertTrue(resumeSource.await(10, TimeUnit.SECONDS));
+            } catch (InterruptedException exception) {
+                Thread.currentThread().interrupt();
+                throw new AssertionError(exception);
+            }
+        });
+        try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
+            var read = McGetMethodTool.binding(support).withBlockingExecutor(executor).invoke(McpJsonDefaults.getMapper(), Map.of("className", "alpha.Alpha", "methodName", "needle", "version", VERSION.value()), Cancellation.none()).toCompletableFuture();
+            assertTrue(queriedType.await(10, TimeUnit.SECONDS));
+            var write = executor.submit(() -> {
+                writerStarted.countDown();
+                try (var lease = VersionOperationLease.write(paths, VERSION)) {
+                    lease.require(paths, VERSION);
+                    Files.writeString(paths.sourceRoot(VERSION).resolve("alpha/Alpha.java"), "class Replaced {}\n");
+                }
+                return true;
+            });
+            try {
+                assertTrue(writerStarted.await(10, TimeUnit.SECONDS));
+                assertThrows(TimeoutException.class, () -> write.get(150, TimeUnit.MILLISECONDS));
+            } finally {
+                resumeSource.countDown();
+            }
+            assertEquals("// Method: alpha.Alpha#needle\n// Signature: void needle(String arg)\n// Modifiers: public\n// Lines: 4-4\n\npublic class Alpha {\n    private int Needle;\n    public void needle(String arg) { }\n    public void Needle() { }\n}\n", contentText(read.get(10, TimeUnit.SECONDS)));
+            assertTrue(write.get(10, TimeUnit.SECONDS));
+        } finally {
+            resumeSource.countDown();
+        }
+    }
+
     private void assertUnsafeSource(StaticToolSupport support, ClassSymbol symbol) {
         StaticToolException exception = assertThrows(StaticToolException.class, () -> support.fullSource(VERSION, symbol));
         assertEquals("Unsafe indexed source path: " + symbol.sourcePath(), exception.getMessage());
+    }
+
+    @Test
+    void methodSqlAndSourceStayPinnedWhenAncestorAliasChangesBetweenQueries() throws Exception {
+        PlatformPaths first = fixture(temporaryDirectory.resolve("first/cache-root"));
+        PlatformPaths second = fixture(temporaryDirectory.resolve("second/cache-root"));
+        Path secondSource = second.sourceRoot(VERSION).resolve("alpha/Alpha.java");
+        Files.writeString(secondSource, Files.readString(secondSource).replace("String arg", "String replacement"));
+        String secondDatabase = second.symbolDatabase(VERSION).toAbsolutePath().toString();
+        String databaseBase = secondDatabase.substring(0, secondDatabase.length() - ".mv.db".length());
+        try (var connection = DriverManager.getConnection("jdbc:h2:file:" + databaseBase + ";DB_CLOSE_ON_EXIT=FALSE")) {
+            insert(connection, "UPDATE parameters SET name='replacement' WHERE method_id=1");
+        }
+        Map<String, Object> arguments = Map.of("className", "alpha.Alpha", "methodName", "needle", "version", VERSION.value());
+        String oldExpected = text(catalog(first), "mc_get_method", arguments);
+        String newExpected = text(catalog(second), "mc_get_method", arguments);
+        assertNotEquals(oldExpected, newExpected);
+        Path alias = temporaryDirectory.resolve("selected-parent");
+        DirectoryAliasFixture.create(alias, first.cacheRoot().getParent());
+        var retargeted = new java.util.concurrent.atomic.AtomicBoolean();
+        StaticToolSupport support = new StaticToolSupport(new PlatformPaths(alias.resolve("cache-root")), () -> {
+            if (retargeted.compareAndSet(false, true)) {
+                try {
+                    DirectoryAliasFixture.remove(alias);
+                    DirectoryAliasFixture.create(alias, second.cacheRoot().getParent());
+                } catch (Exception exception) {
+                    throw new AssertionError(exception);
+                }
+            }
+        });
+        try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
+            var binding = McGetMethodTool.binding(support).withBlockingExecutor(executor);
+            assertEquals(oldExpected, contentText(binding.invoke(McpJsonDefaults.getMapper(), arguments, Cancellation.none()).toCompletableFuture().get(15, TimeUnit.SECONDS)));
+            assertEquals(newExpected, contentText(binding.invoke(McpJsonDefaults.getMapper(), arguments, Cancellation.none()).toCompletableFuture().get(15, TimeUnit.SECONDS)));
+        } finally {
+            DirectoryAliasFixture.remove(alias);
+        }
+        assertTrue(Files.readString(secondSource).contains("String replacement"));
+        assertTrue(Files.readString(first.sourceRoot(VERSION).resolve("alpha/Alpha.java")).contains("String arg"));
+    }
+
+    @Test
+    void everyStaticEntryFailsClosedForPendingMigrationIncludingActiveVersionAndList() throws Exception {
+        PlatformPaths paths = fixture();
+        ToolCatalog catalog = catalog(paths);
+        text(catalog, "mc_version", Map.of("action", "set", "version", VERSION.value()));
+        Path pending = paths.cacheRoot().resolve("migrations").resolve(VERSION.value()).resolve("pending.json");
+        Files.createDirectories(pending.getParent());
+        Map<String, Map<String, Object>> requests = Map.of(
+            "mc_get_method", Map.of("className", "alpha.Alpha", "methodName", "needle"),
+            "mc_get_class", Map.of("className", "alpha.Alpha"),
+            "mc_search", Map.of("query", "needle"),
+            "mc_list_classes", Map.of("packagePath", "alpha"),
+            "mc_list_packages", Map.of(),
+            "mc_find_hierarchy", Map.of("className", "alpha.Alpha", "direction", "subclasses"),
+            "mc_find_refs", Map.of("className", "alpha.Alpha", "methodName", "needle", "direction", "callers"));
+        for (String phase : List.of("PREPARED", "BACKING_UP", "BACKED_UP", "INSTALLING_SOURCE", "INSTALLING_DATABASE", "INSTALLING_STAMP", "VALIDATING_PAIR", "COMMITTED", "corrupt")) {
+            Files.writeString(pending, phase);
+            for (var entry : requests.entrySet()) {
+                for (boolean explicit : List.of(false, true)) {
+                    Map<String, Object> arguments = new HashMap<>(entry.getValue());
+                    if (explicit) {
+                        arguments.put("version", VERSION.value());
+                    }
+                    ToolResult<?> result = catalog.dispatch(entry.getKey(), arguments, Cancellation.none()).toCompletableFuture().join();
+                    assertTrue(result.isError(), entry.getKey() + " in " + phase);
+                    assertTrue(contentText(result).contains("Source/index recovery required"), contentText(result));
+                }
+            }
+            for (String action : List.of("list", "set")) {
+                ToolResult<?> result = catalog.dispatch("mc_version", Map.of("action", action, "version", VERSION.value()), Cancellation.none()).toCompletableFuture().join();
+                assertTrue(result.isError());
+                assertTrue(contentText(result).contains("Source/index recovery required"), contentText(result));
+            }
+        }
     }
 
     /**
@@ -402,7 +521,11 @@ class StaticToolContractTest {
     }
 
     private PlatformPaths fixture() throws Exception {
-        PlatformPaths paths = new PlatformPaths(temporaryDirectory);
+        return fixture(temporaryDirectory);
+    }
+
+    private PlatformPaths fixture(Path root) throws Exception {
+        PlatformPaths paths = new PlatformPaths(root);
         Path sourceRoot = paths.sourceRoot(VERSION);
         Path alpha = sourceRoot.resolve("alpha/Alpha.java");
         Path beta = sourceRoot.resolve("beta/Beta.java");

@@ -10,7 +10,7 @@ import dev.mcdevmcp.support.ProgressSink;
  * Command-facing analysis operations, allowing deterministic CLI composition tests.
  */
 public interface AnalysisOperations {
-    PreparedSources prepareSources(MinecraftVersion version, ProgressSink progress, Cancellation cancellation);
+    InitializationResult initialize(MinecraftVersion version, SourceRefreshPolicy refreshPolicy, ProgressSink progress, Cancellation cancellation);
 
     IndexSummary rebuildIndex(MinecraftVersion version, ProgressSink progress, Cancellation cancellation);
 

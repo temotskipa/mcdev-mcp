@@ -21,21 +21,22 @@ final class McSearchTool {
     static ToolBinding<SearchArguments> binding(StaticToolSupport support) {
         return DECLARATION.bindBlocking((arguments, _) -> support.execute("mc_search", () -> {
             String query = arguments.query();
-            var version = support.resolve(arguments.version());
-            var limit = LIMIT.normalize(arguments.limit());
-            int effectiveLimit = limit.value();
-            String type = arguments.type() == null ? null : arguments.type().wireValue();
-            var rows = support.repository(version).search(query, type, effectiveLimit + 1);
-            boolean truncated = rows.size() >= effectiveLimit;
-            if (truncated) {
-                rows = rows.subList(0, effectiveLimit);
+            try (var lease = support.read(arguments.version())) {
+                var limit = LIMIT.normalize(arguments.limit());
+                int effectiveLimit = limit.value();
+                String type = arguments.type() == null ? null : arguments.type().wireValue();
+                var rows = support.repository(lease).search(query, type, effectiveLimit + 1);
+                boolean truncated = rows.size() >= effectiveLimit;
+                if (truncated) {
+                    rows = rows.subList(0, effectiveLimit);
+                }
+                if (rows.isEmpty()) {
+                    String suffix = arguments.type() == null ? "" : " (type: " + arguments.type().wireValue() + ")";
+                    return ToolResult.text("No results found for \"" + query + "\"" + suffix);
+                }
+                String renderedRows = rows.stream().map(McSearchTool::render).collect(Collectors.joining("\n"));
+                return ToolResult.text("Found " + rows.size() + " result(s):\n" + renderedRows + StaticTools.truncationNote(rows.size(), truncated, limit, "result(s)"));
             }
-            if (rows.isEmpty()) {
-                String suffix = arguments.type() == null ? "" : " (type: " + arguments.type().wireValue() + ")";
-                return ToolResult.text("No results found for \"" + query + "\"" + suffix);
-            }
-            String renderedRows = rows.stream().map(McSearchTool::render).collect(Collectors.joining("\n"));
-            return ToolResult.text("Found " + rows.size() + " result(s):\n" + renderedRows + StaticTools.truncationNote(rows.size(), truncated, limit, "result(s)"));
         }));
     }
 

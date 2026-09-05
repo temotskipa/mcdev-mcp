@@ -14,19 +14,20 @@ final class McListPackagesTool {
 
     static ToolBinding<ListPackagesArguments> binding(StaticToolSupport support) {
         return DECLARATION.bindBlocking((arguments, _) -> support.execute("mc_list_packages", () -> {
-            var version = support.resolve(arguments.version());
-            var limit = LIMIT.normalize(arguments.limit());
-            String namespace = arguments.namespace() == null ? null : arguments.namespace().wireName();
-            var page = support.repository(version).packages(namespace, limit.value() + 1);
-            var rows = page.packages();
-            boolean truncated = rows.size() > limit.value();
-            if (truncated) {
-                rows = rows.subList(0, limit.value());
+            try (var lease = support.read(arguments.version())) {
+                var limit = LIMIT.normalize(arguments.limit());
+                String namespace = arguments.namespace() == null ? null : arguments.namespace().wireName();
+                var page = support.repository(lease).packages(namespace, limit.value() + 1);
+                var rows = page.packages();
+                boolean truncated = rows.size() > limit.value();
+                if (truncated) {
+                    rows = rows.subList(0, limit.value());
+                }
+                if (page.total() == 0) {
+                    return ToolResult.text("No packages found");
+                }
+                return ToolResult.text("Found " + page.total() + " package(s):\n" + String.join("\n", rows) + StaticTools.truncationNote(rows.size(), page.total(), truncated, limit, "package(s)"));
             }
-            if (page.total() == 0) {
-                return ToolResult.text("No packages found");
-            }
-            return ToolResult.text("Found " + page.total() + " package(s):\n" + String.join("\n", rows) + StaticTools.truncationNote(rows.size(), page.total(), truncated, limit, "package(s)"));
         }));
     }
 }

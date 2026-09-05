@@ -1,6 +1,7 @@
 package dev.mcdevmcp.storage.h2;
 
 import dev.mcdevmcp.storage.PlatformPaths;
+import dev.mcdevmcp.storage.migration.VersionOperationLease;
 import dev.mcdevmcp.storage.model.MinecraftVersion;
 import dev.mcdevmcp.storage.model.VersionState;
 
@@ -32,38 +33,47 @@ public final class VersionStateRepository {
         }
     }
 
-    public VersionState state(MinecraftVersion version) {
-        Path database = paths.symbolDatabase(version);
+    public VersionState state(MinecraftVersion version) throws IOException {
+        try (var lease = VersionOperationLease.read(paths, version)) {
+            return state(version, lease);
+        }
+    }
+
+    public VersionState state(MinecraftVersion version, VersionOperationLease lease) throws IOException {
+        lease.require(paths, version);
+        PlatformPaths resolvedPaths = lease.resolvedPaths();
+        Path database = lease.boundary().require(resolvedPaths.symbolDatabase(version));
+        lease.boundary().require(database.resolveSibling(database.getFileName() + ".lock"));
         if (isH2Ready(database)) {
             return VersionState.READY;
         }
-        if (hasLegacyIndex(version)) {
+        if (hasLegacyIndex(version, lease)) {
             return VersionState.NEEDS_REBUILD;
         }
-        if (Files.isDirectory(paths.sourceRoot(version))) {
+        if (Files.isDirectory(lease.boundary().require(resolvedPaths.sourceRoot(version)))) {
             return VersionState.SOURCE_ONLY;
         }
         return VersionState.ABSENT;
     }
 
-    public boolean isH2Ready(MinecraftVersion version) {
+    public boolean isH2Ready(MinecraftVersion version) throws IOException {
         return state(version) == VersionState.READY;
     }
 
-    public boolean needsRebuild(MinecraftVersion version) {
+    public boolean needsRebuild(MinecraftVersion version) throws IOException {
         return state(version) == VersionState.NEEDS_REBUILD;
     }
 
-    public boolean isSourceOnly(MinecraftVersion version) {
+    public boolean isSourceOnly(MinecraftVersion version) throws IOException {
         return state(version) == VersionState.SOURCE_ONLY;
     }
 
-    public boolean isAbsent(MinecraftVersion version) {
+    public boolean isAbsent(MinecraftVersion version) throws IOException {
         return state(version) == VersionState.ABSENT;
     }
 
-    private boolean hasLegacyIndex(MinecraftVersion version) {
-        Path root = paths.indexRoot(version);
-        return Files.isRegularFile(root.resolve("manifest.json")) || Files.isDirectory(root.resolve("minecraft")) || Files.isDirectory(root.resolve("fabric"));
+    private static boolean hasLegacyIndex(MinecraftVersion version, VersionOperationLease lease) throws IOException {
+        Path root = lease.resolvedPaths().indexRoot(version);
+        return Files.isRegularFile(lease.boundary().require(root.resolve("manifest.json"))) || Files.isDirectory(lease.boundary().require(root.resolve("minecraft"))) || Files.isDirectory(lease.boundary().require(root.resolve("fabric")));
     }
 }

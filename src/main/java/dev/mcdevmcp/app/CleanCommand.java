@@ -5,6 +5,8 @@ import dev.mcdevmcp.storage.PlatformPaths;
 import dev.mcdevmcp.storage.callgraph.CallgraphCleaner;
 import dev.mcdevmcp.storage.h2.IndexCleaner;
 import dev.mcdevmcp.storage.model.MinecraftVersion;
+import dev.mcdevmcp.storage.migration.VersionOperationLease;
+import dev.mcdevmcp.storage.migration.CachePathBoundary;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
 import picocli.CommandLine.Spec;
@@ -24,6 +26,7 @@ import java.util.concurrent.Callable;
 @SuppressWarnings("unused")
 public final class CleanCommand implements Callable<Integer> {
     private final PlatformPaths paths;
+    private CachePathBoundary boundary;
 
     @Option(names = {"-v", "--version"}, description = "Minecraft version")
     private String version;
@@ -49,6 +52,7 @@ public final class CleanCommand implements Callable<Integer> {
 
     @Override
     public Integer call() throws IOException {
+        boundary = CachePathBoundary.open(paths);
         if (callgraph) {
             return cleanCallgraph();
         }
@@ -71,35 +75,44 @@ public final class CleanCommand implements Callable<Integer> {
             throw new IllegalArgumentException("--callgraph requires -v <version>");
         }
         MinecraftVersion minecraft = new MinecraftVersion(version);
-        Path bundle = paths.callgraphBundle(minecraft);
-        return tryRemove(bundle, "callgraph data for " + version, () -> new CallgraphCleaner().clean(bundle)) ? 0 : 1;
+        Path bundle = boundary.resolvedPaths().callgraphBundle(minecraft);
+        return tryRemove(bundle, "callgraph data for " + version, () -> {
+            try (var lease = VersionOperationLease.write(boundary, minecraft)) {
+                lease.requireNoPending(paths, minecraft);
+                boundary.require(bundle);
+                new CallgraphCleaner().clean(bundle);
+            }
+        }) ? 0 : 1;
     }
 
-    private int cleanVersion() {
+    private int cleanVersion() throws IOException {
         MinecraftVersion minecraft = new MinecraftVersion(version);
-        if (all || (!cache && !index)) {
-            cache = true;
-            index = true;
-        }
+        try (var lease = VersionOperationLease.write(boundary, minecraft)) {
+            lease.requireNoPending(paths, minecraft);
+            if (all || (!cache && !index)) {
+                cache = true;
+                index = true;
+            }
 
-        boolean succeeded = true;
-        if (cache) {
-            Path versionCache = paths.versionCache(minecraft);
-            succeeded &= tryRemove(versionCache, "cache for " + version, () -> cleanVersionCache(minecraft));
+            boolean succeeded = true;
+            if (cache) {
+                Path versionCache = boundary.resolvedPaths().versionCache(minecraft);
+                succeeded &= tryRemove(versionCache, "cache for " + version, () -> cleanVersionCache(minecraft));
+            }
+            if (index) {
+                Path versionIndex = boundary.resolvedPaths().indexRoot(minecraft);
+                succeeded &= tryRemove(versionIndex, "index for " + version, () -> cleanVersionIndex(minecraft));
+            }
+            spec.commandLine().getOut().printf("%nRun 'mcdev-mcp init -v %s' to reinitialize.%n", version);
+            return succeeded ? 0 : 1;
         }
-        if (index) {
-            Path versionIndex = paths.indexRoot(minecraft);
-            succeeded &= tryRemove(versionIndex, "index for " + version, () -> new IndexCleaner(paths).cleanIndex(minecraft));
-        }
-        spec.commandLine().getOut().printf("%nRun 'mcdev-mcp init -v %s' to reinitialize.%n", version);
-        return succeeded ? 0 : 1;
     }
 
     private int cleanGlobal() throws IOException {
-        Path cacheRoot = paths.cacheRoot().resolve("cache");
-        Path indexRoot = paths.cacheRoot().resolve("index");
-        Path temporaryRoot = paths.cacheRoot().resolve("tmp");
-        List<MinecraftVersion> versions = new CacheCleaner(paths).cachedVersions();
+        Path cacheRoot = boundary.resolvedPaths().cacheRoot().resolve("cache");
+        Path indexRoot = boundary.resolvedPaths().cacheRoot().resolve("index");
+        Path temporaryRoot = boundary.resolvedPaths().cacheRoot().resolve("tmp");
+        List<MinecraftVersion> versions = new CacheCleaner(boundary).cachedVersions();
         boolean succeeded = true;
 
         if (cache) {
@@ -117,33 +130,53 @@ public final class CleanCommand implements Callable<Integer> {
     }
 
     private void cleanVersionCache(MinecraftVersion minecraft) throws IOException {
-        Path versionCache = paths.versionCache(minecraft);
+        Path versionCache = boundary.resolvedPaths().versionCache(minecraft);
         preflightContainedTree(versionCache);
-        new CallgraphCleaner().clean(paths.callgraphBundle(minecraft));
+        new CallgraphCleaner().clean(boundary.resolvedPaths().callgraphBundle(minecraft));
         deleteContainedTree(versionCache);
     }
 
     private void cleanCacheRoot(Path cacheRoot, List<MinecraftVersion> versions) throws IOException {
-        preflightContainedTree(cacheRoot);
         for (MinecraftVersion minecraft : versions) {
-            new CallgraphCleaner().clean(paths.callgraphBundle(minecraft));
+            try (var lease = VersionOperationLease.write(boundary, minecraft)) {
+                lease.requireNoPending(paths, minecraft);
+                cleanVersionCache(minecraft);
+            }
         }
-        deleteContainedTree(cacheRoot);
+        removeEmptyRoot(cacheRoot);
     }
 
     private void cleanIndexRoot(Path indexRoot, List<MinecraftVersion> versions) throws IOException {
-        preflightContainedTree(indexRoot);
-        IndexCleaner cleaner = new IndexCleaner(paths);
         for (MinecraftVersion minecraft : versions) {
-            cleaner.cleanIndex(minecraft);
+            try (var lease = VersionOperationLease.write(boundary, minecraft)) {
+                lease.requireNoPending(paths, minecraft);
+                cleanVersionIndex(minecraft);
+            }
         }
-        deleteContainedTree(indexRoot);
+        removeEmptyRoot(indexRoot);
+    }
+
+    private void cleanVersionIndex(MinecraftVersion version) throws IOException {
+        preflightContainedTree(boundary.resolvedPaths().indexRoot(version));
+        new IndexCleaner(boundary.resolvedPaths()).cleanIndex(version);
+    }
+
+    private void removeEmptyRoot(Path root) throws IOException {
+        preflightContainedTree(root);
+        if (Files.isDirectory(root, LinkOption.NOFOLLOW_LINKS)) {
+            try (var children = Files.list(root)) {
+                if (children.findAny().isEmpty()) {
+                    Files.delete(root);
+                }
+            }
+        }
     }
 
     private boolean tryRemove(Path path, String label, Cleanup cleanup) {
         Path target = path.toAbsolutePath().normalize();
-        boolean existed = Files.exists(target, LinkOption.NOFOLLOW_LINKS);
         try {
+            boundary.require(target);
+            boolean existed = Files.exists(target, LinkOption.NOFOLLOW_LINKS);
             cleanup.run();
             report(existed, label, target);
             return true;
@@ -177,7 +210,8 @@ public final class CleanCommand implements Callable<Integer> {
     }
 
     private void deleteContainedTree(Path candidate) throws IOException {
-        Path root = paths.cacheRoot().toAbsolutePath().normalize();
+        boundary.require(candidate);
+        Path root = boundary.resolvedPaths().cacheRoot().toAbsolutePath().normalize();
         Path target = candidate.toAbsolutePath().normalize();
         if (target.equals(root) || !target.startsWith(root)) {
             throw new IOException("Refusing to clean path outside configured cache root: " + target);
@@ -186,17 +220,18 @@ public final class CleanCommand implements Callable<Integer> {
             return;
         }
         preflightContainedTree(target);
-        Files.walkFileTree(target, new ContainedTreeVisitor(root, true));
+        Files.walkFileTree(target, new ContainedTreeVisitor(boundary, true));
     }
 
     private void preflightContainedTree(Path candidate) throws IOException {
-        Path root = paths.cacheRoot().toAbsolutePath().normalize();
+        boundary.require(candidate);
+        Path root = boundary.resolvedPaths().cacheRoot().toAbsolutePath().normalize();
         Path target = candidate.toAbsolutePath().normalize();
         if (target.equals(root) || !target.startsWith(root)) {
             throw new IOException("Refusing to clean path outside configured cache root: " + target);
         }
         if (Files.exists(target, LinkOption.NOFOLLOW_LINKS)) {
-            Files.walkFileTree(target, new ContainedTreeVisitor(root, false));
+            Files.walkFileTree(target, new ContainedTreeVisitor(boundary, false));
         }
     }
 
@@ -206,11 +241,11 @@ public final class CleanCommand implements Callable<Integer> {
     }
 
     private static final class ContainedTreeVisitor extends SimpleFileVisitor<Path> {
-        private final Path root;
+        private final CachePathBoundary boundary;
         private final boolean delete;
 
-        private ContainedTreeVisitor(Path root, boolean delete) {
-            this.root = root;
+        private ContainedTreeVisitor(CachePathBoundary boundary, boolean delete) {
+            this.boundary = boundary;
             this.delete = delete;
         }
 
@@ -238,16 +273,14 @@ public final class CleanCommand implements Callable<Integer> {
                 throw failure;
             }
             if (delete) {
+                boundary.require(directory);
                 Files.delete(directory);
             }
             return FileVisitResult.CONTINUE;
         }
 
         private void rejectUnsafe(Path candidate) throws IOException {
-            Path normalized = candidate.toAbsolutePath().normalize();
-            if (!normalized.startsWith(root) || Files.isSymbolicLink(candidate)) {
-                throw new IOException("Refusing unsafe cleanup path: " + candidate);
-            }
+            boundary.require(candidate);
         }
     }
 }

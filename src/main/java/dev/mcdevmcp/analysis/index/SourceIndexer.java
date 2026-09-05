@@ -18,4 +18,8 @@ public final class SourceIndexer {
     public IndexSummary build(IndexRequest request) throws IndexBuildException {
         return pipeline.build(request);
     }
+
+    public IndexSummary build(IndexRequest request, PublishedSourceRoot publishedSourceRoot) throws IndexBuildException {
+        return pipeline.build(request, publishedSourceRoot);
+    }
 }

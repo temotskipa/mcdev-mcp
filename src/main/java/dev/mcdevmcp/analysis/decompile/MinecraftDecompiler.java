@@ -324,6 +324,10 @@ public final class MinecraftDecompiler {
         }, Cancellation.none());
     }
 
+    public static Map<String, String> settings() {
+        return Map.of(IFernflowerPreferences.DECOMPILE_GENERIC_SIGNATURES, "1", IFernflowerPreferences.BYTECODE_SOURCE_MAPPING, "1", IFernflowerPreferences.REMOVE_SYNTHETIC, "1", IFernflowerPreferences.THREADS, Integer.toString(Math.max(1, Runtime.getRuntime().availableProcessors())), IFernflowerPreferences.LOG_LEVEL, "ERROR");
+    }
+
     public Path decompile(Path remappedJar, Path sourceRoot, ProgressSink progress, Cancellation cancellation) throws IOException {
         Path input = Objects.requireNonNull(remappedJar, "remappedJar").toAbsolutePath().normalize();
         Path target = Objects.requireNonNull(sourceRoot, "sourceRoot").toAbsolutePath().normalize();
@@ -348,7 +352,7 @@ public final class MinecraftDecompiler {
         IResultSaver saver = saver(staging, written, cancellation);
 
         try (saver) {
-            Fernflower fernflower = new Fernflower(saver, Map.of(IFernflowerPreferences.DECOMPILE_GENERIC_SIGNATURES, "1", IFernflowerPreferences.BYTECODE_SOURCE_MAPPING, "1", IFernflowerPreferences.REMOVE_SYNTHETIC, "1", IFernflowerPreferences.THREADS, Integer.toString(Math.max(1, Runtime.getRuntime().availableProcessors())), IFernflowerPreferences.LOG_LEVEL, "ERROR"), logger);
+            Fernflower fernflower = new Fernflower(saver, new java.util.HashMap<>(settings()), logger);
             try {
                 fernflower.addSource(input.toFile());
                 fernflower.decompileContext();
