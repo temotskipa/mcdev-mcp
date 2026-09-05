@@ -81,7 +81,7 @@ class ProcessPeakMemoryTest {
     }
 
     public static final class QueryProbe {
-        public static void main(String[] arguments) throws Exception {
+        static void main(String[] arguments) throws Exception {
             switch (arguments[0]) {
                 case "valid" -> System.out.print("1234");
                 case "failure" -> System.exit(5);

@@ -77,43 +77,58 @@ final class ProcessPeakMemory {
         }
     }
 
-    @SuppressWarnings("resource") // Process.close waits without a deadline; cleanup below is bounded.
     static String query(List<String> command, Duration timeout) throws IOException {
+        // Process.close waits without a deadline; cleanup below is bounded.
         Process process = new ProcessBuilder(command).redirectErrorStream(true).start();
         FutureTask<byte[]> output = new FutureTask<>(() -> process.getInputStream().readNBytes(MAX_OUTPUT_BYTES + 1));
         Thread reader = Thread.ofVirtual().name("process-memory-query-output").start(output);
         long deadline = System.nanoTime() + timeout.toNanos();
+        IOException failure = null;
+        String result = null;
         try {
             byte[] bytes = output.get(timeout.toNanos(), TimeUnit.NANOSECONDS);
             if (bytes.length > MAX_OUTPUT_BYTES) throw new IOException("Process-memory query exceeded its output limit");
             long remaining = deadline - System.nanoTime();
             if (remaining <= 0 || !process.waitFor(remaining, TimeUnit.NANOSECONDS)) throw new IOException("Process-memory query timed out");
             if (process.exitValue() != 0) throw new IOException("Process-memory query exited " + process.exitValue());
-            return new String(bytes, StandardCharsets.US_ASCII);
-        } catch (TimeoutException failure) {
-            throw new IOException("Process-memory query timed out", failure);
-        } catch (ExecutionException failure) {
-            throw new IOException("Process-memory query output failed", failure.getCause());
-        } catch (InterruptedException failure) {
+            result = new String(bytes, StandardCharsets.US_ASCII);
+        } catch (IOException exception) {
+            failure = exception;
+        } catch (TimeoutException exception) {
+            failure = new IOException("Process-memory query timed out", exception);
+        } catch (ExecutionException exception) {
+            failure = new IOException("Process-memory query output failed", exception.getCause());
+        } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
-            throw new IOException("Process-memory query interrupted", failure);
+            failure = new IOException("Process-memory query interrupted", exception);
         } finally {
-            boolean interrupted = Thread.interrupted();
-            process.destroyForcibly();
-            output.cancel(true);
             try {
-                if (!process.waitFor(10, TimeUnit.SECONDS)) throw new IOException("Process-memory query did not terminate");
-                process.getInputStream().close();
-                process.getOutputStream().close();
-                process.getErrorStream().close();
-                reader.join(Duration.ofSeconds(10));
-                if (reader.isAlive()) throw new IOException("Process-memory query reader did not terminate");
-            } catch (InterruptedException failure) {
-                interrupted = true;
-                throw new IOException("Process-memory query cleanup interrupted", failure);
-            } finally {
-                if (interrupted) Thread.currentThread().interrupt();
+                cleanup(process, output, reader);
+            } catch (IOException exception) {
+                if (failure == null) failure = exception;
+                else failure.addSuppressed(exception);
             }
+        }
+        if (failure != null) throw failure;
+        return result;
+    }
+
+    private static void cleanup(Process process, FutureTask<byte[]> output, Thread reader) throws IOException {
+        boolean interrupted = Thread.interrupted();
+        process.destroyForcibly();
+        output.cancel(true);
+        try {
+            if (!process.waitFor(10, TimeUnit.SECONDS)) throw new IOException("Process-memory query did not terminate");
+            process.getInputStream().close();
+            process.getOutputStream().close();
+            process.getErrorStream().close();
+            reader.join(Duration.ofSeconds(10));
+            if (reader.isAlive()) throw new IOException("Process-memory query reader did not terminate");
+        } catch (InterruptedException exception) {
+            interrupted = true;
+            throw new IOException("Process-memory query cleanup interrupted", exception);
+        } finally {
+            if (interrupted) Thread.currentThread().interrupt();
         }
     }
 }
