@@ -10,6 +10,7 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Objects;
 import java.util.concurrent.TimeUnit;
 
@@ -90,17 +91,46 @@ class EmbeddedResourceLineEndingsTest {
         command.addAll(List.of(arguments));
         Path log = Files.createTempFile(temporaryDirectory, "git-", ".log");
         ProcessBuilder builder = new ProcessBuilder(command).directory(repository.toFile()).redirectErrorStream(true).redirectOutput(log.toFile());
+        builder.environment().keySet().removeIf(name -> name.toUpperCase(Locale.ROOT).startsWith("GIT_"));
         builder.environment().put("GIT_CONFIG_NOSYSTEM", "1");
         builder.environment().put("GIT_CONFIG_GLOBAL", emptyConfiguration.toString());
-        try (Process process = builder.start()) {
+        @SuppressWarnings("resource") Process process = builder.start();
+        Throwable failure = null;
+        try {
+            process.getOutputStream().close();
             if (!process.waitFor(GIT_TIMEOUT.toMillis(), TimeUnit.MILLISECONDS)) {
-                process.destroyForcibly();
-                if (!process.waitFor(GIT_TIMEOUT.toMillis(), TimeUnit.MILLISECONDS)) {
-                    throw new IOException("Git test process did not terminate");
-                }
                 throw new IOException("Git test process exceeded " + GIT_TIMEOUT);
             }
             assertEquals(0, process.exitValue(), Files.readString(log));
+        } catch (Exception | Error original) {
+            failure = original;
+        } finally {
+            boolean interrupted = Thread.interrupted() || failure instanceof InterruptedException;
+            try {
+                if (process.isAlive()) {
+                    process.destroyForcibly();
+                    if (!process.waitFor(GIT_TIMEOUT.toMillis(), TimeUnit.MILLISECONDS)) {
+                        throw new IOException("Git test process did not terminate");
+                    }
+                }
+            } catch (Exception | Error cleanupFailure) {
+                interrupted |= cleanupFailure instanceof InterruptedException;
+                if (failure == null) {
+                    failure = cleanupFailure;
+                } else {
+                    failure.addSuppressed(cleanupFailure);
+                }
+            } finally {
+                if (interrupted) {
+                    Thread.currentThread().interrupt();
+                }
+            }
+        }
+        if (failure instanceof Exception exception) {
+            throw exception;
+        }
+        if (failure instanceof Error error) {
+            throw error;
         }
     }
 
