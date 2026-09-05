@@ -67,9 +67,7 @@ final class JavacSourceParser {
             batch.add(source);
             characters += length;
         }
-        if (!batch.isEmpty()) {
-            batches.add(List.copyOf(batch));
-        }
+        batches.add(List.copyOf(batch));
         return List.copyOf(batches);
     }
 
