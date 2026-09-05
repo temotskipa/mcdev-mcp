@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import javax.tools.ToolProvider;
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -44,6 +45,18 @@ class ExternalClasspathHarnessTest {
         assertEquals(1, report.compilationUnits().typed());
         assertEquals(1, report.callgraphCounts().classes());
         assertExternalTypes(output.resolve("symbols.mv.db"));
+        byte[] manifestBytes = Files.readAllBytes(fixture.manifest());
+        IOException original = new IOException("qualification fixture failure");
+        var failingArguments = new CorpusQualificationMain.Arguments(ClasspathFixtures.VERSION, fixture.sources(), fixture.jar(), baseline, expectation, root.resolve("failed-qualification"), root.resolve("cache"), 1, fixture.manifest());
+        IOException preserved = assertThrows(IOException.class, () -> CorpusQualificationMain.qualify(failingArguments, () -> {
+            Files.writeString(fixture.manifest(), Files.readString(fixture.manifest()) + "\n");
+            throw original;
+        }));
+        assertSame(original, preserved);
+        assertEquals(1, preserved.getSuppressed().length);
+        assertTrue(preserved.getSuppressed()[0].getMessage().contains("Immutable corpus classpath changed"));
+        assertFalse(Files.exists(failingArguments.outputRoot().resolve(CorpusQualificationMain.REPORT_NAME)));
+        Files.write(fixture.manifest(), manifestBytes);
         Files.write(fixture.library(), new byte[]{1});
         assertThrows(Exception.class, () -> CorpusQualificationMain.qualify(new CorpusQualificationMain.Arguments(ClasspathFixtures.VERSION, fixture.sources(), fixture.jar(), baseline, expectation, root.resolve("corrupt-qualification"), root.resolve("cache"), 1, fixture.manifest()), () -> 1));
         assertFalse(Files.exists(root.resolve("corrupt-qualification/symbols.mv.db")));
