@@ -177,7 +177,7 @@ class CorpusQualificationMainTest {
         Path expectationFile = temporaryDirectory.resolve("expectation.json");
         Path baselineFile = temporaryDirectory.resolve("baseline.json");
         List<CorpusProbe> probes = placeholderProbes();
-        CorpusExpectation expectation = new CorpusExpectation(1, VERSION, ZERO_HASH, ZERO_HASH, NODE_CALLGRAPH_HASH, NODE_CALLGRAPH, new CompilationUnitCounts(0, 0, 0, 0), new CorpusIndexCounts(0, 0, 0, 0, 0), new CorpusCallgraphCounts(0, 0, 0), ZERO_HASH, ZERO_HASH, ZERO_HASH, ORACLE, List.of(), probes, List.of());
+        CorpusExpectation expectation = new CorpusExpectation(2, VERSION, ZERO_HASH, ZERO_HASH, NODE_CALLGRAPH_HASH, NODE_CALLGRAPH, new CompilationUnitCounts(0, 0, 0, 0), new CorpusIndexCounts(0, 0, 0, 0, 0), new CorpusCallgraphCounts(0, 0, 0), ZERO_HASH, ZERO_HASH, ZERO_HASH, ORACLE, List.of(), probes, List.of(), ClasspathFixtures.IDENTITY, ClasspathFixtures.RAW_HASH);
         NodeCorpusBaseline baseline = baseline(ZERO_HASH, ZERO_HASH, new CorpusIndexCounts(0, 0, 0, 0, 0), new CorpusCallgraphCounts(0, 0, 0), probes);
         Files.write(expectationFile, McpJsonDefaults.getMapper().writeValueAsBytes(expectation));
         Files.write(baselineFile, McpJsonDefaults.getMapper().writeValueAsBytes(baseline));
@@ -193,7 +193,7 @@ class CorpusQualificationMainTest {
         String sourceHash = AnalysisBenchmarkMain.sha256Tree(fixture.sources());
         String jarHash = AnalysisBenchmarkMain.sha256(fixture.jar());
         List<CorpusProbe> probes = placeholderProbes();
-        CorpusExpectation expectation = new CorpusExpectation(1, VERSION, sourceHash, jarHash, NODE_CALLGRAPH_HASH, NODE_CALLGRAPH, new CompilationUnitCounts(0, 0, 0, 0), new CorpusIndexCounts(0, 0, 0, 0, 0), new CorpusCallgraphCounts(0, 0, 0), ZERO_HASH, ZERO_HASH, ZERO_HASH, ORACLE, List.of(), probes, List.of());
+        CorpusExpectation expectation = new CorpusExpectation(2, VERSION, sourceHash, jarHash, NODE_CALLGRAPH_HASH, NODE_CALLGRAPH, new CompilationUnitCounts(0, 0, 0, 0), new CorpusIndexCounts(0, 0, 0, 0, 0), new CorpusCallgraphCounts(0, 0, 0), ZERO_HASH, ZERO_HASH, ZERO_HASH, ORACLE, List.of(), probes, List.of(), ClasspathFixtures.IDENTITY, ClasspathFixtures.RAW_HASH);
         Path expectationFile = temporaryDirectory.resolve("provenance-expectation.json");
         Path baselineFile = temporaryDirectory.resolve("provenance-baseline.json");
         Files.write(expectationFile, McpJsonDefaults.getMapper().writeValueAsBytes(expectation));
@@ -244,7 +244,7 @@ class CorpusQualificationMainTest {
         String sourceHash = AnalysisBenchmarkMain.sha256Tree(fixture.sources());
         String jarHash = AnalysisBenchmarkMain.sha256(fixture.jar());
         List<CorpusProbe> probes = placeholderProbes();
-        CorpusExpectation expectation = new CorpusExpectation(1, VERSION, sourceHash, jarHash, NODE_CALLGRAPH_HASH, NODE_CALLGRAPH, new CompilationUnitCounts(0, 0, 0, 0), new CorpusIndexCounts(0, 0, 0, 0, 0), new CorpusCallgraphCounts(0, 0, 0), ZERO_HASH, ZERO_HASH, ZERO_HASH, ORACLE, List.of(), probes, List.of());
+        CorpusExpectation expectation = new CorpusExpectation(2, VERSION, sourceHash, jarHash, NODE_CALLGRAPH_HASH, NODE_CALLGRAPH, new CompilationUnitCounts(0, 0, 0, 0), new CorpusIndexCounts(0, 0, 0, 0, 0), new CorpusCallgraphCounts(0, 0, 0), ZERO_HASH, ZERO_HASH, ZERO_HASH, ORACLE, List.of(), probes, List.of(), ClasspathFixtures.IDENTITY, ClasspathFixtures.RAW_HASH);
         NodeCorpusBaseline baseline = baseline(sourceHash, jarHash, new CorpusIndexCounts(0, 0, 0, 0, 0), new CorpusCallgraphCounts(0, 0, 0), probes);
         Path expectationFile = temporaryDirectory.resolve("cache-expectation.json");
         Path baselineFile = temporaryDirectory.resolve("cache-baseline.json");
@@ -262,7 +262,7 @@ class CorpusQualificationMainTest {
     @Test
     void writesTypedFailureReportWhenTheHeapIsExhausted() throws Exception {
         Path output = temporaryDirectory.resolve("oom-report");
-        var arguments = new CorpusQualificationMain.Arguments(VERSION, temporaryDirectory.resolve("source"), temporaryDirectory.resolve("client.jar"), temporaryDirectory.resolve("baseline.json"), temporaryDirectory.resolve("expectation.json"), output, temporaryDirectory.resolve("production-cache"), 4);
+        var arguments = new CorpusQualificationMain.Arguments(VERSION, temporaryDirectory.resolve("source"), temporaryDirectory.resolve("client.jar"), temporaryDirectory.resolve("baseline.json"), temporaryDirectory.resolve("expectation.json"), output, temporaryDirectory.resolve("production-cache"), 4, ClasspathFixtures.empty(temporaryDirectory.resolve("dependencies")));
 
         CorpusQualificationMain.writeOutOfMemoryReport(arguments, new OutOfMemoryError("fixture"));
 
@@ -279,7 +279,7 @@ class CorpusQualificationMainTest {
         List<CorpusProbe> placeholderProbes = placeholderProbes();
         String sourceHash = AnalysisBenchmarkMain.sha256Tree(fixture.sources());
         String jarHash = AnalysisBenchmarkMain.sha256(fixture.jar());
-        CorpusExpectation placeholder = new CorpusExpectation(1, VERSION, sourceHash, jarHash, NODE_CALLGRAPH_HASH, NODE_CALLGRAPH, new CompilationUnitCounts(0, 0, 0, 0), new CorpusIndexCounts(0, 0, 0, 0, 0), new CorpusCallgraphCounts(0, 0, 0), ZERO_HASH, ZERO_HASH, ZERO_HASH, ORACLE, List.of(), placeholderProbes, List.of());
+        CorpusExpectation placeholder = new CorpusExpectation(2, VERSION, sourceHash, jarHash, NODE_CALLGRAPH_HASH, NODE_CALLGRAPH, new CompilationUnitCounts(0, 0, 0, 0), new CorpusIndexCounts(0, 0, 0, 0, 0), new CorpusCallgraphCounts(0, 0, 0), ZERO_HASH, ZERO_HASH, ZERO_HASH, ORACLE, List.of(), placeholderProbes, List.of(), ClasspathFixtures.IDENTITY, ClasspathFixtures.RAW_HASH);
         NodeCorpusBaseline placeholderBaseline = baseline(sourceHash, jarHash, new CorpusIndexCounts(0, 0, 0, 0, 0), new CorpusCallgraphCounts(0, 0, 0), placeholderProbes);
         Path expectationFile = temporaryDirectory.resolve("fixture-expectation.json");
         Path baselineFile = temporaryDirectory.resolve("fixture-baseline.json");
@@ -289,7 +289,7 @@ class CorpusQualificationMainTest {
 
         assertThrows(IllegalStateException.class, () -> CorpusQualificationMain.qualify(CorpusQualificationMain.Arguments.parse(arguments(fixture.sources(), fixture.jar(), baselineFile, expectationFile, firstOutput, 1)), () -> 1));
         CorpusQualificationReport observed = readReport(firstOutput);
-        CorpusExpectation reviewed = new CorpusExpectation(1, VERSION, observed.sourceLogicalHash(), observed.remappedJarSha256(), NODE_CALLGRAPH_HASH, NODE_CALLGRAPH, observed.compilationUnits(), observed.indexCounts(), observed.callgraphCounts(), observed.symbolLogicalHash(), observed.callgraphLogicalIdentity(), observed.callgraphLogicalHash(), ORACLE, observed.diagnostics(), observed.probes(), List.of());
+        CorpusExpectation reviewed = new CorpusExpectation(2, VERSION, observed.sourceLogicalHash(), observed.remappedJarSha256(), NODE_CALLGRAPH_HASH, NODE_CALLGRAPH, observed.compilationUnits(), observed.indexCounts(), observed.callgraphCounts(), observed.symbolLogicalHash(), observed.callgraphLogicalIdentity(), observed.callgraphLogicalHash(), ORACLE, observed.diagnostics(), observed.probes(), List.of(), ClasspathFixtures.IDENTITY, ClasspathFixtures.RAW_HASH);
         NodeCorpusBaseline reviewedBaseline = baseline(observed.sourceLogicalHash(), observed.remappedJarSha256(), observed.indexCounts(), observed.callgraphCounts(), observed.probes());
         Files.write(expectationFile, McpJsonDefaults.getMapper().writeValueAsBytes(reviewed));
         Files.write(baselineFile, McpJsonDefaults.getMapper().writeValueAsBytes(reviewedBaseline));
@@ -366,7 +366,7 @@ class CorpusQualificationMainTest {
     }
 
     private static String[] arguments(Path source, Path jar, Path baseline, Path expectation, Path output, Path productionCache, int workers) {
-        return new String[]{"--minecraft-version", VERSION.value(), "--source-root", source.toString(), "--remapped-jar", jar.toString(), "--node-baseline", baseline.toString(), "--expectation", expectation.toString(), "--output-root", output.toString(), "--production-cache-root", productionCache.toString(), "--workers", Integer.toString(workers)};
+        return new String[]{"--minecraft-version", VERSION.value(), "--source-root", source.toString(), "--remapped-jar", jar.toString(), "--node-baseline", baseline.toString(), "--expectation", expectation.toString(), "--output-root", output.toString(), "--production-cache-root", productionCache.toString(), "--workers", Integer.toString(workers), "--classpath-manifest", ClasspathFixtures.empty(jar.getParent().resolve("dependencies")).toString()};
     }
 
     private static CorpusQualificationReport readReport(Path output) throws IOException {

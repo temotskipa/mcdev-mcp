@@ -8,8 +8,11 @@ import java.util.Objects;
 /**
  * Reviewed, immutable qualification contract for one complete Minecraft corpus.
  */
-public record CorpusExpectation(int schemaVersion, MinecraftVersion minecraftVersion, String sourceLogicalHash, String remappedJarSha256, String nodeCallgraphSha256, NodeCallgraphIdentity nodeCallgraphIdentity, CompilationUnitCounts compilationUnits, CorpusIndexCounts indexCounts, CorpusCallgraphCounts callgraphCounts, String symbolLogicalHash, String callgraphLogicalIdentity, String callgraphLogicalHash, NodeOracleIdentity nodeOracleIdentity, List<String> diagnostics, List<CorpusProbe> probes, List<ReviewedNodeDifference> reviewedNodeDifferences) {
+public record CorpusExpectation(int schemaVersion, MinecraftVersion minecraftVersion, String sourceLogicalHash, String remappedJarSha256, String nodeCallgraphSha256, NodeCallgraphIdentity nodeCallgraphIdentity, CompilationUnitCounts compilationUnits, CorpusIndexCounts indexCounts, CorpusCallgraphCounts callgraphCounts, String symbolLogicalHash, String callgraphLogicalIdentity, String callgraphLogicalHash, NodeOracleIdentity nodeOracleIdentity, List<String> diagnostics, List<CorpusProbe> probes, List<ReviewedNodeDifference> reviewedNodeDifferences, String classpathIdentity, String classpathManifestSha256) {
     public CorpusExpectation {
+        if (schemaVersion != 2) throw new IllegalArgumentException("Unsupported corpus expectation schema " + schemaVersion);
+        classpathIdentity = requireSha256(classpathIdentity, "classpathIdentity");
+        classpathManifestSha256 = requireSha256(classpathManifestSha256, "classpathManifestSha256");
         Objects.requireNonNull(minecraftVersion, "minecraftVersion");
         sourceLogicalHash = requireSha256(sourceLogicalHash, "sourceLogicalHash");
         remappedJarSha256 = requireSha256(remappedJarSha256, "remappedJarSha256");

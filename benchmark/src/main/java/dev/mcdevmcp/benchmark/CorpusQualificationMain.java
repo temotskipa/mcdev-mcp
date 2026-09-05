@@ -88,7 +88,7 @@ public final class CorpusQualificationMain {
 
         CorpusQualificationReport report;
         try (MemorySampler memory = new MemorySampler()) {
-            IndexSummary index = new SourceIndexer().build(new IndexRequest(arguments.minecraftVersion(), List.of(new SourceRoot(SourceNamespace.MINECRAFT, Optional.empty(), arguments.sourceRoot())), arguments.remappedJar(), List.of(), database, arguments.workers(), (_, _, _) -> {
+            IndexSummary index = new SourceIndexer().build(new IndexRequest(arguments.minecraftVersion(), List.of(new SourceRoot(SourceNamespace.MINECRAFT, Optional.empty(), arguments.sourceRoot())), arguments.remappedJar(), inputs.classpath().paths(), database, arguments.workers(), (_, _, _) -> {
             }, Cancellation.none()));
             CallgraphSummary graph = new CallgraphScanner().scan(new CallgraphRequest(arguments.minecraftVersion(), arguments.remappedJar(), callgraphBundle, arguments.workers(), (_, _, _) -> {
             }, Cancellation.none()));
@@ -118,7 +118,7 @@ public final class CorpusQualificationMain {
             validateInputsUnchanged(failures, arguments, inputs);
             long postGcHeap = postGcLiveHeapBytes();
             memory.sample();
-            report = new CorpusQualificationReport(1, failures.isEmpty(), failures, arguments.minecraftVersion(), arguments.workers(), inputs.sourceHash(), inputs.jarHash(), symbolHash, callgraphHashes.identity(), callgraphHashes.logicalHash(), unitCounts, evidence.discoveredCompilationUnits(), evidence.parsedCompilationUnits(), evidence.typedCompilationUnits(), evidence.typeFreeCompilationUnits(), evidence.diagnostics(), indexCounts, callgraphCounts, probeEvaluation.probes(), appliedDifferences, memory.peakLiveHeapBytes(), postGcHeap, rssProbe.peakRssBytes(), System.getProperty("os.name"), ProcessPeakMemory.metric());
+            report = new CorpusQualificationReport(2, failures.isEmpty(), failures, arguments.minecraftVersion(), arguments.workers(), inputs.sourceHash(), inputs.jarHash(), symbolHash, callgraphHashes.identity(), callgraphHashes.logicalHash(), unitCounts, evidence.discoveredCompilationUnits(), evidence.parsedCompilationUnits(), evidence.typedCompilationUnits(), evidence.typeFreeCompilationUnits(), evidence.diagnostics(), indexCounts, callgraphCounts, probeEvaluation.probes(), appliedDifferences, memory.peakLiveHeapBytes(), postGcHeap, rssProbe.peakRssBytes(), inputs.classpath().evidence(), System.getProperty("os.name"), ProcessPeakMemory.metric());
         }
 
         writeReport(arguments.outputRoot(), report);
@@ -128,7 +128,7 @@ public final class CorpusQualificationMain {
     }
 
     private static InputSnapshot validateInputs(Arguments arguments, CorpusExpectation expectation, NodeCorpusBaseline baseline) throws Exception {
-        if (expectation.schemaVersion() != 1) {
+        if (expectation.schemaVersion() != 2) {
             throw new IllegalArgumentException("Unsupported corpus expectation schema " + expectation.schemaVersion());
         }
         if (baseline.schemaVersion() != 1) {
@@ -171,7 +171,11 @@ public final class CorpusQualificationMain {
         }
         Path productionCache = canonicalize(arguments.productionCacheRoot());
         rejectOverlap(output, productionCache, "Corpus output must not overlap the production cache");
-        InputSnapshot snapshot = new InputSnapshot(AnalysisBenchmarkMain.sha256Tree(arguments.sourceRoot()), AnalysisBenchmarkMain.sha256(arguments.remappedJar()), AnalysisBenchmarkMain.sha256(arguments.nodeBaseline()), AnalysisBenchmarkMain.sha256(arguments.expectation()));
+        VerifiedCorpusClasspath classpath = CorpusClasspathManifest.verify(arguments.classpathManifest(), arguments.minecraftVersion(), List.of(arguments.outputRoot()));
+        if (!classpath.evidence().identity().equals(expectation.classpathIdentity()) || !classpath.evidence().manifestSha256().equals(expectation.classpathManifestSha256())) {
+            throw new IllegalArgumentException("Corpus expectation classpath identity or manifest SHA-256 mismatch");
+        }
+        InputSnapshot snapshot = new InputSnapshot(AnalysisBenchmarkMain.sha256Tree(arguments.sourceRoot()), AnalysisBenchmarkMain.sha256(arguments.remappedJar()), AnalysisBenchmarkMain.sha256(arguments.nodeBaseline()), AnalysisBenchmarkMain.sha256(arguments.expectation()), classpath);
         if (!baseline.sourceLogicalHash().equals(snapshot.sourceHash())) {
             throw new IllegalArgumentException("Node corpus baseline source logical hash does not match the immutable source input");
         }
@@ -243,6 +247,11 @@ public final class CorpusQualificationMain {
     }
 
     private static void validateInputsUnchanged(List<String> failures, Arguments arguments, InputSnapshot before) throws Exception {
+        try {
+            before.classpath().verifyUnchanged(List.of(arguments.outputRoot()));
+        } catch (IOException | IllegalArgumentException failure) {
+            failures.add("classpath input remained immutable: " + failure.getMessage());
+        }
         compare(failures, "source input remained immutable", before.sourceHash(), AnalysisBenchmarkMain.sha256Tree(arguments.sourceRoot()));
         compare(failures, "remapped JAR remained immutable", before.jarHash(), AnalysisBenchmarkMain.sha256(arguments.remappedJar()));
         compare(failures, "Node baseline remained immutable", before.nodeBaselineHash(), AnalysisBenchmarkMain.sha256(arguments.nodeBaseline()));
@@ -513,7 +522,8 @@ public final class CorpusQualificationMain {
             System.gc();
             String zero = "0".repeat(64);
             long liveHeap = ManagementFactory.getMemoryMXBean().getHeapMemoryUsage().getUsed();
-            CorpusQualificationReport report = new CorpusQualificationReport(1, false, List.of("Java heap exhausted: " + failure.getClass().getSimpleName()), arguments.minecraftVersion(), arguments.workers(), zero, zero, zero, zero, zero, new CompilationUnitCounts(0, 0, 0, 0), List.of(), List.of(), List.of(), List.of(), List.of(), new CorpusIndexCounts(0, 0, 0, 0, 0), new CorpusCallgraphCounts(0, 0, 0), List.of(), List.of(), liveHeap, liveHeap, 0, System.getProperty("os.name"), ProcessMemoryMetric.UNAVAILABLE);
+            CorpusClasspathEvidence classpath = CorpusClasspathManifest.verify(arguments.classpathManifest(), arguments.minecraftVersion(), List.of(arguments.outputRoot())).evidence();
+            CorpusQualificationReport report = new CorpusQualificationReport(2, false, List.of("Java heap exhausted: " + failure.getClass().getSimpleName()), arguments.minecraftVersion(), arguments.workers(), zero, zero, zero, zero, zero, new CompilationUnitCounts(0, 0, 0, 0), List.of(), List.of(), List.of(), List.of(), List.of(), new CorpusIndexCounts(0, 0, 0, 0, 0), new CorpusCallgraphCounts(0, 0, 0), List.of(), List.of(), liveHeap, liveHeap, 0, classpath, System.getProperty("os.name"), ProcessMemoryMetric.UNAVAILABLE);
             writeReport(arguments.outputRoot(), report);
         } catch (Throwable reportFailure) {
             failure.addSuppressed(reportFailure);
@@ -551,10 +561,10 @@ public final class CorpusQualificationMain {
         }
     }
 
-    record Arguments(MinecraftVersion minecraftVersion, Path sourceRoot, Path remappedJar, Path nodeBaseline, Path expectation, Path outputRoot, Path productionCacheRoot, int workers) {
+    record Arguments(MinecraftVersion minecraftVersion, Path sourceRoot, Path remappedJar, Path nodeBaseline, Path expectation, Path outputRoot, Path productionCacheRoot, int workers, Path classpathManifest) {
         static Arguments parse(String[] values) {
             Map<String, String> options = options(values);
-            Set<String> expected = Set.of("--minecraft-version", "--source-root", "--remapped-jar", "--node-baseline", "--expectation", "--output-root", "--production-cache-root", "--workers");
+            Set<String> expected = Set.of("--minecraft-version", "--source-root", "--remapped-jar", "--node-baseline", "--expectation", "--output-root", "--production-cache-root", "--workers", "--classpath-manifest");
             if (!options.keySet().equals(expected)) {
                 throw new IllegalArgumentException("Expected exactly corpus qualification arguments " + expected);
             }
@@ -566,7 +576,7 @@ public final class CorpusQualificationMain {
             if (!SUPPORTED_VERSIONS.contains(version.value())) {
                 throw new IllegalArgumentException("Corpus qualification supports only Minecraft 1.21.11 and 26.1");
             }
-            return new Arguments(version, path(options, "--source-root"), path(options, "--remapped-jar"), path(options, "--node-baseline"), path(options, "--expectation"), path(options, "--output-root"), path(options, "--production-cache-root"), workers);
+            return new Arguments(version, path(options, "--source-root"), path(options, "--remapped-jar"), path(options, "--node-baseline"), path(options, "--expectation"), path(options, "--output-root"), path(options, "--production-cache-root"), workers, path(options, "--classpath-manifest"));
         }
 
         private static Map<String, String> options(String[] values) {
@@ -600,7 +610,7 @@ public final class CorpusQualificationMain {
         long peakRssBytes() throws IOException;
     }
 
-    private record InputSnapshot(String sourceHash, String jarHash, String nodeBaselineHash, String expectationHash) {
+    private record InputSnapshot(String sourceHash, String jarHash, String nodeBaselineHash, String expectationHash, VerifiedCorpusClasspath classpath) {
     }
 
     private record ProbeKey(CorpusProbeKind kind, String key) implements Comparable<ProbeKey> {

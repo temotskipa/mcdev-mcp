@@ -96,6 +96,20 @@ class AnalysisBenchmarkMainTest {
     }
 
     @Test
+    void parentRejectsChildIdentityMismatchAndManifestMutation() throws Exception {
+        Fixture fixture = fixture();
+        IOException mismatch = assertThrows(IOException.class, () -> AnalysisBenchmarkMain.runParent(arguments(fixture, temporaryDirectory.resolve("bad-identity"), fixture.cacheRoot()), command -> {
+            BenchmarkChildMeasurement valid = child(command.phase(), 1, 1, 1);
+            return new BenchmarkChildMeasurement(valid.phase(), valid.units(), valid.elapsedNanos(), valid.peakRssBytes(), valid.gcCollections(), valid.gcTimeMillis(), valid.counts(), valid.runtime(), 2, "0".repeat(64), valid.classpathManifestSha256());
+        }));
+        assertTrue(mismatch.getMessage().contains("classpath identity"));
+        assertThrows(IllegalArgumentException.class, () -> AnalysisBenchmarkMain.runParent(arguments(fixture, temporaryDirectory.resolve("mutated-manifest"), fixture.cacheRoot()), command -> {
+            Files.writeString(command.classpathManifest(), Files.readString(command.classpathManifest()) + "\n");
+            return child(command.phase(), 1, 1, 1);
+        }));
+    }
+
+    @Test
     void calculatesEveryMedianIndependentlyAndRejectsChangingCounts() {
         BenchmarkWorkCounts indexCounts = indexCounts();
         BenchmarkWorkCounts callgraphCounts = callgraphCounts();
@@ -129,7 +143,7 @@ class AnalysisBenchmarkMainTest {
     @Test
     void childCommandCarriesEveryTypedPhaseArgumentAndReportsPhaseFailure() throws Exception {
         Fixture fixture = fixture();
-        AnalysisBenchmarkMain.ChildCommand command = new AnalysisBenchmarkMain.ChildCommand(javaExecutable(), System.getProperty("java.class.path"), new MinecraftVersion("1.21.11"), fixture.sourceRoot(), fixture.remappedJar(), temporaryDirectory.resolve("child-output"), fixture.cacheRoot(), 2, BenchmarkPhase.INDEX, BenchmarkGarbageCollector.G1);
+        AnalysisBenchmarkMain.ChildCommand command = new AnalysisBenchmarkMain.ChildCommand(javaExecutable(), System.getProperty("java.class.path"), new MinecraftVersion("1.21.11"), fixture.sourceRoot(), fixture.remappedJar(), temporaryDirectory.resolve("child-output"), fixture.cacheRoot(), 2, BenchmarkPhase.INDEX, BenchmarkGarbageCollector.G1, ClasspathFixtures.empty(fixture.cacheRoot().resolve("dependencies")), ClasspathFixtures.IDENTITY, ClasspathFixtures.RAW_HASH);
         List<String> processCommand = command.asProcessCommand();
         assertEquals(javaExecutable().toString(), processCommand.getFirst());
         assertTrue(processCommand.contains("--child"));
@@ -141,7 +155,7 @@ class AnalysisBenchmarkMainTest {
         assertTrue(processCommand.contains(fixture.remappedJar().toString()));
         assertTrue(processCommand.contains(fixture.cacheRoot().toString()));
 
-        AnalysisBenchmarkMain.ChildCommand failing = new AnalysisBenchmarkMain.ChildCommand(javaExecutable(), System.getProperty("java.class.path"), new MinecraftVersion("1.21.11"), fixture.sourceRoot().resolve("missing"), fixture.remappedJar(), temporaryDirectory.resolve("failed-child-output"), fixture.cacheRoot(), 1, BenchmarkPhase.INDEX, BenchmarkGarbageCollector.G1);
+        AnalysisBenchmarkMain.ChildCommand failing = new AnalysisBenchmarkMain.ChildCommand(javaExecutable(), System.getProperty("java.class.path"), new MinecraftVersion("1.21.11"), fixture.sourceRoot().resolve("missing"), fixture.remappedJar(), temporaryDirectory.resolve("failed-child-output"), fixture.cacheRoot(), 1, BenchmarkPhase.INDEX, BenchmarkGarbageCollector.G1, ClasspathFixtures.empty(fixture.cacheRoot().resolve("dependencies")), ClasspathFixtures.IDENTITY, ClasspathFixtures.RAW_HASH);
         IOException failure = assertThrows(IOException.class, () -> new AnalysisBenchmarkMain.JvmChildProcessRunner(Duration.ofSeconds(30)).run(failing));
         assertTrue(failure.getMessage().contains("failed for INDEX"));
         assertTrue(failure.getMessage().contains("exit"));
@@ -173,8 +187,8 @@ class AnalysisBenchmarkMainTest {
         Files.createDirectories(indexOutput);
         Files.createDirectories(graphOutput);
 
-        BenchmarkWorkCounts index = AnalysisBenchmarkMain.runIndex(new AnalysisBenchmarkMain.ChildArguments(new MinecraftVersion("1.21.11"), fixture.sourceRoot(), fixture.remappedJar(), indexOutput, fixture.cacheRoot(), 1, BenchmarkPhase.INDEX));
-        BenchmarkWorkCounts callgraph = AnalysisBenchmarkMain.runCallgraph(new AnalysisBenchmarkMain.ChildArguments(new MinecraftVersion("1.21.11"), fixture.sourceRoot(), fixture.remappedJar(), graphOutput, fixture.cacheRoot(), 1, BenchmarkPhase.CALLGRAPH));
+        BenchmarkWorkCounts index = AnalysisBenchmarkMain.runIndex(new AnalysisBenchmarkMain.ChildArguments(new MinecraftVersion("1.21.11"), fixture.sourceRoot(), fixture.remappedJar(), indexOutput, fixture.cacheRoot(), 1, BenchmarkPhase.INDEX, ClasspathFixtures.empty(fixture.cacheRoot().resolve("dependencies")), ClasspathFixtures.IDENTITY, ClasspathFixtures.RAW_HASH));
+        BenchmarkWorkCounts callgraph = AnalysisBenchmarkMain.runCallgraph(new AnalysisBenchmarkMain.ChildArguments(new MinecraftVersion("1.21.11"), fixture.sourceRoot(), fixture.remappedJar(), graphOutput, fixture.cacheRoot(), 1, BenchmarkPhase.CALLGRAPH, ClasspathFixtures.empty(fixture.cacheRoot().resolve("dependencies")), ClasspathFixtures.IDENTITY, ClasspathFixtures.RAW_HASH));
 
         assertEquals(1, index.indexTypes());
         assertTrue(index.indexMethods() >= 2);
@@ -217,7 +231,7 @@ class AnalysisBenchmarkMainTest {
     }
 
     private static AnalysisBenchmarkMain.Arguments arguments(Fixture fixture, Path output, Path productionCache) {
-        return new AnalysisBenchmarkMain.Arguments(new MinecraftVersion("1.21.11"), fixture.sourceRoot(), fixture.remappedJar(), fixture.remappedJar(), output, productionCache, 1, "machine-a", "run-42", BenchmarkGarbageCollector.G1);
+        return new AnalysisBenchmarkMain.Arguments(new MinecraftVersion("1.21.11"), fixture.sourceRoot(), fixture.remappedJar(), fixture.remappedJar(), output, productionCache, 1, "machine-a", "run-42", BenchmarkGarbageCollector.G1, ClasspathFixtures.empty(fixture.cacheRoot().resolve("dependencies")));
     }
 
     private static BenchmarkChildMeasurement child(BenchmarkPhase phase, long elapsedSeconds, long rss, long gcCollections) {
@@ -226,7 +240,7 @@ class AnalysisBenchmarkMainTest {
 
     private static BenchmarkChildMeasurement child(BenchmarkPhase phase, long elapsedSeconds, long rss, long gcCollections, BenchmarkRuntimeMetadata runtime) {
         BenchmarkWorkCounts counts = phase == BenchmarkPhase.INDEX ? indexCounts() : callgraphCounts();
-        return new BenchmarkChildMeasurement(phase, counts.units(), elapsedSeconds * 1_000_000_000L, rss, gcCollections, gcCollections * 10, counts, runtime);
+        return new BenchmarkChildMeasurement(phase, counts.units(), elapsedSeconds * 1_000_000_000L, rss, gcCollections, gcCollections * 10, counts, runtime, 2, ClasspathFixtures.IDENTITY, ClasspathFixtures.RAW_HASH);
     }
 
     private static BenchmarkMeasurement measurement(long indexNanos, long callgraphNanos, long indexRss, long callgraphRss, long gc, BenchmarkWorkCounts indexCounts, BenchmarkWorkCounts callgraphCounts) {

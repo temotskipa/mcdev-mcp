@@ -7,8 +7,10 @@ import java.util.Objects;
 /**
  * Persisted same-runner benchmark evidence.
  */
-public record BenchmarkReport(int schemaVersion, String runId, String machineId, Instant createdAt, String sourceRootSha256, String remappedJarSha256, String serverJarSha256, BenchmarkRuntimeMetadata runtime, BenchmarkResult result, BenchmarkMedians medians, List<BenchmarkMeasurement> measurements) {
+public record BenchmarkReport(int schemaVersion, String runId, String machineId, Instant createdAt, String sourceRootSha256, String remappedJarSha256, String serverJarSha256, BenchmarkRuntimeMetadata runtime, BenchmarkResult result, BenchmarkMedians medians, List<BenchmarkMeasurement> measurements, CorpusClasspathEvidence classpath) {
     public BenchmarkReport {
+        if (schemaVersion != 2) throw new IllegalArgumentException("Unsupported benchmark report schema " + schemaVersion);
+        Objects.requireNonNull(classpath, "classpath");
         runId = requireText(runId, "runId");
         machineId = requireText(machineId, "machineId");
         Objects.requireNonNull(createdAt, "createdAt");

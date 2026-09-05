@@ -59,6 +59,7 @@ public final class AnalysisBenchmarkMain {
         Objects.requireNonNull(arguments, "arguments");
         Objects.requireNonNull(processRunner, "processRunner");
         ValidatedPaths paths = validatePaths(arguments);
+        VerifiedCorpusClasspath classpath = CorpusClasspathManifest.verify(arguments.classpathManifest(), arguments.minecraftVersion(), List.of(paths.outputRoot()));
         Files.createDirectories(paths.outputRoot());
 
         String sourceHash = sha256Tree(paths.sourceRoot());
@@ -71,8 +72,8 @@ public final class AnalysisBenchmarkMain {
             Path sequenceRoot = paths.outputRoot().resolve(measured ? "measured-" + sequence : "warmup");
             deleteTree(sequenceRoot);
             Files.createDirectories(sequenceRoot);
-            BenchmarkChildMeasurement index = processRunner.run(childCommand(arguments, paths, BenchmarkPhase.INDEX, sequenceRoot.resolve("index")));
-            BenchmarkChildMeasurement callgraph = processRunner.run(childCommand(arguments, paths, BenchmarkPhase.CALLGRAPH, sequenceRoot.resolve("callgraph")));
+            BenchmarkChildMeasurement index = runVerifiedChild(processRunner, childCommand(arguments, paths, classpath, BenchmarkPhase.INDEX, sequenceRoot.resolve("index")), classpath, paths.outputRoot());
+            BenchmarkChildMeasurement callgraph = runVerifiedChild(processRunner, childCommand(arguments, paths, classpath, BenchmarkPhase.CALLGRAPH, sequenceRoot.resolve("callgraph")), classpath, paths.outputRoot());
             if (index.phase() != BenchmarkPhase.INDEX || callgraph.phase() != BenchmarkPhase.CALLGRAPH) {
                 throw new IOException("Benchmark child returned a result for the wrong phase");
             }
@@ -96,35 +97,56 @@ public final class AnalysisBenchmarkMain {
         BenchmarkMedians medians = BenchmarkMedians.of(measurements);
         BenchmarkRuntimeMetadata runtime = Objects.requireNonNull(measuredRuntime, "measuredRuntime");
         BenchmarkResult result = new BenchmarkResult(runtime.javaFeature(), runtime.vendor(), runtime.vmFlags(), medians.indexClassesPerSecond(), medians.callEdgesPerSecond(), medians.indexPeakRssBytes(), medians.callgraphPeakRssBytes());
-        BenchmarkReport report = new BenchmarkReport(1, arguments.runId(), arguments.machineId(), Instant.now(), sourceHash, jarHash, serverJarHash, runtime, result, medians, List.copyOf(measurements));
+        BenchmarkReport report = new BenchmarkReport(2, arguments.runId(), arguments.machineId(), Instant.now(), sourceHash, jarHash, serverJarHash, runtime, result, medians, List.copyOf(measurements), classpath.evidence());
         Path reportPath = paths.outputRoot().resolve("benchmark-" + safeFileComponent(arguments.runId()) + ".json");
         Files.write(reportPath, McpJsonDefaults.getMapper().writeValueAsBytes(report));
         return report;
     }
 
-    private static ChildCommand childCommand(Arguments arguments, ValidatedPaths paths, BenchmarkPhase phase, Path childOutput) {
-        return new ChildCommand(currentJavaExecutable(), System.getProperty("java.class.path"), arguments.minecraftVersion(), paths.sourceRoot(), paths.remappedJar(), childOutput, paths.productionCacheRoot(), arguments.workers(), phase, arguments.garbageCollector());
+    private static BenchmarkChildMeasurement runVerifiedChild(ChildProcessRunner runner, ChildCommand command, VerifiedCorpusClasspath classpath, Path outputRoot) throws Exception {
+        classpath.verifyUnchanged(List.of(outputRoot));
+        BenchmarkChildMeasurement result = runner.run(command);
+        classpath.verifyUnchanged(List.of(outputRoot));
+        if (!classpath.evidence().identity().equals(result.classpathIdentity()) || !classpath.evidence().manifestSha256().equals(result.classpathManifestSha256())) {
+            throw new IOException("Benchmark child classpath identity or manifest SHA-256 mismatch");
+        }
+        return result;
+    }
+
+    private static ChildCommand childCommand(Arguments arguments, ValidatedPaths paths, VerifiedCorpusClasspath classpath, BenchmarkPhase phase, Path childOutput) {
+        return new ChildCommand(currentJavaExecutable(), System.getProperty("java.class.path"), arguments.minecraftVersion(), paths.sourceRoot(), paths.remappedJar(), childOutput, paths.productionCacheRoot(), arguments.workers(), phase, arguments.garbageCollector(), classpath.manifestPath(), classpath.evidence().identity(), classpath.evidence().manifestSha256());
     }
 
     private static void runChild(ChildArguments arguments) throws Exception {
         validateChildPaths(arguments);
+        VerifiedCorpusClasspath classpath = CorpusClasspathManifest.verify(arguments.classpathManifest(), arguments.minecraftVersion(), List.of(arguments.outputRoot()));
+        if (!classpath.evidence().identity().equals(arguments.classpathIdentity()) || !classpath.evidence().manifestSha256().equals(arguments.classpathManifestSha256())) {
+            throw new IOException("Benchmark child classpath identity or manifest SHA-256 mismatch");
+        }
         Files.createDirectories(arguments.outputRoot());
         forceGarbageCollection();
         GcSnapshot before = GcSnapshot.current();
         long started = System.nanoTime();
         BenchmarkWorkCounts counts = switch (arguments.phase()) {
-            case INDEX -> runIndex(arguments);
+            case INDEX -> runIndex(arguments, classpath.paths());
             case CALLGRAPH -> runCallgraph(arguments);
         };
         long elapsedNanos = System.nanoTime() - started;
         GcSnapshot after = GcSnapshot.current();
-        BenchmarkChildMeasurement result = new BenchmarkChildMeasurement(arguments.phase(), counts.units(), elapsedNanos, peakRssBytes(), Math.subtractExact(after.collections(), before.collections()), Math.subtractExact(after.collectionTimeMillis(), before.collectionTimeMillis()), counts, BenchmarkRuntimeMetadata.current());
+        long peakRss = peakRssBytes();
+        classpath.verifyUnchanged(List.of(arguments.outputRoot()));
+        BenchmarkChildMeasurement result = new BenchmarkChildMeasurement(arguments.phase(), counts.units(), elapsedNanos, peakRss, Math.subtractExact(after.collections(), before.collections()), Math.subtractExact(after.collectionTimeMillis(), before.collectionTimeMillis()), counts, BenchmarkRuntimeMetadata.current(), 2, classpath.evidence().identity(), classpath.evidence().manifestSha256());
         System.out.write(McpJsonDefaults.getMapper().writeValueAsBytes(result));
         System.out.write('\n');
     }
 
     static BenchmarkWorkCounts runIndex(ChildArguments arguments) throws Exception {
-        IndexSummary summary = new SourceIndexer().build(new IndexRequest(arguments.minecraftVersion(), List.of(new SourceRoot(SourceNamespace.MINECRAFT, Optional.empty(), arguments.sourceRoot())), arguments.remappedJar(), List.of(), arguments.outputRoot().resolve("symbols.mv.db"), arguments.workers(), SILENT_PROGRESS, Cancellation.none()));
+        VerifiedCorpusClasspath classpath = CorpusClasspathManifest.verify(arguments.classpathManifest(), arguments.minecraftVersion(), List.of(arguments.outputRoot()));
+        return runIndex(arguments, classpath.paths());
+    }
+
+    private static BenchmarkWorkCounts runIndex(ChildArguments arguments, List<Path> classpath) throws Exception {
+        IndexSummary summary = new SourceIndexer().build(new IndexRequest(arguments.minecraftVersion(), List.of(new SourceRoot(SourceNamespace.MINECRAFT, Optional.empty(), arguments.sourceRoot())), arguments.remappedJar(), classpath, arguments.outputRoot().resolve("symbols.mv.db"), arguments.workers(), SILENT_PROGRESS, Cancellation.none()));
         return new BenchmarkWorkCounts(summary.types(), summary.packages(), summary.types(), summary.fields(), summary.methods(), summary.parameters(), 0, 0, 0);
     }
 
@@ -340,7 +362,7 @@ public final class AnalysisBenchmarkMain {
         }
     }
 
-    record ChildCommand(Path javaExecutable, String classpath, MinecraftVersion minecraftVersion, Path sourceRoot, Path remappedJar, Path outputRoot, Path productionCacheRoot, int workers, BenchmarkPhase phase, BenchmarkGarbageCollector garbageCollector) {
+    record ChildCommand(Path javaExecutable, String classpath, MinecraftVersion minecraftVersion, Path sourceRoot, Path remappedJar, Path outputRoot, Path productionCacheRoot, int workers, BenchmarkPhase phase, BenchmarkGarbageCollector garbageCollector, Path classpathManifest, String classpathIdentity, String classpathManifestSha256) {
         ChildCommand {
             Objects.requireNonNull(javaExecutable, "javaExecutable");
             Objects.requireNonNull(classpath, "classpath");
@@ -357,11 +379,11 @@ public final class AnalysisBenchmarkMain {
         }
 
         List<String> asProcessCommand() {
-            return List.of(javaExecutable.toString(), "-Xmx4g", garbageCollector.jvmFlag(), "-cp", classpath, AnalysisBenchmarkMain.class.getName(), CHILD_COMMAND, "--minecraft-version", minecraftVersion.value(), "--source-root", sourceRoot.toString(), "--remapped-jar", remappedJar.toString(), "--output-root", outputRoot.toString(), "--production-cache-root", productionCacheRoot.toString(), "--workers", Integer.toString(workers), "--phase", phase.name());
+            return List.of(javaExecutable.toString(), "-Xmx4g", garbageCollector.jvmFlag(), "-cp", classpath, AnalysisBenchmarkMain.class.getName(), CHILD_COMMAND, "--minecraft-version", minecraftVersion.value(), "--source-root", sourceRoot.toString(), "--remapped-jar", remappedJar.toString(), "--output-root", outputRoot.toString(), "--production-cache-root", productionCacheRoot.toString(), "--workers", Integer.toString(workers), "--phase", phase.name(), "--classpath-manifest", classpathManifest.toString(), "--classpath-identity", classpathIdentity, "--classpath-manifest-sha256", classpathManifestSha256);
         }
     }
 
-    record Arguments(MinecraftVersion minecraftVersion, Path sourceRoot, Path remappedJar, Path serverJar, Path outputRoot, Path productionCacheRoot, int workers, String machineId, String runId, BenchmarkGarbageCollector garbageCollector) {
+    record Arguments(MinecraftVersion minecraftVersion, Path sourceRoot, Path remappedJar, Path serverJar, Path outputRoot, Path productionCacheRoot, int workers, String machineId, String runId, BenchmarkGarbageCollector garbageCollector, Path classpathManifest) {
         Arguments {
             Objects.requireNonNull(minecraftVersion, "minecraftVersion");
             sourceRoot = normalize(sourceRoot, "sourceRoot");
@@ -379,16 +401,16 @@ public final class AnalysisBenchmarkMain {
 
         static Arguments parse(String[] values) {
             Options options = Options.parse(values, "benchmark");
-            options.requireOnly("--minecraft-version", "--source-root", "--remapped-jar", "--server-jar", "--output-root", "--production-cache-root", "--workers", "--machine-id", "--run-id", "--gc");
-            return new Arguments(new MinecraftVersion(options.required("--minecraft-version")), Path.of(options.required("--source-root")), Path.of(options.required("--remapped-jar")), Path.of(options.required("--server-jar")), Path.of(options.required("--output-root")), Path.of(options.required("--production-cache-root")), positiveWorkers(options.required("--workers")), options.required("--machine-id"), options.required("--run-id"), BenchmarkGarbageCollector.valueOf(options.required("--gc")));
+            options.requireOnly("--minecraft-version", "--source-root", "--remapped-jar", "--server-jar", "--output-root", "--production-cache-root", "--workers", "--machine-id", "--run-id", "--gc", "--classpath-manifest");
+            return new Arguments(new MinecraftVersion(options.required("--minecraft-version")), Path.of(options.required("--source-root")), Path.of(options.required("--remapped-jar")), Path.of(options.required("--server-jar")), Path.of(options.required("--output-root")), Path.of(options.required("--production-cache-root")), positiveWorkers(options.required("--workers")), options.required("--machine-id"), options.required("--run-id"), BenchmarkGarbageCollector.valueOf(options.required("--gc")), Path.of(options.required("--classpath-manifest")));
         }
     }
 
-    record ChildArguments(MinecraftVersion minecraftVersion, Path sourceRoot, Path remappedJar, Path outputRoot, Path productionCacheRoot, int workers, BenchmarkPhase phase) {
+    record ChildArguments(MinecraftVersion minecraftVersion, Path sourceRoot, Path remappedJar, Path outputRoot, Path productionCacheRoot, int workers, BenchmarkPhase phase, Path classpathManifest, String classpathIdentity, String classpathManifestSha256) {
         private static ChildArguments parse(String[] values) {
             Options options = Options.parse(values, "benchmark child");
-            options.requireOnly("--minecraft-version", "--source-root", "--remapped-jar", "--output-root", "--production-cache-root", "--workers", "--phase");
-            return new ChildArguments(new MinecraftVersion(options.required("--minecraft-version")), Path.of(options.required("--source-root")).toAbsolutePath().normalize(), Path.of(options.required("--remapped-jar")).toAbsolutePath().normalize(), Path.of(options.required("--output-root")).toAbsolutePath().normalize(), Path.of(options.required("--production-cache-root")).toAbsolutePath().normalize(), positiveWorkers(options.required("--workers")), BenchmarkPhase.valueOf(options.required("--phase")));
+            options.requireOnly("--minecraft-version", "--source-root", "--remapped-jar", "--output-root", "--production-cache-root", "--workers", "--phase", "--classpath-manifest", "--classpath-identity", "--classpath-manifest-sha256");
+            return new ChildArguments(new MinecraftVersion(options.required("--minecraft-version")), Path.of(options.required("--source-root")).toAbsolutePath().normalize(), Path.of(options.required("--remapped-jar")).toAbsolutePath().normalize(), Path.of(options.required("--output-root")).toAbsolutePath().normalize(), Path.of(options.required("--production-cache-root")).toAbsolutePath().normalize(), positiveWorkers(options.required("--workers")), BenchmarkPhase.valueOf(options.required("--phase")), Path.of(options.required("--classpath-manifest")), options.required("--classpath-identity"), options.required("--classpath-manifest-sha256"));
         }
     }
 

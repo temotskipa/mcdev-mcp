@@ -8,8 +8,10 @@ import java.util.Objects;
 /**
  * Complete machine-readable result emitted before qualification mismatch failure.
  */
-public record CorpusQualificationReport(int schemaVersion, boolean qualified, List<String> failures, MinecraftVersion minecraftVersion, int workers, String sourceLogicalHash, String remappedJarSha256, String symbolLogicalHash, String callgraphLogicalIdentity, String callgraphLogicalHash, CompilationUnitCounts compilationUnits, List<String> discoveredCompilationUnits, List<String> parsedCompilationUnits, List<String> typedCompilationUnits, List<String> typeFreeCompilationUnits, List<String> diagnostics, CorpusIndexCounts indexCounts, CorpusCallgraphCounts callgraphCounts, List<CorpusProbe> probes, List<ReviewedNodeDifference> appliedNodeDifferences, long peakLiveHeapBytes, long postGcLiveHeapBytes, long peakRssBytes, String osName, ProcessMemoryMetric memoryMetric) {
+public record CorpusQualificationReport(int schemaVersion, boolean qualified, List<String> failures, MinecraftVersion minecraftVersion, int workers, String sourceLogicalHash, String remappedJarSha256, String symbolLogicalHash, String callgraphLogicalIdentity, String callgraphLogicalHash, CompilationUnitCounts compilationUnits, List<String> discoveredCompilationUnits, List<String> parsedCompilationUnits, List<String> typedCompilationUnits, List<String> typeFreeCompilationUnits, List<String> diagnostics, CorpusIndexCounts indexCounts, CorpusCallgraphCounts callgraphCounts, List<CorpusProbe> probes, List<ReviewedNodeDifference> appliedNodeDifferences, long peakLiveHeapBytes, long postGcLiveHeapBytes, long peakRssBytes, CorpusClasspathEvidence classpath, String osName, ProcessMemoryMetric memoryMetric) {
     public CorpusQualificationReport {
+        if (schemaVersion != 2) throw new IllegalArgumentException("Unsupported corpus qualification report schema " + schemaVersion);
+        Objects.requireNonNull(classpath, "classpath");
         failures = copy(failures, "failures");
         Objects.requireNonNull(minecraftVersion, "minecraftVersion");
         Objects.requireNonNull(osName, "osName");
