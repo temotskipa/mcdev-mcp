@@ -14,7 +14,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.Lock;
 
-public final value class BundleLock implements AutoCloseable {
+public final class BundleLock implements AutoCloseable {
     private static final Map<Path, BundleLockState> LOCKS = new ConcurrentHashMap<>();
     private static final Duration RETRY_DELAY = Duration.ofMillis(25);
     private static final Duration MAX_MILLISECONDS = Duration.ofMillis(Long.MAX_VALUE);

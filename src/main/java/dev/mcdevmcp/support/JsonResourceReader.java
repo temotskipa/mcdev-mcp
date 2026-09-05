@@ -7,7 +7,7 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.Objects;
 
-public final value class JsonResourceReader {
+public final class JsonResourceReader {
     private final McpJsonMapper mapper;
 
     public JsonResourceReader(McpJsonMapper mapper) {

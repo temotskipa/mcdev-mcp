@@ -10,10 +10,10 @@ import java.time.Duration;
 @JsonSubTypes({@JsonSubTypes.Type(value = RecordInterval.Frame.class, name = "frame"), @JsonSubTypes.Type(value = RecordInterval.Fixed.class, name = "fixed")})
 sealed interface RecordInterval permits RecordInterval.Frame, RecordInterval.Fixed {
 
-    value record Frame() implements RecordInterval {
+    record Frame() implements RecordInterval {
     }
 
-    value record Fixed(@InputProperty(required = true, minimum = "0.001") Duration intervalSeconds) implements RecordInterval {
+    record Fixed(@InputProperty(required = true, minimum = "0.001") Duration intervalSeconds) implements RecordInterval {
         public Fixed {
             if (intervalSeconds == null || intervalSeconds.isZero() || intervalSeconds.isNegative()) {
                 throw new IllegalArgumentException("intervalSeconds must be at least 0.001 seconds");

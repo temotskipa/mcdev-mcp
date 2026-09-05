@@ -6,7 +6,7 @@ import java.util.Objects;
 /**
  * Stable accounting evidence emitted by the Javac indexing pipeline.
  */
-public value record IndexBuildEvidence(List<String> discoveredCompilationUnits, List<String> parsedCompilationUnits, List<String> typedCompilationUnits, List<String> typeFreeCompilationUnits, List<String> diagnostics) {
+public record IndexBuildEvidence(List<String> discoveredCompilationUnits, List<String> parsedCompilationUnits, List<String> typedCompilationUnits, List<String> typeFreeCompilationUnits, List<String> diagnostics) {
     public IndexBuildEvidence {
         discoveredCompilationUnits = stable(discoveredCompilationUnits, "discoveredCompilationUnits");
         parsedCompilationUnits = stable(parsedCompilationUnits, "parsedCompilationUnits");

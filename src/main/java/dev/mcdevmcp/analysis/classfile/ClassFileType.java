@@ -7,7 +7,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 
-public value record ClassFileType(ClassDesc descriptor, Optional<ClassDesc> superclass, List<ClassDesc> interfaces, Set<AccessFlag> accessFlags, Optional<ClassDesc> outerClass, Optional<String> innerName, Optional<ClassDesc> nestHost, List<ClassDesc> nestMembers) {
+public record ClassFileType(ClassDesc descriptor, Optional<ClassDesc> superclass, List<ClassDesc> interfaces, Set<AccessFlag> accessFlags, Optional<ClassDesc> outerClass, Optional<String> innerName, Optional<ClassDesc> nestHost, List<ClassDesc> nestMembers) {
     public ClassFileType {
         Objects.requireNonNull(descriptor, "descriptor");
         superclass = Optional.ofNullable(superclass).orElseThrow(() -> new NullPointerException("superclass"));

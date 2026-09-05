@@ -3,7 +3,7 @@ package dev.mcdevmcp.mcp.resource;
 import java.net.URI;
 import java.util.Objects;
 
-public value record ResourceDefinition(URI uri, String name, String title, String description, String mimeType, String classpathResource) {
+public record ResourceDefinition(URI uri, String name, String title, String description, String mimeType, String classpathResource) {
     public ResourceDefinition {
         Objects.requireNonNull(uri, "Resource URI");
         if (!uri.isAbsolute()) {

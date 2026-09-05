@@ -5,8 +5,7 @@ import java.lang.constant.MethodTypeDesc;
 import java.util.List;
 import java.util.Optional;
 
-value record IndexedMethodSnapshot(long id, long typeId, int ordinal, String name, MethodTypeDesc descriptor,
-        Optional<String> returnType, List<Modifier> modifiers, boolean constructor, SourceRange range) {
+record IndexedMethodSnapshot(long id, long typeId, int ordinal, String name, MethodTypeDesc descriptor, Optional<String> returnType, List<Modifier> modifiers, boolean constructor, SourceRange range) {
     IndexedMethodSnapshot {
         modifiers = List.copyOf(modifiers);
     }

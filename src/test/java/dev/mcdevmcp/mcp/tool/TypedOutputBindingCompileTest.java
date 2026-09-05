@@ -67,7 +67,7 @@ class TypedOutputBindingCompileTest {
         JavaCompiler compiler = Objects.requireNonNull(ToolProvider.getSystemJavaCompiler(), "JDK compiler is required for fixture compilation");
         Path classes = Files.createDirectories(temporaryDirectory.resolve(source.getFileName().toString() + ".classes"));
         DiagnosticCollector<JavaFileObject> diagnostics = new DiagnosticCollector<>();
-        List<String> options = List.of("--enable-preview", "--release", Integer.toString(Runtime.version().feature()), "-Xlint:all,-preview", "-Werror", "-proc:none", "-classpath", Objects.requireNonNull(System.getProperty("java.class.path"), "test classpath"), "-d", classes.toString());
+        List<String> options = List.of("--release", Integer.toString(Runtime.version().feature()), "-Xlint:all", "-Werror", "-proc:none", "-classpath", Objects.requireNonNull(System.getProperty("java.class.path"), "test classpath"), "-d", classes.toString());
         try (StandardJavaFileManager fileManager = compiler.getStandardFileManager(diagnostics, Locale.ROOT, StandardCharsets.UTF_8)) {
             Iterable<? extends JavaFileObject> units = fileManager.getJavaFileObjects(source.toFile());
             boolean success = Boolean.TRUE.equals(compiler.getTask(null, fileManager, diagnostics, options, null, units).call());

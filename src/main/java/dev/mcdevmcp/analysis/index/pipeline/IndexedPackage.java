@@ -5,5 +5,5 @@ import dev.mcdevmcp.storage.model.SourceNamespace;
 
 import java.util.Optional;
 
-value record IndexedPackage(long id, SourceNamespace namespace, Optional<FabricApiVersion> fabricApiVersion, String name) {
+record IndexedPackage(long id, SourceNamespace namespace, Optional<FabricApiVersion> fabricApiVersion, String name) {
 }

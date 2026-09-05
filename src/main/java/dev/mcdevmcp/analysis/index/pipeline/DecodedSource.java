@@ -7,7 +7,7 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Objects;
 
-value record DecodedSource(SourceRoot root, Path absolutePath, Path relativePath, String relativeName, String content, URI uri, String packageName, List<String> topLevelNames) implements Comparable<DecodedSource> {
+record DecodedSource(SourceRoot root, Path absolutePath, Path relativePath, String relativeName, String content, URI uri, String packageName, List<String> topLevelNames) implements Comparable<DecodedSource> {
     DecodedSource {
         Objects.requireNonNull(root, "root");
         absolutePath = Objects.requireNonNull(absolutePath, "absolutePath").toAbsolutePath().normalize();

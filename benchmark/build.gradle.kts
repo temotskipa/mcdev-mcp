@@ -2,9 +2,9 @@ plugins {
     `java-library`
 }
 
-val testJavaFeature = providers.gradleProperty("testJavaVersion").orElse("28").map { configuredVersion ->
+val testJavaFeature = providers.gradleProperty("testJavaVersion").orElse("26").map { configuredVersion ->
     configuredVersion.toInt().also { feature ->
-        require(feature == 28) { "The Valhalla experiment requires testJavaVersion 28, got $feature" }
+        require(feature == 26) { "Java 26 is required for testJavaVersion, got $feature" }
     }
 }
 val testJavaLauncher = javaToolchains.launcherFor {
@@ -13,7 +13,7 @@ val testJavaLauncher = javaToolchains.launcherFor {
 
 java {
     toolchain {
-        languageVersion.set(JavaLanguageVersion.of(28))
+        languageVersion.set(JavaLanguageVersion.of(26))
     }
 }
 
@@ -29,15 +29,14 @@ dependencies {
 }
 
 tasks.withType<JavaCompile>().configureEach {
-    options.release.set(28)
+    options.release.set(26)
     options.encoding = "UTF-8"
-    options.compilerArgs.addAll(listOf("--enable-preview", "-Xlint:all,-preview", "-Werror"))
+    options.compilerArgs.addAll(listOf("-Xlint:all", "-Werror"))
 }
 
 tasks.withType<Test>().configureEach {
     useJUnitPlatform()
     javaLauncher.set(testJavaLauncher)
-    jvmArgs("--enable-preview")
     filter.isFailOnNoMatchingTests = false
 }
 

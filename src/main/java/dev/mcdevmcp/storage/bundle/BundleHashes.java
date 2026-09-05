@@ -11,7 +11,7 @@ import java.security.NoSuchAlgorithmException;
 import java.util.HexFormat;
 import java.util.Objects;
 
-public final value class BundleHashes {
+public final class BundleHashes {
     private BundleHashes() {
     }
 

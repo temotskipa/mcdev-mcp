@@ -5,7 +5,7 @@ import java.time.Instant;
 import java.util.Map;
 import java.util.Objects;
 
-value record ScriptLogWireEntry(String timestamp, boolean success, String code, boolean resultPresent, Object result, String output, String error, long duration_ms) {
+record ScriptLogWireEntry(String timestamp, boolean success, String code, boolean resultPresent, Object result, String output, String error, long duration_ms) {
     ScriptLogger.ScriptLogEntry toDomain() {
         return new ScriptLogger.ScriptLogEntry(Instant.parse(timestamp), success, code, resultPresent, result, output, error, Duration.ofMillis(duration_ms));
     }

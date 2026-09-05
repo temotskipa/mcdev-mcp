@@ -3,9 +3,9 @@ plugins {
     id("org.gradlex.extra-java-module-info") version "1.14.2"
 }
 
-val testJavaFeature = providers.gradleProperty("testJavaVersion").orElse("28").map { configuredVersion ->
+val testJavaFeature = providers.gradleProperty("testJavaVersion").orElse("26").map { configuredVersion ->
     configuredVersion.toInt().also { feature ->
-        require(feature == 28) { "The Valhalla experiment requires testJavaVersion 28, got $feature" }
+        require(feature == 26) { "Java 26 is required for testJavaVersion, got $feature" }
     }
 }
 val testJavaLauncher = javaToolchains.launcherFor {
@@ -15,7 +15,7 @@ val testJavaLauncher = javaToolchains.launcherFor {
 java {
     modularity.inferModulePath.set(true)
     toolchain {
-        languageVersion.set(JavaLanguageVersion.of(28))
+        languageVersion.set(JavaLanguageVersion.of(26))
     }
 }
 
@@ -73,22 +73,21 @@ dependencies {
 }
 
 tasks.withType<JavaCompile>().configureEach {
-    options.release.set(28)
+    options.release.set(26)
     options.encoding = "UTF-8"
-    options.compilerArgs.addAll(listOf("--enable-preview", "-Xlint:all,-preview", "-Werror"))
+    options.compilerArgs.addAll(listOf("-Xlint:all", "-Werror"))
 }
 
 tasks.withType<Test>().configureEach {
     useJUnitPlatform()
     javaLauncher.set(testJavaLauncher)
-    jvmArgs("--enable-preview")
     filter.isFailOnNoMatchingTests = false
 }
 
 tasks.named<JavaCompile>(jpmsSmoke.compileJavaTaskName) {
-    options.release.set(28)
+    options.release.set(26)
     options.encoding = "UTF-8"
-    options.compilerArgs.addAll(listOf("--enable-preview", "-Xlint:all,-preview", "-Werror"))
+    options.compilerArgs.addAll(listOf("-Xlint:all", "-Werror"))
 }
 
 val jpmsSmokeTest = tasks.register<JavaExec>("jpmsSmokeTest") {
@@ -99,7 +98,6 @@ val jpmsSmokeTest = tasks.register<JavaExec>("jpmsSmokeTest") {
     mainModule.set("dev.mcdevmcp.mcp.tool.api.smoke")
     mainClass.set("dev.mcdevmcp.mcp.tool.api.smoke.JpmsSmokeMain")
     javaLauncher.set(testJavaLauncher)
-    jvmArgs("--enable-preview")
 }
 
 tasks.named("check") {

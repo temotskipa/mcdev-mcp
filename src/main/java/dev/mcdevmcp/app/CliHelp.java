@@ -146,6 +146,6 @@ final class CliHelp {
         };
     }
 
-    value record Preflight(int exitCode, String stdout, String stderr) {
+    record Preflight(int exitCode, String stdout, String stderr) {
     }
 }

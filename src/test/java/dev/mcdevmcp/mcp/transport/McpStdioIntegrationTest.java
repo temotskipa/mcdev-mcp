@@ -91,7 +91,7 @@ class McpStdioIntegrationTest {
 
     @Test
     void shadedJarServesOnlyJsonRpcOverStdio() throws Exception {
-        var processBuilder = new ProcessBuilder(JAVA.toString(), "--enable-preview", "-Duser.home=" + temporaryDirectory, "-jar", JAR.toString(), "serve");
+        var processBuilder = new ProcessBuilder(JAVA.toString(), "-Duser.home=" + temporaryDirectory, "-jar", JAR.toString(), "serve");
         processBuilder.environment().put("LOCALAPPDATA", temporaryDirectory.toString());
         processBuilder.environment().put("XDG_CACHE_HOME", temporaryDirectory.toString());
         var process = processBuilder.start();

@@ -8,7 +8,7 @@ import java.util.Optional;
 import java.util.OptionalInt;
 import java.util.regex.Pattern;
 
-public value record AppEnvironment(Map<String, String> values) {
+public record AppEnvironment(Map<String, String> values) {
     private static final Pattern DEBUGBRIDGE_PORT_DECIMAL = Pattern.compile("\\A[+-]?(?:[0-9]+(?:\\.[0-9]*)?|\\.[0-9]+)(?:[eE][+-]?[0-9]+)?\\z");
 
     public AppEnvironment {

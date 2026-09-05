@@ -6,7 +6,7 @@ import com.fasterxml.jackson.annotation.JsonValue;
 /**
  * A validated Minecraft resource identifier with the vanilla namespace default.
  */
-public value record ResourceIdentifier(String value) {
+public record ResourceIdentifier(String value) {
     private static final String DEFAULT_NAMESPACE = "minecraft";
 
     public ResourceIdentifier {

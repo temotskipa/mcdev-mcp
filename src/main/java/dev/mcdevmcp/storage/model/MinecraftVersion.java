@@ -4,7 +4,7 @@ import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonValue;
 import dev.mcdevmcp.mcp.tool.api.ToolInputValidationException;
 
-public value record MinecraftVersion(String value) {
+public record MinecraftVersion(String value) {
     public MinecraftVersion {
         PortablePathComponent.requireValid(value, "Invalid Minecraft version path component: ");
     }

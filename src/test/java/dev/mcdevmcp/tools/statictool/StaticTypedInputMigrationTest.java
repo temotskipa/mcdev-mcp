@@ -64,9 +64,6 @@ class StaticTypedInputMigrationTest {
         for (String legacyType : LEGACY_TYPES) {
             assertFalse(Files.exists(sourcePath(legacyType)), legacyType + " must stay deleted");
         }
-        for (String utility : List.of("McVersionTool.java", "McSearchTool.java", "McGetClassTool.java", "McGetMethodTool.java", "McListClassesTool.java", "McListPackagesTool.java", "McFindHierarchyTool.java", "McFindRefsTool.java", "StaticTools.java")) {
-            assertFalse(source(utility).contains("value class"), utility);
-        }
     }
 
     @Test

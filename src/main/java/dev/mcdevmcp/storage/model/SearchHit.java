@@ -4,7 +4,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 
-public value record SearchHit(SearchHitKind kind, ClassSymbol owner, Optional<FieldSymbol> field, Optional<MethodSymbol> method, List<ParameterSymbol> parameters, int fieldCount, int methodCount) {
+public record SearchHit(SearchHitKind kind, ClassSymbol owner, Optional<FieldSymbol> field, Optional<MethodSymbol> method, List<ParameterSymbol> parameters, int fieldCount, int methodCount) {
     public SearchHit {
         Objects.requireNonNull(kind, "kind");
         Objects.requireNonNull(owner, "owner");

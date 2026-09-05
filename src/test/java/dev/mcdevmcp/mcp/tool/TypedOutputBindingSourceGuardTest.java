@@ -126,7 +126,7 @@ class TypedOutputBindingSourceGuardTest {
     private static void assertSafe(List<Path> sources) throws IOException {
         JavaCompiler compiler = Objects.requireNonNull(ToolProvider.getSystemJavaCompiler(), "JDK compiler is required for source guards");
         DiagnosticCollector<JavaFileObject> diagnostics = new DiagnosticCollector<>();
-        List<String> options = List.of("--enable-preview", "--source", Integer.toString(Runtime.version().feature()), "-proc:none", "-classpath", Objects.requireNonNull(System.getProperty("java.class.path"), "test classpath"));
+        List<String> options = List.of("--source", Integer.toString(Runtime.version().feature()), "-proc:none", "-classpath", Objects.requireNonNull(System.getProperty("java.class.path"), "test classpath"));
         try (StandardJavaFileManager fileManager = compiler.getStandardFileManager(diagnostics, Locale.ROOT, StandardCharsets.UTF_8)) {
             JavacTask task = (JavacTask) compiler.getTask(null, fileManager, diagnostics, options, null, fileManager.getJavaFileObjectsFromPaths(sources));
             List<CompilationUnitTree> units = new java.util.ArrayList<>();
@@ -149,7 +149,7 @@ class TypedOutputBindingSourceGuardTest {
     private static void assertNoResultMetadata(List<Path> sources) throws IOException {
         JavaCompiler compiler = Objects.requireNonNull(ToolProvider.getSystemJavaCompiler(), "JDK compiler is required for source guards");
         DiagnosticCollector<JavaFileObject> diagnostics = new DiagnosticCollector<>();
-        List<String> options = List.of("--enable-preview", "--source", Integer.toString(Runtime.version().feature()), "-proc:none", "-classpath", Objects.requireNonNull(System.getProperty("java.class.path"), "test classpath"));
+        List<String> options = List.of("--source", Integer.toString(Runtime.version().feature()), "-proc:none", "-classpath", Objects.requireNonNull(System.getProperty("java.class.path"), "test classpath"));
         try (StandardJavaFileManager fileManager = compiler.getStandardFileManager(diagnostics, Locale.ROOT, StandardCharsets.UTF_8)) {
             JavacTask task = (JavacTask) compiler.getTask(null, fileManager, diagnostics, options, null, fileManager.getJavaFileObjectsFromPaths(sources));
             List<CompilationUnitTree> units = new java.util.ArrayList<>();

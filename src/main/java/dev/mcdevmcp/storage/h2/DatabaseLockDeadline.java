@@ -2,7 +2,7 @@ package dev.mcdevmcp.storage.h2;
 
 import java.time.Duration;
 
-final value class DatabaseLockDeadline {
+final class DatabaseLockDeadline {
     private static final Duration MAX_NANOSECONDS = Duration.ofNanos(Long.MAX_VALUE);
 
     private final long startedAt;

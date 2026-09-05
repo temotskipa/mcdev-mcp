@@ -21,7 +21,7 @@ import java.util.Objects;
 /**
  * Generates the Java-owned MCPB catalog manifest and the packer-only staging manifest.
  */
-public final value class McpbManifestGenerator {
+public final class McpbManifestGenerator {
     private static final String STAGING_ENTRY_POINT = "bootstrap.cjs";
 
     private McpbManifestGenerator() {

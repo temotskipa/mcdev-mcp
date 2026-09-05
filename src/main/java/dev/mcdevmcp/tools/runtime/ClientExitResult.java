@@ -5,9 +5,9 @@ sealed interface ClientExitResult permits ClientExitResult.Exited, ClientExitRes
         PORT, PROCESS
     }
 
-    value record Exited(boolean pidConfirmed) implements ClientExitResult {
+    record Exited(boolean pidConfirmed) implements ClientExitResult {
     }
 
-    value record Timeout(Phase waitingOn) implements ClientExitResult {
+    record Timeout(Phase waitingOn) implements ClientExitResult {
     }
 }

@@ -17,37 +17,37 @@ class McpbLauncherTest {
     Path temporaryDirectory;
 
     @Test
-    void rejectsJava27BeforeStartingTheServer() throws Exception {
-        ProcessResult result = runLauncher("27", "17", Map.of());
+    void rejectsJava25BeforeStartingTheServer() throws Exception {
+        ProcessResult result = runLauncher("25", "17", Map.of());
 
         assertEquals(1, result.exitCode(), result.error());
-        assertTrue(result.error().contains("Java 28 with preview features is required"));
+        assertTrue(result.error().contains("Java 26 or newer is required"));
         assertFalse(Files.exists(temporaryDirectory.resolve("environment.txt")));
     }
 
     @Test
-    void acceptsJava28And29AndForwardsThePreviewFlagAndChildExitStatus() throws Exception {
-        ProcessResult java28 = runLauncher("28", "17", Map.of());
+    void acceptsJava26And27AndForwardsTheChildExitStatus() throws Exception {
+        ProcessResult java26 = runLauncher("26", "17", Map.of());
 
-        assertEquals(17, java28.exitCode(), java28.error());
+        assertEquals(17, java26.exitCode(), java26.error());
         String launchedArguments = Files.readString(temporaryDirectory.resolve("arguments.txt"), StandardCharsets.UTF_8);
-        assertTrue(launchedArguments.startsWith("--enable-preview|-jar|"));
+        assertTrue(launchedArguments.startsWith("-jar|"));
         assertTrue(launchedArguments.endsWith("|serve"));
 
-        ProcessResult java29 = runLauncher("29", "17", Map.of());
-        assertEquals(17, java29.exitCode(), java29.error());
+        ProcessResult java27 = runLauncher("27", "17", Map.of());
+        assertEquals(17, java27.exitCode(), java27.error());
     }
 
     @Test
     void ignoresNumericJavaToolOptionsPreambleWhenDetectingTheFeatureVersion() throws Exception {
-        ProcessResult result = runLauncher("28", "17", Map.of("FAKE_JAVA_VERSION_PREAMBLE", "Picked up JAVA_TOOL_OPTIONS: -Dfile.encoding=UTF-8"));
+        ProcessResult result = runLauncher("26", "17", Map.of("FAKE_JAVA_VERSION_PREAMBLE", "Picked up JAVA_TOOL_OPTIONS: -Dfile.encoding=UTF-8"));
 
         assertEquals(17, result.exitCode(), result.error());
     }
 
     @Test
     void rejectsAFailedVersionProbeEvenWhenItPrintsASupportedVersion() throws Exception {
-        ProcessResult result = runLauncher("28", "17", Map.of("FAKE_JAVA_VERSION_EXIT", "7"));
+        ProcessResult result = runLauncher("26", "17", Map.of("FAKE_JAVA_VERSION_EXIT", "7"));
 
         assertEquals(1, result.exitCode(), result.error());
         assertTrue(result.error().contains("Unable to determine Java version"));
@@ -80,7 +80,7 @@ class McpbLauncherTest {
                                    "use strict";
                                    const fs = require("node:fs");
                                    if (process.argv[2] === "-version") {
-                                      process.stderr.write('java version "28"\\n');
+                                      process.stderr.write('java version "26"\\n');
                                      process.exit(0);
                                    }
                                    fs.writeFileSync(process.env.FAKE_CHILD_PID, String(process.pid));

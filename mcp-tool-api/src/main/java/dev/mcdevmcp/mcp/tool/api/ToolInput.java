@@ -5,7 +5,7 @@ import io.modelcontextprotocol.json.McpJsonMapper;
 import java.util.Map;
 import java.util.Objects;
 
-public final value class ToolInput<A> {
+public final class ToolInput<A> {
     private final JsonType<A> type;
     private final JsonObjectSchema schema;
 

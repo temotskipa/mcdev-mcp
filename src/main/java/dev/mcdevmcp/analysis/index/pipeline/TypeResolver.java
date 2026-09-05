@@ -14,7 +14,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 
-final value class TypeResolver {
+final class TypeResolver {
     private final Elements elements;
     private final Types types;
 

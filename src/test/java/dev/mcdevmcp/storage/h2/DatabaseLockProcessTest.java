@@ -26,7 +26,7 @@ class DatabaseLockProcessTest {
     private static Process process(String mode, Path database) throws Exception {
         String java = System.getProperty("mcdevMcpJava");
         String classpath = System.getProperty("java.class.path");
-        return new ProcessBuilder(java, "--enable-preview", "-cp", classpath, DatabaseLockProcessMain.class.getName(), mode, database.toString()).start();
+        return new ProcessBuilder(java, "-cp", classpath, DatabaseLockProcessMain.class.getName(), mode, database.toString()).start();
     }
 
     private static Void holdRead(Path database, CountDownLatch acquired, CountDownLatch release) throws Exception {

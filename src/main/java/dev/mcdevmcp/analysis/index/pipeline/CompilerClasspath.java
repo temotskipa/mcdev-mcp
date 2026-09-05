@@ -20,7 +20,7 @@ import java.util.*;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 
-value record CompilerClasspath(List<CompilerClassFile> classes) {
+record CompilerClasspath(List<CompilerClassFile> classes) {
     private CompilerClasspath(Map<String, CompilerClassFile> classes) {
         TreeMap<String, CompilerClassFile> sorted = new TreeMap<>(classes);
         this(List.copyOf(sorted.values()));

@@ -272,7 +272,7 @@ public final class McpSdkAdapter {
         return toSdkResult(ToolResult.error(ToolCatalog.errorText(name, exception)));
     }
 
-    public value record AsyncServerExtensions(List<McpServerFeatures.AsyncToolSpecification> tools, List<McpServerFeatures.AsyncResourceSpecification> resources, List<McpServerFeatures.AsyncResourceTemplateSpecification> resourceTemplates, List<McpServerFeatures.AsyncPromptSpecification> prompts, List<McpServerFeatures.AsyncCompletionSpecification> completions, McpSchema.ServerCapabilities capabilities, Duration requestTimeout) {
+    public record AsyncServerExtensions(List<McpServerFeatures.AsyncToolSpecification> tools, List<McpServerFeatures.AsyncResourceSpecification> resources, List<McpServerFeatures.AsyncResourceTemplateSpecification> resourceTemplates, List<McpServerFeatures.AsyncPromptSpecification> prompts, List<McpServerFeatures.AsyncCompletionSpecification> completions, McpSchema.ServerCapabilities capabilities, Duration requestTimeout) {
         public AsyncServerExtensions {
             tools = List.copyOf(Objects.requireNonNull(tools, "tools"));
             resources = List.copyOf(Objects.requireNonNull(resources, "resources"));

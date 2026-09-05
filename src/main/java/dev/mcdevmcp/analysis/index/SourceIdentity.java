@@ -5,5 +5,5 @@ import dev.mcdevmcp.storage.model.SourceNamespace;
 
 import java.util.Optional;
 
-value record SourceIdentity(SourceNamespace namespace, Optional<FabricApiVersion> fabricApiVersion) {
+record SourceIdentity(SourceNamespace namespace, Optional<FabricApiVersion> fabricApiVersion) {
 }

@@ -8,15 +8,15 @@ permissions:
   contents: read
 
 jobs:
-  build-java25:
-    name: Build release bytes once on Java 25
+  build-java26:
+    name: Build release bytes once on Java 26
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
         with:
           distribution: temurin
-          java-version: '25'
+          java-version: '26'
           cache: gradle
       - name: Require the exact version tag
         shell: bash
@@ -28,22 +28,23 @@ jobs:
       - name: Test and produce the immutable release payload
         run: >-
           ./gradlew clean test check shadowJar runtimeTestBundle benchmarkBundle
-          java25ArtifactBundle --console=plain
+          java26ArtifactBundle --rerun-tasks --no-build-cache --no-configuration-cache --console=plain
       - name: Verify staged JAR checksum
         shell: bash
         run: |
           set -euo pipefail
-          cd build/artifacts/java25
+          cd build/artifacts/java26
           sha256sum --check mcdev-mcp-*.jar.sha256
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: release-java25
-          path: build/artifacts/java25/*
+          name: release-java26
+          path: build/artifacts/java26/*
           if-no-files-found: error
           retention-days: 7
 
   parity:
     name: Frozen Node parity
+    needs: build-java26
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -52,11 +53,24 @@ jobs:
       - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
         with:
           distribution: temurin
-          java-version: '25'
+          java-version: '26'
           cache: gradle
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version: '24'
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: release-java26
+          path: downloaded
+      - name: Stage the checksum-verified producer JAR for parity
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(sed -n 's/^version=//p' gradle.properties)"
+          test -n "$version"
+          (cd downloaded && sha256sum --check "mcdev-mcp-$version.jar.sha256")
+          mkdir -p build/libs
+          cp "downloaded/mcdev-mcp-$version.jar" "downloaded/mcdev-mcp-$version.jar.sha256" build/libs/
       - name: Materialize the immutable master oracle worktree
         shell: bash
         run: |
@@ -69,16 +83,25 @@ jobs:
           test "$(git -C "$oracle_worktree" rev-parse HEAD)" = "$oracle_commit"
           test -z "$(git -C "$oracle_worktree" status --porcelain=v1 --untracked-files=all)"
       - name: Compare the Java CLI and complete MCP surface with the frozen Node server
-        run: ./gradlew parityTest --no-configuration-cache --console=plain
+        run: ./gradlew parityTest --rerun-tasks -x test -x shadowJar --no-configuration-cache --console=plain
+      - name: Verify parity preserved the producer JAR
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(sed -n 's/^version=//p' gradle.properties)"
+          cd build/libs
+          sha256sum --check "$GITHUB_WORKSPACE/downloaded/mcdev-mcp-$version.jar.sha256"
+          cmp "mcdev-mcp-$version.jar" "$GITHUB_WORKSPACE/downloaded/mcdev-mcp-$version.jar"
 
   runtime-matrix:
     name: Test release JAR on Java ${{ matrix.java }}
-    needs: build-java25
+    needs: build-java26
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        java: [ '25', '26' ]
+        java: [ '26' ]
     steps:
       - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
         with:
@@ -86,7 +109,7 @@ jobs:
           java-version: ${{ matrix.java }}
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: release-java25
+          name: release-java26
           path: downloaded
       - name: Verify and execute the exact compiled runtime bundle
         shell: bash
@@ -108,14 +131,14 @@ jobs:
 
   mcpb:
     name: Build MCPB from the downloaded release JAR
-    needs: build-java25
+    needs: build-java26
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
         with:
           distribution: temurin
-          java-version: '25'
+          java-version: '26'
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version: '24'
@@ -123,7 +146,7 @@ jobs:
           cache-dependency-path: packaging/mcpb/package-lock.json
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: release-java25
+          name: release-java26
           path: downloaded
       - name: Pack, extract, and smoke without rebuilding
         shell: pwsh
@@ -141,14 +164,14 @@ jobs:
 
   verify-release:
     name: Verify the exact three release assets
-    needs: [ build-java25, runtime-matrix, mcpb, parity ]
+    needs: [ build-java26, runtime-matrix, mcpb, parity ]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: release-java25
-          path: downloaded/java25
+          name: release-java26
+          path: downloaded/java26
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: release-mcpb
@@ -160,8 +183,8 @@ jobs:
           version="$(sed -n 's/^version=//p' gradle.properties)"
           test "$GITHUB_REF_NAME" = "v$version"
           mkdir release-assets
-          cp "downloaded/java25/mcdev-mcp-$version.jar" release-assets/
-          cp "downloaded/java25/mcdev-mcp-$version.jar.sha256" release-assets/
+          cp "downloaded/java26/mcdev-mcp-$version.jar" release-assets/
+          cp "downloaded/java26/mcdev-mcp-$version.jar.sha256" release-assets/
           cp "downloaded/mcpb/mcdev-mcp-$version.mcpb" release-assets/
       - name: Verify release provenance
         shell: pwsh

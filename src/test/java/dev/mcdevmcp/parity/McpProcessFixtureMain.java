@@ -124,12 +124,12 @@ final class McpProcessFixtureMain {
 
     private static Process spawnSleeper() throws IOException {
         String java = ProcessHandle.current().info().command().orElseThrow();
-        return new ProcessBuilder(java, "--enable-preview", "-cp", System.getProperty("java.class.path"), McpProcessFixtureMain.class.getName(), "materializer-sleep").start();
+        return new ProcessBuilder(java, "-cp", System.getProperty("java.class.path"), McpProcessFixtureMain.class.getName(), "materializer-sleep").start();
     }
 
     private static Process spawnInheritedSleeper() throws IOException {
         String java = ProcessHandle.current().info().command().orElseThrow();
-        return new ProcessBuilder(java, "--enable-preview", "-cp", System.getProperty("java.class.path"), McpProcessFixtureMain.class.getName(), "materializer-sleep").redirectOutput(ProcessBuilder.Redirect.INHERIT).redirectError(ProcessBuilder.Redirect.INHERIT).start();
+        return new ProcessBuilder(java, "-cp", System.getProperty("java.class.path"), McpProcessFixtureMain.class.getName(), "materializer-sleep").redirectOutput(ProcessBuilder.Redirect.INHERIT).redirectError(ProcessBuilder.Redirect.INHERIT).start();
     }
 
     private static void malformedJson() throws IOException {

@@ -8,7 +8,7 @@ import java.util.Comparator;
 import java.util.Objects;
 import java.util.Optional;
 
-value record IndexDiagnostic(Diagnostic.Kind kind, Optional<SourceRoot> sourceRoot, Path sourcePath, long startOffset, long endOffset, long line, long column, String code, String message) {
+record IndexDiagnostic(Diagnostic.Kind kind, Optional<SourceRoot> sourceRoot, Path sourcePath, long startOffset, long endOffset, long line, long column, String code, String message) {
     static final Comparator<IndexDiagnostic> ORDERING = IndexDiagnostic::compare;
 
     IndexDiagnostic {

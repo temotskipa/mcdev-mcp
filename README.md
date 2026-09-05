@@ -7,13 +7,12 @@ DebugBridge mod.
 
 ## Requirements
 
-- Java 25 or newer. Java 25 is the minimum and the release build target.
-- Java 25 and Java 26 run the same tested release JAR correctly.
+- Java 26 or newer. Java 26 is the minimum and the release build target.
 - No Maven, Gradle, npm, or IDE subscription is required to run a release.
 
-There is no preferred runtime beyond the Java 25 minimum yet. A Java 26
-recommendation requires three consecutive qualifying benchmark artifacts; the
-current guidance is deliberately neutral.
+Java 26 corpus qualification and index/callgraph benchmarking are required
+release gates. Java 27 and later may be used as separate experiments but are
+not release targets.
 
 ## Install
 
@@ -112,7 +111,7 @@ DebugBridge build compatible with your Minecraft version to use runtime tools.
 
 ## Build From Source
 
-The checked-in Gradle wrapper requires a Java 25 development kit:
+The checked-in Gradle wrapper requires a Java 26 development kit:
 
 ```powershell
 .\gradlew.bat clean check shadowJar --console=plain

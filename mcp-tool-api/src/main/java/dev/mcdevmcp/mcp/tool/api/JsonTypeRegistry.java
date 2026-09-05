@@ -11,7 +11,7 @@ import java.util.*;
 /**
  * Immutable metadata registry keyed by complete structural Java {@link Type} values.
  */
-public final value class JsonTypeRegistry {
+public final class JsonTypeRegistry {
     private static final JsonTypeRegistry STANDARD = of(List.of(JsonLogicalType.of("jdk.duration-seconds.v1", Duration.class, JsonValueSchema.of(Map.of("type", "number")), JsonValueSchema.of(Map.of("type", "string", "format", "duration"))), JsonLogicalType.bidirectional("jdk.uuid.v1", UUID.class, JsonValueSchema.of(Map.of("type", "string", "format", "uuid"))), JsonLogicalType.bidirectional("jdk.instant.v1", Instant.class, JsonValueSchema.of(Map.of("type", "string", "format", "date-time"))), JsonLogicalType.bidirectional("jdk.local-date.v1", LocalDate.class, JsonValueSchema.of(Map.of("type", "string", "format", "date")))));
 
     private final Map<Type, JsonLogicalType<?>> byType;

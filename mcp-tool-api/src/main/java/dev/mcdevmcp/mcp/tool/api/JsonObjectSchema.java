@@ -6,7 +6,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
-public value record JsonObjectSchema(Map<String, Object> value) {
+public record JsonObjectSchema(Map<String, Object> value) {
     public JsonObjectSchema {
         value = JsonSchemaSupport.immutableObject(value);
         if (!"object".equals(value.get("type"))) {
@@ -19,6 +19,7 @@ public value record JsonObjectSchema(Map<String, Object> value) {
         return new JsonObjectSchema(value);
     }
 
+    @SuppressWarnings("unused")
     public boolean semanticallyEquals(Map<String, Object> other) {
         return JsonSchemaSupport.jsonEquals(value, Objects.requireNonNull(other, "other"));
     }

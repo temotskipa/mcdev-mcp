@@ -26,8 +26,8 @@ final class ExecutableBodyScanner extends TreeScanner<Void, Void> {
 
     @Override
     public Void visitBlock(BlockTree node, Void unused) {
-        long start = positions.getStartPosition(node);
-        long end = positions.getEndPosition(node);
+        long start = positions.getStartPosition(unit, node);
+        long end = positions.getEndPosition(unit, node);
         if (start >= 0 && end >= start) {
             ranges.add(new OffsetRange(start, end));
         }
@@ -37,8 +37,8 @@ final class ExecutableBodyScanner extends TreeScanner<Void, Void> {
     @Override
     public Void visitVariable(VariableTree node, Void unused) {
         if (node.getInitializer() != null) {
-            long start = positions.getStartPosition(node.getInitializer());
-            long end = positions.getEndPosition(node.getInitializer());
+            long start = positions.getStartPosition(unit, node.getInitializer());
+            long end = positions.getEndPosition(unit, node.getInitializer());
             if (start >= 0 && end >= start) {
                 ranges.add(new OffsetRange(start, end));
             }

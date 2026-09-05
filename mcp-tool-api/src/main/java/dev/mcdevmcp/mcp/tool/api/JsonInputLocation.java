@@ -2,7 +2,7 @@ package dev.mcdevmcp.mcp.tool.api;
 
 import java.util.Objects;
 
-final value class JsonInputLocation {
+final class JsonInputLocation {
     private final String display;
     private final boolean root;
 

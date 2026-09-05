@@ -24,7 +24,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiFunction;
 import java.util.function.Function;
 
-final value class SessionControlSupport {
+final class SessionControlSupport {
     static final int BRIDGE_PORT_START = 9876;
     static final int BRIDGE_PORT_END = 9886;
     static final int DEFAULT_JOIN_TIMEOUT_SECONDS = 60;

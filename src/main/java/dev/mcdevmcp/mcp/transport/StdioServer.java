@@ -8,7 +8,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-public final value class StdioServer implements AutoCloseable {
+public final class StdioServer implements AutoCloseable {
     private static final Duration EXECUTOR_STOP_TIMEOUT = Duration.ofSeconds(5);
 
     private final McpAsyncServer server;

@@ -8,7 +8,7 @@ import java.util.List;
 import java.util.concurrent.*;
 import java.util.function.Function;
 
-final value class JavacTaskExecutor {
+final class JavacTaskExecutor {
     private static final long CANCELLATION_POLL_MILLIS = 25;
 
     private JavacTaskExecutor() {

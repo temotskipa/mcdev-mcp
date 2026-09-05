@@ -3,7 +3,7 @@ package dev.mcdevmcp.analysis.index.pipeline;
 
 import java.util.List;
 
-value record ParsedBatch(List<ParsedType> types, List<String> parsedCompilationUnits, List<IndexDiagnostic> diagnostics) {
+record ParsedBatch(List<ParsedType> types, List<String> parsedCompilationUnits, List<IndexDiagnostic> diagnostics) {
     ParsedBatch {
         types = List.copyOf(types);
         parsedCompilationUnits = List.copyOf(parsedCompilationUnits);

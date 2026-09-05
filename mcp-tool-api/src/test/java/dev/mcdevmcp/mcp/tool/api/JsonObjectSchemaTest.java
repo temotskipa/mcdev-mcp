@@ -9,7 +9,7 @@ import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-value class JsonObjectSchemaTest {
+class JsonObjectSchemaTest {
     @Test
     void rejectsMutableValuesThatAreNotJsonTreeNodes() {
         Map<String, Object> setSchema = new LinkedHashMap<>();
@@ -55,11 +55,7 @@ value class JsonObjectSchemaTest {
 
     @Test
     void supportsJsonNullAsAnExplicitOneOfBranch() {
-        JsonObjectSchema schema = JsonObjectSchema.of(Map.of(
-                "type", "object",
-                "properties", Map.of("entityId", Map.of("oneOf", List.of(Map.of("type", "integer"), Map.of("type", "null")))),
-                "required", List.of("entityId"),
-                "additionalProperties", true));
+        JsonObjectSchema schema = JsonObjectSchema.of(Map.of("type", "object", "properties", Map.of("entityId", Map.of("oneOf", List.of(Map.of("type", "integer"), Map.of("type", "null")))), "required", List.of("entityId"), "additionalProperties", true));
 
         Map<String, Object> noTarget = new LinkedHashMap<>();
         noTarget.put("entityId", null);

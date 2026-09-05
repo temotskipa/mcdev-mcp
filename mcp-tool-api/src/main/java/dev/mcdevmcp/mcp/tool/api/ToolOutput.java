@@ -7,7 +7,7 @@ import java.util.Objects;
 /**
  * The trusted Java type and JSON Schema advertised for a tool's structured output.
  */
-public value record ToolOutput<T>(JsonType<T> type, JsonValueSchema schema) {
+public record ToolOutput<T>(JsonType<T> type, JsonValueSchema schema) {
     public ToolOutput {
         Objects.requireNonNull(type, "type");
         Objects.requireNonNull(schema, "schema");

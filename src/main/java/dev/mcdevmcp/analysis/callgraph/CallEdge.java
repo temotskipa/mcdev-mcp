@@ -3,7 +3,7 @@ package dev.mcdevmcp.analysis.callgraph;
 import java.lang.constant.MethodTypeDesc;
 import java.util.Objects;
 
-public value record CallEdge(String callerClass, String callerMethod, String callerDescriptor, String calleeClass, String calleeMethod, String calleeDescriptor, Integer lineNumber, long encounterOrder) {
+public record CallEdge(String callerClass, String callerMethod, String callerDescriptor, String calleeClass, String calleeMethod, String calleeDescriptor, Integer lineNumber, long encounterOrder) {
     public CallEdge {
         callerClass = requireIdentity(callerClass, "callerClass");
         callerMethod = requireIdentity(callerMethod, "callerMethod");

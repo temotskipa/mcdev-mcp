@@ -4,7 +4,7 @@ import dev.mcdevmcp.analysis.index.pipeline.SourceIndexPipeline;
 
 import java.util.Objects;
 
-public final value class SourceIndexer {
+public final class SourceIndexer {
     private final SourceIndexPipeline pipeline;
 
     public SourceIndexer() {

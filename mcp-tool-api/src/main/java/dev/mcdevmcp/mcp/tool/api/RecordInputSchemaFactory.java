@@ -7,7 +7,7 @@ import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.util.*;
 
-public final value class RecordInputSchemaFactory implements InputSchemaFactory {
+public final class RecordInputSchemaFactory implements InputSchemaFactory {
     private static final RecordInputSchemaFactory STANDARD = new RecordInputSchemaFactory(JsonTypeRegistry.standard());
     private final JsonTypeRegistry registry;
 

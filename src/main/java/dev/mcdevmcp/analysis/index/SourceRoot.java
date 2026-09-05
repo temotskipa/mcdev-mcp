@@ -7,7 +7,7 @@ import java.nio.file.Path;
 import java.util.Objects;
 import java.util.Optional;
 
-public value record SourceRoot(SourceNamespace namespace, Optional<FabricApiVersion> fabricApiVersion, Path path) implements Comparable<SourceRoot> {
+public record SourceRoot(SourceNamespace namespace, Optional<FabricApiVersion> fabricApiVersion, Path path) implements Comparable<SourceRoot> {
     public SourceRoot {
         Objects.requireNonNull(namespace, "namespace");
         fabricApiVersion = Optional.ofNullable(fabricApiVersion).orElseThrow(() -> new NullPointerException("fabricApiVersion"));

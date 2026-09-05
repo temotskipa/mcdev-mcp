@@ -7,7 +7,7 @@ import dev.mcdevmcp.support.ProgressSink;
 import java.nio.file.Path;
 import java.util.*;
 
-public value record IndexRequest(MinecraftVersion minecraftVersion, List<SourceRoot> sourceRoots, Path remappedJar, List<Path> classpath, Path outputDatabase, int threads, ProgressSink progress, Cancellation cancellation) {
+public record IndexRequest(MinecraftVersion minecraftVersion, List<SourceRoot> sourceRoots, Path remappedJar, List<Path> classpath, Path outputDatabase, int threads, ProgressSink progress, Cancellation cancellation) {
     public static final String THREADS_ENVIRONMENT_VARIABLE = "MCDEV_INDEX_THREADS";
 
     public IndexRequest {

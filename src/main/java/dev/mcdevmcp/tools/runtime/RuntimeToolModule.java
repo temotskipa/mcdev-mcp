@@ -12,7 +12,7 @@ import java.util.Map;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 
-public final value class RuntimeToolModule {
+public final class RuntimeToolModule {
     private RuntimeToolModule() {
     }
 

@@ -17,7 +17,7 @@ import java.util.*;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-value class JsonTypeRegistryTest {
+class JsonTypeRegistryTest {
     private static final JsonValueSchema STRING_SCHEMA = JsonValueSchema.of(Map.of("type", "string"));
 
     @Test

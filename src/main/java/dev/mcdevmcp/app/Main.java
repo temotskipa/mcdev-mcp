@@ -11,7 +11,7 @@ import java.util.Objects;
 
 public final class Main {
     public static int execute(String[] arguments, int javaFeature, PrintWriter output, PrintWriter error) {
-        if (javaFeature < 28) {
+        if (javaFeature < 26) {
             return rejectOldJava(javaFeature, error);
         }
         return execute(arguments, javaFeature, output, error, CommandContext.production());
@@ -23,7 +23,7 @@ public final class Main {
         Objects.requireNonNull(output, "output");
         Objects.requireNonNull(error, "error");
         Objects.requireNonNull(context, "context");
-        if (javaFeature < 28) {
+        if (javaFeature < 26) {
             return rejectOldJava(javaFeature, error);
         }
 
@@ -56,7 +56,7 @@ public final class Main {
     @SuppressWarnings("SameReturnValue")
     private static int rejectOldJava(int javaFeature, PrintWriter error) {
         Objects.requireNonNull(error, "error");
-        error.printf("Java 28 with preview features is required; detected Java %d.%n", javaFeature);
+        error.printf("Java 26 or newer is required; detected Java %d.%n", javaFeature);
         error.flush();
         return 1;
     }

@@ -3,7 +3,7 @@ package dev.mcdevmcp.analysis.index.pipeline;
 
 import java.util.Objects;
 
-value record ParsedParameter(int ordinal, String name, String type, boolean varargs, SourceRange range) {
+record ParsedParameter(int ordinal, String name, String type, boolean varargs, SourceRange range) {
     ParsedParameter {
         if (ordinal < 0) {
             throw new IllegalArgumentException("Parameter ordinal must not be negative");

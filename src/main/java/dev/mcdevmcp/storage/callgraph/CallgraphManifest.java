@@ -3,7 +3,7 @@ package dev.mcdevmcp.storage.callgraph;
 import java.util.List;
 import java.util.Objects;
 
-public value record CallgraphManifest(String format, int schemaVersion, String minecraftVersion, String remappedJarSha256, int classCount, int methodCount, long edgeCount, List<CallgraphFileMetadata> files) {
+public record CallgraphManifest(String format, int schemaVersion, String minecraftVersion, String remappedJarSha256, int classCount, int methodCount, long edgeCount, List<CallgraphFileMetadata> files) {
     public CallgraphManifest {
         Objects.requireNonNull(format, "format");
         Objects.requireNonNull(minecraftVersion, "minecraftVersion");

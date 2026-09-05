@@ -59,7 +59,7 @@ public final class RuntimeArtifactSmokeMain {
         int feature = Runtime.version().feature();
         String vendor = System.getProperty("java.vendor", "").strip();
         String vm = System.getProperty("java.vm.name", "").strip();
-        require(feature >= 28, "Runtime feature must be at least Java 28, got " + feature);
+        require(feature >= 26, "Runtime feature must be at least Java 26, got " + feature);
         require(!vendor.isEmpty(), "Runtime vendor is unavailable");
         require(!vm.isEmpty(), "Runtime VM name is unavailable");
         System.out.printf(Locale.ROOT, "RUNTIME_JAVA feature=%d vendor=%s vm=%s%n", feature, vendor, vm);
@@ -222,7 +222,7 @@ public final class RuntimeArtifactSmokeMain {
     }
 
     private static void verifyJarCli(Path jar, String version) throws Exception {
-        Process process = new ProcessBuilder(javaExecutable(), "--enable-preview", "-jar", jar.toString(), "--version").start();
+        Process process = new ProcessBuilder(javaExecutable(), "-jar", jar.toString(), "--version").start();
         try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
             Future<String> output = readAll(executor, process.getInputStream());
             Future<String> errors = readAll(executor, process.getErrorStream());
@@ -237,7 +237,7 @@ public final class RuntimeArtifactSmokeMain {
 
     private static void verifyStdio(Path jar, String version) throws Exception {
         Path runtimeHome = Files.createTempDirectory("mcdev-mcp-runtime-stdio");
-        ProcessBuilder builder = new ProcessBuilder(javaExecutable(), "--enable-preview", "-Duser.home=" + runtimeHome, "-jar", jar.toString(), "serve");
+        ProcessBuilder builder = new ProcessBuilder(javaExecutable(), "-Duser.home=" + runtimeHome, "-jar", jar.toString(), "serve");
         builder.environment().put("LOCALAPPDATA", runtimeHome.toString());
         builder.environment().put("XDG_CACHE_HOME", runtimeHome.toString());
         builder.environment().put("MCDEV_SESSION_LOG_DIR", runtimeHome.resolve("logs").toString());

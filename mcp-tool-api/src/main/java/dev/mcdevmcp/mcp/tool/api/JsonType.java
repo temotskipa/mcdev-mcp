@@ -6,7 +6,7 @@ import io.modelcontextprotocol.json.TypeRef;
 import java.lang.reflect.Type;
 import java.util.Objects;
 
-public final value class JsonType<T> {
+public final class JsonType<T> {
     private final Class<T> rawType;
     private final TypeRef<T> typeRef;
     private final Type javaType;

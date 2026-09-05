@@ -4,7 +4,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
-public value record VersionDetail(Map<String, DownloadWire> downloads, List<LibraryEntry> libraries) {
+public record VersionDetail(Map<String, DownloadWire> downloads, List<LibraryEntry> libraries) {
+    @SuppressWarnings("unused")
     public VersionDetail(Map<String, DownloadWire> downloads) {
         this(downloads, List.of());
     }

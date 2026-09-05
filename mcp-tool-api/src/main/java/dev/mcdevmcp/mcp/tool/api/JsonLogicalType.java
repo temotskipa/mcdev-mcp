@@ -8,7 +8,7 @@ import java.util.Optional;
 /**
  * Metadata associating one exact Java JSON target with directional schemas.
  */
-public final value class JsonLogicalType<T> {
+public final class JsonLogicalType<T> {
     private final String id;
     private final JsonType<T> targetType;
     private final JsonValueSchema inputSchema;

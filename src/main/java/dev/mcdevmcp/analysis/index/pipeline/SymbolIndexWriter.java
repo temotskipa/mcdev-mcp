@@ -17,7 +17,7 @@ import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.*;
 
-final value class SymbolIndexWriter {
+final class SymbolIndexWriter {
     private final AtomicH2Database databases;
     private final DatabaseValidator beforeValidation;
 

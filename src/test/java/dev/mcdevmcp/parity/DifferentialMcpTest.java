@@ -156,7 +156,7 @@ class DifferentialMcpTest {
     private static ProcessBuilder javaProcess(Path root) {
         String executable = requiredProperty("mcdevMcpJava");
         Path jar = Path.of(requiredProperty("mcdevMcpJar")).toAbsolutePath().normalize();
-        return new ProcessBuilder(executable, "--enable-preview", "-Dfile.encoding=UTF-8", "-Duser.language=en", "-Duser.country=US", "-Duser.home=" + root.resolve("home"), "-Djava.io.tmpdir=" + root.resolve("tmp"), "-jar", jar.toString(), "serve");
+        return new ProcessBuilder(executable, "-Dfile.encoding=UTF-8", "-Duser.language=en", "-Duser.country=US", "-Duser.home=" + root.resolve("home"), "-Djava.io.tmpdir=" + root.resolve("tmp"), "-jar", jar.toString(), "serve");
     }
 
     private static String requiredProperty(String name) {

@@ -11,7 +11,7 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-value class ToolBindingTest {
+class ToolBindingTest {
     private static final ToolInput<BindingArguments> INPUT = ToolInput.of(BindingArguments.class, RecordInputSchemaFactory.standard());
     private static final ToolOutput<BindingArguments> OUTPUT = ToolOutput.of(BindingArguments.class, JsonValueSchema.of(Map.of("type", "object", "properties", Map.of("value", Map.of("type", "string")))));
 

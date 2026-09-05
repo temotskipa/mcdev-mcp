@@ -4,5 +4,5 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import dev.mcdevmcp.bridge.BridgePayload;
 
 @JsonInclude(JsonInclude.Include.NON_NULL)
-public value record NearbyEntitiesPayload(Double range, Integer limit, boolean includeIcons) implements BridgePayload {
+public record NearbyEntitiesPayload(Double range, Integer limit, boolean includeIcons) implements BridgePayload {
 }

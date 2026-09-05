@@ -9,7 +9,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 
-value record ParsedType(SourceRoot sourceRoot, Path sourcePath, String packageName, String binaryName, String simpleName, ElementKind kind, Optional<ClassDesc> superclass, List<ClassDesc> interfaces, List<ParsedField> fields, List<ParsedMethod> methods, SourceRange range) {
+record ParsedType(SourceRoot sourceRoot, Path sourcePath, String packageName, String binaryName, String simpleName, ElementKind kind, Optional<ClassDesc> superclass, List<ClassDesc> interfaces, List<ParsedField> fields, List<ParsedMethod> methods, SourceRange range) {
     ParsedType {
         Objects.requireNonNull(sourceRoot, "sourceRoot");
         sourcePath = Objects.requireNonNull(sourcePath, "sourcePath").normalize();

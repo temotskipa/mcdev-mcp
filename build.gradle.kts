@@ -110,9 +110,9 @@ plugins {
 }
 
 val applicationVersion = providers.gradleProperty("version").get()
-val testJavaFeature = providers.gradleProperty("testJavaVersion").orElse("28").map { configuredVersion ->
+val testJavaFeature = providers.gradleProperty("testJavaVersion").orElse("26").map { configuredVersion ->
     configuredVersion.toInt().also { feature ->
-        require(feature == 28) { "The Valhalla experiment requires testJavaVersion 28, got $feature" }
+        require(feature == 26) { "Java 26 is required for testJavaVersion, got $feature" }
     }
 }
 val testJavaLauncher = javaToolchains.launcherFor {
@@ -127,7 +127,7 @@ val generateTestVersionProperties = tasks.register<WriteProperties>("generateTes
 
 java {
     toolchain {
-        languageVersion.set(JavaLanguageVersion.of(28))
+        languageVersion.set(JavaLanguageVersion.of(26))
     }
 }
 dependencies {
@@ -150,9 +150,9 @@ application {
 }
 
 tasks.withType<JavaCompile>().configureEach {
-    options.release.set(28)
+    options.release.set(26)
     options.encoding = "UTF-8"
-    options.compilerArgs.addAll(listOf("--enable-preview", "-Xlint:all,-preview", "-Werror"))
+    options.compilerArgs.addAll(listOf("-Xlint:all", "-Werror"))
 }
 
 sourceSets {
@@ -173,15 +173,15 @@ dependencies {
 }
 
 tasks.named<JavaCompile>(sourceSets.test.get().compileJavaTaskName) {
-    options.release.set(28)
+    options.release.set(26)
     options.encoding = "UTF-8"
-    options.compilerArgs.addAll(listOf("--enable-preview", "-Xlint:all,-preview", "-Werror"))
+    options.compilerArgs.addAll(listOf("-Xlint:all", "-Werror"))
 }
 
 tasks.named<JavaCompile>(runtimeTest.compileJavaTaskName) {
-    options.release.set(28)
+    options.release.set(26)
     options.encoding = "UTF-8"
-    options.compilerArgs.addAll(listOf("--enable-preview", "-Xlint:all,-preview", "-Werror"))
+    options.compilerArgs.addAll(listOf("-Xlint:all", "-Werror"))
 }
 
 val benchmarkClasses = tasks.register("benchmarkClasses") {
@@ -216,7 +216,6 @@ tasks.withType<Test>().configureEach {
     useJUnitPlatform()
     dependsOn(tasks.named("shadowJar"))
     javaLauncher.set(testJavaLauncher)
-    jvmArgs("--enable-preview")
     testLogging.showStandardStreams = true
     systemProperty("dev.mcdevmcp.test.versionFallback", "true")
     systemProperty("dev.mcdevmcp.test.javaFeature", testJavaFeature.get())
@@ -226,10 +225,6 @@ tasks.withType<Test>().configureEach {
         layout.buildDirectory.file("libs/mcdev-mcp-$applicationVersion.jar").get().asFile.absolutePath
     )
     systemProperty("mcdevMcpJava", testJavaLauncher.get().executablePath.asFile.absolutePath)
-}
-
-tasks.withType<JavaExec>().configureEach {
-    jvmArgs("--enable-preview")
 }
 
 tasks.named<Test>("test") {
@@ -339,7 +334,7 @@ val generateJarChecksum = tasks.register<Sha256FileTask>("generateJarChecksum") 
 
 val runtimeTestBundle = tasks.register<Zip>("runtimeTestBundle") {
     group = "distribution"
-    description = "Packages the Java-25-built JAR, checksum, manifest, and compiled runtime smoke harness."
+    description = "Packages the Java-26-built JAR, checksum, manifest, and compiled runtime smoke harness."
     dependsOn(tasks.named(runtimeTest.classesTaskName), generateJarChecksum, generateMcpbManifest)
     archiveBaseName.set("mcdev-mcp-runtime-test")
     archiveVersion.set(applicationVersion)
@@ -358,7 +353,7 @@ val runtimeTestBundle = tasks.register<Zip>("runtimeTestBundle") {
 
 val benchmarkBundle = tasks.register<Zip>("benchmarkBundle") {
     group = "distribution"
-    description = "Packages the Java-25-built JAR, checksum, and compiled benchmark harness."
+    description = "Packages the Java-26-built JAR, checksum, and compiled benchmark harness."
     dependsOn(benchmarkClasses, generateJarChecksum)
     archiveBaseName.set("mcdev-mcp-benchmark")
     archiveVersion.set(applicationVersion)
@@ -373,11 +368,11 @@ val benchmarkBundle = tasks.register<Zip>("benchmarkBundle") {
     duplicatesStrategy = DuplicatesStrategy.FAIL
 }
 
-tasks.register<Sync>("java25ArtifactBundle") {
+tasks.register<Sync>("java26ArtifactBundle") {
     group = "distribution"
-    description = "Stages the complete Java-25 build-once provenance payload for CI consumers."
+    description = "Stages the complete Java-26 build-once provenance payload for CI consumers."
     dependsOn(runtimeTestBundle, benchmarkBundle, generateMcpbManifest)
-    into(layout.buildDirectory.dir("artifacts/java25"))
+    into(layout.buildDirectory.dir("artifacts/java26"))
     from(releaseJar)
     from(jarChecksum)
     from(generatedMcpbManifest) {

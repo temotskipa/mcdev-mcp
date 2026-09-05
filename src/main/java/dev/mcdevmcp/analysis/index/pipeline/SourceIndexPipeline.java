@@ -20,7 +20,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 
-public final value class SourceIndexPipeline {
+public final class SourceIndexPipeline {
     private static final int REPORTED_DIAGNOSTIC_LIMIT = 20;
     private static final int REPORTED_DIAGNOSTIC_CHARACTERS = 512;
 

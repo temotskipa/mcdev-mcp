@@ -12,7 +12,7 @@ import java.net.IDN;
  * surrounding {@link String#trim()}), because the bridge performs the final
  * version-specific validation and parsing.</p>
  */
-public value record MinecraftServerAddress(String value) {
+public record MinecraftServerAddress(String value) {
     private static final int MAXIMUM_LENGTH = 256;
 
     public MinecraftServerAddress {

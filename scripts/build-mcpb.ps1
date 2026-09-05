@@ -28,10 +28,10 @@ if (-not $SkipBuild) {
 }
 if ($SkipBuild) {
     if ([string]::IsNullOrWhiteSpace($Manifest)) {
-        throw "-SkipBuild requires -Manifest from the Java 28 preview build artifact"
+        throw "-SkipBuild requires -Manifest from the Java 26 build artifact"
     }
     if ([string]::IsNullOrWhiteSpace($Checksum)) {
-        throw "-SkipBuild requires -Checksum from the Java 28 preview build artifact"
+        throw "-SkipBuild requires -Checksum from the Java 26 build artifact"
     }
     $stagingManifest = (Resolve-Path -LiteralPath $Manifest).Path
 }
@@ -132,7 +132,7 @@ if ($sourceHash -ne $innerHash) {
 if ($env:MCDEV_MCP_SKIP_SMOKE -ne "1") {
     if ($SkipBuild) {
         $java = Join-Path $env:JAVA_HOME "bin\java.exe"
-        & $java --enable-preview -cp $jarPath dev.mcdevmcp.packaging.McpbBundleSmokeMain $extract
+        & $java -cp $jarPath dev.mcdevmcp.packaging.McpbBundleSmokeMain $extract
     } else {
         & (Join-Path $root "gradlew.bat") mcpbBundleSmoke "-PmcpbBundleDirectory=$extract" --console=plain --no-configuration-cache
     }

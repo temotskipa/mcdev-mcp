@@ -261,7 +261,6 @@ final class DifferentialCliTest {
     private static ProcessBuilder javaProcess(List<String> arguments, CliEnvironment environment) {
         List<String> command = new ArrayList<>(arguments.size() + 8);
         command.add(JAVA.toString());
-        command.add("--enable-preview");
         command.add("-Dfile.encoding=UTF-8");
         command.add("-Duser.language=en");
         command.add("-Duser.country=US");

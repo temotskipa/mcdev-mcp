@@ -14,7 +14,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
-value class StructuredToolResultTest {
+class StructuredToolResultTest {
     @Test
     void preservesTheTypedJavaValueUntilTheJsonBoundary() throws IOException {
         var value = new InventorySummary(2, List.of(new InventoryItem("minecraft:diamond", 3)));

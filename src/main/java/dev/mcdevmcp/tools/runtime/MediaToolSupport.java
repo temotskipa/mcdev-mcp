@@ -25,7 +25,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.CompletionStage;
 
-final value class MediaToolSupport {
+final class MediaToolSupport {
     static final int MAX_BASE64_PNG_BYTES = 7 * 1024 * 1024;
     static final long MAX_INTERVAL_MILLIS = 9_223_372_036_854L;
 
@@ -133,8 +133,10 @@ final value class MediaToolSupport {
 
     static RecordVideoResult project(RecordVideoWireResult wire) {
         return switch (wire) {
-            case RecordVideoGridWireResult grid -> new RecordVideoGridResult(nativePath(McRecordVideoTool.ENDPOINT, grid.path()), grid.width(), grid.height(), grid.sizeBytes(), grid.mimeType(), grid.frameCount(), grid.frameWidth(), grid.frameHeight(), grid.gridCols(), grid.gridRows(), Duration.ofMillis(grid.captureMs()), intervalDuration(grid.intervalMs()), grid.dropped());
-            case RecordVideoFramesWireResult frames -> new RecordVideoFramesResult(frames.paths().stream().map(path -> nativePath(McRecordVideoTool.ENDPOINT, path)).toList(), frames.frameWidth(), frames.frameHeight(), frames.mimeType(), frames.frameCount(), Duration.ofMillis(frames.captureMs()), intervalDuration(frames.intervalMs()), frames.sizeBytes(), frames.dropped());
+            case RecordVideoGridWireResult grid ->
+                    new RecordVideoGridResult(nativePath(McRecordVideoTool.ENDPOINT, grid.path()), grid.width(), grid.height(), grid.sizeBytes(), grid.mimeType(), grid.frameCount(), grid.frameWidth(), grid.frameHeight(), grid.gridCols(), grid.gridRows(), Duration.ofMillis(grid.captureMs()), intervalDuration(grid.intervalMs()), grid.dropped());
+            case RecordVideoFramesWireResult frames ->
+                    new RecordVideoFramesResult(frames.paths().stream().map(path -> nativePath(McRecordVideoTool.ENDPOINT, path)).toList(), frames.frameWidth(), frames.frameHeight(), frames.mimeType(), frames.frameCount(), Duration.ofMillis(frames.captureMs()), intervalDuration(frames.intervalMs()), frames.sizeBytes(), frames.dropped());
         };
     }
 

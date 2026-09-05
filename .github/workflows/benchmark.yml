@@ -10,7 +10,7 @@ on:
         required: false
         type: string
       parallel_gc:
-        description: Run the non-policy Parallel GC advisory comparison
+        description: Run the non-blocking Parallel GC advisory benchmark
         required: false
         default: false
         type: boolean
@@ -20,7 +20,7 @@ permissions:
 
 jobs:
   benchmark:
-    name: Same-machine Java 25 and 26 comparison
+    name: Java 26 corpus qualification and benchmark
     runs-on: [ self-hosted, linux, x64, mcdev-benchmark ]
     permissions:
       contents: read
@@ -36,16 +36,7 @@ jobs:
           path: .superpowers/parity/benchmark-node-oracle
           fetch-depth: 1
           persist-credentials: false
-      - name: Record Java 25 home
-        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
-        with:
-          distribution: temurin
-          java-version: '25'
-          cache: gradle
-      - name: Preserve Java 25 location
-        shell: bash
-        run: echo "JAVA_HOME_25=$JAVA_HOME" >> "$GITHUB_ENV"
-      - name: Record Java 26 home
+      - name: Install Temurin 26
         uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
         with:
           distribution: temurin
@@ -66,18 +57,28 @@ jobs:
           if (( workers > 4 )); then workers=4; fi
           if (( workers < 1 )); then workers=1; fi
           echo "MAX_WORKERS=$workers" >> "$GITHUB_ENV"
-      - name: Build the Java 25 benchmark executable once
+      - name: Build the Java 26 benchmark executable once
         shell: bash
         run: |
           set -euo pipefail
-          export JAVA_HOME="$JAVA_HOME_25"
+          export JAVA_HOME="$JAVA_HOME_26"
           export PATH="$JAVA_HOME/bin:$PATH"
-          ./gradlew clean benchmarkBundle --console=plain
+          ./gradlew clean benchmarkBundle --rerun-tasks --no-build-cache --no-configuration-cache --console=plain
           mkdir benchmark-runtime
           unzip -q build/bundles/mcdev-mcp-benchmark-*.zip -d benchmark-runtime
           cd benchmark-runtime/server
           sha256sum --check mcdev-mcp-*.jar.sha256
           echo "BENCHMARK_JAR_SHA256=$(sha256sum mcdev-mcp-*.jar | cut -d' ' -f1)" >> "$GITHUB_ENV"
+      - name: Preserve the benchmark producer bytes for canonical hash verification
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: benchmark-java26-producer-${{ github.run_number }}-${{ github.run_attempt }}
+          path: |
+            build/bundles/mcdev-mcp-benchmark-*.zip
+            benchmark-runtime/server/mcdev-mcp-*.jar
+            benchmark-runtime/server/mcdev-mcp-*.jar.sha256
+          if-no-files-found: error
+          retention-days: 90
       - name: Prepare and hash-check Minecraft 1.21.11 and 26.1 once
         id: corpus
         shell: bash
@@ -360,7 +361,7 @@ jobs:
             test "$(jq -er '.nodeCallgraphSha256' "$reviewed_baseline")" = "$(sha256sum "$node_callgraph" | cut -d' ' -f1)"
           done < "$BENCHMARK_ROOT/prepared.tsv"
           test -z "$(git -C "$oracle_source" status --porcelain=v1 --untracked-files=all)"
-      - name: Qualify complete corpora on both runtimes and worker counts
+      - name: Qualify complete corpora on Java 26 and worker counts
         shell: bash
         run: |
           set -euo pipefail
@@ -371,9 +372,8 @@ jobs:
           if (( MAX_WORKERS > 1 )); then worker_counts+=("$MAX_WORKERS"); fi
           while IFS=$'\t' read -r id version source remapped baseline node_callgraph expectation production_cache; do
             hashes=()
-            for feature in 25 26; do
-              home_variable="JAVA_HOME_$feature"
-              java_home="${!home_variable}"
+            for feature in 26; do
+              java_home="$JAVA_HOME_26"
               for workers in "${worker_counts[@]}"; do
                 output="$BENCHMARK_ROOT/reports/qualification/$id/java$feature-workers$workers"
                 mkdir -p "$output"
@@ -390,49 +390,28 @@ jobs:
             done
             test "$(printf '%s\n' "${hashes[@]}" | sort -u | wc -l)" -eq 1
           done < "$BENCHMARK_ROOT/prepared.tsv"
-      - name: Run counterbalanced default-G1 comparisons
+      - name: Run the blocking Java 26 default-G1 benchmark
         shell: bash
         run: |
           set -euo pipefail
           jar="$(find benchmark-runtime/server -maxdepth 1 -name 'mcdev-mcp-*.jar' -type f -print -quit)"
           classpath="benchmark-runtime/harness:$jar"
-          order=(25 26)
-          if (( GITHUB_RUN_NUMBER % 2 == 0 )); then order=(26 25); fi
-          mkdir -p "$BENCHMARK_ROOT/comparison"
           while IFS=$'\t' read -r id version source remapped baseline node_callgraph expectation production_cache; do
-            for feature in "${order[@]}"; do
-              home_variable="JAVA_HOME_$feature"
-              java_home="${!home_variable}"
-              output="$BENCHMARK_ROOT/reports/g1/$id/java$feature"
-              mkdir -p "$output"
-              "$java_home/bin/java" -cp "$classpath" \
-                dev.mcdevmcp.benchmark.AnalysisBenchmarkMain \
-                --minecraft-version "$version" --source-root "$source" \
-                --remapped-jar "$remapped" --server-jar "$jar" --output-root "$output" \
-                --production-cache-root "$production_cache" --workers "$MAX_WORKERS" \
-                --machine-id "$MACHINE_ID" --run-id "$GITHUB_RUN_NUMBER-$id-java$feature" --gc G1
-            done
-            java25="$(find "$BENCHMARK_ROOT/reports/g1/$id/java25" -maxdepth 1 -name 'benchmark-*.json' -type f -print -quit)"
-            java26="$(find "$BENCHMARK_ROOT/reports/g1/$id/java26" -maxdepth 1 -name 'benchmark-*.json' -type f -print -quit)"
-            source_hash="$(jq -er '.sourceRootSha256' "$java25")"
-            remapped_hash="$(jq -er '.remappedJarSha256' "$java25")"
-            server_hash="$(jq -er '.serverJarSha256' "$java25")"
-            test "$source_hash" = "$(jq -er '.sourceRootSha256' "$java26")"
-            test "$remapped_hash" = "$(jq -er '.remappedJarSha256' "$java26")"
-            test "$server_hash" = "$BENCHMARK_JAR_SHA256"
-            test "$server_hash" = "$(jq -er '.serverJarSha256' "$java26")"
-            jq -n \
-              --argjson workflowRunNumber "$GITHUB_RUN_NUMBER" --arg machineId "$MACHINE_ID" \
-              --arg serverJarSha256 "$BENCHMARK_JAR_SHA256" --arg sourceRootSha256 "$source_hash" \
-              --arg remappedJarSha256 "$remapped_hash" \
-              --slurpfile j25 "$java25" --slurpfile j26 "$java26" \
-              '{serverJarSha256: $serverJarSha256, sourceRootSha256: $sourceRootSha256,
-                remappedJarSha256: $remappedJarSha256,
-                comparison: {workflowRunNumber: $workflowRunNumber, machineId: $machineId,
-                  java25: $j25[0].result, java26: $j26[0].result}}' \
-              > "$BENCHMARK_ROOT/comparison/$id.json"
+            output="$BENCHMARK_ROOT/reports/g1/$id/java26"
+            mkdir -p "$output"
+            "$JAVA_HOME_26/bin/java" -cp "$classpath" \
+              dev.mcdevmcp.benchmark.AnalysisBenchmarkMain \
+              --minecraft-version "$version" --source-root "$source" \
+              --remapped-jar "$remapped" --server-jar "$jar" --output-root "$output" \
+              --production-cache-root "$production_cache" --workers "$MAX_WORKERS" \
+              --machine-id "$MACHINE_ID" --run-id "$GITHUB_RUN_NUMBER-$id-java26" --gc G1
+            report="$(find "$output" -maxdepth 1 -name 'benchmark-*.json' -type f -print -quit)"
+            test -n "$report"
+            test "$(jq -er '.runtime.javaFeature' "$report")" -eq 26
+            test "$(jq -er '.result.javaFeature' "$report")" -eq 26
+            test "$(jq -er '.serverJarSha256' "$report")" = "$BENCHMARK_JAR_SHA256"
           done < "$BENCHMARK_ROOT/prepared.tsv"
-          printf '%s\n' "$MACHINE_ID" > "$BENCHMARK_ROOT/comparison/machine-id.txt"
+          printf '%s\n' "$MACHINE_ID" > "$BENCHMARK_ROOT/reports/g1/machine-id.txt"
       - name: Run manual Parallel-GC advisory
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.parallel_gc }}
         shell: bash
@@ -441,98 +420,22 @@ jobs:
           jar="$(find benchmark-runtime/server -maxdepth 1 -name 'mcdev-mcp-*.jar' -type f -print -quit)"
           classpath="benchmark-runtime/harness:$jar"
           while IFS=$'\t' read -r id version source remapped baseline node_callgraph expectation production_cache; do
-            for feature in 25 26; do
-              home_variable="JAVA_HOME_$feature"
-              java_home="${!home_variable}"
-              output="$BENCHMARK_ROOT/reports/parallel-gc/$id/java$feature"
-              mkdir -p "$output"
-              "$java_home/bin/java" -cp "$classpath" \
-                dev.mcdevmcp.benchmark.AnalysisBenchmarkMain \
-                --minecraft-version "$version" --source-root "$source" \
-                --remapped-jar "$remapped" --server-jar "$jar" --output-root "$output" \
-                --production-cache-root "$production_cache" --workers "$MAX_WORKERS" \
-                --machine-id "$MACHINE_ID" --run-id "$GITHUB_RUN_NUMBER-$id-java$feature-parallel" --gc PARALLEL
-            done
+            output="$BENCHMARK_ROOT/reports/parallel-gc/$id/java26"
+            mkdir -p "$output"
+            "$JAVA_HOME_26/bin/java" -cp "$classpath" \
+              dev.mcdevmcp.benchmark.AnalysisBenchmarkMain \
+              --minecraft-version "$version" --source-root "$source" \
+              --remapped-jar "$remapped" --server-jar "$jar" --output-root "$output" \
+              --production-cache-root "$production_cache" --workers "$MAX_WORKERS" \
+              --machine-id "$MACHINE_ID" --run-id "$GITHUB_RUN_NUMBER-$id-java26-parallel" --gc PARALLEL
           done < "$BENCHMARK_ROOT/prepared.tsv"
-      - name: Download the preceding two comparable scheduled artifacts
-        if: github.event_name == 'schedule'
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          mkdir -p "$BENCHMARK_ROOT/history"
-          accepted=0
-          # The schedule-only API order defines comparison adjacency; manual runs
-          # may create gaps in GitHub's global run_number.
-          while IFS=$'\t' read -r run_id run_number; do
-            (( run_number < GITHUB_RUN_NUMBER )) || continue
-            artifact="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run_id/artifacts" \
-              --jq '.artifacts[] | select(.name == "benchmark-comparison" and (.expired | not)) | .archive_download_url' | head -n1)"
-            test -n "$artifact" || continue
-            candidate="$BENCHMARK_ROOT/history/candidate-$run_number"
-            mkdir -p "$candidate"
-            gh api "$artifact" > "$candidate.zip"
-            unzip -q "$candidate.zip" -d "$candidate"
-            test -f "$candidate/machine-id.txt" || continue
-            test "$(cat "$candidate/machine-id.txt")" = "$MACHINE_ID" || continue
-            compatible=true
-            for id in 1.21.11 26.1; do
-              test -f "$candidate/$id.json" || { compatible=false; break; }
-              test "$(jq -er '.comparison.workflowRunNumber' "$candidate/$id.json")" = "$run_number" || { compatible=false; break; }
-              test "$(jq -er '.comparison.machineId' "$candidate/$id.json")" = "$MACHINE_ID" || { compatible=false; break; }
-              test "$(jq -er '.serverJarSha256' "$candidate/$id.json")" = "$BENCHMARK_JAR_SHA256" || { compatible=false; break; }
-              test "$(jq -er '.sourceRootSha256' "$candidate/$id.json")" = "$(jq -er '.sourceRootSha256' "$BENCHMARK_ROOT/comparison/$id.json")" || { compatible=false; break; }
-              test "$(jq -er '.remappedJarSha256' "$candidate/$id.json")" = "$(jq -er '.remappedJarSha256' "$BENCHMARK_ROOT/comparison/$id.json")" || { compatible=false; break; }
-            done
-            $compatible || continue
-            accepted=$((accepted + 1))
-            mv "$candidate" "$BENCHMARK_ROOT/history/accepted-$accepted-$run_number"
-            (( accepted == 2 )) && break
-          done < <(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/benchmark.yml/runs?status=success&event=schedule&per_page=30" \
-            --jq '.workflow_runs | sort_by(.run_number) | reverse[] | [.id, .run_number] | @tsv')
-          echo "PRIOR_COMPARABLE_RUNS=$accepted" >> "$GITHUB_ENV"
-      - name: Evaluate the three-run preference policy
-        if: github.event_name == 'schedule'
-        shell: bash
-        run: |
-          set -euo pipefail
-          jar="$(find benchmark-runtime/server -maxdepth 1 -name 'mcdev-mcp-*.jar' -type f -print -quit)"
-          classpath="benchmark-runtime/harness:$jar"
-          mkdir -p "$BENCHMARK_ROOT/decisions"
-          for id in 1.21.11 26.1; do
-            previous=()
-            for ((ordinal = PRIOR_COMPARABLE_RUNS; ordinal >= 1; ordinal--)); do
-              candidate="$(find "$BENCHMARK_ROOT/history" -path "*/accepted-$ordinal-*/*" -name "$id.json" -type f -print -quit)"
-              test -n "$candidate"
-              previous+=("$candidate")
-            done
-            # Normalize the selected schedule-only sequence before the Java policy
-            # enforces its consecutive 1,2,3 requirement.
-            jq -s 'sort_by(.comparison.workflowRunNumber) | map(.comparison) | to_entries |
-              map(.value + {workflowRunNumber: (.key + 1)})' \
-              "${previous[@]}" "$BENCHMARK_ROOT/comparison/$id.json" \
-              > "$BENCHMARK_ROOT/decisions/$id-runs.json"
-            jq -e --arg machineId "$MACHINE_ID" --argjson expectedCount "$((PRIOR_COMPARABLE_RUNS + 1))" \
-              'length == $expectedCount and
-               ([.[].workflowRunNumber] == [range(1; length + 1)]) and
-               all(.[]; .machineId == $machineId)' \
-              "$BENCHMARK_ROOT/decisions/$id-runs.json" >/dev/null
-            "$JAVA_HOME_25/bin/java" -cp "$classpath" dev.mcdevmcp.benchmark.BenchmarkPolicyMain \
-              --input "$BENCHMARK_ROOT/decisions/$id-runs.json" \
-              > "$BENCHMARK_ROOT/decisions/$id.json"
-            preferred="$(jq -r '.preferJava26' "$BENCHMARK_ROOT/decisions/$id.json")"
-            reasons="$(jq -r '.reasons | join("; ")' "$BENCHMARK_ROOT/decisions/$id.json")"
-            printf '### Minecraft %s\n\n- Prefer Java 26: `%s`\n- Evidence: %s\n\n' "$id" "$preferred" "$reasons" >> "$GITHUB_STEP_SUMMARY"
-          done
-          printf 'Comparable prior scheduled runs on this physical machine: `%s`\n' "$PRIOR_COMPARABLE_RUNS" >> "$GITHUB_STEP_SUMMARY"
       - name: Summarize manual advisory results
         if: github.event_name == 'workflow_dispatch'
         shell: bash
         run: |
           {
             printf '### Manual advisory benchmark\n\n'
-            printf 'This run is advisory only. No Java runtime preference was evaluated or emitted.\n'
+            printf 'This run is advisory only; Java 26 remains the sole release runtime.\n'
           } >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
@@ -542,12 +445,11 @@ jobs:
             ${{ env.BENCHMARK_ROOT }}/corpus-manifest.json
             ${{ env.BENCHMARK_ROOT }}/node-oracle/*.json
             ${{ env.BENCHMARK_ROOT }}/reports/**/*.json
-            ${{ env.BENCHMARK_ROOT }}/decisions/*.json
           if-no-files-found: error
           retention-days: 90
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: benchmark-comparison
-          path: ${{ env.BENCHMARK_ROOT }}/comparison/*
+          name: benchmark-java26
+          path: ${{ env.BENCHMARK_ROOT }}/reports/**
           if-no-files-found: error
           retention-days: 90

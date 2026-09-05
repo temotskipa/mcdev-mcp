@@ -254,7 +254,6 @@ class McpProcessClientTest {
         String java = configuredJava == null || configuredJava.isBlank() ? ProcessHandle.current().info().command().orElseThrow() : configuredJava;
         var command = new ArrayList<String>(arguments.length + 5);
         command.add(java);
-        command.add("--enable-preview");
         command.add("-cp");
         command.add(System.getProperty("java.class.path"));
         command.add(McpProcessFixtureMain.class.getName());
