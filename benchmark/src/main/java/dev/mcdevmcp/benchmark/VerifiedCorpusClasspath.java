@@ -1,6 +1,7 @@
 package dev.mcdevmcp.benchmark;
 
 import dev.mcdevmcp.storage.model.MinecraftVersion;
+
 import java.nio.file.Path;
 import java.util.List;
 

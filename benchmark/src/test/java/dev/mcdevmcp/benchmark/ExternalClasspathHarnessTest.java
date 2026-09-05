@@ -18,7 +18,8 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class ExternalClasspathHarnessTest {
     private static final String ZERO = "0".repeat(64);
-    @TempDir Path root;
+    @TempDir
+    Path root;
 
     @Test
     void qualificationResolvesExternalFieldMethodAndParameterTypes() throws Exception {
@@ -121,7 +122,8 @@ class ExternalClasspathHarnessTest {
 
     private static void jar(Path classes, Path jar) throws Exception {
         Files.createDirectories(jar.getParent());
-        try (JarOutputStream archive = new JarOutputStream(Files.newOutputStream(jar)); var files = Files.walk(classes)) {
+        try (JarOutputStream archive = new JarOutputStream(Files.newOutputStream(jar));
+             var files = Files.walk(classes)) {
             for (Path file : files.filter(Files::isRegularFile).sorted().toList()) {
                 archive.putNextEntry(new JarEntry(classes.relativize(file).toString().replace('\\', '/')));
                 Files.copy(file, archive);
@@ -134,5 +136,6 @@ class ExternalClasspathHarnessTest {
         return Path.of(System.getProperty("java.home"), "bin", System.getProperty("os.name").startsWith("Windows") ? "java.exe" : "java");
     }
 
-    private record Fixture(Path sources, Path jar, Path manifest, Path library) {}
+    private record Fixture(Path sources, Path jar, Path manifest, Path library) {
+    }
 }

@@ -12,12 +12,15 @@ import java.util.concurrent.FutureTask;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
-/** Benchmark-only measurement; never substitutes heap usage for resident memory. */
+/**
+ * Benchmark-only measurement; never substitutes heap usage for resident memory.
+ */
 final class ProcessPeakMemory {
     private static final int MAX_OUTPUT_BYTES = 128;
     private static final Duration QUERY_TIMEOUT = Duration.ofSeconds(10);
 
-    private ProcessPeakMemory() {}
+    private ProcessPeakMemory() {
+    }
 
     static ProcessMemoryMetric metric() {
         return metric(System.getProperty("os.name"));
@@ -31,12 +34,17 @@ final class ProcessPeakMemory {
 
     static long currentPeakBytes() throws IOException {
         return switch (metric()) {
-            case LINUX_VM_HWM -> linuxPeakBytes(Files.readAllLines(Path.of("/proc/self/status"), StandardCharsets.US_ASCII));
+            case LINUX_VM_HWM ->
+                    linuxPeakBytes(Files.readAllLines(Path.of("/proc/self/status"), StandardCharsets.US_ASCII));
             case WINDOWS_PEAK_WORKING_SET -> {
                 String root = System.getenv("SystemRoot");
-                if (root == null || root.isBlank()) throw new IOException("SystemRoot is unavailable for Windows process-memory measurement");
+                if (root == null || root.isBlank()) {
+                    throw new IOException("SystemRoot is unavailable for Windows process-memory measurement");
+                }
                 Path executable = Path.of(root).resolve("System32/WindowsPowerShell/v1.0/powershell.exe");
-                if (!executable.isAbsolute() || !Files.isRegularFile(executable, LinkOption.NOFOLLOW_LINKS)) throw new IOException("System Windows PowerShell is unavailable");
+                if (!executable.isAbsolute() || !Files.isRegularFile(executable, LinkOption.NOFOLLOW_LINKS)) {
+                    throw new IOException("System Windows PowerShell is unavailable");
+                }
                 yield positiveBytes(query(windowsCommand(executable, ProcessHandle.current().pid()), QUERY_TIMEOUT));
             }
             case UNAVAILABLE -> throw new IOException("Process peak resident memory is unavailable on this platform");
@@ -54,7 +62,9 @@ final class ProcessPeakMemory {
         for (String line : lines) {
             if (!line.startsWith("VmHWM:")) continue;
             String[] fields = line.trim().split("\\s+");
-            if (result != null || fields.length != 3 || !fields[2].equals("kB")) throw new IOException("Malformed or duplicate Linux VmHWM measurement");
+            if (result != null || fields.length != 3 || !fields[2].equals("kB")) {
+                throw new IOException("Malformed or duplicate Linux VmHWM measurement");
+            }
             try {
                 result = Math.multiplyExact(positiveBytes(fields[1]), 1024L);
             } catch (ArithmeticException failure) {
@@ -67,7 +77,9 @@ final class ProcessPeakMemory {
 
     static long positiveBytes(String output) throws IOException {
         String value = output.strip();
-        if (value.isEmpty() || value.chars().anyMatch(c -> c < '0' || c > '9')) throw new IOException("Invalid process peak-memory measurement");
+        if (value.isEmpty() || value.chars().anyMatch(c -> c < '0' || c > '9')) {
+            throw new IOException("Invalid process peak-memory measurement");
+        }
         try {
             long bytes = Long.parseLong(value);
             if (bytes <= 0) throw new IOException("Process peak-memory measurement must be positive");
@@ -87,9 +99,13 @@ final class ProcessPeakMemory {
         String result = null;
         try {
             byte[] bytes = output.get(timeout.toNanos(), TimeUnit.NANOSECONDS);
-            if (bytes.length > MAX_OUTPUT_BYTES) throw new IOException("Process-memory query exceeded its output limit");
+            if (bytes.length > MAX_OUTPUT_BYTES) {
+                throw new IOException("Process-memory query exceeded its output limit");
+            }
             long remaining = deadline - System.nanoTime();
-            if (remaining <= 0 || !process.waitFor(remaining, TimeUnit.NANOSECONDS)) throw new IOException("Process-memory query timed out");
+            if (remaining <= 0 || !process.waitFor(remaining, TimeUnit.NANOSECONDS)) {
+                throw new IOException("Process-memory query timed out");
+            }
             if (process.exitValue() != 0) throw new IOException("Process-memory query exited " + process.exitValue());
             result = new String(bytes, StandardCharsets.US_ASCII);
         } catch (IOException exception) {
@@ -105,8 +121,12 @@ final class ProcessPeakMemory {
             try {
                 cleanup(process, output, reader);
             } catch (IOException exception) {
-                if (failure == null) failure = exception;
-                else failure.addSuppressed(exception);
+                if (failure == null) {
+                    failure = exception;
+                }
+                else {
+                    failure.addSuppressed(exception);
+                }
             }
         }
         if (failure != null) throw failure;

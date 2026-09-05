@@ -2,6 +2,7 @@ package dev.mcdevmcp.benchmark;
 
 import dev.mcdevmcp.storage.model.MinecraftVersion;
 import io.modelcontextprotocol.json.McpJsonDefaults;
+
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.MessageDigest;
@@ -25,7 +26,8 @@ final class ClasspathFixtures {
         }
     }
 
-    private ClasspathFixtures() {}
+    private ClasspathFixtures() {
+    }
 
     static Path empty(Path root) {
         try {

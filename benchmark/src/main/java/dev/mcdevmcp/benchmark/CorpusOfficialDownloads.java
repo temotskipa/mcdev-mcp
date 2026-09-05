@@ -4,4 +4,5 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 
 
 @JsonIgnoreProperties(ignoreUnknown = true)
-record CorpusOfficialDownloads(CorpusOfficialArtifact artifact) {}
+record CorpusOfficialDownloads(CorpusOfficialArtifact artifact) {
+}

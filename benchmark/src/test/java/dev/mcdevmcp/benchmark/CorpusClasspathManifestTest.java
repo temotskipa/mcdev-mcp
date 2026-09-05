@@ -16,7 +16,8 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.*;
 
 class CorpusClasspathManifestTest {
-    @TempDir Path root;
+    @TempDir
+    Path root;
 
     @Test
     void identityHasFixedPortableOrderedFraming() throws Exception {
@@ -99,10 +100,7 @@ class CorpusClasspathManifestTest {
     void rejectsZeroSizeAndNonHttpsSelectedOfficialArtifacts() throws Exception {
         CorpusClasspathManifest valid = official();
         CorpusClasspathArtifact artifact = valid.artifacts().getFirst();
-        for (Map<String, Object> invalid : List.of(
-                Map.<String, Object>of("path", artifact.relativePath(), "size", 0, "sha1", "a".repeat(40), "url", "https://example.test/lib.jar"),
-                Map.<String, Object>of("path", artifact.relativePath(), "size", 1, "sha1", "a".repeat(40), "url", "file:///lib.jar"),
-                Map.<String, Object>of("path", artifact.relativePath(), "size", 1, "sha1", "a".repeat(40), "url", "https:lib.jar"))) {
+        for (Map<String, Object> invalid : List.of(Map.<String, Object>of("path", artifact.relativePath(), "size", 0, "sha1", "a".repeat(40), "url", "https://example.test/lib.jar"), Map.<String, Object>of("path", artifact.relativePath(), "size", 1, "sha1", "a".repeat(40), "url", "file:///lib.jar"), Map.<String, Object>of("path", artifact.relativePath(), "size", 1, "sha1", "a".repeat(40), "url", "https:lib.jar"))) {
             byte[] detail = McpJsonDefaults.getMapper().writeValueAsBytes(Map.of("id", "1.21.11", "libraries", List.of(Map.of("name", "g:a:1", "downloads", Map.of("artifact", invalid)))));
             Files.write(root.resolve("version.json"), detail);
             CorpusClasspathMetadata metadata = metadataFor(detail);

@@ -7,7 +7,9 @@ import java.util.Objects;
  */
 public record BenchmarkChildMeasurement(BenchmarkPhase phase, long units, long elapsedNanos, long peakRssBytes, long gcCollections, long gcTimeMillis, BenchmarkWorkCounts counts, BenchmarkRuntimeMetadata runtime, int schemaVersion, String classpathIdentity, String classpathManifestSha256) {
     public BenchmarkChildMeasurement {
-        if (schemaVersion != 2) throw new IllegalArgumentException("Unsupported benchmark child schema " + schemaVersion);
+        if (schemaVersion != 2) {
+            throw new IllegalArgumentException("Unsupported benchmark child schema " + schemaVersion);
+        }
         classpathIdentity = CorpusExpectation.requireSha256(classpathIdentity, "classpathIdentity");
         classpathManifestSha256 = CorpusExpectation.requireSha256(classpathManifestSha256, "classpathManifestSha256");
         Objects.requireNonNull(phase, "phase");
