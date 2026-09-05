@@ -297,8 +297,8 @@ public final class CallgraphBundleWriter implements AutoCloseable {
             current = List.copyOf(next);
             pass++;
         }
-        Path data = BundleFiles.safeChild(staging, direction.dataFile());
-        Path index = BundleFiles.safeChild(staging, direction.indexFile());
+        Path data = BundleFiles.safeChild(staging, direction.dataFileName());
+        Path index = BundleFiles.safeChild(staging, direction.indexFileName());
         DirectionCounts counts = mergeRuns(direction, current, data, index);
         for (Path path : current) {
             Files.delete(path);

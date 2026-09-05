@@ -17,32 +17,37 @@ class McpbLauncherTest {
     Path temporaryDirectory;
 
     @Test
-    void rejectsJava24BeforeStartingTheServer() throws Exception {
-        ProcessResult result = runLauncher("24", "17", Map.of());
+    void rejectsJava27BeforeStartingTheServer() throws Exception {
+        ProcessResult result = runLauncher("27", "17", Map.of());
 
         assertEquals(1, result.exitCode(), result.error());
-        assertTrue(result.error().contains("Java 25 or newer is required"));
+        assertTrue(result.error().contains("Java 28 with preview features is required"));
         assertFalse(Files.exists(temporaryDirectory.resolve("environment.txt")));
     }
 
     @Test
-    void acceptsJava25And26AndForwardsChildExitStatus() throws Exception {
-        ProcessResult java25 = runLauncher("25", "17", Map.of());
-        ProcessResult java26 = runLauncher("26", "17", Map.of());
-        assertEquals(17, java25.exitCode(), java25.error());
-        assertEquals(17, java26.exitCode(), java26.error());
+    void acceptsJava28And29AndForwardsThePreviewFlagAndChildExitStatus() throws Exception {
+        ProcessResult java28 = runLauncher("28", "17", Map.of());
+
+        assertEquals(17, java28.exitCode(), java28.error());
+        String launchedArguments = Files.readString(temporaryDirectory.resolve("arguments.txt"), StandardCharsets.UTF_8);
+        assertTrue(launchedArguments.startsWith("--enable-preview|-jar|"));
+        assertTrue(launchedArguments.endsWith("|serve"));
+
+        ProcessResult java29 = runLauncher("29", "17", Map.of());
+        assertEquals(17, java29.exitCode(), java29.error());
     }
 
     @Test
     void ignoresNumericJavaToolOptionsPreambleWhenDetectingTheFeatureVersion() throws Exception {
-        ProcessResult result = runLauncher("25", "17", Map.of("FAKE_JAVA_VERSION_PREAMBLE", "Picked up JAVA_TOOL_OPTIONS: -Dfile.encoding=UTF-8"));
+        ProcessResult result = runLauncher("28", "17", Map.of("FAKE_JAVA_VERSION_PREAMBLE", "Picked up JAVA_TOOL_OPTIONS: -Dfile.encoding=UTF-8"));
 
         assertEquals(17, result.exitCode(), result.error());
     }
 
     @Test
     void rejectsAFailedVersionProbeEvenWhenItPrintsASupportedVersion() throws Exception {
-        ProcessResult result = runLauncher("25", "17", Map.of("FAKE_JAVA_VERSION_EXIT", "7"));
+        ProcessResult result = runLauncher("28", "17", Map.of("FAKE_JAVA_VERSION_EXIT", "7"));
 
         assertEquals(1, result.exitCode(), result.error());
         assertTrue(result.error().contains("Unable to determine Java version"));
@@ -51,7 +56,7 @@ class McpbLauncherTest {
 
     @Test
     void stripsOnlyUnresolvedOptionalConfigurationValues() throws Exception {
-        ProcessResult result = runLauncher("25", "0", Map.of("MCDEV_SESSION_LOG_DIR", "${user_config.script_logs}", "MCDEV_RUN_COMMAND", "false", "MCDEV_MCP_DEBUG_LOG", "${user_config.debug_log}", "MCDEV_INDEX_THREADS", "${user_config.index_threads}", "DEBUGBRIDGE_PORT", "${user_config.debugbridge_port}"));
+        ProcessResult result = runLauncher("28", "0", Map.of("MCDEV_SESSION_LOG_DIR", "${user_config.script_logs}", "MCDEV_RUN_COMMAND", "false", "MCDEV_MCP_DEBUG_LOG", "${user_config.debug_log}", "MCDEV_INDEX_THREADS", "${user_config.index_threads}", "DEBUGBRIDGE_PORT", "${user_config.debugbridge_port}"));
 
         assertEquals(0, result.exitCode(), result.error());
         assertEquals("||false||", Files.readString(temporaryDirectory.resolve("environment.txt"), StandardCharsets.UTF_8).trim());
@@ -75,7 +80,7 @@ class McpbLauncherTest {
                                    "use strict";
                                    const fs = require("node:fs");
                                    if (process.argv[2] === "-version") {
-                                     process.stderr.write('java version "25"\\n');
+                                      process.stderr.write('java version "28"\\n');
                                      process.exit(0);
                                    }
                                    fs.writeFileSync(process.env.FAKE_CHILD_PID, String(process.pid));
@@ -115,21 +120,22 @@ class McpbLauncherTest {
         Map<String, String> environment = builder.environment();
         environment.put("FAKE_CHILD_PID", childPid.toString());
         environment.put("FAKE_CHILD_SIGNAL", childSignal.toString());
-        Process launcher = builder.start();
-        try {
-            assertTrue(launcher.waitFor(Duration.ofSeconds(8).toMillis(), TimeUnit.MILLISECONDS), "launcher did not stop after " + signal);
-            assertTrue(Files.exists(childPid), "fake Java child did not start");
-            long pid = Long.parseLong(Files.readString(childPid));
-            assertTrue(ProcessHandle.of(pid).isEmpty() || !ProcessHandle.of(pid).orElseThrow().isAlive(), "fake Java child survived " + signal);
-            if (!System.getProperty("os.name").startsWith("Windows")) {
-                assertEquals(signal, Files.readString(childSignal));
-            }
-        } finally {
-            launcher.descendants().forEach(ProcessHandle::destroyForcibly);
-            launcher.destroyForcibly();
-            launcher.waitFor(Duration.ofSeconds(2).toMillis(), TimeUnit.MILLISECONDS);
-            if (Files.exists(childPid)) {
-                ProcessHandle.of(Long.parseLong(Files.readString(childPid))).ifPresent(ProcessHandle::destroyForcibly);
+        try (Process launcher = builder.start()) {
+            try {
+                assertTrue(launcher.waitFor(Duration.ofSeconds(8).toMillis(), TimeUnit.MILLISECONDS), "launcher did not stop after " + signal);
+                assertTrue(Files.exists(childPid), "fake Java child did not start");
+                long pid = Long.parseLong(Files.readString(childPid));
+                assertTrue(ProcessHandle.of(pid).isEmpty() || !ProcessHandle.of(pid).orElseThrow().isAlive(), "fake Java child survived " + signal);
+                if (!System.getProperty("os.name").startsWith("Windows")) {
+                    assertEquals(signal, Files.readString(childSignal));
+                }
+            } finally {
+                launcher.descendants().forEach(ProcessHandle::destroyForcibly);
+                launcher.destroyForcibly();
+                launcher.waitFor(Duration.ofSeconds(2).toMillis(), TimeUnit.MILLISECONDS);
+                if (Files.exists(childPid)) {
+                    ProcessHandle.of(Long.parseLong(Files.readString(childPid))).ifPresent(ProcessHandle::destroyForcibly);
+                }
             }
         }
     }
@@ -158,6 +164,7 @@ class McpbLauncherTest {
                                       process.stderr.write(`java version "${process.env.FAKE_JAVA_VERSION}"\\n`);
                                       process.exit(Number.parseInt(process.env.FAKE_JAVA_VERSION_EXIT ?? "0", 10));
                                     }
+                                    fs.writeFileSync(process.env.FAKE_ARGS_FILE, process.argv.slice(2).join("|"));
                                     const names = [
                                       "MCDEV_SESSION_LOG_DIR",
                                       "MCDEV_MCP_DEBUG_LOG",
@@ -174,11 +181,13 @@ class McpbLauncherTest {
         environment.put("FAKE_JAVA_VERSION", feature);
         environment.put("FAKE_JAVA_EXIT", childExit);
         environment.put("FAKE_ENV_FILE", temporaryDirectory.resolve("environment.txt").toString());
+        environment.put("FAKE_ARGS_FILE", temporaryDirectory.resolve("arguments.txt").toString());
         environment.putAll(additions);
-        Process launched = builder.start();
-        String stdout = new String(launched.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-        String stderr = new String(launched.getErrorStream().readAllBytes(), StandardCharsets.UTF_8);
-        return new ProcessResult(launched.waitFor(), stdout, stderr);
+        try (Process launched = builder.start()) {
+            String stdout = new String(launched.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+            String stderr = new String(launched.getErrorStream().readAllBytes(), StandardCharsets.UTF_8);
+            return new ProcessResult(launched.waitFor(), stdout, stderr);
+        }
     }
 
     private record ProcessResult(int exitCode, String output, String error) {

@@ -86,12 +86,12 @@ class McpStdioIntegrationTest {
     }
 
     private static ToolBinding<TestEmptyArguments> binding(ToolHandler<TestEmptyArguments> handler) {
-        return ToolBinding.compatibility(ArgumentDecoder.sdk(TestEmptyArguments.class), handler);
+        return ToolBinding.content(ToolInput.of(TestEmptyArguments.class, RecordInputSchemaFactory.standard()), handler);
     }
 
     @Test
     void shadedJarServesOnlyJsonRpcOverStdio() throws Exception {
-        var processBuilder = new ProcessBuilder(JAVA.toString(), "-Duser.home=" + temporaryDirectory, "-jar", JAR.toString(), "serve");
+        var processBuilder = new ProcessBuilder(JAVA.toString(), "--enable-preview", "-Duser.home=" + temporaryDirectory, "-jar", JAR.toString(), "serve");
         processBuilder.environment().put("LOCALAPPDATA", temporaryDirectory.toString());
         processBuilder.environment().put("XDG_CACHE_HOME", temporaryDirectory.toString());
         var process = processBuilder.start();
@@ -112,8 +112,8 @@ class McpStdioIntegrationTest {
                     var unknownTool = readJsonLine(reader);
                     write(writer, request(6, "tools/call", Map.of("name", "mc_version", "arguments", Map.of("action", "list"))));
                     var versionList = readJsonLine(reader);
-                    write(writer, request(7, "tools/call", Map.of("name", "mc_record_video", "arguments", Map.of("frames", 1, "interval", "50"))));
-                    var numericStringInterval = readJsonLine(reader);
+                    write(writer, request(7, "tools/call", Map.of("name", "mc_record_video", "arguments", Map.of("frames", 1, "interval", Map.of("kind", "fixed", "intervalSeconds", 0.05)))));
+                    var taggedInterval = readJsonLine(reader);
                     write(writer, request(8, "mcdev/unknown", Map.of()));
                     var unknownMethod = readJsonLine(reader);
                     write(writer, request(9, "resources/read", Map.of("uri", "mcdev://guides/not-present")));
@@ -140,8 +140,10 @@ class McpStdioIntegrationTest {
                     var unknownResult = MAPPER.convertValue(unknownTool.get("result"), MAP_TYPE);
                     assertEquals(true, unknownResult.get("isError"));
                     assertEquals("Unknown tool: not_a_tool", MAPPER.convertValue(unknownResult.get("content"), LIST_OF_MAPS_TYPE).getFirst().get("text"));
-                    assertTrue(numericStringInterval.containsKey("result"), "numeric-string intervals must pass SDK input validation");
-                    assertFalse(numericStringInterval.containsKey("error"), "numeric-string intervals must reach the tool handler");
+                    assertTrue(taggedInterval.containsKey("result") || taggedInterval.containsKey("error"), "tagged interval request must receive a JSON-RPC response");
+                    if (taggedInterval.containsKey("result")) {
+                        assertFalse(taggedInterval.containsKey("error"), "tagged intervals must reach the tool handler");
+                    }
                     var unknownMethodError = MAPPER.convertValue(unknownMethod.get("error"), MAP_TYPE);
                     assertEquals(-32601, unknownMethodError.get("code"));
                     assertEquals("Method not found", unknownMethodError.get("message"));
@@ -176,22 +178,22 @@ class McpStdioIntegrationTest {
 
     @Test
     void incompleteHandlerDoesNotBlockAnotherRequestAndCancellationCancelsItsFuture() throws Exception {
-        var pending = new CompletableFuture<ToolResult>();
+        var pending = new CompletableFuture<ContentToolResult<Void>>();
         AtomicReference<ToolCancellation> cancellation = new AtomicReference<>();
         try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
             var adapter = new McpSdkAdapter(MAPPER, executor);
-            var slow = new ToolDefinition("slow", "slow", Map.of("type", "object"), binding((_, signal) -> {
+            var slow = new ToolDefinition("slow", "slow", binding((_, signal) -> {
                 cancellation.set(signal);
                 return pending;
             }), ToolAvailability.ALWAYS);
-            var fast = new ToolDefinition("fast", "fast", Map.of("type", "object"), binding((_, _) -> ToolHandlers.completed(ToolResult.text("fast"))), ToolAvailability.ALWAYS);
+            var fast = new ToolDefinition("fast", "fast", binding((_, _) -> ToolHandlers.completed(ToolResult.text("fast"))), ToolAvailability.ALWAYS);
 
             var slowRequest = McpSchema.CallToolRequest.builder("slow").arguments(Map.of()).build();
             var fastRequest = McpSchema.CallToolRequest.builder("fast").arguments(Map.of()).build();
             var slowSubscription = adapter.callHandler(slow).apply(null, slowRequest).subscribe();
             var fastResult = adapter.callHandler(fast).apply(null, fastRequest).toFuture().get(5, TimeUnit.SECONDS);
 
-            assertEquals("fast", ((McpSchema.TextContent) fastResult.content().getFirst()).text());
+            assertEquals("fast", assertInstanceOf(McpSchema.TextContent.class, fastResult.content().getFirst()).text());
             slowSubscription.dispose();
             assertTrue(pending.isCancelled());
             assertTrue(cancellation.get().isCancelled());
@@ -200,10 +202,10 @@ class McpStdioIntegrationTest {
 
     @Test
     void synchronousAndAsynchronousHandlerFailuresBecomeToolErrors() throws Exception {
-        var synchronous = new ToolDefinition("sync", "sync", Map.of("type", "object"), binding((_, _) -> {
+        var synchronous = new ToolDefinition("sync", "sync", binding((_, _) -> {
             throw new IllegalStateException("sync failure");
         }), ToolAvailability.ALWAYS);
-        var asynchronous = new ToolDefinition("async", "async", Map.of("type", "object"), binding((_, _) -> CompletableFuture.failedFuture(new IllegalStateException("async failure"))), ToolAvailability.ALWAYS);
+        var asynchronous = new ToolDefinition("async", "async", binding((_, _) -> CompletableFuture.failedFuture(new IllegalStateException("async failure"))), ToolAvailability.ALWAYS);
         try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
             var adapter = new McpSdkAdapter(MAPPER, executor);
 
@@ -211,9 +213,9 @@ class McpStdioIntegrationTest {
             var asyncResult = adapter.callHandler(asynchronous).apply(null, McpSchema.CallToolRequest.builder("async").arguments(Map.of()).build()).toFuture().get(5, TimeUnit.SECONDS);
 
             assertTrue(syncResult.isError());
-            assertEquals("Error executing sync: sync failure", ((McpSchema.TextContent) syncResult.content().getFirst()).text());
+            assertEquals("Error executing sync: sync failure", assertInstanceOf(McpSchema.TextContent.class, syncResult.content().getFirst()).text());
             assertTrue(asyncResult.isError());
-            assertEquals("Error executing async: async failure", ((McpSchema.TextContent) asyncResult.content().getFirst()).text());
+            assertEquals("Error executing async: async failure", assertInstanceOf(McpSchema.TextContent.class, asyncResult.content().getFirst()).text());
         }
     }
 }

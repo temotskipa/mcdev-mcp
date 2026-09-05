@@ -10,6 +10,7 @@ import java.sql.Statement;
 import java.time.Duration;
 import java.util.Objects;
 
+@SuppressWarnings("SqlNoDataSourceInspection")
 public final class AtomicH2Database {
     public static final Duration WRITE_LOCK_TIMEOUT = Duration.ofSeconds(30);
     private static final String CHECKPOINT_SQL = "CHECKPOINT SYNC";

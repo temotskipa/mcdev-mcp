@@ -1,11 +1,22 @@
 package dev.mcdevmcp.tools.statictool;
 
-enum HierarchyDirection {
-    subclasses, implementors, UNKNOWN;
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonValue;
 
-    static HierarchyDirection from(TextArgument value) {
-        if ("subclasses".equals(value.value())) return subclasses;
-        if ("implementors".equals(value.value())) return implementors;
-        return UNKNOWN;
+enum HierarchyDirection {
+    subclasses, implementors;
+
+    @JsonCreator(mode = JsonCreator.Mode.DELEGATING)
+    public static HierarchyDirection fromWireValue(String value) {
+        return switch (value) {
+            case "subclasses" -> subclasses;
+            case "implementors" -> implementors;
+            default -> throw new IllegalArgumentException("Unsupported hierarchy direction: " + value);
+        };
+    }
+
+    @JsonValue
+    public String wireValue() {
+        return name();
     }
 }

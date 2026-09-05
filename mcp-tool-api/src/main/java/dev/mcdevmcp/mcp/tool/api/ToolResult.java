@@ -1,29 +1,32 @@
 package dev.mcdevmcp.mcp.tool.api;
 
+import io.modelcontextprotocol.spec.McpSchema;
+
 import java.util.List;
+import java.util.Objects;
 
-public sealed interface ToolResult permits ContentToolResult, StructuredToolResult {
-    static ToolResult content(List<ToolContent> content, boolean isError) {
-        return new ContentToolResult(content, isError);
+// The result slot is phantom for content-only results, preserving the output
+// type at output-binding handler boundaries without exposing it on the wire.
+@SuppressWarnings("unused")
+public sealed interface ToolResult<O> permits ContentToolResult, StructuredToolResult {
+    static <O> ContentToolResult<O> content(List<? extends McpSchema.Content> content, boolean isError) {
+        Objects.requireNonNull(content, "content");
+        return new ContentToolResult<>(content.stream().map(value -> Objects.requireNonNull(value, "content element")).map(McpSchema.Content.class::cast).toList(), isError);
     }
 
-    static ToolResult text(String text) {
-        return content(List.of(ToolContent.text(text)), false);
+    static <O> ContentToolResult<O> text(String text) {
+        return content(List.of(McpSchema.TextContent.builder(text).build()), false);
     }
 
-    static ToolResult error(String text) {
-        return content(List.of(ToolContent.text(text)), true);
+    static <O> ContentToolResult<O> error(String text) {
+        return content(List.of(McpSchema.TextContent.builder(text).build()), true);
     }
 
-    static <T> StructuredToolResult<T> structured(JsonType<T> type, T value, String fallbackText) {
-        return new StructuredToolResult<>(List.of(ToolContent.text(fallbackText)), type, value, false);
+    static <O> StructuredToolResult<O> structured(O value, String fallbackText) {
+        return new StructuredToolResult<>(List.of(McpSchema.TextContent.builder(fallbackText).build()), value, false);
     }
 
-    static <T> StructuredToolResult<T> structured(Class<T> type, T value, String fallbackText) {
-        return structured(JsonType.of(type), value, fallbackText);
-    }
-
-    List<ToolContent> content();
+    List<McpSchema.Content> content();
 
     boolean isError();
 }

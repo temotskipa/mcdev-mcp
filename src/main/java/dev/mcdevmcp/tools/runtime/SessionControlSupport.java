@@ -1,17 +1,17 @@
 package dev.mcdevmcp.tools.runtime;
 
 import dev.mcdevmcp.bridge.BridgeEndpoint;
+import dev.mcdevmcp.bridge.BridgePayload;
 import dev.mcdevmcp.bridge.BridgeResponse;
 import dev.mcdevmcp.bridge.BridgeSession;
 import dev.mcdevmcp.bridge.SessionInfo;
 import dev.mcdevmcp.mcp.tool.api.ToolCancellation;
+import dev.mcdevmcp.mcp.tool.api.ContentToolResult;
 import dev.mcdevmcp.mcp.tool.api.ToolResult;
 import dev.mcdevmcp.storage.model.MinecraftVersion;
 import dev.mcdevmcp.support.AppEnvironment;
 
 import java.io.IOException;
-import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.net.InetSocketAddress;
 import java.nio.channels.AsynchronousSocketChannel;
 import java.nio.channels.CompletionHandler;
@@ -23,9 +23,8 @@ import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiFunction;
 import java.util.function.Function;
-import java.util.function.LongSupplier;
 
-final class SessionControlSupport {
+final value class SessionControlSupport {
     static final int BRIDGE_PORT_START = 9876;
     static final int BRIDGE_PORT_END = 9886;
     static final int DEFAULT_JOIN_TIMEOUT_SECONDS = 60;
@@ -41,33 +40,21 @@ final class SessionControlSupport {
     private final BridgeSession session;
     private final AppEnvironment environment;
     private final ScheduledExecutorService scheduler;
-    private final LongSupplier currentTimeMillis;
+    private final MonotonicTicker ticker;
     private final PortListeningProbe portListeningProbe;
     private final ListeningPidResolver listeningPidResolver;
 
     SessionControlSupport(BridgeSession session, AppEnvironment environment, ScheduledExecutorService scheduler) {
-        this(session, environment, scheduler, System::currentTimeMillis, defaultPortListeningProbe(scheduler), defaultListeningPidResolver(scheduler));
+        this(session, environment, scheduler, MonotonicTicker.system(), defaultPortListeningProbe(scheduler), defaultListeningPidResolver(scheduler));
     }
 
-    SessionControlSupport(BridgeSession session, AppEnvironment environment, ScheduledExecutorService scheduler, LongSupplier currentTimeMillis, PortListeningProbe portListeningProbe, ListeningPidResolver listeningPidResolver) {
+    SessionControlSupport(BridgeSession session, AppEnvironment environment, ScheduledExecutorService scheduler, MonotonicTicker ticker, PortListeningProbe portListeningProbe, ListeningPidResolver listeningPidResolver) {
         this.session = Objects.requireNonNull(session, "session");
         this.environment = Objects.requireNonNull(environment, "environment");
         this.scheduler = Objects.requireNonNull(scheduler, "scheduler");
-        this.currentTimeMillis = Objects.requireNonNull(currentTimeMillis, "currentTimeMillis");
+        this.ticker = Objects.requireNonNull(ticker, "ticker");
         this.portListeningProbe = Objects.requireNonNull(portListeningProbe, "portListeningProbe");
         this.listeningPidResolver = Objects.requireNonNull(listeningPidResolver, "listeningPidResolver");
-    }
-
-    static BigDecimal timeoutSeconds(Object value, int defaultValue) {
-        BigDecimal timeout = RuntimeToolSupport.optionalDecimal(value, "timeoutSeconds");
-        return timeout == null ? BigDecimal.valueOf(defaultValue) : timeout;
-    }
-
-    static String optionalString(Object value, String name) {
-        if (value == null || value instanceof String) {
-            return (String) value;
-        }
-        throw new IllegalArgumentException("'" + name + "' must be a string");
     }
 
     static <T, R> CompletionStage<R> mapCancellable(CompletionStage<T> stage, Function<T, R> mapper) {
@@ -140,8 +127,8 @@ final class SessionControlSupport {
         return result;
     }
 
-    static CompletionStage<ToolResult> recoverTool(CompletionStage<ToolResult> stage) {
-        var result = new CancellableOperation<ToolResult>();
+    static CompletionStage<ContentToolResult<Void>> recoverTool(CompletionStage<ContentToolResult<Void>> stage) {
+        var result = new CancellableOperation<ContentToolResult<Void>>();
         result.pending(stage);
         stage.whenComplete((value, failure) -> {
             if (result.isDone()) {
@@ -191,7 +178,7 @@ final class SessionControlSupport {
         String root = base.toString();
         String separator = root.matches("[A-Za-z]:[\\\\/].*") ? "\\" : base.getFileSystem().getSeparator();
         StringBuilder joined = new StringBuilder(root);
-        for (String segment : java.util.List.of("config", "debugbridge.json")) {
+        for (String segment : List.of("config", "debugbridge.json")) {
             if (!joined.isEmpty() && joined.charAt(joined.length() - 1) != separator.charAt(0)) {
                 joined.append(separator);
             }
@@ -233,16 +220,6 @@ final class SessionControlSupport {
         return expected.version().map(version -> version.equals(info.version())).orElse(true);
     }
 
-    private static Optional<Integer> parsePort(String value) {
-        try {
-            BigDecimal numeric = new BigDecimal(value.strip());
-            int port = numeric.intValueExact();
-            return port > 0 && port <= 65535 ? Optional.of(port) : Optional.empty();
-        } catch (ArithmeticException | NumberFormatException exception) {
-            return Optional.empty();
-        }
-    }
-
     private static boolean truthy(Object value) {
         return switch (value) {
             case null -> false;
@@ -253,19 +230,24 @@ final class SessionControlSupport {
         };
     }
 
-    private static long milliseconds(BigDecimal seconds) {
-        BigDecimal milliseconds = seconds.multiply(BigDecimal.valueOf(1_000)).setScale(0, RoundingMode.DOWN);
-        if (milliseconds.compareTo(BigDecimal.valueOf(Long.MAX_VALUE)) > 0) {
-            return Long.MAX_VALUE;
-        }
-        if (milliseconds.compareTo(BigDecimal.valueOf(Long.MIN_VALUE)) < 0) {
-            return Long.MIN_VALUE;
-        }
-        return milliseconds.longValueExact();
+    static long elapsedNanos(long started, long now) {
+        return now - started;
     }
 
     private static double elapsedSeconds(long started, long now) {
-        return Math.round((now - started) / 100.0) / 10.0;
+        return Math.round(elapsedNanos(started, now) / 100_000_000.0) / 10.0;
+    }
+
+    static long saturatedNanos(Duration duration) {
+        Objects.requireNonNull(duration, "duration");
+        if (duration.isZero() || duration.isNegative()) {
+            return 0;
+        }
+        try {
+            return duration.toNanos();
+        } catch (ArithmeticException exception) {
+            return Long.MAX_VALUE;
+        }
     }
 
     private static String message(Throwable failure) {
@@ -289,7 +271,7 @@ final class SessionControlSupport {
             ScheduledFuture<?> timeout = scheduler.schedule(() -> {
                 closeQuietly(channel);
                 result.complete(false);
-            }, 800, TimeUnit.MILLISECONDS);
+            }, saturatedNanos(Duration.ofMillis(800)), TimeUnit.NANOSECONDS);
             result.whenComplete((_, _) -> {
                 timeout.cancel(false);
                 closeQuietly(channel);
@@ -310,33 +292,91 @@ final class SessionControlSupport {
     }
 
     private static ListeningPidResolver defaultListeningPidResolver(ScheduledExecutorService scheduler) {
+        return listeningPidResolver(scheduler, command -> new ProcessBuilder(command).redirectError(ProcessBuilder.Redirect.DISCARD).start());
+    }
+
+    @SuppressWarnings("resource")
+    static ListeningPidResolver listeningPidResolver(ScheduledExecutorService scheduler, ProcessStarter processStarter) {
+        Objects.requireNonNull(scheduler, "scheduler");
+        Objects.requireNonNull(processStarter, "processStarter");
         return port -> {
             List<String> command = System.getProperty("os.name").toLowerCase(Locale.ROOT).contains("win") ? List.of("powershell.exe", "-NoProfile", "-Command", "(Get-NetTCPConnection -LocalPort " + port + " -State Listen -ErrorAction SilentlyContinue).OwningProcess") : List.of("lsof", "-t", "-iTCP:" + port, "-sTCP:LISTEN");
             var result = new CompletableFuture<Long>();
-            try (var process = new ProcessBuilder(command).redirectError(ProcessBuilder.Redirect.DISCARD).start()) {
-                ScheduledFuture<?> timeout = scheduler.schedule(() -> {
-                    process.destroyForcibly();
-                    result.complete(null);
-                }, PID_PROBE_TIMEOUT.toMillis(), TimeUnit.MILLISECONDS);
-                result.whenComplete((_, _) -> {
-                    timeout.cancel(false);
-                    if (result.isCancelled()) {
-                        process.destroyForcibly();
-                    }
-                });
-                process.onExit().whenComplete((exited, failure) -> {
-                    if (failure != null || exited.exitValue() != 0) {
-                        result.complete(null);
+            Process process;
+            try {
+                process = processStarter.start(command);
+            } catch (IOException ioException) {
+                return CompletableFuture.completedFuture(null);
+            }
+            AtomicReference<CleanupState> cleanup = new AtomicReference<>(CleanupState.OPEN);
+            Object lifecycleLock = new Object();
+            AtomicReference<ScheduledFuture<?>> timeoutRef = new AtomicReference<>();
+            Runnable close = () -> {
+                try {
+                    process.close();
+                } catch (IOException | RuntimeException ignored) {
+                }
+            };
+            Runnable closeAfterAbort = () -> {
+                if (cleanup.compareAndSet(CleanupState.ABORTED, CleanupState.CLOSING)) {
+                    Thread.ofVirtual().start(close);
+                }
+            };
+            Runnable abort = () -> {
+                synchronized (lifecycleLock) {
+                    if (!cleanup.compareAndSet(CleanupState.OPEN, CleanupState.ABORTED)) {
                         return;
                     }
                     try {
-                        result.complete(parseListeningPid(new String(exited.getInputStream().readAllBytes(), StandardCharsets.UTF_8)));
-                    } catch (IOException ioException) {
+                        process.destroyForcibly();
+                    } catch (RuntimeException ignored) {
+                    } finally {
                         result.complete(null);
                     }
+                }
+                closeAfterAbort.run();
+            };
+            try {
+                result.whenComplete((_, _) -> {
+                    ScheduledFuture<?> timeout = timeoutRef.get();
+                    if (timeout != null) {
+                        timeout.cancel(false);
+                    }
+                    if (result.isCancelled()) {
+                        abort.run();
+                    }
                 });
-            } catch (IOException ioException) {
-                return CompletableFuture.completedFuture(null);
+                process.onExit().whenComplete((exited, failure) -> {
+                    synchronized (lifecycleLock) {
+                        try {
+                            if (cleanup.get() != CleanupState.OPEN || result.isDone()) {
+                                return;
+                            }
+                            if (failure != null || exited.exitValue() != 0) {
+                                result.complete(null);
+                            }
+                            else {
+                                try {
+                                    result.complete(parseListeningPid(new String(exited.getInputStream().readAllBytes(), StandardCharsets.UTF_8)));
+                                } catch (IOException ioException) {
+                                    result.complete(null);
+                                }
+                            }
+                        } finally {
+                            if (cleanup.compareAndSet(CleanupState.OPEN, CleanupState.CLOSING)) {
+                                close.run();
+                            }
+                        }
+                    }
+                });
+                ScheduledFuture<?> timeout = scheduler.schedule(abort, saturatedNanos(PID_PROBE_TIMEOUT), TimeUnit.NANOSECONDS);
+                timeoutRef.set(timeout);
+                if (result.isDone()) {
+                    timeout.cancel(false);
+                }
+            } catch (RuntimeException exception) {
+                abort.run();
+                return result;
             }
             return result;
         };
@@ -359,7 +399,11 @@ final class SessionControlSupport {
 
     List<Integer> bridgePortRange() {
         var ports = new ArrayList<Integer>();
-        environment.value("DEBUGBRIDGE_PORT").flatMap(SessionControlSupport::parsePort).filter(port -> port < BRIDGE_PORT_START || port > BRIDGE_PORT_END).ifPresent(ports::add);
+        environment.debugBridgePort().ifPresent(port -> {
+            if (port < BRIDGE_PORT_START || port > BRIDGE_PORT_END) {
+                ports.add(port);
+            }
+        });
         for (int port = BRIDGE_PORT_START; port <= BRIDGE_PORT_END; port++) {
             ports.add(port);
         }
@@ -377,22 +421,20 @@ final class SessionControlSupport {
         return info.thenApply(sessionInfo -> sessionInfo.sessionControlEnabled().filter(enabled -> !enabled).map(_ -> sessionControlDisabledMessage(sessionInfo.gameDir().orElse(null))).orElse(null));
     }
 
-    CompletionStage<InWorldWaitResult> waitUntilInWorld(BigDecimal timeoutSeconds, boolean requireAbsenceFirst, ToolCancellation cancellation) {
-        long timeoutMillis = milliseconds(timeoutSeconds);
-        long started = currentTimeMillis.getAsLong();
+    CompletionStage<InWorldWaitResult> waitUntilInWorld(Duration timeout, boolean requireAbsenceFirst, ToolCancellation cancellation) {
+        long started = ticker.readNanos();
         var operation = new CancellableOperation<InWorldWaitResult>();
-        var poller = new InWorldPoller(operation, cancellation, started, timeoutMillis, requireAbsenceFirst);
-        operation.deadline(() -> operation.complete(new InWorldWaitResult(InWorldWaitResult.State.TIMEOUT, null, elapsedSeconds(started, currentTimeMillis.getAsLong()))), timeoutMillis, scheduler);
+        var poller = new InWorldPoller(operation, cancellation, started, timeout, requireAbsenceFirst);
+        operation.deadline(() -> operation.complete(new InWorldWaitResult(InWorldWaitResult.State.TIMEOUT, null, elapsedSeconds(started, ticker.readNanos()))), timeout, scheduler);
         poller.tick();
         return operation;
     }
 
-    CompletionStage<FoundBridge> waitForBridge(ExpectedInstance expected, BigDecimal timeoutSeconds, List<String> notes, ToolCancellation cancellation) {
-        long timeoutMillis = milliseconds(timeoutSeconds);
-        long started = currentTimeMillis.getAsLong();
+    CompletionStage<FoundBridge> waitForBridge(ExpectedInstance expected, Duration timeout, List<String> notes, ToolCancellation cancellation) {
+        long started = ticker.readNanos();
         var operation = new CancellableOperation<FoundBridge>();
-        var waiter = new BridgeWaiter(operation, cancellation, expected, notes, started, timeoutMillis);
-        operation.deadline(waiter::timeout, timeoutMillis, scheduler);
+        var waiter = new BridgeWaiter(operation, cancellation, expected, notes, started, timeout);
+        operation.deadline(waiter::timeout, timeout, scheduler);
         waiter.sweep();
         return operation;
     }
@@ -401,7 +443,7 @@ final class SessionControlSupport {
         return listeningPidResolver.resolve(port);
     }
 
-    CompletionStage<BridgeResponse> send(BridgeEndpoint endpoint, Map<String, Object> payload, Duration timeout) {
+    CompletionStage<BridgeResponse> send(BridgeEndpoint endpoint, BridgePayload payload, Duration timeout) {
         return session.send(endpoint, payload, timeout);
     }
 
@@ -421,17 +463,16 @@ final class SessionControlSupport {
         session.disconnect();
     }
 
-    CompletionStage<ClientExitResult> waitForClientExit(int port, Long pid, BigDecimal timeoutSeconds, ToolCancellation cancellation) {
-        long timeoutMillis = milliseconds(timeoutSeconds);
-        long started = currentTimeMillis.getAsLong();
+    CompletionStage<ClientExitResult> waitForClientExit(int port, Long pid, Duration timeout, ToolCancellation cancellation) {
+        long started = ticker.readNanos();
         var operation = new CancellableOperation<ClientExitResult>();
         var phase = new AtomicReference<>(ClientExitResult.Phase.PORT);
-        operation.deadline(() -> operation.complete(new ClientExitResult.Timeout(phase.get())), timeoutMillis, scheduler);
-        pollPortClosed(operation, cancellation, port, pid, started, timeoutMillis, phase);
+        operation.deadline(() -> operation.complete(new ClientExitResult.Timeout(phase.get())), timeout, scheduler);
+        pollPortClosed(operation, cancellation, port, pid, started, timeout, phase);
         return operation;
     }
 
-    private void pollPortClosed(CancellableOperation<ClientExitResult> operation, ToolCancellation cancellation, int port, Long pid, long started, long timeoutMillis, AtomicReference<ClientExitResult.Phase> phase) {
+    private void pollPortClosed(CancellableOperation<ClientExitResult> operation, ToolCancellation cancellation, int port, Long pid, long started, Duration timeout, AtomicReference<ClientExitResult.Phase> phase) {
         if (operation.stopIfCancelled(cancellation)) {
             return;
         }
@@ -448,19 +489,19 @@ final class SessionControlSupport {
                 }
                 else {
                     phase.set(ClientExitResult.Phase.PROCESS);
-                    pollProcessExit(operation, cancellation, pid, started, timeoutMillis);
+                    pollProcessExit(operation, cancellation, pid, started, timeout);
                 }
                 return;
             }
-            if (currentTimeMillis.getAsLong() - started >= timeoutMillis) {
+            if (elapsedNanos(started, ticker.readNanos()) >= saturatedNanos(timeout)) {
                 operation.complete(new ClientExitResult.Timeout(ClientExitResult.Phase.PORT));
                 return;
             }
-            operation.schedule(() -> pollPortClosed(operation, cancellation, port, pid, started, timeoutMillis, phase), POLL_INTERVAL, scheduler);
+            operation.schedule(() -> pollPortClosed(operation, cancellation, port, pid, started, timeout, phase), POLL_INTERVAL, scheduler);
         });
     }
 
-    private void pollProcessExit(CancellableOperation<ClientExitResult> operation, ToolCancellation cancellation, long pid, long started, long timeoutMillis) {
+    private void pollProcessExit(CancellableOperation<ClientExitResult> operation, ToolCancellation cancellation, long pid, long started, Duration timeout) {
         if (operation.stopIfCancelled(cancellation)) {
             return;
         }
@@ -468,11 +509,11 @@ final class SessionControlSupport {
             operation.complete(new ClientExitResult.Exited(true));
             return;
         }
-        if (currentTimeMillis.getAsLong() - started >= timeoutMillis) {
+        if (elapsedNanos(started, ticker.readNanos()) >= saturatedNanos(timeout)) {
             operation.complete(new ClientExitResult.Timeout(ClientExitResult.Phase.PROCESS));
             return;
         }
-        operation.schedule(() -> pollProcessExit(operation, cancellation, pid, started, timeoutMillis), PROCESS_POLL_INTERVAL, scheduler);
+        operation.schedule(() -> pollProcessExit(operation, cancellation, pid, started, timeout), PROCESS_POLL_INTERVAL, scheduler);
     }
 
     @FunctionalInterface
@@ -483,6 +524,15 @@ final class SessionControlSupport {
     @FunctionalInterface
     interface ListeningPidResolver {
         CompletionStage<Long> resolve(int port);
+    }
+
+    @FunctionalInterface
+    interface ProcessStarter {
+        Process start(List<String> command) throws IOException;
+    }
+
+    private enum CleanupState {
+        OPEN, ABORTED, CLOSING
     }
 
     record ExpectedInstance(Optional<MinecraftVersion> version, Optional<Path> gameDirectory) {
@@ -525,7 +575,7 @@ final class SessionControlSupport {
             if (isDone()) {
                 return;
             }
-            ScheduledFuture<?> future = scheduler.schedule(action, delay.toMillis(), TimeUnit.MILLISECONDS);
+            ScheduledFuture<?> future = scheduler.schedule(action, saturatedNanos(delay), TimeUnit.NANOSECONDS);
             ScheduledFuture<?> previous = scheduled.getAndSet(future);
             if (previous != null) {
                 previous.cancel(false);
@@ -535,11 +585,11 @@ final class SessionControlSupport {
             }
         }
 
-        private void deadline(Runnable action, long delayMillis, ScheduledExecutorService scheduler) {
+        private void deadline(Runnable action, Duration delay, ScheduledExecutorService scheduler) {
             if (isDone()) {
                 return;
             }
-            ScheduledFuture<?> future = scheduler.schedule(action, Math.max(0, delayMillis), TimeUnit.MILLISECONDS);
+            ScheduledFuture<?> future = scheduler.schedule(action, saturatedNanos(delay), TimeUnit.NANOSECONDS);
             ScheduledFuture<?> previous = deadline.getAndSet(future);
             if (previous != null) {
                 previous.cancel(false);
@@ -587,15 +637,15 @@ final class SessionControlSupport {
         private final CancellableOperation<InWorldWaitResult> operation;
         private final ToolCancellation cancellation;
         private final long started;
-        private final long timeoutMillis;
+        private final Duration timeout;
         private final boolean requireAbsenceFirst;
         private final InWorldWaitProgress progress = new InWorldWaitProgress();
 
-        private InWorldPoller(CancellableOperation<InWorldWaitResult> operation, ToolCancellation cancellation, long started, long timeoutMillis, boolean requireAbsenceFirst) {
+        private InWorldPoller(CancellableOperation<InWorldWaitResult> operation, ToolCancellation cancellation, long started, Duration timeout, boolean requireAbsenceFirst) {
             this.operation = operation;
             this.cancellation = cancellation;
             this.started = started;
-            this.timeoutMillis = timeoutMillis;
+            this.timeout = timeout;
             this.requireAbsenceFirst = requireAbsenceFirst;
         }
 
@@ -614,7 +664,7 @@ final class SessionControlSupport {
             }
             InWorldPollResult snapshotState = stepInWorldWait(progress, requireAbsenceFirst, snapshotResult, null);
             if (snapshotState instanceof InWorldPollResult.Joined) {
-                operation.complete(new InWorldWaitResult(InWorldWaitResult.State.JOINED, null, elapsedSeconds(started, currentTimeMillis.getAsLong())));
+                operation.complete(new InWorldWaitResult(InWorldWaitResult.State.JOINED, null, elapsedSeconds(started, ticker.readNanos())));
                 return;
             }
             CompletionStage<BridgeResponse> screen = session.send(SCREEN_INSPECT, RuntimeToolSupport.EMPTY_PAYLOAD, null);
@@ -627,11 +677,11 @@ final class SessionControlSupport {
                 return;
             }
             InWorldPollResult state = stepInWorldWait(progress, requireAbsenceFirst, snapshotResult, screenResult);
-            long now = currentTimeMillis.getAsLong();
+            long now = ticker.readNanos();
             if (state instanceof InWorldPollResult.Failed(String reason)) {
                 operation.complete(new InWorldWaitResult(InWorldWaitResult.State.FAILED, reason, elapsedSeconds(started, now)));
             }
-            else if (now - started >= timeoutMillis) {
+            else if (elapsedNanos(started, now) >= saturatedNanos(timeout)) {
                 operation.complete(new InWorldWaitResult(InWorldWaitResult.State.TIMEOUT, null, elapsedSeconds(started, now)));
             }
             else {
@@ -646,25 +696,25 @@ final class SessionControlSupport {
         private final ExpectedInstance expected;
         private final List<String> notes;
         private final long started;
-        private final long timeoutMillis;
+        private final Duration timeout;
         private final Map<Integer, String> mismatches = new LinkedHashMap<>();
         private List<Integer> ports;
         private int index;
 
-        private BridgeWaiter(CancellableOperation<FoundBridge> operation, ToolCancellation cancellation, ExpectedInstance expected, List<String> notes, long started, long timeoutMillis) {
+        private BridgeWaiter(CancellableOperation<FoundBridge> operation, ToolCancellation cancellation, ExpectedInstance expected, List<String> notes, long started, Duration timeout) {
             this.operation = operation;
             this.cancellation = cancellation;
             this.expected = expected;
             this.notes = notes;
             this.started = started;
-            this.timeoutMillis = timeoutMillis;
+            this.timeout = timeout;
         }
 
         private synchronized void sweep() {
             if (operation.stopIfCancelled(cancellation)) {
                 return;
             }
-            if (currentTimeMillis.getAsLong() - started >= timeoutMillis) {
+            if (elapsedNanos(started, ticker.readNanos()) >= saturatedNanos(timeout)) {
                 operation.completeExceptionally(new IllegalStateException(timeoutMessage()));
                 return;
             }
@@ -711,7 +761,8 @@ final class SessionControlSupport {
         private String timeoutMessage() {
             String expectedDescription = expected.gameDirectory().map(Path::toString).orElseGet(() -> expected.version().map(MinecraftVersion::value).orElse("any instance"));
             String seen = mismatches.isEmpty() ? "" : " Other instances answered: " + String.join(", ", mismatches.entrySet().stream().map(entry -> "port " + entry.getKey() + " → " + entry.getValue()).toList()) + ".";
-            return "Timed out after " + Math.round(timeoutMillis / 1_000.0) + "s waiting for the bridge of " + expectedDescription + " on ports " + BRIDGE_PORT_START + "-" + BRIDGE_PORT_END + "." + seen + " If you just launched the client, check the launcher window: it may be sitting on a login prompt (the user must log in once in the launcher GUI), or the game may have crashed — read <gameDir>/logs/latest.log.";
+            double timeoutSeconds = timeout.getSeconds() + timeout.getNano() / 1_000_000_000.0;
+            return "Timed out after " + Math.round(timeoutSeconds) + "s waiting for the bridge of " + expectedDescription + " on ports " + BRIDGE_PORT_START + "-" + BRIDGE_PORT_END + "." + seen + " If you just launched the client, check the launcher window: it may be sitting on a login prompt (the user must log in once in the launcher GUI), or the game may have crashed — read <gameDir>/logs/latest.log.";
         }
     }
 }

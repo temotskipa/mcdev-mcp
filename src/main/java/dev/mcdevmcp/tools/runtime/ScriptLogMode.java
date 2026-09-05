@@ -1,14 +1,7 @@
 package dev.mcdevmcp.tools.runtime;
 
-enum ScriptLogMode {
-    ERRORS, STATS, PATHS;
+import com.fasterxml.jackson.annotation.JsonProperty;
 
-    static ScriptLogMode fromWire(String value) {
-        return switch (value == null || value.isEmpty() ? "errors" : value) {
-            case "errors" -> ERRORS;
-            case "stats" -> STATS;
-            case "paths" -> PATHS;
-            default -> throw new IllegalArgumentException("'mode' must be one of errors, stats, or paths");
-        };
-    }
+enum ScriptLogMode {
+    @JsonProperty("errors") ERRORS, @JsonProperty("stats") STATS, @JsonProperty("paths") PATHS
 }

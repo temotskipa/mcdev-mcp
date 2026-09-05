@@ -1,11 +1,11 @@
 package dev.mcdevmcp.tools.statictool;
 
-import dev.mcdevmcp.mcp.tool.api.ToolResult;
+import dev.mcdevmcp.mcp.tool.api.ContentToolResult;
 
 import java.io.IOException;
 import java.sql.SQLException;
 
 @FunctionalInterface
 interface StaticToolOperation {
-    ToolResult run() throws IOException, SQLException;
+    ContentToolResult<Void> run() throws IOException, SQLException;
 }

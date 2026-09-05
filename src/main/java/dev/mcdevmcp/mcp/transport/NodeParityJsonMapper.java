@@ -13,7 +13,7 @@ import java.util.concurrent.ConcurrentHashMap;
 /**
  * Narrows two SDK 2.0 response differences at the typed JSON-RPC boundary.
  */
-final class NodeParityJsonMapper implements McpJsonMapper {
+final value class NodeParityJsonMapper implements McpJsonMapper {
     private static final int METHOD_NOT_FOUND = -32601;
     private static final String METHOD_NOT_FOUND_PREFIX = "Method not found:";
     private static final int RESOURCE_NOT_FOUND = -32002;

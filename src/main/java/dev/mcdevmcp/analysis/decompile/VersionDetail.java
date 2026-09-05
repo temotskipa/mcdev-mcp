@@ -4,7 +4,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
-public record VersionDetail(Map<String, DownloadWire> downloads, List<LibraryEntry> libraries) {
+public value record VersionDetail(Map<String, DownloadWire> downloads, List<LibraryEntry> libraries) {
     public VersionDetail(Map<String, DownloadWire> downloads) {
         this(downloads, List.of());
     }

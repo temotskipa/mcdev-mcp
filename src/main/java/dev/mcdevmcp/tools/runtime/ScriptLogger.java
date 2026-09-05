@@ -8,12 +8,13 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.time.DateTimeException;
 import java.time.Instant;
+import java.time.InstantSource;
 import java.util.*;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
-import java.util.function.LongSupplier;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
@@ -22,7 +23,7 @@ final class ScriptLogger {
 
     // Keep rotated session-log files for at most 3 days so explicit session logging
     // cannot grow the data directory without bound on a long-lived server.
-    private static final long ROTATION_RETENTION_MILLIS = 3L * 24 * 60 * 60 * 1000;
+    private static final Duration ROTATION_RETENTION = Duration.ofDays(3);
 
     private static final Pattern LINE_NUMBER = Pattern.compile("line (\\d+)", Pattern.CASE_INSENSITIVE);
     private static final Pattern COLON_NUMBER = Pattern.compile(":\\d+:");
@@ -34,21 +35,21 @@ final class ScriptLogger {
     private final McpJsonMapper mapper;
     private final Consumer<String> diagnostics;
     private final BooleanSupplier rotationSample;
-    private final LongSupplier currentTimeMillis;
+    private final InstantSource wallTime;
     private boolean rotating;
 
     ScriptLogger(Path dataDirectory, McpJsonMapper mapper, Consumer<String> diagnostics) {
-        this(dataDirectory, mapper, diagnostics, () -> ThreadLocalRandom.current().nextDouble() < 0.01, System::currentTimeMillis);
+        this(dataDirectory, mapper, diagnostics, () -> ThreadLocalRandom.current().nextDouble() < 0.01, InstantSource.system());
     }
 
-    ScriptLogger(Path dataDirectory, McpJsonMapper mapper, Consumer<String> diagnostics, BooleanSupplier rotationSample, LongSupplier currentTimeMillis) {
+    ScriptLogger(Path dataDirectory, McpJsonMapper mapper, Consumer<String> diagnostics, BooleanSupplier rotationSample, InstantSource wallTime) {
         logDirectory = Objects.requireNonNull(dataDirectory, "dataDirectory").resolve("script-logs").normalize();
         allLog = logDirectory.resolve("all.jsonl");
         errorsLog = logDirectory.resolve("errors.jsonl");
         this.mapper = Objects.requireNonNull(mapper, "mapper");
         this.diagnostics = Objects.requireNonNull(diagnostics, "diagnostics");
         this.rotationSample = Objects.requireNonNull(rotationSample, "rotationSample");
-        this.currentTimeMillis = Objects.requireNonNull(currentTimeMillis, "currentTimeMillis");
+        this.wallTime = Objects.requireNonNull(wallTime, "wallTime");
     }
 
     static Path dataDirectory(String osName, AppEnvironment environment, Path home) {
@@ -95,8 +96,9 @@ final class ScriptLogger {
         }
         rotating = true;
         try {
-            rotate(allLog);
-            rotate(errorsLog);
+            Instant now = wallTime.instant();
+            rotate(allLog, now);
+            rotate(errorsLog, now);
         } finally {
             rotating = false;
         }
@@ -124,6 +126,14 @@ final class ScriptLogger {
         } catch (IOException exception) {
             return List.of();
         }
+    }
+
+    void logCompleted(boolean success, String code, boolean resultPresent, Object result, String output, String error, Duration duration) {
+        log(ScriptLogEntry.completed(wallTime.instant(), success, code, resultPresent, result, output, error, duration), true);
+    }
+
+    void logFailed(String code, String error, Duration duration) {
+        log(ScriptLogEntry.failed(wallTime.instant(), code, error, duration), false);
     }
 
     synchronized List<ScriptErrorStat> errorStats() {
@@ -186,31 +196,56 @@ final class ScriptLogger {
         return line;
     }
 
-    private void rotate(Path live) {
+    private void rotate(Path live, Instant now) {
         try {
             if (!Files.exists(live) || Files.size(live) <= MAX_LOG_BYTES) {
                 return;
             }
-            String baseName = baseName(live);
-            Path rotated = live.resolveSibling(baseName + "." + currentTimeMillis.getAsLong() + ".jsonl");
+            Path rotated = uniqueRotationPath(live, now);
             Files.move(live, rotated);
-            cleanOldRotations(live);
+            cleanOldRotations(live, now);
         } catch (IOException | RuntimeException ignored) {
         }
     }
 
-    private void cleanOldRotations(Path live) throws IOException {
-        long now = currentTimeMillis.getAsLong();
+    private Path uniqueRotationPath(Path live, Instant now) {
         String baseName = baseName(live);
+        long timestamp = epochMillis(now);
+        Path rotated = live.resolveSibling(baseName + "." + timestamp + ".jsonl");
+        while (Files.exists(rotated)) {
+            if (timestamp == Long.MAX_VALUE) {
+                timestamp = Long.MIN_VALUE;
+            }
+            else {
+                timestamp++;
+            }
+            rotated = live.resolveSibling(baseName + "." + timestamp + ".jsonl");
+        }
+        return rotated;
+    }
+
+    private static long epochMillis(Instant instant) {
+        try {
+            return instant.toEpochMilli();
+        } catch (ArithmeticException exception) {
+            return instant.isBefore(Instant.EPOCH) ? Long.MIN_VALUE : Long.MAX_VALUE;
+        }
+    }
+
+    private void cleanOldRotations(Path live, Instant now) throws IOException {
+        if (!hasEpochMilliRepresentation(now)) {
+            return;
+        }
+        String baseName = baseName(live);
+        Instant cutoff = retentionCutoff(now);
         try (Stream<Path> paths = Files.list(logDirectory)) {
             List<Path> rotations = paths.filter(path -> {
                 String name = path.getFileName().toString();
                 return name.startsWith(baseName + ".") && name.endsWith(".jsonl") && !path.equals(live);
             }).toList();
-            long cutoff = now - ROTATION_RETENTION_MILLIS;
             for (Path old : rotations) {
-                Long timestamp = rotationTimestamp(old.getFileName().toString(), baseName.length());
-                if (timestamp != null && timestamp < cutoff) {
+                Instant timestamp = rotationTimestamp(old.getFileName().toString(), baseName.length());
+                if (timestamp != null && timestamp.isBefore(cutoff)) {
                     try {
                         Files.deleteIfExists(old);
                     } catch (IOException ignored) {
@@ -220,17 +255,34 @@ final class ScriptLogger {
         }
     }
 
+    private static boolean hasEpochMilliRepresentation(Instant instant) {
+        try {
+            instant.toEpochMilli();
+            return true;
+        } catch (ArithmeticException exception) {
+            return false;
+        }
+    }
+
+    private static Instant retentionCutoff(Instant now) {
+        try {
+            return now.minus(ROTATION_RETENTION);
+        } catch (DateTimeException | ArithmeticException exception) {
+            return Instant.MIN;
+        }
+    }
+
     // Parses the epoch-millis suffix from a rotation file name such as "all.1700000000000.jsonl".
     // The millis start immediately after the "<base>." prefix.
-    private static Long rotationTimestamp(String name, int baseNameLength) {
+    private static Instant rotationTimestamp(String name, int baseNameLength) {
         int start = baseNameLength + 1;
         int end = name.length() - ".jsonl".length();
         if (end <= start) {
             return null;
         }
         try {
-            return Long.parseLong(name.substring(start, end));
-        } catch (NumberFormatException exception) {
+            return Instant.ofEpochMilli(Long.parseLong(name.substring(start, end)));
+        } catch (DateTimeException | NumberFormatException exception) {
             return null;
         }
     }
@@ -242,12 +294,12 @@ final class ScriptLogger {
             Objects.requireNonNull(duration, "duration");
         }
 
-        static ScriptLogEntry completed(boolean success, String code, boolean resultPresent, Object result, String output, String error, Duration duration) {
-            return new ScriptLogEntry(Instant.now(), success, code, resultPresent, result, output, error, duration);
+        static ScriptLogEntry completed(Instant timestamp, boolean success, String code, boolean resultPresent, Object result, String output, String error, Duration duration) {
+            return new ScriptLogEntry(timestamp, success, code, resultPresent, result, output, error, duration);
         }
 
-        static ScriptLogEntry failed(String code, String error, Duration duration) {
-            return new ScriptLogEntry(Instant.now(), false, code, false, null, null, error, duration);
+        static ScriptLogEntry failed(Instant timestamp, String code, String error, Duration duration) {
+            return new ScriptLogEntry(timestamp, false, code, false, null, null, error, duration);
         }
     }
 

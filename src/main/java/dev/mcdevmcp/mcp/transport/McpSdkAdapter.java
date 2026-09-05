@@ -6,7 +6,7 @@ import dev.mcdevmcp.mcp.resource.ResourceRead;
 import dev.mcdevmcp.mcp.tool.ToolCatalog;
 import dev.mcdevmcp.mcp.tool.ToolDefinition;
 import dev.mcdevmcp.mcp.tool.api.StructuredToolResult;
-import dev.mcdevmcp.mcp.tool.api.ToolContent;
+import dev.mcdevmcp.mcp.tool.api.ToolBinding;
 import dev.mcdevmcp.mcp.tool.api.ToolResult;
 import io.modelcontextprotocol.json.McpJsonMapper;
 import io.modelcontextprotocol.server.McpAsyncServer;
@@ -171,7 +171,10 @@ public final class McpSdkAdapter {
     }
 
     List<McpServerFeatures.AsyncToolSpecification> tools(ToolCatalog catalog) {
-        return catalog.enabledDefinitions().stream().map(definition -> McpServerFeatures.AsyncToolSpecification.builder().tool(toSdkTool(definition)).callHandler(callHandler(definition)).build()).toList();
+        return catalog.enabledDefinitions().stream().map(definition -> {
+            var binding = Objects.requireNonNull(catalog.binding(definition.name()), "Tool binding: " + definition.name());
+            return McpServerFeatures.AsyncToolSpecification.builder().tool(toSdkTool(definition, binding)).callHandler(callHandler(definition, binding)).build();
+        }).toList();
     }
 
     List<McpServerFeatures.AsyncResourceSpecification> resources(ResourceCatalog catalog) {
@@ -179,7 +182,12 @@ public final class McpSdkAdapter {
     }
 
     BiFunction<McpAsyncServerExchange, McpSchema.CallToolRequest, Mono<McpSchema.CallToolResult>> callHandler(ToolDefinition definition) {
-        return (_, request) -> invoke(definition, request);
+        ToolBinding<?> binding = Objects.requireNonNull(definition.binding(), "Tool definition has no direct handler: " + definition.name());
+        return callHandler(definition, binding);
+    }
+
+    private BiFunction<McpAsyncServerExchange, McpSchema.CallToolRequest, Mono<McpSchema.CallToolResult>> callHandler(ToolDefinition definition, ToolBinding<?> binding) {
+        return (_, request) -> invoke(definition, binding, request);
     }
 
     private Mono<McpSchema.ReadResourceResult> readResource(ResourceCatalog catalog, URI uri) {
@@ -211,54 +219,60 @@ public final class McpSdkAdapter {
         });
     }
 
-    private Mono<McpSchema.CallToolResult> invoke(ToolDefinition definition, McpSchema.CallToolRequest request) {
+    private Mono<McpSchema.CallToolResult> invoke(ToolDefinition definition, ToolBinding<?> binding, McpSchema.CallToolRequest request) {
         return Mono.defer(() -> {
             var cancelled = new AtomicBoolean();
-            CompletionStage<ToolResult> stage;
+            CompletionStage<? extends ToolResult<?>> stage;
             try {
                 Map<String, Object> arguments = request.arguments();
-                stage = Objects.requireNonNull(definition.binding().invoke(mapper, arguments == null ? Map.of() : arguments, cancelled::get), "Tool handler returned null: " + definition.name());
+                stage = Objects.requireNonNull(binding.invoke(mapper, arguments == null ? Map.of() : arguments, cancelled::get), "Tool handler returned null: " + definition.name());
             } catch (RuntimeException exception) {
                 return Mono.just(error(definition.name(), exception));
             }
 
-            CompletableFuture<ToolResult> future;
+            CompletableFuture<? extends ToolResult<?>> future;
             try {
                 future = stage.toCompletableFuture();
             } catch (RuntimeException exception) {
                 return Mono.just(error(definition.name(), exception));
             }
 
-            return Mono.fromFuture(future).map(this::toSdkResult).onErrorResume(exception -> Mono.just(error(definition.name(), exception))).doOnCancel(() -> {
+            return Mono.fromFuture(future).map(result -> toSdkResult(definition, binding, result)).onErrorResume(exception -> Mono.just(error(definition.name(), exception))).doOnCancel(() -> {
                 cancelled.set(true);
                 future.cancel(true);
             });
         });
     }
 
-    private McpSchema.Tool toSdkTool(ToolDefinition definition) {
-        return McpSchema.Tool.builder(definition.name(), definition.inputSchema()).description(definition.description()).build();
+    private McpSchema.Tool toSdkTool(ToolDefinition definition, ToolBinding<?> binding) {
+        var builder = McpSchema.Tool.builder(definition.name(), definition.inputSchema()).description(definition.description());
+        binding.output().ifPresent(output -> builder.outputSchema(output.schema().value()));
+        return builder.build();
     }
 
-    private McpSchema.CallToolResult toSdkResult(ToolResult result) {
+    private McpSchema.CallToolResult toSdkResult(ToolResult<?> result) {
+        return sdkResult(result, null);
+    }
+
+    McpSchema.CallToolResult toSdkResult(ToolDefinition definition, ToolBinding<?> binding, ToolResult<?> result) {
+        Objects.requireNonNull(definition, "definition");
+        Objects.requireNonNull(result, "result");
+        if (result instanceof StructuredToolResult<?>) {
+            binding.output().orElseThrow(() -> new IllegalArgumentException("Structured result has no declared output for tool: " + definition.name()));
+        }
+        return sdkResult(result, result instanceof StructuredToolResult<?> structured ? structured.structuredContent() : null);
+    }
+
+    private McpSchema.CallToolResult sdkResult(ToolResult<?> result, Object structuredContent) {
         Boolean isError = result.isError() ? Boolean.TRUE : null;
-        Object structuredContent = result instanceof StructuredToolResult<?> structured ? structured.structuredContent() : null;
-        return new McpSchema.CallToolResult(result.content().stream().map(this::toSdkContent).toList(), isError, structuredContent, null);
-    }
-
-    private McpSchema.Content toSdkContent(ToolContent content) {
-        return switch (content.type()) {
-            case TEXT -> McpSchema.TextContent.builder(content.text()).build();
-            case IMAGE -> McpSchema.ImageContent.builder(content.data(), content.mimeType()).build();
-            case AUDIO -> McpSchema.AudioContent.builder(content.data(), content.mimeType()).build();
-        };
+        return new McpSchema.CallToolResult(result.content(), isError, structuredContent, null);
     }
 
     private McpSchema.CallToolResult error(String name, Throwable exception) {
         return toSdkResult(ToolResult.error(ToolCatalog.errorText(name, exception)));
     }
 
-    public record AsyncServerExtensions(List<McpServerFeatures.AsyncToolSpecification> tools, List<McpServerFeatures.AsyncResourceSpecification> resources, List<McpServerFeatures.AsyncResourceTemplateSpecification> resourceTemplates, List<McpServerFeatures.AsyncPromptSpecification> prompts, List<McpServerFeatures.AsyncCompletionSpecification> completions, McpSchema.ServerCapabilities capabilities, Duration requestTimeout) {
+    public value record AsyncServerExtensions(List<McpServerFeatures.AsyncToolSpecification> tools, List<McpServerFeatures.AsyncResourceSpecification> resources, List<McpServerFeatures.AsyncResourceTemplateSpecification> resourceTemplates, List<McpServerFeatures.AsyncPromptSpecification> prompts, List<McpServerFeatures.AsyncCompletionSpecification> completions, McpSchema.ServerCapabilities capabilities, Duration requestTimeout) {
         public AsyncServerExtensions {
             tools = List.copyOf(Objects.requireNonNull(tools, "tools"));
             resources = List.copyOf(Objects.requireNonNull(resources, "resources"));

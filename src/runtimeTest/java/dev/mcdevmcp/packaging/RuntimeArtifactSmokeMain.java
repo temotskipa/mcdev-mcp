@@ -3,8 +3,9 @@ package dev.mcdevmcp.packaging;
 import dev.mcdevmcp.analysis.decompile.MappingConverter;
 import dev.mcdevmcp.analysis.decompile.MinecraftDecompiler;
 import dev.mcdevmcp.analysis.decompile.MinecraftRemapper;
-import dev.mcdevmcp.mcp.tool.ToolCatalog;
-import dev.mcdevmcp.mcp.tool.ToolMetadata;
+import dev.mcdevmcp.mcp.McpServerFactory;
+import dev.mcdevmcp.mcp.tool.ToolDefinition;
+import dev.mcdevmcp.support.AppEnvironment;
 import io.modelcontextprotocol.json.McpJsonDefaults;
 import io.modelcontextprotocol.json.TypeRef;
 
@@ -58,7 +59,7 @@ public final class RuntimeArtifactSmokeMain {
         int feature = Runtime.version().feature();
         String vendor = System.getProperty("java.vendor", "").strip();
         String vm = System.getProperty("java.vm.name", "").strip();
-        require(feature >= 25, "Runtime feature must be at least Java 25, got " + feature);
+        require(feature >= 28, "Runtime feature must be at least Java 28, got " + feature);
         require(!vendor.isEmpty(), "Runtime vendor is unavailable");
         require(!vm.isEmpty(), "Runtime VM name is unavailable");
         System.out.printf(Locale.ROOT, "RUNTIME_JAVA feature=%d vendor=%s vm=%s%n", feature, vendor, vm);
@@ -221,7 +222,7 @@ public final class RuntimeArtifactSmokeMain {
     }
 
     private static void verifyJarCli(Path jar, String version) throws Exception {
-        Process process = new ProcessBuilder(javaExecutable(), "-jar", jar.toString(), "--version").start();
+        Process process = new ProcessBuilder(javaExecutable(), "--enable-preview", "-jar", jar.toString(), "--version").start();
         try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
             Future<String> output = readAll(executor, process.getInputStream());
             Future<String> errors = readAll(executor, process.getErrorStream());
@@ -236,7 +237,7 @@ public final class RuntimeArtifactSmokeMain {
 
     private static void verifyStdio(Path jar, String version) throws Exception {
         Path runtimeHome = Files.createTempDirectory("mcdev-mcp-runtime-stdio");
-        ProcessBuilder builder = new ProcessBuilder(javaExecutable(), "-Duser.home=" + runtimeHome, "-jar", jar.toString(), "serve");
+        ProcessBuilder builder = new ProcessBuilder(javaExecutable(), "--enable-preview", "-Duser.home=" + runtimeHome, "-jar", jar.toString(), "serve");
         builder.environment().put("LOCALAPPDATA", runtimeHome.toString());
         builder.environment().put("XDG_CACHE_HOME", runtimeHome.toString());
         builder.environment().put("MCDEV_SESSION_LOG_DIR", runtimeHome.resolve("logs").toString());
@@ -262,8 +263,10 @@ public final class RuntimeArtifactSmokeMain {
             verifyResponseEnvelope(toolsResponse, 2);
             List<Map<String, Object>> actualTools = requiredTools(requiredMap(toolsResponse, "result"));
             List<Map<String, Object>> expectedTools = new ArrayList<>();
-            for (ToolMetadata metadata : ToolCatalog.loadMetadata(McpJsonDefaults.getMapper())) {
-                expectedTools.add(Map.of("name", metadata.name(), "description", metadata.description(), "inputSchema", metadata.inputSchema()));
+            try (var composition = McpServerFactory.declarativeComposition(new AppEnvironment(Map.of()), McpJsonDefaults.getMapper())) {
+                for (ToolDefinition definition : composition.definitions()) {
+                    expectedTools.add(Map.of("name", definition.name(), "description", definition.description(), "inputSchema", definition.inputSchema()));
+                }
             }
             require(actualTools.equals(expectedTools), "Exact JAR tools/list differs from Java-owned tools metadata");
 

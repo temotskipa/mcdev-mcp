@@ -127,7 +127,7 @@ public final class ConformanceServerMain {
         wrapper.setLoadOnStartup(1);
         wrapper.setAsyncSupported(true);
         context.addChild(wrapper);
-        context.addServletMappingDecoded("/*", "mcpServlet");
+        context.addServletMapping("/*", "mcpServlet");
 
         var connector = tomcat.getConnector();
         connector.setProperty("address", "127.0.0.1");

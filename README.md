@@ -85,14 +85,14 @@ the legacy index with H2 data.
 
 Supported runtime settings:
 
-| Setting | Purpose |
-|---|---|
-| `DEBUGBRIDGE_PORT` | Use a specific DebugBridge port instead of the normal scan. |
-| `MCDEV_RUN_COMMAND` | Enable the opt-in `mc_run_command` tool when set to `1` or `true`. |
-| `MCDEV_SCRIPT_LOGS` | Preserve the 2.2.1 opt-in script-log behavior when set to `1` or `true`. |
-| `MCDEV_SESSION_LOG_DIR` | Enable script logs and choose their directory explicitly. |
-| `MCDEV_MCP_DEBUG_LOG` | Write protocol-safe diagnostics to `on`, `off`, or a chosen path. |
-| `MCDEV_INDEX_THREADS` | Bound Javac indexing parallelism to a positive integer. |
+| Setting                 | Purpose                                                                  |
+|-------------------------|--------------------------------------------------------------------------|
+| `DEBUGBRIDGE_PORT`      | Use a specific DebugBridge port instead of the normal scan.              |
+| `MCDEV_RUN_COMMAND`     | Enable the opt-in `mc_run_command` tool when set to `1` or `true`.       |
+| `MCDEV_SCRIPT_LOGS`     | Preserve the 2.2.1 opt-in script-log behavior when set to `1` or `true`. |
+| `MCDEV_SESSION_LOG_DIR` | Enable script logs and choose their directory explicitly.                |
+| `MCDEV_MCP_DEBUG_LOG`   | Write protocol-safe diagnostics to `on`, `off`, or a chosen path.        |
+| `MCDEV_INDEX_THREADS`   | Bound Javac indexing parallelism to a positive integer.                  |
 
 `MCDEV_MCP_SKIP_SMOKE=1` is only a local MCPB build-script escape hatch. It is
 not read by the server.

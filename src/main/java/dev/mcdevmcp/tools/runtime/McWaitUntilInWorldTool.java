@@ -1,19 +1,21 @@
 package dev.mcdevmcp.tools.runtime;
 
-import dev.mcdevmcp.mcp.tool.api.ToolBinding;
-import dev.mcdevmcp.mcp.tool.api.ArgumentDecoder;
+import dev.mcdevmcp.mcp.tool.ToolDeclaration;
+import dev.mcdevmcp.mcp.tool.api.ContentToolBinding;
+import dev.mcdevmcp.mcp.tool.api.ContentToolResult;
 import dev.mcdevmcp.mcp.tool.api.ToolResult;
 
 final class McWaitUntilInWorldTool {
+    static final ToolDeclaration<WaitUntilInWorldArguments> DECLARATION = ToolDeclaration.of("mc_wait_until_in_world", WaitUntilInWorldArguments.class);
+
     private McWaitUntilInWorldTool() {
     }
 
-    static ToolBinding<WaitUntilInWorldArguments> binding(SessionControlSupport support) {
-        var decoder = ArgumentDecoder.sdk(WaitUntilInWorldWireArguments.class).map(WaitUntilInWorldArguments::from);
-        return ToolBinding.compatibility(decoder, (arguments, cancellation) -> SessionControlSupport.recoverTool(SessionControlSupport.mapCancellable(support.waitUntilInWorld(arguments.timeoutSeconds(), arguments.requireAbsenceFirst(), cancellation), McWaitUntilInWorldTool::render)));
+    static ContentToolBinding<WaitUntilInWorldArguments> binding(SessionControlSupport support) {
+        return DECLARATION.bind((arguments, cancellation) -> SessionControlSupport.recoverTool(SessionControlSupport.mapCancellable(support.waitUntilInWorld(arguments.timeoutSeconds(), arguments.requireAbsenceFirst(), cancellation), McWaitUntilInWorldTool::render)));
     }
 
-    private static ToolResult render(InWorldWaitResult outcome) {
+    private static ContentToolResult<Void> render(InWorldWaitResult outcome) {
         String seconds = RuntimeToolSupport.nodeNumber(outcome.elapsedSeconds());
         return switch (outcome.state()) {
             case JOINED -> ToolResult.text("In-world after " + seconds + "s.");

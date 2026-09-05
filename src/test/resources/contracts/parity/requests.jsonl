@@ -1,5 +1,5 @@
 {"label":"initialize","kind":"initialize","request":{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"mcdev-parity","version":"1"}}}}
-{"label":"tools-list","kind":"catalog","request":{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}}
+{"label":"tools-list","kind":"catalog","comparison":"typed_catalog","request":{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}}
 {"label":"resources-list","kind":"catalog","request":{"jsonrpc":"2.0","id":3,"method":"resources/list","params":{}}}
 {"label":"python-guide","kind":"resource","comparison":"pinned_guide_links","request":{"jsonrpc":"2.0","id":4,"method":"resources/read","params":{"uri":"mcdev://guides/python-scripting"}}}
 {"label":"dev-loop-guide","kind":"resource","comparison":"reviewed_guide","request":{"jsonrpc":"2.0","id":5,"method":"resources/read","params":{"uri":"mcdev://guides/dev-loop"}}}
@@ -36,17 +36,17 @@
 {"label":"malformed-tool-arguments","kind":"malformed","comparison":"sdk_input_validation","request":{"jsonrpc":"2.0","id":15,"method":"tools/call","params":{"name":"mc_search","arguments":{"query":42}}}}
 {"label":"unknown-method","kind":"unknown","request":{"jsonrpc":"2.0","id":16,"method":"mcdev/unknown","params":{}}}
 {"label":"runtime-connect","kind":"runtime","request":{"jsonrpc":"2.0","id":17,"method":"tools/call","params":{"name":"mc_connect","arguments":{"port":"$DEBUGBRIDGE_PORT","reset":true}}}}
-{"label":"runtime-execute","kind":"runtime","request":{"jsonrpc":"2.0","id":18,"method":"tools/call","params":{"name":"mc_execute","arguments":{"code":"return 'parity'","timeoutMs":1000}}}}
+{"label":"runtime-execute","kind":"runtime","request":{"jsonrpc":"2.0","id":18,"method":"tools/call","params":{"name":"mc_execute","arguments":{"code":"return 'parity'"}}}}
 {"label":"runtime-snapshot","kind":"runtime","request":{"jsonrpc":"2.0","id":19,"method":"tools/call","params":{"name":"mc_snapshot","arguments":{}}}}
 {"label":"runtime-screenshot","kind":"runtime","request":{"jsonrpc":"2.0","id":20,"method":"tools/call","params":{"name":"mc_screenshot","arguments":{"downscale":2,"quality":0.75}}}}
-{"label":"runtime-record-video","kind":"runtime","request":{"jsonrpc":"2.0","id":21,"method":"tools/call","params":{"name":"mc_record_video","arguments":{"frames":4,"interval":50,"output":"grid","gridCols":2,"downscale":2,"quality":0.75}}}}
-{"label":"runtime-nearby-entities","kind":"runtime","request":{"jsonrpc":"2.0","id":22,"method":"tools/call","params":{"name":"mc_nearby_entities","arguments":{"range":16,"limit":5,"includeIcons":false}}}}
+{"label":"runtime-record-video","kind":"runtime","request":{"jsonrpc":"2.0","id":21,"method":"tools/call","params":{"name":"mc_record_video","arguments":{"frames":4,"interval":{"kind":"fixed","intervalSeconds":0.05},"output":"grid","gridCols":2,"downscale":2,"quality":0.75}}}}
+{"label":"runtime-nearby-entities","kind":"runtime","request":{"jsonrpc":"2.0","id":22,"method":"tools/call","params":{"name":"mc_nearby_entities","arguments":{"range":16.5,"limit":5,"includeIcons":false}}}}
 {"label":"runtime-entity-details","kind":"runtime","request":{"jsonrpc":"2.0","id":23,"method":"tools/call","params":{"name":"mc_entity_details","arguments":{"entityId":7}}}}
-{"label":"runtime-nearby-blocks","kind":"runtime","request":{"jsonrpc":"2.0","id":24,"method":"tools/call","params":{"name":"mc_nearby_blocks","arguments":{"range":8,"limit":5}}}}
-{"label":"runtime-block-details","kind":"runtime","request":{"jsonrpc":"2.0","id":25,"method":"tools/call","params":{"name":"mc_block_details","arguments":{"x":1,"y":64,"z":-2}}}}
-{"label":"runtime-looked-at-entity","kind":"runtime","request":{"jsonrpc":"2.0","id":26,"method":"tools/call","params":{"name":"mc_looked_at_entity","arguments":{"range":32}}}}
+{"label":"runtime-nearby-blocks","kind":"runtime","request":{"jsonrpc":"2.0","id":24,"method":"tools/call","params":{"name":"mc_nearby_blocks","arguments":{"range":8.5,"limit":5}}}}
+{"label":"runtime-block-details","kind":"runtime","request":{"jsonrpc":"2.0","id":25,"method":"tools/call","params":{"name":"mc_block_details","arguments":{"position":{"x":1,"y":64,"z":-2}}}}}
+{"label":"runtime-looked-at-entity","kind":"runtime","request":{"jsonrpc":"2.0","id":26,"method":"tools/call","params":{"name":"mc_looked_at_entity","arguments":{"range":32.5}}}}
 {"label":"runtime-set-entity-glow","kind":"runtime","request":{"jsonrpc":"2.0","id":27,"method":"tools/call","params":{"name":"mc_set_entity_glow","arguments":{"entityId":7,"glow":true}}}}
-{"label":"runtime-set-block-glow","kind":"runtime","request":{"jsonrpc":"2.0","id":28,"method":"tools/call","params":{"name":"mc_set_block_glow","arguments":{"x":1,"y":64,"z":-2,"glow":true}}}}
+{"label":"runtime-set-block-glow","kind":"runtime","request":{"jsonrpc":"2.0","id":28,"method":"tools/call","params":{"name":"mc_set_block_glow","arguments":{"position":{"x":1,"y":64,"z":-2},"glow":true}}}}
 {"label":"runtime-clear-block-glow","kind":"runtime","request":{"jsonrpc":"2.0","id":29,"method":"tools/call","params":{"name":"mc_clear_block_glow","arguments":{}}}}
 {"label":"runtime-get-item-texture","kind":"runtime","request":{"jsonrpc":"2.0","id":30,"method":"tools/call","params":{"name":"mc_get_item_texture","arguments":{"slot":0}}}}
 {"label":"runtime-get-entity-item-texture","kind":"runtime","request":{"jsonrpc":"2.0","id":31,"method":"tools/call","params":{"name":"mc_get_entity_item_texture","arguments":{"entityId":7,"slot":"mainhand"}}}}

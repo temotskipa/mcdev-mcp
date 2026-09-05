@@ -1,5 +1,6 @@
 package dev.mcdevmcp.app;
 
+import picocli.CommandLine;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Spec;
 
@@ -7,7 +8,7 @@ import picocli.CommandLine.Spec;
 @SuppressWarnings("unused")
 public final class McdevCommand implements Runnable {
     @Spec
-    private picocli.CommandLine.Model.CommandSpec spec;
+    private CommandLine.Model.CommandSpec spec;
 
     @Override
     public void run() {

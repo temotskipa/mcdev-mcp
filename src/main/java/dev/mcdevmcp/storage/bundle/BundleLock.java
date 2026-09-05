@@ -8,13 +8,14 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.time.Duration;
+import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.Lock;
 
-public final class BundleLock implements AutoCloseable {
-    private static final ConcurrentHashMap<Path, BundleLockState> LOCKS = new ConcurrentHashMap<>();
+public final value class BundleLock implements AutoCloseable {
+    private static final Map<Path, BundleLockState> LOCKS = new ConcurrentHashMap<>();
     private static final Duration RETRY_DELAY = Duration.ofMillis(25);
     private static final Duration MAX_MILLISECONDS = Duration.ofMillis(Long.MAX_VALUE);
     private final Lock localLock;

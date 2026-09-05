@@ -23,19 +23,19 @@ real JSON/WebSocket boundary.
 
 Production code lives below `dev.mcdevmcp`:
 
-| Package | Responsibility |
-|---|---|
-| `app` | CLI commands, startup, and analysis orchestration. |
-| `mcp` | SDK adapter, STDIO server, tool catalog, and resource catalog. |
-| `tools.statictool` | Source, hierarchy, version, and reference tools. |
-| `tools.runtime` | DebugBridge-backed live-game tools. |
-| `analysis.index` | Javac-based source indexing and typed index models. |
-| `analysis.callgraph` | JDK Class-File API scanning and graph publication. |
-| `analysis.decompile` | Minecraft download, Tiny Remapper, and Vineflower. |
-| `storage` | Platform paths, H2 repositories, JSONL bundles, and cleanup. |
-| `bridge` | Nonblocking DebugBridge envelopes, validation, and sessions. |
-| `packaging` | Deterministic MCPB metadata and packed-artifact smoke tests. |
-| `support` | Environment, JSON, logging, cancellation, and version helpers. |
+| Package              | Responsibility                                                 |
+|----------------------|----------------------------------------------------------------|
+| `app`                | CLI commands, startup, and analysis orchestration.             |
+| `mcp`                | SDK adapter, STDIO server, tool catalog, and resource catalog. |
+| `tools.statictool`   | Source, hierarchy, version, and reference tools.               |
+| `tools.runtime`      | DebugBridge-backed live-game tools.                            |
+| `analysis.index`     | Javac-based source indexing and typed index models.            |
+| `analysis.callgraph` | JDK Class-File API scanning and graph publication.             |
+| `analysis.decompile` | Minecraft download, Tiny Remapper, and Vineflower.             |
+| `storage`            | Platform paths, H2 repositories, JSONL bundles, and cleanup.   |
+| `bridge`             | Nonblocking DebugBridge envelopes, validation, and sessions.   |
+| `packaging`          | Deterministic MCPB metadata and packed-artifact smoke tests.   |
+| `support`            | Environment, JSON, logging, cancellation, and version helpers. |
 
 The Gradle build has four projects with one-way dependencies:
 
@@ -120,12 +120,12 @@ contains no server command or Node runtime selector.
 
 MCPB is the sole packaging exception. `packaging/mcpb/` owns a minimal
 `bootstrap.cjs`, package metadata, and its packaging dependency. The launcher
-only finds Java 25 or newer and starts the bundled release JAR. All npm commands
+requires Java 28 and starts the bundled preview JAR with preview features enabled. All npm commands
 in `scripts/build-mcpb.ps1` run with that directory as their working directory;
 nothing there is part of direct JAR execution.
 
-Release CI builds the JAR once on Java 25, records its hash, and runs that exact
-artifact on Java 25 and Java 26. The MCPB is packed around the same bytes. A
+The Valhalla experiment builds the JAR once on Java 28, records its hash, and
+runs that exact preview artifact on Java 28. The MCPB is packed around the same bytes. A
 read-only verification job admits exactly three publishable assets: JAR,
 checksum, and MCPB. Only the final publishing job receives release write
 permission.

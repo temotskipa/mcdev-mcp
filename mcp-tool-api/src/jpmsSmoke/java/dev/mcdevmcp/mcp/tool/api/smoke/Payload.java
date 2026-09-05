@@ -1,4 +1,4 @@
 package dev.mcdevmcp.mcp.tool.api.smoke;
 
-record Payload(String value) {
+value record Payload(String value) {
 }

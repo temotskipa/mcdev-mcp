@@ -3,6 +3,7 @@ package dev.mcdevmcp.tools.runtime;
 import dev.mcdevmcp.bridge.BridgeRequest;
 import dev.mcdevmcp.bridge.BridgeResponse;
 import dev.mcdevmcp.bridge.BridgeTestHarness;
+import dev.mcdevmcp.bridge.payload.EmptyBridgePayload;
 import dev.mcdevmcp.mcp.tool.CompleteToolBindings;
 import dev.mcdevmcp.mcp.tool.ToolCatalog;
 import dev.mcdevmcp.mcp.tool.api.ToolResult;
@@ -10,6 +11,7 @@ import dev.mcdevmcp.support.AppEnvironment;
 import dev.mcdevmcp.support.Cancellation;
 import io.modelcontextprotocol.json.McpJsonDefaults;
 import io.modelcontextprotocol.json.McpJsonMapper;
+import io.modelcontextprotocol.spec.McpSchema;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
@@ -22,10 +24,15 @@ import java.util.concurrent.TimeUnit;
 import static org.junit.jupiter.api.Assertions.*;
 
 class CoreRuntimeToolContractTest {
+    private static String contentText(ToolResult<?> result) {
+        return assertInstanceOf(McpSchema.TextContent.class, result.content().getFirst()).text();
+    }
+
     private static final McpJsonMapper MAPPER = McpJsonDefaults.getMapper();
     private static final AppEnvironment ENVIRONMENT = new AppEnvironment(Map.of());
+    private static final List<String> CORE_FIXTURE_LABELS = List.of("connect-success", "connect-declared-error", "connect-missing-result", "execute-success", "execute-number-formatting", "execute-declared-error", "execute-timeout", "snapshot-success", "snapshot-declared-error", "snapshot-missing-result", "snapshot-wrong-primitive", "nearby-entities-success", "nearby-entities-declared-error", "nearby-entities-missing-result", "entity-details-success", "entity-details-declared-error", "entity-details-missing-result", "nearby-blocks-success", "nearby-blocks-declared-error", "nearby-blocks-missing-result", "block-details-success", "block-details-declared-error", "block-details-missing-result", "looked-at-entity-success", "looked-at-entity-null", "looked-at-entity-declared-error", "looked-at-entity-missing-result", "looked-at-entity-wrong-primitive", "chat-history-success", "chat-history-declared-error", "chat-history-missing-result", "screen-inspect-success", "screen-inspect-declared-error", "screen-inspect-missing-result", "snapshot-declared-error-without-message");
 
-    private static ToolResult dispatch(ToolCatalog catalog, String tool, Map<String, Object> arguments) throws Exception {
+    private static ToolResult<?> dispatch(ToolCatalog catalog, String tool, Map<String, Object> arguments) throws Exception {
         return catalog.dispatch(tool, arguments, Cancellation.none()).toCompletableFuture().get(5, TimeUnit.SECONDS);
     }
 
@@ -40,16 +47,19 @@ class CoreRuntimeToolContractTest {
         if (bridge.failure() != null) {
             return CompletableFuture.failedFuture(new IllegalStateException(bridge.failure()));
         }
-        return CompletableFuture.completedFuture(new BridgeResponse(wireRequest.id(), Boolean.TRUE.equals(bridge.success()), Boolean.TRUE.equals(bridge.resultPresent()), bridge.result(), bridge.output(), bridge.error()));
+        return CompletableFuture.completedFuture(new BridgeResponse(wireRequest.id(), Boolean.TRUE.equals(bridge.success()), Boolean.TRUE.equals(bridge.resultPresent()), RuntimeContractFixtures.nativeResult(bridge.result()), bridge.output(), bridge.error()));
     }
 
     private static void assertWireRequest(RequestFixture fixture, List<BridgeRequest> actual) {
         int expectedSize = fixture.endpoint().equals("status") ? 1 : 2;
         assertEquals(expectedSize, actual.size(), fixture.label());
         assertEquals("status", actual.getFirst().endpoint().wireName(), fixture.label());
-        assertEquals(Map.of(), actual.getFirst().payload(), fixture.label());
+        assertEquals(new EmptyBridgePayload(), actual.getFirst().payload(), fixture.label());
         BridgeRequest target = actual.getLast();
         assertEquals(fixture.endpoint(), target.endpoint().wireName(), fixture.label());
+        if (fixture.endpoint().equals("snapshot")) {
+            assertEquals(EmptyBridgePayload.class, target.payload().getClass(), fixture.label());
+        }
         assertEquals(writeJson(fixture.payload()), writeJson(target.payload()), fixture.label());
     }
 
@@ -62,8 +72,13 @@ class CoreRuntimeToolContractTest {
     }
 
     private static List<Duration> expectedEffectiveTimeouts(RequestFixture fixture) {
-        Duration targetTimeout = fixture.endpoint().equals("execute") ? Duration.ofMillis(((Number) fixture.payload().get("timeoutMs")).longValue() + 5_000) : Duration.ofSeconds(10);
+        Duration targetTimeout = fixture.endpoint().equals("execute") ? executeTimeout(fixture).plusSeconds(5) : Duration.ofSeconds(10);
         return fixture.endpoint().equals("status") ? List.of(Duration.ofSeconds(10)) : List.of(Duration.ofSeconds(10), targetTimeout);
+    }
+
+    private static Duration executeTimeout(RequestFixture fixture) {
+        Object value = fixture.arguments().get("timeoutSeconds");
+        return value == null ? Duration.ofSeconds(10) : Duration.ofMillis(Math.round(((Number) value).doubleValue() * 1_000));
     }
 
     @Test
@@ -71,6 +86,9 @@ class CoreRuntimeToolContractTest {
         List<RequestFixture> requests = RuntimeContractFixtures.load(MAPPER, "contracts/runtime-tools/core-requests.jsonl", RequestFixture.class);
         List<BridgeFixture> bridgeResponses = RuntimeContractFixtures.load(MAPPER, "contracts/runtime-tools/core-bridge-responses.jsonl", BridgeFixture.class);
         List<ResultFixture> results = RuntimeContractFixtures.load(MAPPER, "contracts/runtime-tools/core-tool-results.jsonl", ResultFixture.class);
+        assertEquals(CORE_FIXTURE_LABELS, requests.stream().map(RequestFixture::label).toList());
+        assertEquals(CORE_FIXTURE_LABELS, bridgeResponses.stream().map(BridgeFixture::label).toList());
+        assertEquals(CORE_FIXTURE_LABELS, results.stream().map(ResultFixture::label).toList());
         assertEquals(requests.size(), bridgeResponses.size());
         assertEquals(requests.size(), results.size());
 
@@ -83,9 +101,14 @@ class CoreRuntimeToolContractTest {
 
             try (var harness = new BridgeTestHarness(MAPPER, ENVIRONMENT, (_, wireRequest) -> respond(request, bridge, wireRequest))) {
                 ToolCatalog catalog = ToolCatalog.load(ENVIRONMENT, CompleteToolBindings.including(MAPPER, RuntimeToolModule.handlers(harness.session(), MAPPER)), MAPPER);
-                ToolResult actual = catalog.dispatch(request.tool(), request.arguments(), Cancellation.none()).toCompletableFuture().get(5, TimeUnit.SECONDS);
+                ToolResult<?> actual = catalog.dispatch(request.tool(), request.arguments(), Cancellation.none()).toCompletableFuture().get(5, TimeUnit.SECONDS);
 
-                assertEquals(expected.text(), actual.content().getFirst().text(), request.label());
+                if (request.label().equals("looked-at-entity-wrong-primitive")) {
+                    assertTrue(contentText(actual).contains("DebugBridge lookedAtEntity response has invalid result"), request.label());
+                }
+                else {
+                    assertEquals(RuntimeContractFixtures.fixturePath(expected.text()), contentText(actual), request.label());
+                }
                 assertEquals(expected.isError(), actual.isError(), request.label());
                 assertWireRequest(request, harness.requests());
                 assertEquals(expectedEffectiveTimeouts(request), harness.effectiveTimeouts(), request.label());
@@ -105,12 +128,12 @@ class CoreRuntimeToolContractTest {
         })) {
             ToolCatalog catalog = ToolCatalog.load(ENVIRONMENT, CompleteToolBindings.including(MAPPER, RuntimeToolModule.handlers(harness.session(), MAPPER)), MAPPER);
 
-            assertEquals("{\n  \"connection\": 1\n}", dispatch(catalog, "mc_snapshot", Map.of()).content().getFirst().text());
+            assertEquals("{\n  \"connection\": 1\n}", contentText(dispatch(catalog, "mc_snapshot", Map.of())));
             harness.disconnect();
-            assertEquals("{\n  \"connection\": 2\n}", dispatch(catalog, "mc_snapshot", Map.of()).content().getFirst().text());
-            ToolResult reset = dispatch(catalog, "mc_connect", Map.of("reset", true));
+            assertEquals("{\n  \"connection\": 2\n}", contentText(dispatch(catalog, "mc_snapshot", Map.of())));
+            ToolResult<?> reset = dispatch(catalog, "mc_connect", Map.of("reset", true));
 
-            assertTrue(reset.content().getFirst().text().startsWith("Connected!\nMinecraft 1.21.11\nPort: 9876"));
+            assertTrue(contentText(reset).startsWith("Connected!\nMinecraft 1.21.11\nPort: 9876"));
             assertEquals(3, harness.connectionCount());
             assertEquals(List.of("status", "snapshot", "status", "snapshot", "status"), harness.requests().stream().map(request -> request.endpoint().wireName()).toList());
         }
@@ -121,11 +144,11 @@ class CoreRuntimeToolContractTest {
         try (var harness = new BridgeTestHarness(MAPPER, ENVIRONMENT, (_, request) -> CompletableFuture.completedFuture(RuntimeContractFixtures.status(request.id())))) {
             ToolCatalog catalog = ToolCatalog.load(ENVIRONMENT, CompleteToolBindings.including(MAPPER, RuntimeToolModule.handlers(harness.session(), MAPPER)), MAPPER);
 
-            assertTrue(dispatch(catalog, "mc_connect", Map.of()).content().getFirst().text().startsWith("Connected!"));
-            ToolResult second = dispatch(catalog, "mc_connect", Map.of());
+            assertTrue(contentText(dispatch(catalog, "mc_connect", Map.of())).startsWith("Connected!"));
+            ToolResult<?> second = dispatch(catalog, "mc_connect", Map.of());
 
-            assertTrue(second.content().getFirst().text().startsWith("Already connected."));
-            assertTrue(second.content().getFirst().text().endsWith("Use reset=true to reconnect."));
+            assertTrue(contentText(second).startsWith("Already connected."));
+            assertTrue(contentText(second).endsWith("Use reset=true to reconnect."));
             assertEquals(1, harness.requests().size());
         }
     }
@@ -139,13 +162,13 @@ class CoreRuntimeToolContractTest {
             assertDoesNotThrow(handlers::clear);
 
             ToolCatalog catalog = ToolCatalog.load(ENVIRONMENT, CompleteToolBindings.including(MAPPER, RuntimeToolModule.handlers(harness.session(), MAPPER)), MAPPER);
-            ToolResult timeout = dispatch(catalog, "mc_execute", Map.of("code", "return 1", "timeoutMs", 999));
-            ToolResult port = dispatch(catalog, "mc_connect", Map.of("port", 1.5));
+            ToolResult<?> timeout = dispatch(catalog, "mc_execute", Map.of("code", "return 1", "timeoutMs", 999));
+            ToolResult<?> port = dispatch(catalog, "mc_connect", Map.of("port", 1.5));
 
             assertTrue(timeout.isError());
-            assertEquals("Error executing mc_execute: 'timeoutMs' must be an integer from 1000 to 300000", timeout.content().getFirst().text());
+            assertEquals("Error executing mc_execute: 'timeoutMs' is not a permitted property", contentText(timeout));
             assertTrue(port.isError());
-            assertEquals("Error executing mc_connect: 'port' must be an integer from 1 to 65535", port.content().getFirst().text());
+            assertEquals("Error executing mc_connect: 'port' must be an integer", contentText(port));
             assertTrue(harness.requests().isEmpty());
         }
     }

@@ -2,6 +2,7 @@ package dev.mcdevmcp.bridge;
 
 import dev.mcdevmcp.storage.model.MinecraftVersion;
 import dev.mcdevmcp.support.AppEnvironment;
+import dev.mcdevmcp.bridge.payload.EmptyBridgePayload;
 import io.modelcontextprotocol.json.McpJsonDefaults;
 import io.modelcontextprotocol.json.McpJsonMapper;
 
@@ -25,7 +26,7 @@ public final class BridgeSession implements AutoCloseable {
     private final AppEnvironment environment;
     private final Connector connector;
     private final Consumer<String> diagnostics;
-    private final BridgePayloadValidator payloadValidator;
+    private final BridgeResultDecoder resultDecoder;
     private final Set<CompletableFuture<SessionInfo>> connectionAttempts = Collections.newSetFromMap(new IdentityHashMap<>());
     private final Set<BridgeClient> candidates = Collections.newSetFromMap(new IdentityHashMap<>());
     private CompletableFuture<SessionInfo> implicitConnect;
@@ -54,7 +55,7 @@ public final class BridgeSession implements AutoCloseable {
         this.environment = Objects.requireNonNull(environment, "environment");
         this.connector = Objects.requireNonNull(connector, "connector");
         this.diagnostics = Objects.requireNonNull(diagnostics, "diagnostics");
-        this.payloadValidator = new BridgePayloadValidator(json.mapper());
+        this.resultDecoder = new BridgeResultDecoder(json.mapper());
     }
 
     private static void closeQuietly(BridgeClient client) {
@@ -70,18 +71,6 @@ public final class BridgeSession implements AutoCloseable {
 
     private static Connector defaultConnector(HttpClient client, BridgeJson json) {
         return port -> BridgeClient.connect(client, URI.create("ws://127.0.0.1:" + port), json);
-    }
-
-    private static Optional<Integer> parsePort(String text) {
-        try {
-            double numeric = Double.parseDouble(text.strip());
-            if (!Double.isFinite(numeric) || numeric != Math.rint(numeric) || numeric < 1 || numeric > 65535) {
-                return Optional.empty();
-            }
-            return Optional.of((int) numeric);
-        } catch (IllegalArgumentException exception) {
-            return Optional.empty();
-        }
     }
 
     private static int requireExplicitPort(int port) {
@@ -151,7 +140,7 @@ public final class BridgeSession implements AutoCloseable {
     }
 
     @SuppressWarnings("resource")
-    public CompletionStage<BridgeResponse> send(BridgeEndpoint endpoint, Object payload, Duration endpointTimeout) {
+    public CompletionStage<BridgeResponse> send(BridgeEndpoint endpoint, BridgePayload payload, Duration endpointTimeout) {
         Objects.requireNonNull(endpoint, "endpoint");
         CascadingFuture<BridgeResponse> result = new CascadingFuture<>();
         CompletableFuture<SessionInfo> connection = result.observe(() -> connect(null));
@@ -202,7 +191,7 @@ public final class BridgeSession implements AutoCloseable {
                 return;
             }
             result.whenComplete((_, _) -> client.close());
-            CompletableFuture<BridgeResponse> status = client.send(STATUS, Map.of(), Duration.ofMillis(1_500)).toCompletableFuture();
+            CompletableFuture<BridgeResponse> status = client.send(STATUS, new EmptyBridgePayload(), Duration.ofMillis(1_500)).toCompletableFuture();
             result.whenComplete((_, _) -> {
                 if (result.isCancelled()) {
                     status.cancel(true);
@@ -214,7 +203,7 @@ public final class BridgeSession implements AutoCloseable {
                     return;
                 }
                 try {
-                    BridgeStatusWire wire = payloadValidator.requireResult("status", response, BridgeStatusWire.class);
+                    BridgeStatusWire wire = resultDecoder.decode(STATUS, BridgePayloadValidator.requireResult("status", response), BridgeResultTypes.STATUS);
                     result.complete(toSessionInfo(explicit, wire));
                 } catch (RuntimeException exception) {
                     result.completeExceptionally(exception);
@@ -373,7 +362,7 @@ public final class BridgeSession implements AutoCloseable {
     private CompletionStage<SessionInfo> verifyStatus(long token, int port, BridgeClient client) {
         client.onClosed(this::clearDeadClient);
         CascadingFuture<SessionInfo> result = new CascadingFuture<>();
-        CompletableFuture<BridgeResponse> request = result.start(() -> client.send(STATUS, Map.of(), null));
+        CompletableFuture<BridgeResponse> request = result.start(() -> client.send(STATUS, new EmptyBridgePayload(), null));
         if (request == null) {
             return result;
         }
@@ -390,7 +379,7 @@ public final class BridgeSession implements AutoCloseable {
 
     @SuppressWarnings("resource")
     private SessionInfo acceptStatus(long token, int port, BridgeClient client, BridgeResponse response) {
-        BridgeStatusWire status = payloadValidator.requireResult("status", response, BridgeStatusWire.class);
+        BridgeStatusWire status = resultDecoder.decode(STATUS, BridgePayloadValidator.requireResult("status", response), BridgeResultTypes.STATUS);
         SessionInfo info = toSessionInfo(port, status);
         synchronized (this) {
             if (stale(token) || client.isClosed()) {
@@ -466,7 +455,7 @@ public final class BridgeSession implements AutoCloseable {
     }
 
     private int basePort() {
-        return environment.value("DEBUGBRIDGE_PORT").flatMap(BridgeSession::parsePort).orElse(DEFAULT_PORT);
+        return environment.debugBridgePort().orElse(DEFAULT_PORT);
     }
 
     private void supersede() {

@@ -1,23 +1,17 @@
 package dev.mcdevmcp.mcp.tool;
 
-import dev.mcdevmcp.mcp.tool.api.ArgumentDecoder;
+import dev.mcdevmcp.mcp.tool.api.RecordInputSchemaFactory;
 import dev.mcdevmcp.mcp.tool.api.ToolBinding;
 import dev.mcdevmcp.mcp.tool.api.ToolHandlers;
+import dev.mcdevmcp.mcp.tool.api.ToolInput;
 import dev.mcdevmcp.mcp.tool.api.ToolResult;
 import dev.mcdevmcp.mcp.transport.SdkJsonMode;
 import dev.mcdevmcp.support.Cancellation;
-import dev.mcdevmcp.support.JsonValues;
 import io.modelcontextprotocol.json.McpJsonDefaults;
 import io.modelcontextprotocol.json.McpJsonMapper;
 import org.junit.jupiter.api.Test;
 
-import java.net.URI;
-import java.nio.file.Path;
-import java.time.Duration;
 import java.time.Instant;
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -26,63 +20,50 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class ToolBindingTest {
     private static final McpJsonMapper MAPPER = McpJsonDefaults.getMapper();
+    private static final ToolInput<BindingArguments> INPUT = ToolInput.of(BindingArguments.class, RecordInputSchemaFactory.standard());
+    private static final Map<String, Object> VALID_ARGUMENTS = Map.of("uri", "https://example.test/tool", "timeoutMs", 1250L, "startedAt", "2026-07-10T12:34:56Z", "mode", "SAFE");
 
     @Test
-    void decodesTheWholeArgumentMapOnceAndConvertsWireValuesToDomainValues() {
-        var options = new LinkedHashMap<String, Object>();
-        options.put("enabled", true);
-        options.put("missing", null);
-        options.put("values", new ArrayList<>(List.of("one", 2L)));
-        var arguments = new LinkedHashMap<String, Object>();
-        arguments.put("uri", "https://example.test/tool");
-        arguments.put("path", "build/output.txt");
-        arguments.put("timeoutMs", 1250L);
-        arguments.put("startedAt", "2026-07-10T12:34:56Z");
-        arguments.put("mode", "SAFE");
-        arguments.put("options", options);
+    void decodesTheWholeArgumentMapOnceIntoTheTypedInput() {
         var mapper = new CountingMcpJsonMapper(MAPPER);
-        var received = new CompletableFuture<DomainArguments>();
-        var binding = ToolBinding.compatibility(ArgumentDecoder.sdk(WireArguments.class).map(wire -> new DomainArguments(URI.create(wire.uri()), Path.of(wire.path()), Duration.ofMillis(wire.timeoutMs()), wire.startedAt(), wire.mode(), JsonValues.freezeMap(wire.options()))), (domain, _) -> {
+        var received = new CompletableFuture<BindingArguments>();
+        var binding = ToolBinding.content(INPUT, (domain, _) -> {
             received.complete(domain);
             return ToolHandlers.completed(ToolResult.text("ok"));
         });
 
-        var result = binding.invoke(mapper, arguments, Cancellation.none()).toCompletableFuture().resultNow();
+        var result = binding.invoke(mapper, VALID_ARGUMENTS, Cancellation.none()).toCompletableFuture().resultNow();
         var domain = received.resultNow();
 
         assertFalse(result.isError());
         assertEquals(1, mapper.convertValueCalls());
-        assertEquals(URI.create("https://example.test/tool"), domain.uri());
-        assertEquals(Path.of("build/output.txt"), domain.path());
-        assertEquals(Duration.ofMillis(1250), domain.timeout());
+        assertEquals("https://example.test/tool", domain.uri());
+        assertEquals(1250L, domain.timeoutMs());
         assertEquals(Instant.parse("2026-07-10T12:34:56Z"), domain.startedAt());
         assertEquals(SdkJsonMode.SAFE, domain.mode());
-        assertNull(domain.options().get("missing"));
-        assertThrows(UnsupportedOperationException.class, () -> domain.options().put("later", false));
-        assertThrows(UnsupportedOperationException.class, () -> ((List<?>) domain.options().get("values")).clear());
     }
 
     @Test
-    void propagatesSynchronousDecoderFailureBeforeCallingTheHandler() {
+    void propagatesSynchronousTypedDecodeFailureBeforeCallingTheHandler() {
         var handlerCalled = new CompletableFuture<Void>();
-        var binding = ToolBinding.compatibility((_, _) -> {
-            throw new IllegalArgumentException("bad arguments");
-        }, (_, _) -> {
+        var mapper = new CountingMcpJsonMapper(MAPPER);
+        var binding = ToolBinding.content(INPUT, (_, _) -> {
             handlerCalled.complete(null);
             return ToolHandlers.completed(ToolResult.text("unexpected"));
         });
 
-        var exception = assertThrows(IllegalArgumentException.class, () -> binding.invoke(MAPPER, Map.of(), Cancellation.none()));
+        var exception = assertThrows(IllegalArgumentException.class, () -> binding.invoke(mapper, Map.of("timeoutMs", "not-a-number"), Cancellation.none()));
 
-        assertEquals("bad arguments", exception.getMessage());
+        assertNotNull(exception.getMessage());
+        assertEquals(0, mapper.convertValueCalls());
         assertFalse(handlerCalled.isDone());
     }
 
     @Test
     void preservesAsynchronousHandlerFailure() {
-        var binding = ToolBinding.compatibility(ArgumentDecoder.sdk(TestEmptyArguments.class), (_, _) -> CompletableFuture.failedFuture(new IllegalStateException("async failure")));
+        var binding = ToolBinding.content(INPUT, (_, _) -> CompletableFuture.failedFuture(new IllegalStateException("async failure")));
 
-        var exception = assertThrows(CompletionException.class, () -> binding.invoke(MAPPER, Map.of(), Cancellation.none()).toCompletableFuture().join());
+        var exception = assertThrows(CompletionException.class, () -> binding.invoke(MAPPER, VALID_ARGUMENTS, Cancellation.none()).toCompletableFuture().join());
 
         assertEquals("async failure", exception.getCause().getMessage());
     }
@@ -92,7 +73,7 @@ class ToolBindingTest {
         var started = new CountDownLatch(1);
         var interrupted = new CountDownLatch(1);
         var virtualThread = new AtomicBoolean();
-        var binding = ToolBinding.blockingCompatibility(ArgumentDecoder.sdk(TestEmptyArguments.class), (_, _) -> {
+        var binding = ToolBinding.blocking(INPUT, (_, _) -> {
             virtualThread.set(Thread.currentThread().isVirtual());
             started.countDown();
             try {
@@ -105,12 +86,15 @@ class ToolBindingTest {
         });
 
         try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
-            var future = binding.withBlockingExecutor(executor).invoke(MAPPER, Map.of(), Cancellation.none()).toCompletableFuture();
+            var future = binding.withBlockingExecutor(executor).invoke(MAPPER, VALID_ARGUMENTS, Cancellation.none()).toCompletableFuture();
 
             assertTrue(started.await(5, TimeUnit.SECONDS), "blocking binding did not start");
             assertTrue(future.cancel(true), "blocking binding future was not cancelled");
             assertTrue(interrupted.await(5, TimeUnit.SECONDS), "cancellation did not interrupt the virtual thread");
             assertTrue(virtualThread.get(), "blocking binding did not run on a virtual thread");
         }
+    }
+
+    private record BindingArguments(String uri, long timeoutMs, Instant startedAt, SdkJsonMode mode) {
     }
 }

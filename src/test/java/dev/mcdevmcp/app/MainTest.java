@@ -13,19 +13,19 @@ class MainTest {
     void versionExitsSuccessfullyAndPrintsTheReleaseVersion() {
         var output = new StringWriter();
 
-        int exitCode = Main.execute(new String[]{"--version"}, 25, new PrintWriter(output), new PrintWriter(new StringWriter()));
+        int exitCode = Main.execute(new String[]{"--version"}, 28, new PrintWriter(output), new PrintWriter(new StringWriter()));
 
         assertEquals(0, exitCode);
         assertEquals(System.getProperty("mcdevMcpVersion") + System.lineSeparator(), output.toString());
     }
 
     @Test
-    void rejectsJavaBelow25BeforeCommandExecution() {
+    void rejectsJavaBelow28BeforeCommandExecution() {
         var error = new StringWriter();
 
-        int exitCode = Main.execute(new String[]{"--version"}, 24, new PrintWriter(new StringWriter()), new PrintWriter(error));
+        int exitCode = Main.execute(new String[]{"--version"}, 27, new PrintWriter(new StringWriter()), new PrintWriter(error));
 
         assertEquals(1, exitCode);
-        assertTrue(error.toString().contains("Java 25 or newer is required"));
+        assertTrue(error.toString().contains("Java 28 with preview features is required"));
     }
 }

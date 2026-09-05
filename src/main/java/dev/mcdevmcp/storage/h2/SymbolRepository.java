@@ -11,6 +11,7 @@ import java.util.*;
 /**
  * Short-lived, deterministic, read-only access to an indexed symbol database.
  */
+@SuppressWarnings("SqlNoDataSourceInspection")
 public final class SymbolRepository {
     private static final String CLASSES_ORDER = " ORDER BY CASE t.source_namespace WHEN 'minecraft' THEN 0 ELSE 1 END, p.id, t.id";
     private final Path database;
@@ -146,11 +147,11 @@ public final class SymbolRepository {
         }
     }
 
-    public List<ClassSymbol> classesUnder(String packagePath, int limitPlusOne) throws IOException, SQLException {
+    public List<ClassSymbol> classesUnder(String packageName, int limitPlusOne) throws IOException, SQLException {
         String sql = classesSelect() + " WHERE LOWER(p.name) = LOWER(?) OR LOWER(p.name) LIKE LOWER(?) ESCAPE '\\'" + CLASSES_ORDER + " LIMIT ?";
         return query(connection -> classes(connection, sql, statement -> {
-            statement.setString(1, packagePath);
-            statement.setString(2, escapeLike(packagePath) + ".%");
+            statement.setString(1, packageName);
+            statement.setString(2, escapeLike(packageName) + ".%");
             statement.setInt(3, limitPlusOne);
         }));
     }

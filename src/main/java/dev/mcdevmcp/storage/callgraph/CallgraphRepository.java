@@ -73,11 +73,11 @@ public final class CallgraphRepository {
         }
     }
 
-    private static <T> T parse(byte[] bytes, String file, Class<T> type) throws IOException {
+    private static <T> T parse(byte[] bytes, String artifactFileName, Class<T> type) throws IOException {
         try {
-            return CallgraphJson.readCanonical(bytes, type, file);
+            return CallgraphJson.readCanonical(bytes, type, artifactFileName);
         } catch (IOException | RuntimeException exception) {
-            throw new IOException("Invalid typed JSON record in " + file, exception);
+            throw new IOException("Invalid typed JSON record in " + artifactFileName, exception);
         }
     }
 
@@ -149,7 +149,7 @@ public final class CallgraphRepository {
                 if (line == null) {
                     throw new IOException("Callgraph data ended inside the accessed index range");
                 }
-                CallgraphDataRecord record = parse(line, direction.dataFile(), CallgraphDataRecord.class);
+                CallgraphDataRecord record = parse(line, direction.dataFileName(), CallgraphDataRecord.class);
                 if (!direction.lookupClass(record).equals(range.className()) || !direction.lookupMethod(record).equals(range.methodName())) {
                     throw new IOException("Accessed callgraph row does not match its index key");
                 }
@@ -232,7 +232,7 @@ public final class CallgraphRepository {
                  var lines = new JsonlLineReader(input, CallgraphBundleLayout.MAXIMUM_JSONL_LINE_BYTES)) {
                 byte[] line;
                 while ((line = lines.next()) != null) {
-                    CallgraphIndexRecord record = parse(line, direction.indexFile(), CallgraphIndexRecord.class);
+                    CallgraphIndexRecord record = parse(line, direction.indexFileName(), CallgraphIndexRecord.class);
                     CallgraphDirection.LookupKey key = new CallgraphDirection.LookupKey(record.className(), record.methodName());
                     if (previousKey != null && previousKey.compareTo(key) >= 0) {
                         throw new IOException("Callgraph index keys are not strictly increasing");

@@ -15,7 +15,7 @@ import java.util.*;
 import java.util.function.BiConsumer;
 import java.util.stream.Collectors;
 
-final class JavacBatchParser {
+final value class JavacBatchParser {
     private JavacBatchParser() {
     }
 

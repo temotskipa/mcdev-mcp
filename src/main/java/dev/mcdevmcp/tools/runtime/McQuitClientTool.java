@@ -2,11 +2,8 @@ package dev.mcdevmcp.tools.runtime;
 
 import dev.mcdevmcp.bridge.BridgeEndpoint;
 import dev.mcdevmcp.bridge.BridgeResponse;
-import dev.mcdevmcp.mcp.tool.api.ToolBinding;
-import dev.mcdevmcp.mcp.tool.api.ToolHandlers;
-import dev.mcdevmcp.mcp.tool.api.ArgumentDecoder;
-import dev.mcdevmcp.mcp.tool.api.ToolResult;
-import dev.mcdevmcp.mcp.tool.api.ToolCancellation;
+import dev.mcdevmcp.mcp.tool.ToolDeclaration;
+import dev.mcdevmcp.mcp.tool.api.*;
 
 import java.util.Locale;
 import java.util.concurrent.CompletableFuture;
@@ -14,14 +11,15 @@ import java.util.concurrent.CompletionException;
 import java.util.concurrent.CompletionStage;
 
 final class McQuitClientTool {
+    static final ToolDeclaration<QuitClientArguments> DECLARATION = ToolDeclaration.of("mc_quit_client", QuitClientArguments.class);
+
     static final BridgeEndpoint ENDPOINT = new BridgeEndpoint("quit");
 
     private McQuitClientTool() {
     }
 
-    static ToolBinding<QuitClientArguments> binding(SessionControlSupport support) {
-        var decoder = ArgumentDecoder.sdk(QuitClientWireArguments.class).map(QuitClientArguments::from);
-        return ToolBinding.compatibility(decoder, (arguments, cancellation) -> SessionControlSupport.recoverTool(SessionControlSupport.composeCancellable(support.checkSessionControlEnabled(), disabled -> {
+    static ContentToolBinding<QuitClientArguments> binding(SessionControlSupport support) {
+        return DECLARATION.bind((arguments, cancellation) -> SessionControlSupport.recoverTool(SessionControlSupport.composeCancellable(support.checkSessionControlEnabled(), disabled -> {
             if (disabled != null) {
                 return ToolHandlers.completed(ToolResult.error(disabled));
             }
@@ -32,7 +30,7 @@ final class McQuitClientTool {
         })));
     }
 
-    private static CompletionStage<ToolResult> quit(SessionControlSupport support, QuitClientArguments arguments, ToolCancellation cancellation, int port, boolean wait, Long pid) {
+    private static CompletionStage<ContentToolResult<Void>> quit(SessionControlSupport support, QuitClientArguments arguments, ToolCancellation cancellation, int port, boolean wait, Long pid) {
         CompletionStage<QuitAck> ack = SessionControlSupport.handleCancellable(support.send(ENDPOINT, RuntimeToolSupport.EMPTY_PAYLOAD, null), McQuitClientTool::classifyAck);
         return SessionControlSupport.composeCancellable(ack, result -> {
             if (result.failure() != null) {
@@ -55,11 +53,11 @@ final class McQuitClientTool {
             }
             throw new CompletionException(failure);
         }
-        ToolResult declaredFailure = RuntimeToolSupport.declaredFailure(response);
+        ContentToolResult<Void> declaredFailure = RuntimeToolSupport.declaredFailure(response);
         return new QuitAck(declaredFailure);
     }
 
-    private static ToolResult renderExit(ClientExitResult result, int port, Long pid, QuitClientArguments arguments) {
+    private static ContentToolResult<Void> renderExit(ClientExitResult result, int port, Long pid, QuitClientArguments arguments) {
         String timeout = RuntimeToolSupport.nodeNumber(arguments.timeoutSeconds());
         if (result instanceof ClientExitResult.Timeout(ClientExitResult.Phase waitingOn)) {
             return waitingOn == ClientExitResult.Phase.PORT ? ToolResult.error("Quit was acknowledged but port " + port + " is still listening after " + timeout + "s. The game may be stuck on a save/exit prompt — ask the user to close it manually before relaunching.") : ToolResult.error("Port " + port + " closed but the client process (PID " + pid + ") is still running after " + timeout + "s — it's likely still finishing shutdown, or hung. Wait for it to exit (kill -0 " + pid + ") before relaunching.");
@@ -76,6 +74,6 @@ final class McQuitClientTool {
         return current.getMessage() == null ? current.toString() : current.getMessage();
     }
 
-    private record QuitAck(ToolResult failure) {
+    private record QuitAck(ContentToolResult<Void> failure) {
     }
 }

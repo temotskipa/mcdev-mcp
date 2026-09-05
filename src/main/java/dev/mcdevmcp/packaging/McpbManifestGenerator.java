@@ -1,7 +1,7 @@
 package dev.mcdevmcp.packaging;
 
-import dev.mcdevmcp.mcp.tool.ToolCatalog;
-import dev.mcdevmcp.mcp.tool.ToolMetadata;
+import dev.mcdevmcp.mcp.McpServerFactory;
+import dev.mcdevmcp.mcp.tool.ToolDefinition;
 import dev.mcdevmcp.support.AppVersion;
 import io.modelcontextprotocol.json.McpJsonDefaults;
 import io.modelcontextprotocol.json.McpJsonMapper;
@@ -21,7 +21,7 @@ import java.util.Objects;
 /**
  * Generates the Java-owned MCPB catalog manifest and the packer-only staging manifest.
  */
-public final class McpbManifestGenerator {
+public final value class McpbManifestGenerator {
     private static final String STAGING_ENTRY_POINT = "bootstrap.cjs";
 
     private McpbManifestGenerator() {
@@ -34,7 +34,6 @@ public final class McpbManifestGenerator {
         generate(Path.of(arguments[0]), Path.of(arguments[1]), Path.of(arguments[2]), arguments[3]);
     }
 
-    @SuppressWarnings("unused")
     public static void generate(Path template, Path rootManifest, Path stagingManifest) {
         generate(template, rootManifest, stagingManifest, AppVersion.current());
     }
@@ -44,18 +43,20 @@ public final class McpbManifestGenerator {
         Objects.requireNonNull(rootManifest, "rootManifest");
         Objects.requireNonNull(stagingManifest, "stagingManifest");
         McpJsonMapper mapper = McpJsonDefaults.getMapper();
-        Map<String, Object> root = generatedRootManifest(readTemplate(mapper, template), version, ToolCatalog.loadMetadata(mapper));
-        write(mapper, rootManifest, root);
-        write(mapper, stagingManifest, stagingManifest(root));
+        try (var composition = McpServerFactory.declarativeComposition(new dev.mcdevmcp.support.AppEnvironment(Map.of()), mapper)) {
+            Map<String, Object> root = generatedRootManifest(readTemplate(mapper, template), version, composition.definitions());
+            write(mapper, rootManifest, root);
+            write(mapper, stagingManifest, stagingManifest(root));
+        }
     }
 
-    static Map<String, Object> generatedRootManifest(Map<String, Object> template, String version, ToolMetadata[] tools) {
+    static Map<String, Object> generatedRootManifest(Map<String, Object> template, String version, List<ToolDefinition> tools) {
         Objects.requireNonNull(template, "template");
         Objects.requireNonNull(version, "version");
         Objects.requireNonNull(tools, "tools");
         var manifest = new LinkedHashMap<>(template);
         manifest.put("version", version);
-        manifest.put("tools", toolMetadata(tools));
+        manifest.put("tools", toolDefinitions(tools));
         return Collections.unmodifiableMap(manifest);
     }
 
@@ -97,9 +98,9 @@ public final class McpbManifestGenerator {
         }
     }
 
-    private static List<Map<String, Object>> toolMetadata(ToolMetadata[] tools) {
-        var result = new ArrayList<Map<String, Object>>(tools.length);
-        for (ToolMetadata tool : tools) {
+    private static List<Map<String, Object>> toolDefinitions(List<ToolDefinition> tools) {
+        var result = new ArrayList<Map<String, Object>>(tools.size());
+        for (ToolDefinition tool : tools) {
             var entry = new LinkedHashMap<String, Object>();
             entry.put("name", tool.name());
             entry.put("description", tool.description());
@@ -117,12 +118,12 @@ public final class McpbManifestGenerator {
         environment.put("MCDEV_INDEX_THREADS", "${user_config.index_threads}");
         environment.put("DEBUGBRIDGE_PORT", "${user_config.debugbridge_port}");
 
-        var configuration = new LinkedHashMap<String, Object>();
+        Map<String, Object> configuration = new LinkedHashMap<>();
         configuration.put("command", "node");
         configuration.put("args", List.of(STAGING_ENTRY_POINT));
         configuration.put("env", Collections.unmodifiableMap(environment));
 
-        var server = new LinkedHashMap<String, Object>();
+        Map<String, Object> server = new LinkedHashMap<>();
         server.put("type", "node");
         server.put("entry_point", STAGING_ENTRY_POINT);
         server.put("mcp_config", Collections.unmodifiableMap(configuration));

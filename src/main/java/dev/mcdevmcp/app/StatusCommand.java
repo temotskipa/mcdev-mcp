@@ -6,6 +6,7 @@ import dev.mcdevmcp.storage.callgraph.CallgraphRepository;
 import dev.mcdevmcp.storage.h2.VersionStateRepository;
 import dev.mcdevmcp.storage.model.MinecraftVersion;
 import dev.mcdevmcp.storage.model.VersionState;
+import picocli.CommandLine;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
 import picocli.CommandLine.Spec;
@@ -27,7 +28,7 @@ public final class StatusCommand implements Callable<Integer> {
     private String version;
 
     @Spec
-    private picocli.CommandLine.Model.CommandSpec spec;
+    private CommandLine.Model.CommandSpec spec;
 
     public StatusCommand(PlatformPaths paths) {
         this.paths = Objects.requireNonNull(paths, "paths");

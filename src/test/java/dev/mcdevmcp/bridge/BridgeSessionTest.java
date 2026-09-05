@@ -1,14 +1,18 @@
 package dev.mcdevmcp.bridge;
 
 import dev.mcdevmcp.support.AppEnvironment;
+import dev.mcdevmcp.bridge.payload.EmptyBridgePayload;
+import dev.mcdevmcp.storage.model.MinecraftVersion;
 import io.modelcontextprotocol.json.McpJsonDefaults;
 import org.junit.jupiter.api.Test;
 
 import java.nio.file.Path;
+import java.nio.file.Files;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -17,6 +21,14 @@ import static org.junit.jupiter.api.Assertions.*;
 
 final class BridgeSessionTest {
     private static final BridgeJson JSON = new BridgeJson(McpJsonDefaults.getMapper());
+
+    @Test
+    void statusDomainPathsRequireNativeAbsolutePaths() throws Exception {
+        Path nativePath = Files.createTempDirectory("mcdev-status").toAbsolutePath().normalize();
+        SessionInfo info = new SessionInfo(9876, new MinecraftVersion("1.21.11"), BridgeMappingStatus.MOJANG, false, 0, Optional.of(nativePath), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty());
+        assertEquals(nativePath, info.gameDir().orElseThrow());
+        assertThrows(IllegalArgumentException.class, () -> new SessionInfo(9876, new MinecraftVersion("1.21.11"), BridgeMappingStatus.MOJANG, false, 0, Optional.of(Path.of("relative-game")), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty()));
+    }
 
     @Test
     void coalescesImplicitConnectionsScansPortsAndResets() {
@@ -42,12 +54,39 @@ final class BridgeSessionTest {
     }
 
     @Test
+    void connectionVerificationAndExplicitProbeSendEmptyPayloads() {
+        List<BridgeRequest> requests = new ArrayList<>();
+        BridgeSession session = new BridgeSession(JSON, new AppEnvironment(Map.of()), port -> {
+            assertTrue(port == 9876 || port == 9999);
+            return CompletableFuture.completedFuture(capturingClient(requests));
+        });
+
+        assertEquals(9876, session.connect(null).toCompletableFuture().join().port());
+        assertEquals(9999, session.probe(9999).toCompletableFuture().join().port());
+
+        assertEquals(List.of("status", "status"), requests.stream().map(request -> request.endpoint().wireName()).toList());
+        assertTrue(requests.stream().allMatch(request -> request.payload().getClass() == EmptyBridgePayload.class));
+        session.close();
+    }
+
+    private static BridgeClient capturingClient(List<BridgeRequest> requests) {
+        Map<String, Object> status = Map.of("version", "1.21.11", "mappingStatus", "mojang", "obfuscated", false, "refs", 0L);
+        return BridgeClient.testing(JSON, request -> {
+            requests.add(request);
+            Object result = request.endpoint().wireName().equals("status") ? status : request.payload();
+            return CompletableFuture.completedFuture(new BridgeResponse(request.id(), true, true, result, null, null));
+        });
+    }
+
+    @Test
+    @SuppressWarnings("ALL")
     void explicitAdoptionRemainsDeliberateAndSendUsesTheConnectedClient() {
         FakeDebugBridge bridge = new FakeDebugBridge(Map.of());
         BridgeSession session = new BridgeSession(JSON, new AppEnvironment(Map.of()), _ -> CompletableFuture.completedFuture(bridge.client()));
 
         assertEquals(9999, session.adoptPort(9999).toCompletableFuture().join().port());
-        BridgeResponse response = session.send(new BridgeEndpoint("echo"), Map.of("value", 7), Duration.ofMillis(1)).toCompletableFuture().join();
+        BridgePayload payload = new TestPayload(7);
+        BridgeResponse response = session.send(new BridgeEndpoint("echo"), payload, Duration.ofMillis(1)).toCompletableFuture().join();
 
         assertTrue(response.success());
         assertEquals("req_2", response.id());
@@ -129,6 +168,21 @@ final class BridgeSessionTest {
     }
 
     @Test
+    void invalidEnvironmentPortSpellingsFallBackToTheDocumentedScanBase() {
+        for (String configured : List.of("9999.5", "65536", "0x2694")) {
+            List<Integer> openedPorts = new ArrayList<>();
+            BridgeSession session = new BridgeSession(JSON, new AppEnvironment(Map.of("DEBUGBRIDGE_PORT", configured)), port -> {
+                openedPorts.add(port);
+                return CompletableFuture.completedFuture(FakeDebugBridge.client(JSON, "1.21.11"));
+            });
+
+            assertEquals(9876, session.connect(null).toCompletableFuture().join().port(), configured);
+            assertEquals(List.of(9876), openedPorts, configured);
+            session.close();
+        }
+    }
+
+    @Test
     void disconnectPreservesRememberedIdentityAndProbeDoesNotAdoptItsCandidate() {
         List<Integer> openedPorts = new ArrayList<>();
         BridgeSession session = new BridgeSession(JSON, new AppEnvironment(Map.of()), port -> {
@@ -163,7 +217,7 @@ final class BridgeSessionTest {
         });
         BridgeSession session = new BridgeSession(JSON, new AppEnvironment(Map.of()), _ -> opening);
 
-        CompletableFuture<BridgeResponse> call = session.send(new BridgeEndpoint("echo"), Map.of(), Duration.ofSeconds(1)).toCompletableFuture();
+        CompletableFuture<BridgeResponse> call = session.send(new BridgeEndpoint("echo"), new EmptyBridgePayload(), Duration.ofSeconds(1)).toCompletableFuture();
 
         assertTrue(call.cancel(true));
         assertFalse(opening.isCancelled());
@@ -187,8 +241,8 @@ final class BridgeSessionTest {
         });
         BridgeSession session = new BridgeSession(JSON, new AppEnvironment(Map.of()), _ -> opening);
 
-        CompletableFuture<BridgeResponse> cancelled = session.send(new BridgeEndpoint("first"), Map.of(), Duration.ofSeconds(1)).toCompletableFuture();
-        CompletableFuture<BridgeResponse> surviving = session.send(new BridgeEndpoint("second"), Map.of(), Duration.ofSeconds(1)).toCompletableFuture();
+        CompletableFuture<BridgeResponse> cancelled = session.send(new BridgeEndpoint("first"), new EmptyBridgePayload(), Duration.ofSeconds(1)).toCompletableFuture();
+        CompletableFuture<BridgeResponse> surviving = session.send(new BridgeEndpoint("second"), new EmptyBridgePayload(), Duration.ofSeconds(1)).toCompletableFuture();
         assertTrue(cancelled.cancel(true));
 
         assertFalse(opening.isCancelled());
@@ -207,7 +261,7 @@ final class BridgeSessionTest {
         BridgeSession session = new BridgeSession(JSON, new AppEnvironment(Map.of()), _ -> CompletableFuture.completedFuture(client));
         session.connect(null).toCompletableFuture().join();
 
-        CompletableFuture<BridgeResponse> call = session.send(new BridgeEndpoint("echo"), Map.of(), Duration.ofSeconds(1)).toCompletableFuture();
+        CompletableFuture<BridgeResponse> call = session.send(new BridgeEndpoint("echo"), new EmptyBridgePayload(), Duration.ofSeconds(1)).toCompletableFuture();
         assertEquals(1, client.pendingRequestCount());
 
         assertTrue(call.cancel(true));
@@ -227,5 +281,8 @@ final class BridgeSessionTest {
         assertFalse(session.connectedPort().isPresent());
         assertEquals(remembered, session.sessionInfo().orElseThrow());
         session.close();
+    }
+
+    private record TestPayload(int value) implements BridgePayload {
     }
 }

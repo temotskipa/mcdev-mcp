@@ -1,22 +1,26 @@
 package dev.mcdevmcp.mcp.tool.api;
 
-import com.fasterxml.jackson.annotation.JsonCreator;
-import com.fasterxml.jackson.annotation.JsonProperty;
-import com.fasterxml.jackson.annotation.JsonValue;
+import com.fasterxml.jackson.annotation.*;
 
 import java.lang.reflect.*;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.util.*;
 
-public final class RecordInputSchemaFactory implements InputSchemaFactory {
-    private static final RecordInputSchemaFactory STANDARD = new RecordInputSchemaFactory();
+public final value class RecordInputSchemaFactory implements InputSchemaFactory {
+    private static final RecordInputSchemaFactory STANDARD = new RecordInputSchemaFactory(JsonTypeRegistry.standard());
+    private final JsonTypeRegistry registry;
 
-    private RecordInputSchemaFactory() {
+    private RecordInputSchemaFactory(JsonTypeRegistry registry) {
+        this.registry = Objects.requireNonNull(registry, "registry");
     }
 
     public static RecordInputSchemaFactory standard() {
         return STANDARD;
+    }
+
+    public static RecordInputSchemaFactory of(JsonTypeRegistry registry) {
+        return new RecordInputSchemaFactory(registry);
     }
 
     @Override
@@ -28,9 +32,13 @@ public final class RecordInputSchemaFactory implements InputSchemaFactory {
         return JsonObjectSchema.of(objectSchema(recordType, new HashSet<>()));
     }
 
-    private static Map<String, Object> schemaFor(Type type, Set<Class<?>> activeRecords) {
+    private Map<String, Object> schemaFor(Type type, Set<Class<?>> activeRecords) {
         if (type instanceof WildcardType || type instanceof TypeVariable<?>) {
             throw new IllegalArgumentException("Wildcard and type-variable input components are unsupported: " + type.getTypeName());
+        }
+        JsonLogicalType<?> logicalType = registry.find(type).orElse(null);
+        if (logicalType != null) {
+            return logicalType.inputSchema().map(schema -> JsonSchemaSupport.mutableObject(schema.value())).orElseThrow(() -> new IllegalArgumentException("Registered input type has no input schema: " + type.getTypeName()));
         }
         if (type instanceof ParameterizedType parameterizedType) {
             return collectionSchema(parameterizedType, activeRecords);
@@ -60,18 +68,21 @@ public final class RecordInputSchemaFactory implements InputSchemaFactory {
             return schemaWithType("number");
         }
         if (componentType.isEnum()) return enumSchema(componentType, activeRecords);
+        if (componentType.isSealed()) {
+            return sealedUnionSchema(componentType, activeRecords);
+        }
         if (componentType.isRecord()) {
             return recordSchema(componentType, activeRecords);
         }
         throw new IllegalArgumentException("Unsupported input component type: " + componentType.getTypeName());
     }
 
-    private static Map<String, Object> collectionSchema(ParameterizedType type, Set<Class<?>> activeRecords) {
+    private Map<String, Object> collectionSchema(ParameterizedType type, Set<Class<?>> activeRecords) {
         if (!(type.getRawType() instanceof Class<?> rawType) || !Collection.class.isAssignableFrom(rawType)) {
             throw new IllegalArgumentException("Unsupported parameterized input component type: " + type.getTypeName());
         }
         Type[] arguments = type.getActualTypeArguments();
-        if (arguments.length != 1 || arguments[0] instanceof ParameterizedType) {
+        if (arguments.length != 1) {
             throw new IllegalArgumentException("Unsupported parameterized input component type: " + type.getTypeName());
         }
         return arraySchema(schemaFor(arguments[0], activeRecords));
@@ -83,7 +94,7 @@ public final class RecordInputSchemaFactory implements InputSchemaFactory {
         return schema;
     }
 
-    private static Map<String, Object> objectSchema(Class<?> recordType, Set<Class<?>> activeRecords) {
+    private Map<String, Object> objectSchema(Class<?> recordType, Set<Class<?>> activeRecords) {
         if (!activeRecords.add(recordType)) {
             throw new IllegalArgumentException("Recursive input records are unsupported: " + recordType.getTypeName());
         }
@@ -107,13 +118,14 @@ public final class RecordInputSchemaFactory implements InputSchemaFactory {
             if (!required.isEmpty()) {
                 schema.put("required", required);
             }
+            schema.put("additionalProperties", false);
             return schema;
         } finally {
             activeRecords.remove(recordType);
         }
     }
 
-    private static Map<String, Object> recordSchema(Class<?> recordType, Set<Class<?>> activeRecords) {
+    private Map<String, Object> recordSchema(Class<?> recordType, Set<Class<?>> activeRecords) {
         Type delegatingType = delegatingCreatorType(recordType);
         JsonValueAccessor jsonValue = jsonValueAccessor(recordType);
         if (delegatingType == null) {
@@ -129,7 +141,84 @@ public final class RecordInputSchemaFactory implements InputSchemaFactory {
         return schema;
     }
 
-    private static Map<String, Object> enumSchema(Class<?> enumType, Set<Class<?>> activeRecords) {
+    private Map<String, Object> sealedUnionSchema(Class<?> unionType, Set<Class<?>> activeRecords) {
+        JsonTypeInfo typeInfo = unionType.getAnnotation(JsonTypeInfo.class);
+        JsonSubTypes subTypes = validatedUnionSubTypes(unionType, typeInfo);
+        if (!activeRecords.add(unionType)) {
+            throw new IllegalArgumentException("Recursive input union is unsupported: " + unionType.getTypeName());
+        }
+        try {
+            Set<Class<?>> permitted = Set.of(unionType.getPermittedSubclasses());
+            Set<Class<?>> declaredTypes = new HashSet<>();
+            Set<String> declaredNames = new HashSet<>();
+            List<Map<String, Object>> variants = new ArrayList<>();
+            for (JsonSubTypes.Type declared : subTypes.value()) {
+                Class<?> subtype = declared.value();
+                if (!permitted.contains(subtype) || !subtype.isRecord()) {
+                    throw new IllegalArgumentException("Input union subtype must be a permitted record: " + subtype.getTypeName());
+                }
+                if (delegatingCreatorType(subtype) != null || jsonValueAccessor(subtype) != null) {
+                    throw new IllegalArgumentException("Input union subtypes cannot use delegating JsonCreator or JsonValue: " + subtype.getTypeName());
+                }
+                if (declared.name().isBlank()) {
+                    throw new IllegalArgumentException("Input union subtype requires an explicit Jackson name: " + subtype.getTypeName());
+                }
+                if (!declaredTypes.add(subtype)) {
+                    throw new IllegalArgumentException("Duplicate input union subtype: " + subtype.getTypeName());
+                }
+                List<String> names = new ArrayList<>();
+                names.add(declared.name());
+                names.addAll(List.of(declared.names()));
+                for (String name : names) {
+                    if (name.isBlank() || !declaredNames.add(name)) {
+                        throw new IllegalArgumentException("Duplicate or blank input union subtype name: " + name);
+                    }
+                    variants.add(discriminatedVariant(subtype, typeInfo.property(), name, activeRecords));
+                }
+            }
+            if (!declaredTypes.equals(permitted)) {
+                throw new IllegalArgumentException("Every permitted input union subtype must have Jackson metadata: " + unionType.getTypeName());
+            }
+            Map<String, Object> schema = new LinkedHashMap<>();
+            schema.put("oneOf", variants);
+            return schema;
+        } finally {
+            activeRecords.remove(unionType);
+        }
+    }
+
+    private static JsonSubTypes validatedUnionSubTypes(Class<?> unionType, JsonTypeInfo typeInfo) {
+        JsonSubTypes subTypes = unionType.getAnnotation(JsonSubTypes.class);
+        if (typeInfo == null || subTypes == null || typeInfo.use() != JsonTypeInfo.Id.NAME || typeInfo.include() != JsonTypeInfo.As.PROPERTY || typeInfo.property().isBlank() || typeInfo.visible() || typeInfo.defaultImpl() != JsonTypeInfo.class || typeInfo.requireTypeIdForSubtypes() != com.fasterxml.jackson.annotation.OptBoolean.DEFAULT) {
+            throw new IllegalArgumentException("Sealed input unions require Jackson NAME/PROPERTY type metadata: " + unionType.getTypeName());
+        }
+        return subTypes;
+    }
+
+    private Map<String, Object> discriminatedVariant(Class<?> subtype, String discriminator, String name, Set<Class<?>> activeRecords) {
+        Map<String, Object> variant = objectSchema(subtype, activeRecords);
+        @SuppressWarnings("unchecked") Map<String, Object> generatedProperties = (Map<String, Object>) variant.get("properties");
+        if (generatedProperties.containsKey(discriminator)) {
+            throw new IllegalArgumentException("Input union discriminator collides with a record component: " + discriminator);
+        }
+        Map<String, Object> discriminatorSchema = schemaWithType("string");
+        discriminatorSchema.put("const", name);
+        Map<String, Object> properties = new LinkedHashMap<>();
+        properties.put(discriminator, discriminatorSchema);
+        properties.putAll(generatedProperties);
+        variant.put("properties", properties);
+
+        List<String> required = new ArrayList<>();
+        required.add(discriminator);
+        Object generatedRequired = variant.get("required");
+        if (generatedRequired instanceof List<?> names) {
+            names.forEach(requiredName -> required.add((String) requiredName));
+        }
+        variant.put("required", required);
+        return variant;
+    }
+
+    private Map<String, Object> enumSchema(Class<?> enumType, Set<Class<?>> activeRecords) {
         Type delegatingType = delegatingCreatorType(enumType);
         JsonValueAccessor jsonValue = jsonValueAccessor(enumType);
         if (delegatingType != null && jsonValue == null) {
@@ -177,13 +266,13 @@ public final class RecordInputSchemaFactory implements InputSchemaFactory {
         List<Type> creatorTypes = new ArrayList<>();
         for (Constructor<?> constructor : type.getDeclaredConstructors()) {
             JsonCreator annotation = constructor.getAnnotation(JsonCreator.class);
-            if (annotation != null) {
+            if (annotation != null && annotation.mode() == JsonCreator.Mode.DELEGATING) {
                 creatorTypes.add(creatorParameterType(type, annotation, constructor.getParameterCount(), constructor.getGenericParameterTypes()));
             }
         }
         for (Method method : type.getDeclaredMethods()) {
             JsonCreator annotation = method.getAnnotation(JsonCreator.class);
-            if (annotation != null) {
+            if (annotation != null && annotation.mode() == JsonCreator.Mode.DELEGATING) {
                 if (!Modifier.isStatic(method.getModifiers()) || !type.isAssignableFrom(method.getReturnType())) {
                     throw new IllegalArgumentException("JsonCreator factory must be static and return " + type.getTypeName());
                 }

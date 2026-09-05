@@ -6,7 +6,7 @@ import java.nio.file.*;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.Objects;
 
-public final class BundleFiles {
+public final value class BundleFiles {
     private BundleFiles() {
     }
 

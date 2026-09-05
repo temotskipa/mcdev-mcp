@@ -3,6 +3,7 @@ package dev.mcdevmcp.app;
 import dev.mcdevmcp.storage.PlatformPaths;
 import dev.mcdevmcp.storage.model.MinecraftVersion;
 import dev.mcdevmcp.support.Cancellation;
+import picocli.CommandLine;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
 import picocli.CommandLine.Spec;
@@ -24,7 +25,7 @@ public final class RebuildCommand implements Callable<Integer> {
     private boolean withCallgraph;
 
     @Spec
-    private picocli.CommandLine.Model.CommandSpec spec;
+    private CommandLine.Model.CommandSpec spec;
 
     public RebuildCommand(AnalysisOperations operations, PlatformPaths paths) {
         this.operations = Objects.requireNonNull(operations, "operations");

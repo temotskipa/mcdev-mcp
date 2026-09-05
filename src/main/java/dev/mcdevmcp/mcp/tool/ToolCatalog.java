@@ -16,14 +16,13 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 
 public final class ToolCatalog {
-    private static final Map<String, ToolAvailability> AVAILABILITY = Map.of("mc_script_logs", ToolAvailability.SCRIPT_LOGS, "mc_run_command", ToolAvailability.RUN_COMMAND);
-
     private final AppEnvironment environment;
     private final McpJsonMapper mapper;
     private final List<ToolDefinition> definitions;
     private final Map<String, ToolDefinition> definitionsByName;
+    private final Map<String, ToolBinding<?>> bindingsByName;
 
-    private ToolCatalog(AppEnvironment environment, McpJsonMapper mapper, List<ToolDefinition> definitions) {
+    private ToolCatalog(AppEnvironment environment, McpJsonMapper mapper, List<ToolDefinition> definitions, Map<String, ToolBinding<?>> bindings) {
         this.environment = Objects.requireNonNull(environment, "environment");
         this.mapper = Objects.requireNonNull(mapper, "mapper");
         this.definitions = List.copyOf(definitions);
@@ -34,15 +33,58 @@ public final class ToolCatalog {
             }
         }
         definitionsByName = Map.copyOf(byName);
+        bindingsByName = Map.copyOf(bindings);
     }
 
     public static ToolCatalog load(AppEnvironment environment, Map<String, ToolBinding<?>> bindings, McpJsonMapper mapper) {
         Objects.requireNonNull(mapper, "mapper");
-        return fromMetadata(environment, mapper, loadMetadata(mapper), Objects.requireNonNull(bindings, "bindings").entrySet());
+        return fromDeclarations(environment, mapper, loadMetadata(mapper), ToolDeclarations.all(), Objects.requireNonNull(bindings, "bindings").entrySet());
+    }
+
+    public static ToolCatalog load(AppEnvironment environment, List<ToolDeclaration<?>> declarations, Map<String, ToolBinding<?>> bindings, McpJsonMapper mapper) {
+        Objects.requireNonNull(mapper, "mapper");
+        return fromDeclarations(environment, mapper, loadMetadata(mapper), List.copyOf(Objects.requireNonNull(declarations, "declarations")), Objects.requireNonNull(bindings, "bindings").entrySet());
+    }
+
+    /**
+     * Creates a catalog from an already-composed, metadata-ordered definition
+     * list without rereading or regenerating its definitions.
+     */
+    public static ToolCatalog fromDefinitions(AppEnvironment environment, McpJsonMapper mapper, List<ToolDefinition> definitions, Map<String, ToolBinding<?>> bindings) {
+        Objects.requireNonNull(environment, "environment");
+        Objects.requireNonNull(mapper, "mapper");
+        Objects.requireNonNull(definitions, "definitions");
+        Objects.requireNonNull(bindings, "bindings");
+        List<ToolDefinition> requiredDefinitions = List.copyOf(definitions);
+        Map<String, ToolBinding<?>> collected = collectBindings(bindings.entrySet());
+        Set<String> definitionNames = new LinkedHashSet<>();
+        for (ToolDefinition definition : requiredDefinitions) {
+            Objects.requireNonNull(definition, "Tool definition");
+            if (!definitionNames.add(definition.name())) {
+                throw new IllegalArgumentException("Duplicate tool definition: " + definition.name());
+            }
+            if (collected.get(definition.name()) == null) {
+                throw new IllegalArgumentException("Missing tool binding: " + definition.name());
+            }
+            if (collected.get(definition.name()).input() != definition.input()) {
+                throw new IllegalArgumentException("Tool binding input differs from its definition: " + definition.name());
+            }
+        }
+        if (!definitionNames.equals(collected.keySet())) {
+            throw new IllegalArgumentException("Tool definition and binding names differ");
+        }
+        return new ToolCatalog(environment, mapper, requiredDefinitions, collected);
     }
 
     public static ToolMetadata[] loadMetadata(McpJsonMapper mapper) {
         return new JsonResourceReader(Objects.requireNonNull(mapper, "mapper")).read("/mcp/tools.json", ToolMetadata[].class);
+    }
+
+    public static List<ToolDefinition> declarativeDefinitions(AppEnvironment environment, McpJsonMapper mapper, Map<String, ToolBinding<?>> bindings) {
+        Objects.requireNonNull(mapper, "mapper");
+        Objects.requireNonNull(environment, "environment");
+        Objects.requireNonNull(bindings, "bindings");
+        return fromDeclarations(environment, mapper, loadMetadata(mapper), ToolDeclarations.all(), bindings.entrySet()).definitions();
     }
 
     public static ToolCatalog load(AppEnvironment environment, Map<String, ToolBinding<?>> bindings, McpJsonMapper mapper, ExecutorService blockingExecutor) {
@@ -52,10 +94,24 @@ public final class ToolCatalog {
         return load(environment, adaptedBindings, mapper);
     }
 
+    public static ToolCatalog load(AppEnvironment environment, List<ToolDeclaration<?>> declarations, Map<String, ToolBinding<?>> bindings, McpJsonMapper mapper, ExecutorService blockingExecutor) {
+        Objects.requireNonNull(blockingExecutor, "blockingExecutor");
+        var adaptedBindings = new LinkedHashMap<String, ToolBinding<?>>();
+        Objects.requireNonNull(bindings, "bindings").forEach((name, binding) -> adaptedBindings.put(name, binding.withBlockingExecutor(blockingExecutor)));
+        return load(environment, declarations, adaptedBindings, mapper);
+    }
+
     static ToolCatalog fromMetadata(AppEnvironment environment, McpJsonMapper mapper, ToolMetadata[] metadata, Iterable<Map.Entry<String, ToolBinding<?>>> bindings) {
+        return fromDeclarations(environment, mapper, metadata, null, bindings);
+    }
+
+    private static ToolCatalog fromDeclarations(AppEnvironment environment, McpJsonMapper mapper, ToolMetadata[] metadata, List<ToolDeclaration<?>> declarations, Iterable<Map.Entry<String, ToolBinding<?>>> bindings) {
         Objects.requireNonNull(environment, "environment");
         Objects.requireNonNull(metadata, "metadata");
         Objects.requireNonNull(bindings, "bindings");
+        if (declarations != null) {
+            validateDeclarations(declarations);
+        }
 
         Set<String> metadataNames = new java.util.HashSet<>();
         for (ToolMetadata tool : metadata) {
@@ -66,7 +122,6 @@ public final class ToolCatalog {
             if (!metadataNames.add(name)) {
                 throw new IllegalArgumentException("Duplicate tool metadata: " + name);
             }
-            validatedSchema(name, tool.inputSchema());
         }
 
         Map<String, ToolBinding<?>> boundBindings = collectBindings(bindings);
@@ -75,18 +130,56 @@ public final class ToolCatalog {
                 throw new IllegalArgumentException("Handler without tool metadata: " + name);
             }
         }
+        if (declarations != null) {
+            Set<String> declarationNames = new HashSet<>();
+            for (ToolDeclaration<?> declaration : declarations) {
+                declarationNames.add(declaration.name());
+            }
+            for (String name : declarationNames) {
+                if (!metadataNames.contains(name)) {
+                    throw new IllegalArgumentException("Typed tool declaration without metadata: " + name);
+                }
+                if (!boundBindings.containsKey(name)) {
+                    throw new IllegalArgumentException("Missing tool handler: " + name);
+                }
+            }
+        }
 
         var definitions = new ArrayList<ToolDefinition>();
         for (ToolMetadata tool : metadata) {
             String name = tool.name();
-            Map<String, Object> inputSchema = validatedSchema(name, tool.inputSchema());
             ToolBinding<?> binding = boundBindings.get(name);
             if (binding == null) {
                 throw new IllegalArgumentException("Missing tool handler: " + name);
             }
-            definitions.add(new ToolDefinition(name, tool.description(), inputSchema, binding, AVAILABILITY.getOrDefault(name, ToolAvailability.ALWAYS)));
+            ToolAvailability availability = ToolAvailability.ALWAYS;
+            if (declarations != null) {
+                ToolDeclaration<?> declaration = findDeclaration(declarations, name);
+                if (declaration == null) {
+                    throw new IllegalArgumentException("Missing typed tool declaration: " + name);
+                }
+                if (declaration.input() != binding.input()) {
+                    throw new IllegalArgumentException("Tool binding input differs from its declaration: " + name);
+                }
+                availability = declaration.availability();
+            }
+            definitions.add(new ToolDefinition(name, tool.description(), binding, availability));
         }
-        return new ToolCatalog(environment, Objects.requireNonNull(mapper, "mapper"), definitions);
+        return new ToolCatalog(environment, Objects.requireNonNull(mapper, "mapper"), definitions, boundBindings);
+    }
+
+    private static void validateDeclarations(List<ToolDeclaration<?>> declarations) {
+        Set<String> names = new HashSet<>();
+        for (ToolDeclaration<?> declaration : declarations) {
+            Objects.requireNonNull(declaration, "Tool declaration");
+            if (!names.add(declaration.name())) {
+                throw new IllegalArgumentException("Duplicate tool declaration: " + declaration.name());
+            }
+        }
+    }
+
+    private static ToolDeclaration<?> findDeclaration(List<ToolDeclaration<?>> declarations, String name) {
+        return declarations.stream().filter(declaration -> declaration.name().equals(name)).findFirst().orElse(null);
     }
 
     private static Map<String, ToolBinding<?>> collectBindings(Iterable<Map.Entry<String, ToolBinding<?>>> bindings) {
@@ -104,19 +197,6 @@ public final class ToolCatalog {
         return Map.copyOf(collected);
     }
 
-    private static Map<String, Object> validatedSchema(String name, Map<String, Object> schema) {
-        if (!"object".equals(schema.get("type"))) {
-            throw new IllegalArgumentException("Malformed input schema for tool: " + name);
-        }
-        if (schema.containsKey("properties") && !(schema.get("properties") instanceof Map<?, ?>)) {
-            throw new IllegalArgumentException("Malformed input schema properties for tool: " + name);
-        }
-        if (schema.containsKey("required") && !(schema.get("required") instanceof List<?>)) {
-            throw new IllegalArgumentException("Malformed input schema required list for tool: " + name);
-        }
-        return JsonValues.freezeMap(schema);
-    }
-
     public static String errorText(String name, Throwable exception) {
         Throwable current = Objects.requireNonNull(exception, "exception");
         while ((current instanceof CompletionException || current instanceof ExecutionException) && current.getCause() != null) {
@@ -130,15 +210,26 @@ public final class ToolCatalog {
         return definitions.stream().filter(this::isEnabled).toList();
     }
 
-    public CompletionStage<ToolResult> dispatch(String name, Map<String, Object> arguments, Cancellation cancellation) {
+    public List<ToolDefinition> definitions() {
+        return definitions;
+    }
+
+    public ToolBinding<?> binding(String name) {
+        return bindingsByName.get(Objects.requireNonNull(name, "name"));
+    }
+
+    public CompletionStage<? extends ToolResult<?>> dispatch(String name, Map<String, Object> arguments, Cancellation cancellation) {
         Objects.requireNonNull(cancellation, "cancellation");
         ToolDefinition definition = definitionsByName.get(name);
         if (definition == null || !isEnabled(definition)) {
             return ToolHandlers.completed(ToolResult.error("Unknown tool: " + name));
         }
         try {
-            CompletionStage<ToolResult> result = definition.binding().invoke(mapper, arguments == null ? Map.of() : JsonValues.freezeMap(arguments), cancellation);
-            return Objects.requireNonNull(result, "Tool handler result: " + name);
+            ToolBinding<?> binding = bindingsByName.get(name);
+            if (binding == null) {
+                return ToolHandlers.completed(ToolResult.error("Unknown tool: " + name));
+            }
+            return Objects.requireNonNull(binding.invoke(mapper, arguments == null ? Map.of() : JsonValues.freezeMap(arguments), cancellation), "Tool handler result: " + name);
         } catch (RuntimeException exception) {
             return ToolHandlers.completed(ToolResult.error(errorText(name, exception)));
         }

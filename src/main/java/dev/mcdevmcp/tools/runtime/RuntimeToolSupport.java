@@ -1,15 +1,23 @@
 package dev.mcdevmcp.tools.runtime;
 
 import dev.mcdevmcp.bridge.BridgeEndpoint;
+import dev.mcdevmcp.bridge.BridgePayload;
+import dev.mcdevmcp.bridge.BridgeResultDecoder;
+import dev.mcdevmcp.bridge.BridgeResultTypes;
 import dev.mcdevmcp.bridge.BridgeResponse;
 import dev.mcdevmcp.bridge.BridgeSession;
+import dev.mcdevmcp.bridge.LookedAtEntityWireResult;
 import dev.mcdevmcp.bridge.SessionInfo;
+import dev.mcdevmcp.bridge.payload.EmptyBridgePayload;
+import dev.mcdevmcp.bridge.payload.ExecutePayload;
+import dev.mcdevmcp.bridge.payload.LookedAtEntityPayload;
+import dev.mcdevmcp.mcp.tool.api.JsonLogicalType;
+import dev.mcdevmcp.mcp.tool.api.ContentToolResult;
 import dev.mcdevmcp.mcp.tool.api.ToolResult;
 import io.modelcontextprotocol.json.McpJsonMapper;
 
 import java.io.IOException;
 import java.math.BigDecimal;
-import java.math.BigInteger;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.*;
@@ -20,74 +28,25 @@ import java.util.function.Supplier;
 import java.util.stream.IntStream;
 
 final class RuntimeToolSupport {
-    static final Map<String, Object> EMPTY_PAYLOAD = Map.of();
+    static final BridgePayload EMPTY_PAYLOAD = new EmptyBridgePayload();
 
     private static final int DEFAULT_PORT = 9876;
     private static final int PORTS_TO_SCAN = 11;
 
     private final BridgeSession session;
     private final McpJsonMapper mapper;
+    private final BridgeResultDecoder resultDecoder;
+    private final MonotonicTicker ticker;
 
     RuntimeToolSupport(BridgeSession session, McpJsonMapper mapper) {
+        this(session, mapper, MonotonicTicker.system());
+    }
+
+    RuntimeToolSupport(BridgeSession session, McpJsonMapper mapper, MonotonicTicker ticker) {
         this.session = Objects.requireNonNull(session, "session");
         this.mapper = Objects.requireNonNull(mapper, "mapper");
-    }
-
-    static Map<String, Object> payload(Object... fields) {
-        if (fields.length % 2 != 0) {
-            throw new IllegalArgumentException("Runtime payload fields must be name-value pairs");
-        }
-        var payload = new LinkedHashMap<String, Object>();
-        for (int index = 0; index < fields.length; index += 2) {
-            String name = (String) fields[index];
-            Object value = fields[index + 1];
-            if (value != null) {
-                payload.put(name, value);
-            }
-        }
-        return Collections.unmodifiableMap(payload);
-    }
-
-    private static Number optionalNumber(Object value, String name) {
-        if (value == null) {
-            return null;
-        }
-        if (value instanceof Number number && isFinite(number)) {
-            return number;
-        }
-        throw new IllegalArgumentException("'" + name + "' must be a finite number");
-    }
-
-    private static Number requiredNumber(Object value, String name) {
-        Number number = optionalNumber(value, name);
-        if (number == null) {
-            throw new IllegalArgumentException("'" + name + "' is required");
-        }
-        return number;
-    }
-
-    static BigDecimal optionalDecimal(Object value, String name) {
-        Number number = optionalNumber(value, name);
-        return number == null ? null : toBigDecimal(number);
-    }
-
-    static BigDecimal requiredDecimal(Object value, String name) {
-        return toBigDecimal(requiredNumber(value, name));
-    }
-
-    private static BigDecimal toBigDecimal(Number number) {
-        BigDecimal decimal = switch (number) {
-            case BigDecimal value -> value;
-            case BigInteger value -> new BigDecimal(value);
-            case Byte _, Short _, Integer _, Long _ -> BigDecimal.valueOf(number.longValue());
-            default -> BigDecimal.valueOf(number.doubleValue());
-        };
-        BigDecimal normalized = decimal.stripTrailingZeros();
-        return normalized.scale() < 0 ? new BigDecimal(normalized.toBigIntegerExact()) : normalized;
-    }
-
-    static double requiredTimeoutNumber(Object value) {
-        return requiredNumber(value, "timeoutMs").doubleValue();
+        this.resultDecoder = new BridgeResultDecoder(mapper);
+        this.ticker = Objects.requireNonNull(ticker, "ticker");
     }
 
     static String requiredString(Object value, String name) {
@@ -97,51 +56,7 @@ final class RuntimeToolSupport {
         throw new IllegalArgumentException("'" + name + "' is required and must be a string");
     }
 
-    static boolean requiredGlow(Object value) {
-        if (value instanceof Boolean flag) {
-            return flag;
-        }
-        throw new IllegalArgumentException("'glow' is required and must be a boolean");
-    }
-
-    static Boolean optionalBoolean(Object value, String name) {
-        if (value == null || value instanceof Boolean) {
-            return (Boolean) value;
-        }
-        throw new IllegalArgumentException("'" + name + "' must be a boolean");
-    }
-
-    static String requiredCode(Object value) {
-        if (value instanceof String text) {
-            return text;
-        }
-        throw new IllegalArgumentException("'code' is required and must be a string");
-    }
-
-    static Integer optionalPort(Object value) {
-        Number number = optionalNumber(value, "port");
-        if (number == null) {
-            return null;
-        }
-        double numeric = number.doubleValue();
-        if (numeric != Math.rint(numeric) || numeric < 1 || numeric > 65535) {
-            throw new IllegalArgumentException("'port' must be an integer from 1 to 65535");
-        }
-        return (int) numeric;
-    }
-
-    static int timeoutMillis(Object value) {
-        if (value == null) {
-            return 10_000;
-        }
-        double numeric = requiredTimeoutNumber(value);
-        if (numeric != Math.rint(numeric) || numeric < 1_000 || numeric > 300_000) {
-            throw new IllegalArgumentException("'timeoutMs' must be an integer from 1000 to 300000");
-        }
-        return (int) numeric;
-    }
-
-    static ToolResult declaredFailure(BridgeResponse response) {
+    static ContentToolResult<Void> declaredFailure(BridgeResponse response) {
         String error = response.error() == null ? "undefined" : response.error();
         return response.success() ? null : ToolResult.error("Error: " + error);
     }
@@ -187,6 +102,11 @@ final class RuntimeToolSupport {
         return (decimal.signum() < 0 ? "-" : "") + digits.charAt(0) + fraction + "e" + exponentSign + exponent;
     }
 
+    static String nodeNumber(Duration duration) {
+        BigDecimal seconds = BigDecimal.valueOf(duration.getSeconds()).add(BigDecimal.valueOf(duration.getNano(), 9));
+        return nodeNumber(seconds);
+    }
+
     private static boolean jsonTruthy(Object value) {
         return switch (value) {
             case null -> false;
@@ -195,10 +115,6 @@ final class RuntimeToolSupport {
             case String text -> !text.isEmpty();
             default -> true;
         };
-    }
-
-    static boolean isFinite(Number number) {
-        return Double.isFinite(number.doubleValue());
     }
 
     static String describe(Object value) {
@@ -225,7 +141,7 @@ final class RuntimeToolSupport {
         target.repeat("  ", depth);
     }
 
-    CompletionStage<ToolResult> connect(ConnectArguments arguments) {
+    CompletionStage<ContentToolResult<Void>> connect(ConnectArguments arguments) {
         Objects.requireNonNull(arguments, "arguments");
         if (arguments.reset()) {
             session.reset();
@@ -237,33 +153,33 @@ final class RuntimeToolSupport {
         return mapStage(() -> session.connect(arguments.port()), info -> ToolResult.text("Connected!\n" + formatSessionInfo(info, session.connectedPort().orElse(info.port()))), failure -> connectFailure(arguments.port(), failure));
     }
 
-    CompletionStage<ToolResult> execute(ExecuteArguments arguments, ScriptLogger scriptLogger, boolean scriptLogsEnabled) {
-        long started = System.currentTimeMillis();
-        Map<String, Object> payload = payload("code", arguments.code(), "timeoutMs", arguments.timeoutMillis());
-        Duration timeout = Duration.ofMillis(arguments.timeoutMillis());
+    CompletionStage<ContentToolResult<Void>> execute(ExecuteArguments arguments, ScriptLogger scriptLogger, boolean scriptLogsEnabled) {
+        long started = ticker.readNanos();
+        Duration timeout = arguments.timeoutSeconds();
+        BridgePayload payload = new ExecutePayload(arguments.code(), timeout.toMillis());
         CompletionStage<BridgeResponse> sent;
         try {
             sent = session.send(McExecuteTool.ENDPOINT, payload, timeout);
         } catch (RuntimeException exception) {
             if (scriptLogsEnabled) {
-                scriptLogger.log(ScriptLogger.ScriptLogEntry.failed(arguments.code(), message(exception), Duration.ofMillis(System.currentTimeMillis() - started)), false);
+                scriptLogger.logFailed(arguments.code(), message(exception), elapsed(started));
             }
             return CompletableFuture.completedFuture(ToolResult.error(message(exception)));
         }
         return sent.handle((response, exception) -> {
-            long duration = System.currentTimeMillis() - started;
+            Duration duration = elapsed(started);
             if (exception != null) {
                 String failure = message(exception);
                 if (scriptLogsEnabled) {
-                    scriptLogger.log(ScriptLogger.ScriptLogEntry.failed(arguments.code(), failure, Duration.ofMillis(duration)), false);
+                    scriptLogger.logFailed(arguments.code(), failure, duration);
                 }
                 return ToolResult.error(failure);
             }
             if (scriptLogsEnabled) {
-                scriptLogger.log(ScriptLogger.ScriptLogEntry.completed(response.success(), arguments.code(), response.resultPresent(), response.result(), response.output(), response.error(), Duration.ofMillis(duration)), true);
+                scriptLogger.logCompleted(response.success(), arguments.code(), response.resultPresent(), response.result(), response.output(), response.error(), duration);
             }
             try {
-                ToolResult failure = declaredFailure(response);
+                ContentToolResult<Void> failure = declaredFailure(response);
                 if (failure != null) {
                     return failure;
                 }
@@ -282,9 +198,13 @@ final class RuntimeToolSupport {
         });
     }
 
-    CompletionStage<ToolResult> container(BridgeEndpoint endpoint, Map<String, Object> payload) {
+    private Duration elapsed(long started) {
+        return Duration.ofNanos(ticker.readNanos() - started);
+    }
+
+    CompletionStage<ContentToolResult<Void>> container(BridgeEndpoint endpoint, BridgePayload payload) {
         return request(endpoint, payload, null, response -> {
-            ToolResult failure = declaredFailure(response);
+            ContentToolResult<Void> failure = declaredFailure(response);
             if (failure != null) {
                 return failure;
             }
@@ -296,32 +216,27 @@ final class RuntimeToolSupport {
         });
     }
 
-    CompletionStage<ToolResult> lookedAtEntity(LookedAtEntityArguments arguments) {
-        Map<String, Object> payload = payload("range", arguments.range());
+    CompletionStage<ContentToolResult<Void>> lookedAtEntity(LookedAtEntityArguments arguments) {
+        BridgePayload payload = new LookedAtEntityPayload(arguments.range());
         return request(McLookedAtEntityTool.ENDPOINT, payload, null, response -> {
-            ToolResult failure = declaredFailure(response);
+            ContentToolResult<Void> failure = declaredFailure(response);
             if (failure != null) {
                 return failure;
             }
-            if (!response.resultPresent()) {
-                throw missingResult(McLookedAtEntityTool.ENDPOINT);
-            }
-            Object result = response.result();
-            if (result == null) {
-                return ToolResult.text("null");
-            }
-            if (!(result instanceof Number number) || !isFinite(number) || number.doubleValue() != Math.rint(number.doubleValue())) {
-                throw new IllegalArgumentException("Bridge 'lookedAtEntity' returned malformed result: expected an integer entity id or null, got " + describe(result) + ".");
-            }
-            return ToolResult.text(prettyJson(number));
+            LookedAtEntityWireResult result = resultDecoder.decode(McLookedAtEntityTool.ENDPOINT, requireResult(McLookedAtEntityTool.ENDPOINT, response), BridgeResultTypes.LOOKED_AT_ENTITY);
+            return ToolResult.text(result.entityId() == null ? "null" : nodeNumber(result.entityId()));
         });
     }
 
-    CompletionStage<ToolResult> request(BridgeEndpoint endpoint, Map<String, Object> payload, Duration timeout, Function<BridgeResponse, ToolResult> renderer) {
+    CompletionStage<ContentToolResult<Void>> request(BridgeEndpoint endpoint, BridgePayload payload, Duration timeout, Function<BridgeResponse, ContentToolResult<Void>> renderer) {
         return mapStage(() -> session.send(endpoint, payload, timeout), renderer, ToolResult::error);
     }
 
-    private <T> CompletionStage<ToolResult> mapStage(Supplier<CompletionStage<T>> operation, Function<T, ToolResult> success, Function<String, ToolResult> failure) {
+    <T> T decode(BridgeEndpoint endpoint, Object result, JsonLogicalType<T> resultType) {
+        return resultDecoder.decode(endpoint, result, resultType);
+    }
+
+    private <T> CompletionStage<ContentToolResult<Void>> mapStage(Supplier<CompletionStage<T>> operation, Function<T, ContentToolResult<Void>> success, Function<String, ContentToolResult<Void>> failure) {
         CompletionStage<T> stage;
         try {
             stage = Objects.requireNonNull(operation.get(), "Runtime operation returned no completion stage");
@@ -340,7 +255,7 @@ final class RuntimeToolSupport {
         });
     }
 
-    private ToolResult connectFailure(Integer explicitPort, String failure) {
+    private ContentToolResult<Void> connectFailure(Integer explicitPort, String failure) {
         String lower = failure.toLowerCase(Locale.ROOT);
         boolean refused = lower.contains("econnrefused") || lower.contains("could not connect") || lower.contains("timed out connecting") || lower.contains("no debugbridge instance accepted status");
         List<Integer> ports = explicitPort == null ? IntStream.range(0, PORTS_TO_SCAN).map(index -> DEFAULT_PORT + index).boxed().toList() : List.of(explicitPort);

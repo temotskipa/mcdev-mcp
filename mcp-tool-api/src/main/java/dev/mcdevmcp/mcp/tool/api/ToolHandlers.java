@@ -10,7 +10,7 @@ public final class ToolHandlers {
     private ToolHandlers() {
     }
 
-    public static CompletionStage<ToolResult> completed(ToolResult result) {
+    public static <R extends ToolResult<?>> CompletionStage<R> completed(R result) {
         return CompletableFuture.completedFuture(Objects.requireNonNull(result));
     }
 
@@ -18,12 +18,42 @@ public final class ToolHandlers {
         Objects.requireNonNull(executor, "executor");
         Objects.requireNonNull(handler, "handler");
         return (arguments, cancellation) -> {
-            var result = new CompletableFuture<ToolResult>();
+            var result = new CompletableFuture<ContentToolResult<Void>>();
             Future<?> task;
             try {
                 task = executor.submit(() -> {
                     try {
                         result.complete(Objects.requireNonNull(handler.handle(arguments, cancellation), "Blocking tool handler result"));
+                    } catch (Throwable exception) {
+                        result.completeExceptionally(exception);
+                        if (exception instanceof Error error) {
+                            throw error;
+                        }
+                    }
+                });
+            } catch (RuntimeException exception) {
+                return CompletableFuture.failedFuture(exception);
+            }
+            result.whenComplete((_, _) -> {
+                if (result.isCancelled()) {
+                    task.cancel(true);
+                }
+            });
+            return result;
+        };
+    }
+
+    @SuppressWarnings("overloads")
+    public static <A, O> ToolOutputHandler<A, O> blocking(ExecutorService executor, BlockingToolOutputHandler<A, O> handler) {
+        Objects.requireNonNull(executor, "executor");
+        Objects.requireNonNull(handler, "handler");
+        return (arguments, cancellation) -> {
+            var result = new CompletableFuture<ToolResult<O>>();
+            Future<?> task;
+            try {
+                task = executor.submit(() -> {
+                    try {
+                        result.complete(Objects.requireNonNull(handler.handle(arguments, cancellation), "Blocking tool output handler result"));
                     } catch (Throwable exception) {
                         result.completeExceptionally(exception);
                         if (exception instanceof Error error) {

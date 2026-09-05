@@ -1,4 +1,4 @@
 package dev.mcdevmcp.analysis.decompile;
 
-public record LibraryDownloads(DownloadWire artifact) {
+public value record LibraryDownloads(DownloadWire artifact) {
 }

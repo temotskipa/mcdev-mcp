@@ -25,12 +25,12 @@ plugins {
 
 val applicationVersion = rootProject.providers.gradleProperty("version").get()
 val conformanceJavaLauncher = javaToolchains.launcherFor {
-    languageVersion.set(JavaLanguageVersion.of(25))
+    languageVersion.set(JavaLanguageVersion.of(28))
 }
 
 java {
     toolchain {
-        languageVersion.set(JavaLanguageVersion.of(25))
+        languageVersion.set(JavaLanguageVersion.of(28))
     }
 }
 
@@ -46,9 +46,13 @@ application {
 }
 
 tasks.withType<JavaCompile>().configureEach {
-    options.release.set(25)
+    options.release.set(28)
     options.encoding = "UTF-8"
-    options.compilerArgs.addAll(listOf("-Xlint:all", "-Werror"))
+    options.compilerArgs.addAll(listOf("--enable-preview", "-Xlint:all,-preview", "-Werror"))
+}
+
+tasks.withType<JavaExec>().configureEach {
+    jvmArgs("--enable-preview")
 }
 
 val generateConformanceVersionProperties = tasks.register<WriteProperties>("generateConformanceVersionProperties") {
@@ -84,7 +88,7 @@ tasks.register<JavaExec>("conformanceRun") {
 }
 
 val conformanceJavaExecutable = tasks.register<Utf8TextFileTask>("conformanceJavaExecutable") {
-    description = "Records the Java 25 executable used to launch the conformance harness."
+    description = "Records the Java 28 executable used to launch the preview conformance harness."
     content.set(conformanceJavaLauncher.map { launcher -> launcher.executablePath.asFile.absolutePath })
     outputFile.set(rootProject.layout.buildDirectory.file("conformance/java-executable.txt"))
 }

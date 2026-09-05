@@ -13,6 +13,7 @@ import dev.mcdevmcp.support.AppVersion;
 import dev.mcdevmcp.support.Cancellation;
 import io.modelcontextprotocol.json.McpJsonDefaults;
 import io.modelcontextprotocol.json.TypeRef;
+import io.modelcontextprotocol.spec.McpSchema;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -27,8 +28,14 @@ import java.util.concurrent.Executors;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+@SuppressWarnings("SqlNoDataSourceInspection")
 class StaticToolContractTest {
+    private static String contentText(ToolResult<?> result) {
+        return assertInstanceOf(McpSchema.TextContent.class, result.content().getFirst()).text();
+    }
+
     private static final MinecraftVersion VERSION = new MinecraftVersion("1.21.5");
+    private static final Set<String> SCHEMA_INVALID_LABELS = Set.of("version_missing_action", "version_unknown_action", "search_missing_query", "search_malformed_query_number", "search_invalid_enum_wire", "search_fractional_limit", "search_subunit_fractional_limit", "search_max_plus_point_one_limit", "search_nonpositive_limit", "search_nonfinite_string_wire", "class_missing_class_name", "class_wrong_class_name_type", "class_invalid_enum_wire", "method_missing_class_name", "method_missing_method_name", "packages_invalid_enum_wire", "packages_wrong_namespace_type", "packages_fractional_truncation", "packages_subunit_fractional_limit", "packages_max_plus_point_one_limit", "classes_missing_package_path", "classes_subunit_fractional_limit", "classes_max_plus_point_one_limit", "hierarchy_missing_class_name", "hierarchy_missing_direction", "hierarchy_root_missing_direction", "hierarchy_root_sideways_direction", "hierarchy_subunit_fractional_limit", "hierarchy_max_plus_point_one_limit", "hierarchy_invalid_enum_wire", "classes_wrong_package_path_type");
     private final List<ExecutorService> catalogExecutors = new ArrayList<>();
     @TempDir
     Path temporaryDirectory;
@@ -94,8 +101,8 @@ class StaticToolContractTest {
     }
 
     private static String text(ToolCatalog catalog, String name, Map<String, Object> arguments) {
-        ToolResult result = catalog.dispatch(name, arguments, Cancellation.none()).toCompletableFuture().join();
-        return result.content().getFirst().text();
+        ToolResult<?> result = catalog.dispatch(name, arguments, Cancellation.none()).toCompletableFuture().join();
+        return contentText(result);
     }
 
     private static void createPrimaryDatabase(PlatformPaths paths, Path sourceRoot) throws Exception {
@@ -187,7 +194,7 @@ class StaticToolContractTest {
         assertEquals("Active version set to 1.21.5.\nIndexed: yes\nCallgraph: no", text(catalog, "mc_version", Map.of("action", "set", "version", "1.21.5")));
         assertEquals("Found 3 result(s):\n[field] alpha.Alpha#Needle: private int Needle\n[method] alpha.Alpha#needle: public void needle(String arg) (line 4)\n[method] alpha.Alpha#Needle: public void Needle() (line 5)\nTotal: 3 result(s)", text(catalog, "mc_search", Map.of("query", "needle")));
         assertTrue(text(catalog, "mc_search", Map.of("query", "alp", "type", "class")).contains("[class] alpha.Alpha (1 fields, 2 methods)"));
-        assertEquals("Found 6 package(s):\nalpha\nbeta\n... and 4+ more package(s) (showing first 2; pass a larger `limit` to see more)", text(catalog, "mc_list_packages", Map.of("limit", 2.8d)));
+        assertEquals("Found 6 package(s):\nalpha\nbeta\n... and 4+ more package(s) (showing first 2; pass a larger `limit` to see more)", text(catalog, "mc_list_packages", Map.of("limit", 2)));
         assertEquals("Classes under \"ALPHA\":\nalpha.Alpha\n... and possibly more class(es) (showing first 1; pass a larger `limit` to see more)", text(catalog, "mc_list_classes", Map.of("packagePath", "ALPHA", "limit", 1L)));
         assertEquals("Subclasses of alpha.Alpha:\nbeta.Beta\n... and possibly more subclasses (showing first 1; pass a larger `limit` to see more)", text(catalog, "mc_find_hierarchy", Map.of("className", "alpha.Alpha", "direction", "subclasses", "limit", 1)));
         assertEquals("Method \"missing\" not found in class alpha.Alpha", text(catalog, "mc_get_method", Map.of("className", "alpha.Alpha", "methodName", "missing")));
@@ -208,13 +215,7 @@ class StaticToolContractTest {
         Files.createDirectories(paths.versionCache(new MinecraftVersion("1.21.7")));
 
         ToolCatalog catalog = catalog(paths);
-        String expected = """
-                          Available Minecraft versions:
-                          1.21.4: not decompiled, not indexed, no callgraph
-                          1.21.5: not decompiled, indexed, no callgraph
-                          1.21.6: not decompiled, indexed, no callgraph
-
-                          No active version set. Use mc_version with action="set".""";
+        String expected = String.join("\n", "Available Minecraft versions:", "1.21.4: not decompiled, not indexed, no callgraph", "1.21.5: not decompiled, indexed, no callgraph", "1.21.6: not decompiled, indexed, no callgraph", "", "No active version set. Use mc_version with action=\"set\".");
         assertEquals(expected, text(catalog, "mc_version", Map.of("action", "list")));
 
         Path outside = temporaryDirectory.resolve("outside-version");
@@ -228,24 +229,29 @@ class StaticToolContractTest {
     }
 
     @Test
-    void acceptsNumbersFromDifferentWireNumberImplementationsAndReportsCapping() throws Exception {
+    void acceptsIntegerLimitsAndReportsCapping() throws Exception {
         ToolCatalog catalog = catalog(fixture());
         text(catalog, "mc_version", Map.of("action", "set", "version", "1.21.5"));
 
-        assertEquals("Found 3 result(s):\n[field] alpha.Alpha#Needle: private int Needle\n[method] alpha.Alpha#needle: public void needle(String arg) (line 4)\n[method] alpha.Alpha#Needle: public void Needle() (line 5)\n... and possibly more result(s) (showing first 3; pass a larger `limit` to see more)", text(catalog, "mc_search", Map.of("query", "needle", "limit", new java.math.BigDecimal("3.9"))));
-        String capped = text(catalog, "mc_search", Map.of("query", "needle", "limit", new java.math.BigInteger("1001")));
+        assertEquals("Error executing mc_search: 'limit' must be an integer", text(catalog, "mc_search", Map.of("query", "needle", "limit", new java.math.BigDecimal("3.9"))));
+        String capped = text(catalog, "mc_search", Map.of("query", "needle", "limit", Integer.MAX_VALUE));
         assertTrue(capped.endsWith("Total: 3 result(s)"));
         assertFalse(capped.contains("capped"));
-        assertEquals("No results found for \"absent\"", text(catalog, "mc_search", Map.of("query", "absent", "limit", -1d)));
+        assertEquals("Error executing mc_search: 'limit' must not be below 1", text(catalog, "mc_search", Map.of("query", "absent", "limit", -1)));
+        assertEquals("Error executing mc_search: 'limit' must not be below 1", text(catalog, "mc_search", Map.of("query", "absent", "limit", 0)));
     }
 
     @Test
     void exposesOnlyTheEightStaticToolsAndNormalizesLargeLimitsWithoutOverflow() throws Exception {
         assertEquals(Set.of("mc_version", "mc_search", "mc_get_class", "mc_get_method", "mc_list_classes", "mc_list_packages", "mc_find_hierarchy", "mc_find_refs"), StaticToolModule.handlers(fixture()).keySet());
         LimitSpec limits = new LimitSpec(50, 1000);
-        assertEquals(new NormalizedLimit(50, false, true), limits.normalize(new java.math.BigDecimal("-999999999999999999999999999")));
-        assertEquals(new NormalizedLimit(1000, true, false), limits.normalize(new java.math.BigDecimal("999999999999999999999999999")));
-        assertEquals(new NormalizedLimit(1000, false, false), limits.normalize(new java.math.BigDecimal("1000.999")));
+        assertEquals(new NormalizedLimit(50, false, true), limits.normalize(null));
+        assertEquals(new NormalizedLimit(50, false, false), limits.normalize(50));
+        assertEquals(new NormalizedLimit(1000, false, false), limits.normalize(1000));
+        assertEquals(new NormalizedLimit(1000, true, false), limits.normalize(1001));
+        assertEquals(new NormalizedLimit(1000, true, false), limits.normalize(Integer.MAX_VALUE));
+        assertThrows(IllegalArgumentException.class, () -> limits.normalize(0));
+        assertThrows(IllegalArgumentException.class, () -> limits.normalize(-1));
     }
 
     @Test
@@ -289,9 +295,9 @@ class StaticToolContractTest {
              var statement = connection.createStatement()) {
             statement.executeUpdate("UPDATE types SET source_path='../escape.java' WHERE binary_name='alpha.Alpha'");
         }
-        ToolResult result = catalog.dispatch("mc_get_class", Map.of("className", "alpha.Alpha"), Cancellation.none()).toCompletableFuture().join();
+        ToolResult<?> result = catalog.dispatch("mc_get_class", Map.of("className", "alpha.Alpha"), Cancellation.none()).toCompletableFuture().join();
         assertTrue(result.isError());
-        assertEquals("Error executing mc_get_class: Unsafe indexed source path: " + Path.of("..", "escape.java"), result.content().getFirst().text());
+        assertEquals("Error executing mc_get_class: Unsafe indexed source path: " + Path.of("..", "escape.java"), contentText(result));
     }
 
     @Test
@@ -307,17 +313,17 @@ class StaticToolContractTest {
     void returnsUnexpectedStorageFailuresAsToolErrors() {
         StaticToolSupport support = new StaticToolSupport(new PlatformPaths(temporaryDirectory));
 
-        ToolResult ioFailure = support.execute("mc_get_class", () -> {
+        ToolResult<?> ioFailure = support.execute("mc_get_class", () -> {
             throw new java.io.IOException("source denied");
         });
-        ToolResult sqlFailure = support.execute("mc_search", () -> {
+        ToolResult<?> sqlFailure = support.execute("mc_search", () -> {
             throw new java.sql.SQLException("index corrupt");
         });
 
         assertTrue(ioFailure.isError());
-        assertEquals("Error executing mc_get_class: source denied", ioFailure.content().getFirst().text());
+        assertEquals("Error executing mc_get_class: source denied", contentText(ioFailure));
         assertTrue(sqlFailure.isError());
-        assertEquals("Error executing mc_search: index corrupt", sqlFailure.content().getFirst().text());
+        assertEquals("Error executing mc_search: index corrupt", contentText(sqlFailure));
     }
 
     private void assertUnsafeSource(StaticToolSupport support, ClassSymbol symbol) {
@@ -326,31 +332,67 @@ class StaticToolContractTest {
     }
 
     /**
-     * Captured by the frozen Node process; provenance and hashes live in ignored task6-node-oracle evidence.
+     * Captured by the frozen Node process; schema-valid requests replay exactly, while the reviewed 31 schema-invalid requests remain frozen and are checked as explicit pre-mapper exclusions. Provenance and hashes live in ignored task6-node-oracle evidence.
      */
     @Test
-    void replaysTheFrozenNodeJsonlCorpusExactly() throws Exception {
+    void replaysSchemaValidFrozenNodeJsonlCorpusExactly() throws Exception {
         List<Map<String, Object>> requests = jsonLines("contracts/static-tools/requests.jsonl");
         List<Map<String, Object>> responses = jsonLines("contracts/static-tools/responses.jsonl");
         assertEquals(requests.size(), responses.size());
         ToolCatalog catalog = catalog(fixture());
+        Map<String, dev.mcdevmcp.mcp.tool.api.ToolBinding<?>> bindings = StaticToolModule.handlers(new PlatformPaths(temporaryDirectory));
+        Set<String> observedSchemaInvalidLabels = new HashSet<>();
+        Set<String> corpusLabels = new HashSet<>();
+        for (Map<String, Object> request : requests) {
+            String label = (String) request.get("label");
+            corpusLabels.add(label);
+            Map<String, Object> params = requestParams(request);
+            var mapper = new dev.mcdevmcp.mcp.tool.CountingMcpJsonMapper(McpJsonDefaults.getMapper());
+            try {
+                String toolName = (String) params.get("name");
+                bindings.get(toolName).input().decode(mapper, requestArguments(params));
+            } catch (IllegalArgumentException exception) {
+                if (mapper.convertValueCalls() != 0) {
+                    throw new AssertionError("Corpus request failed during mapping instead of schema validation: " + label, exception);
+                }
+                observedSchemaInvalidLabels.add(label);
+                continue;
+            }
+            assertEquals(1, mapper.convertValueCalls(), "Schema-valid corpus request must map exactly once: " + label);
+        }
+        assertEquals(SCHEMA_INVALID_LABELS, observedSchemaInvalidLabels, "The reviewed schema-invalid exclusion set must match the frozen corpus");
+        assertTrue(corpusLabels.containsAll(SCHEMA_INVALID_LABELS), "Every schema-invalid exclusion must remain represented in the frozen corpus");
         for (int index = 0; index < requests.size(); index++) {
             Map<String, Object> request = requests.get(index);
+            String label = (String) request.get("label");
+            if (SCHEMA_INVALID_LABELS.contains(label)) {
+                continue;
+            }
             Map<String, Object> expected = responses.get(index);
-            Map<String, Object> params = McpJsonDefaults.getMapper().convertValue(McpJsonDefaults.getMapper().convertValue(request.get("request"), new TypeRef<Map<String, Object>>() {
-            }).get("params"), new TypeRef<>() {
-            });
+            Map<String, Object> params = requestParams(request);
             Map<String, Object> response = McpJsonDefaults.getMapper().convertValue(expected.get("response"), new TypeRef<>() {
             });
             Map<String, Object> result = McpJsonDefaults.getMapper().convertValue(response.get("result"), new TypeRef<>() {
             });
-            ToolResult actual = catalog.dispatch((String) params.get("name"), McpJsonDefaults.getMapper().convertValue(params.get("arguments"), new TypeRef<>() {
+            String toolName = (String) params.get("name");
+            ToolResult<?> actual = catalog.dispatch(toolName, McpJsonDefaults.getMapper().convertValue(params.get("arguments"), new TypeRef<>() {
             }), Cancellation.none()).toCompletableFuture().join();
             List<Map<String, Object>> content = McpJsonDefaults.getMapper().convertValue(result.get("content"), new TypeRef<>() {
             });
-            assertEquals(content.getFirst().get("text"), actual.content().getFirst().text(), "corpus line " + index + " " + request.get("label"));
+            assertEquals(content.getFirst().get("text"), contentText(actual), "corpus line " + index + " " + request.get("label"));
             assertEquals(Boolean.TRUE.equals(result.get("isError")), actual.isError(), "corpus line " + index + " " + request.get("label"));
         }
+    }
+
+    private static Map<String, Object> requestParams(Map<String, Object> request) {
+        return McpJsonDefaults.getMapper().convertValue(McpJsonDefaults.getMapper().convertValue(request.get("request"), new TypeRef<Map<String, Object>>() {
+        }).get("params"), new TypeRef<>() {
+        });
+    }
+
+    private static Map<String, Object> requestArguments(Map<String, Object> params) {
+        return McpJsonDefaults.getMapper().convertValue(params.get("arguments"), new TypeRef<>() {
+        });
     }
 
     private ToolCatalog catalog(PlatformPaths paths) {

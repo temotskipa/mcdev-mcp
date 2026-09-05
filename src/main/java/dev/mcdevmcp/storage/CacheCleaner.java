@@ -7,15 +7,12 @@ import dev.mcdevmcp.storage.model.MinecraftVersion;
 import java.io.IOException;
 import java.nio.file.*;
 import java.nio.file.attribute.BasicFileAttributes;
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.List;
-import java.util.Objects;
+import java.util.*;
 
 /**
  * Cleans contained per-version cache state without following symbolic links.
  */
-public final class CacheCleaner {
+public final value class CacheCleaner {
     private final PlatformPaths paths;
     private final IndexCleaner indexCleaner;
     private final CallgraphCleaner callgraphCleaner;
@@ -225,7 +222,7 @@ public final class CacheCleaner {
      * Lists portable per-version directory names without following links. Semantic support policy remains a caller concern.
      */
     public List<MinecraftVersion> cachedVersions() throws IOException {
-        var versions = new java.util.TreeMap<String, MinecraftVersion>();
+        Map<String, MinecraftVersion> versions = new TreeMap<>();
         collectVersions(ownedDirectory(paths.cacheRoot().resolve("cache"), "cache versions"), versions, false);
         collectVersions(ownedDirectory(paths.cacheRoot().resolve("index"), "index versions"), versions, true);
         return List.copyOf(versions.values());

@@ -1,26 +1,25 @@
 package dev.mcdevmcp.tools.runtime;
 
 import dev.mcdevmcp.bridge.BridgeEndpoint;
-import dev.mcdevmcp.mcp.tool.api.ToolBinding;
-import dev.mcdevmcp.mcp.tool.api.ToolHandlers;
-import dev.mcdevmcp.mcp.tool.api.ArgumentDecoder;
-import dev.mcdevmcp.mcp.tool.api.ToolResult;
-import dev.mcdevmcp.mcp.tool.api.ToolCancellation;
+import dev.mcdevmcp.bridge.payload.JoinServerPayload;
+import dev.mcdevmcp.mcp.tool.ToolDeclaration;
+import dev.mcdevmcp.mcp.tool.api.*;
 
 import java.time.Duration;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 
 final class McJoinServerTool {
+    static final ToolDeclaration<JoinServerArguments> DECLARATION = ToolDeclaration.of("mc_join_server", JoinServerArguments.class);
+
     static final BridgeEndpoint ENDPOINT = new BridgeEndpoint("joinServer");
     private static final BridgeEndpoint SNAPSHOT = new BridgeEndpoint("snapshot");
 
     private McJoinServerTool() {
     }
 
-    static ToolBinding<JoinServerArguments> binding(RuntimeToolSupport runtime, SessionControlSupport sessionControl) {
-        var decoder = ArgumentDecoder.sdk(JoinServerWireArguments.class).map(JoinServerArguments::from);
-        return ToolBinding.compatibility(decoder, (arguments, cancellation) -> SessionControlSupport.recoverTool(SessionControlSupport.composeCancellable(sessionControl.checkSessionControlEnabled(), disabled -> {
+    static ContentToolBinding<JoinServerArguments> binding(RuntimeToolSupport runtime, SessionControlSupport sessionControl) {
+        return DECLARATION.bind((arguments, cancellation) -> SessionControlSupport.recoverTool(SessionControlSupport.composeCancellable(sessionControl.checkSessionControlEnabled(), disabled -> {
             if (disabled != null) {
                 return ToolHandlers.completed(ToolResult.error(disabled));
             }
@@ -33,20 +32,20 @@ final class McJoinServerTool {
         return SessionControlSupport.handleCancellable(sessionControl.send(SNAPSHOT, RuntimeToolSupport.EMPTY_PAYLOAD, null), (response, failure) -> failure == null && response.success() && SessionControlSupport.classifyInWorldPoll(response.result(), null) instanceof InWorldPollResult.Joined);
     }
 
-    private static CompletionStage<ToolResult> sendJoin(RuntimeToolSupport runtime, SessionControlSupport sessionControl, JoinServerArguments arguments, ToolCancellation cancellation, boolean requireAbsenceFirst) {
-        return SessionControlSupport.composeCancellable(sessionControl.send(ENDPOINT, RuntimeToolSupport.payload("address", arguments.address(), "acceptResourcePacks", arguments.acceptResourcePacks()), Duration.ofSeconds(65)), response -> {
-            ToolResult failure = RuntimeToolSupport.declaredFailure(response);
+    private static CompletionStage<ContentToolResult<Void>> sendJoin(RuntimeToolSupport runtime, SessionControlSupport sessionControl, JoinServerArguments arguments, ToolCancellation cancellation, boolean requireAbsenceFirst) {
+        return SessionControlSupport.composeCancellable(sessionControl.send(ENDPOINT, new JoinServerPayload(arguments.address().value(), arguments.acceptResourcePacks()), Duration.ofSeconds(65)), response -> {
+            ContentToolResult<Void> failure = RuntimeToolSupport.declaredFailure(response);
             if (failure != null) {
                 return ToolHandlers.completed(failure);
             }
             if (!arguments.waitForWorld()) {
                 return ToolHandlers.completed(ToolResult.text("Join accepted (connect started): " + McLeaveServerTool.safeResult(runtime, response) + "\nUse mc_wait_until_in_world to confirm the outcome."));
             }
-            return SessionControlSupport.mapCancellable(sessionControl.waitUntilInWorld(arguments.timeoutSeconds(), requireAbsenceFirst, cancellation), outcome -> renderOutcome(arguments.address(), outcome));
+            return SessionControlSupport.mapCancellable(sessionControl.waitUntilInWorld(arguments.timeoutSeconds(), requireAbsenceFirst, cancellation), outcome -> renderOutcome(arguments.address().value(), outcome));
         });
     }
 
-    private static ToolResult renderOutcome(String address, InWorldWaitResult outcome) {
+    private static ContentToolResult<Void> renderOutcome(String address, InWorldWaitResult outcome) {
         String seconds = RuntimeToolSupport.nodeNumber(outcome.elapsedSeconds());
         return switch (outcome.state()) {
             case JOINED -> ToolResult.text("Joined " + address + " — in-world after " + seconds + "s.");

@@ -1,5 +1,6 @@
 package dev.mcdevmcp.tools.statictool;
 
+import dev.mcdevmcp.mcp.tool.api.ContentToolResult;
 import dev.mcdevmcp.mcp.tool.api.ToolResult;
 import dev.mcdevmcp.storage.PlatformPaths;
 import dev.mcdevmcp.storage.callgraph.CallgraphRepository;
@@ -42,7 +43,7 @@ final class StaticToolSupport {
         return value == null ? "undefined" : value;
     }
 
-    ToolResult execute(String toolName, StaticToolOperation operation) {
+    ContentToolResult<Void> execute(String toolName, StaticToolOperation operation) {
         try {
             return operation.run();
         } catch (ExpectedVersionException exception) {
@@ -55,16 +56,15 @@ final class StaticToolSupport {
         }
     }
 
-    MinecraftVersion resolve(String explicit) {
-        if (explicit != null && !explicit.isBlank()) {
-            MinecraftVersion version = new MinecraftVersion(explicit);
-            if (!Files.isDirectory(paths.sourceRoot(version))) {
-                throw new ExpectedVersionException("Version " + explicit + " not initialized. STOP and ask the USER to run this command in their terminal:\n" + "  java -jar " + AppVersion.executableJarName() + " init -v " + explicit + "\n\n" + "This will download, decompile, and index Minecraft " + explicit + " sources (including callgraph).");
+    MinecraftVersion resolve(MinecraftVersion explicit) {
+        if (explicit != null) {
+            if (!Files.isDirectory(paths.sourceRoot(explicit))) {
+                throw new ExpectedVersionException("Version " + explicit.value() + " not initialized. STOP and ask the USER to run this command in their terminal:\n" + "  java -jar " + AppVersion.executableJarName() + " init -v " + explicit.value() + "\n\n" + "This will download, decompile, and index Minecraft " + explicit.value() + " sources (including callgraph).");
             }
-            if (!states.isH2Ready(version)) {
-                throw new ExpectedVersionException("Version " + explicit + " not indexed. STOP and ask the USER to run this command in their terminal:\n" + "  java -jar " + AppVersion.executableJarName() + " init -v " + explicit + "\n\n" + "This will index Minecraft " + explicit + " sources (including callgraph).");
+            if (!states.isH2Ready(explicit)) {
+                throw new ExpectedVersionException("Version " + explicit.value() + " not indexed. STOP and ask the USER to run this command in their terminal:\n" + "  java -jar " + AppVersion.executableJarName() + " init -v " + explicit.value() + "\n\n" + "This will index Minecraft " + explicit.value() + " sources (including callgraph).");
             }
-            return version;
+            return explicit;
         }
         if (activeVersion == null) {
             throw new ExpectedVersionException("""

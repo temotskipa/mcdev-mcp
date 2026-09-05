@@ -1,7 +1,7 @@
 package dev.mcdevmcp.tools.statictool;
 
+import dev.mcdevmcp.mcp.tool.ToolDeclaration;
 import dev.mcdevmcp.mcp.tool.api.ToolBinding;
-import dev.mcdevmcp.mcp.tool.api.ArgumentDecoder;
 import dev.mcdevmcp.mcp.tool.api.ToolResult;
 import dev.mcdevmcp.storage.callgraph.CallgraphRepository;
 import dev.mcdevmcp.storage.model.MethodReference;
@@ -12,6 +12,8 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 final class McFindRefsTool {
+    static final ToolDeclaration<FindRefsArguments> DECLARATION = ToolDeclaration.of("mc_find_refs", FindRefsArguments.class);
+
     static final LimitSpec LIMIT = new LimitSpec(100, 5000);
     private static final int MAX_CAUSE_LENGTH = 500;
 
@@ -19,12 +21,11 @@ final class McFindRefsTool {
     }
 
     static ToolBinding<FindRefsArguments> binding(StaticToolSupport support) {
-        var decoder = ArgumentDecoder.sdk(FindRefsWireArguments.class).map(FindRefsArguments::from);
-        return ToolBinding.blockingCompatibility(decoder, (arguments, _) -> support.execute("mc_find_refs", () -> {
+        return DECLARATION.bindBlocking((arguments, _) -> support.execute("mc_find_refs", () -> {
             var version = support.resolve(arguments.version());
-            String direction = arguments.directionText().display();
-            String className = arguments.className().display();
-            String methodName = arguments.methodName().display();
+            String direction = arguments.direction().wireValue();
+            String className = arguments.className();
+            String methodName = arguments.methodName();
             CallgraphRepository.PublicationStatus publicationStatus = CallgraphRepository.publicationStatus(support.paths().callgraphBundle(version));
             if (publicationStatus == CallgraphRepository.PublicationStatus.CORRUPT) {
                 return ToolResult.text("Version " + version.value() + " has corrupt callgraph data.\n\n" + "STOP and ask the USER to run this command in their terminal:\n" + "  java -jar " + AppVersion.executableJarName() + " callgraph -v " + version.value() + "\n\n" + "Or for full reinitialization:\n  java -jar " + AppVersion.executableJarName() + " init -v " + version.value());
@@ -32,14 +33,11 @@ final class McFindRefsTool {
             if (publicationStatus == CallgraphRepository.PublicationStatus.ABSENT) {
                 return ToolResult.text("Version " + version.value() + " does not have callgraph data.\n\n" + "STOP and ask the USER to run this command in their terminal:\n" + "  java -jar " + AppVersion.executableJarName() + " callgraph -v " + version.value() + "\n\n" + "Or for full reinitialization:\n  java -jar " + AppVersion.executableJarName() + " init -v " + version.value());
             }
-            var limit = LIMIT.normalize(arguments.limit().value());
+            var limit = LIMIT.normalize(arguments.limit());
             int queryLimit = limit.value() + 1;
             List<MethodReference> fetched;
             try {
-                if (arguments.className().isMissing() || arguments.methodName().isMissing()) {
-                    throw new IOException("Wrong API use : tried to bind a value of an unknown type (undefined).");
-                }
-                fetched = arguments.direction() == ReferenceDirection.callers ? support.callgraphRepository(version).callers(arguments.className().value(), arguments.methodName().value(), queryLimit) : support.callgraphRepository(version).callees(arguments.className().value(), arguments.methodName().value(), queryLimit);
+                fetched = arguments.direction() == ReferenceDirection.callers ? support.callgraphRepository(version).callers(arguments.className(), arguments.methodName(), queryLimit) : support.callgraphRepository(version).callees(arguments.className(), arguments.methodName(), queryLimit);
             } catch (IOException | RuntimeException exception) {
                 return ToolResult.error("Failed to query callgraph for " + className + "#" + methodName + " (" + direction + "): " + boundedCause(exception));
             }

@@ -1,9 +1,6 @@
 package dev.mcdevmcp.tools.runtime;
 
-import java.math.BigDecimal;
+import dev.mcdevmcp.mcp.tool.api.InputProperty;
 
-record EntityDetailsArguments(BigDecimal entityId) {
-    static EntityDetailsArguments from(EntityDetailsWireArguments wire) {
-        return new EntityDetailsArguments(RuntimeToolSupport.requiredDecimal(wire.entityId(), "entityId"));
-    }
+value record EntityDetailsArguments(@InputProperty(description = "Entity id from mc_nearby_entities or mc_looked_at_entity.", required = true) int entityId) {
 }

@@ -1,9 +1,12 @@
 package dev.mcdevmcp.tools.runtime;
 
-import java.math.BigDecimal;
+import dev.mcdevmcp.minecraft.BlockPosition;
+import dev.mcdevmcp.mcp.tool.api.InputProperty;
 
-record BlockGlowArguments(BigDecimal x, BigDecimal y, BigDecimal z, boolean glow) {
-    static BlockGlowArguments from(BlockGlowWireArguments wire) {
-        return new BlockGlowArguments(RuntimeToolSupport.requiredDecimal(wire.x(), "x"), RuntimeToolSupport.requiredDecimal(wire.y(), "y"), RuntimeToolSupport.requiredDecimal(wire.z(), "z"), RuntimeToolSupport.requiredGlow(wire.glow()));
+import java.util.Objects;
+
+value record BlockGlowArguments(@InputProperty(required = true) BlockPosition position, @InputProperty(description = "true to highlight, false to remove this position.", required = true) boolean glow) {
+    BlockGlowArguments {
+        Objects.requireNonNull(position, "position");
     }
 }

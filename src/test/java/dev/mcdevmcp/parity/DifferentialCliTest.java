@@ -141,10 +141,7 @@ final class DifferentialCliTest {
 
         assertTrue(pair.node().stdout().contains("DecompilerMC"), pair.node()::stdout);
         assertTrue(pair.java().stdout().contains("temporary analysis state"), pair.java()::stdout);
-        assertEquals(
-                pair.node().stdout().replace("DecompilerMC", "$APPROVED_ANALYSIS_STATE"),
-                pair.java().stdout().replace("temporary analysis state", "$APPROVED_ANALYSIS_STATE")
-        );
+        assertEquals(pair.node().stdout().replace("DecompilerMC", "$APPROVED_ANALYSIS_STATE"), pair.java().stdout().replace("temporary analysis state", "$APPROVED_ANALYSIS_STATE"));
         assertEquals(pair.node().exitCode(), pair.java().exitCode());
         assertEquals(pair.node().stderr(), pair.java().stderr());
     }
@@ -264,6 +261,7 @@ final class DifferentialCliTest {
     private static ProcessBuilder javaProcess(List<String> arguments, CliEnvironment environment) {
         List<String> command = new ArrayList<>(arguments.size() + 8);
         command.add(JAVA.toString());
+        command.add("--enable-preview");
         command.add("-Dfile.encoding=UTF-8");
         command.add("-Duser.language=en");
         command.add("-Duser.country=US");

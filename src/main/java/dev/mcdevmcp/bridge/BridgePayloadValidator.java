@@ -1,20 +1,12 @@
 package dev.mcdevmcp.bridge;
 
 import dev.mcdevmcp.support.JsonValues;
-import io.modelcontextprotocol.json.McpJsonMapper;
-
 import java.util.Map;
 import java.util.Objects;
 
 public final class BridgePayloadValidator {
     public static final int MAXIMUM_PNG_BASE64_CHARACTERS = 7 * 1024 * 1024;
     private static final int MAXIMUM_DISPLAY_CHARACTERS = 512;
-
-    private final McpJsonMapper mapper;
-
-    public BridgePayloadValidator(McpJsonMapper mapper) {
-        this.mapper = Objects.requireNonNull(mapper, "mapper");
-    }
 
     public static Map<String, Object> requireOpenObject(BridgeResponse response) {
         return requireOpenObject("unknown", response);
@@ -99,17 +91,9 @@ public final class BridgePayloadValidator {
         return response.result();
     }
 
-    public <T> T requireResult(BridgeResponse response, Class<T> type) {
-        return requireResult("unknown", response, type);
+    /** Requires a successful response with a non-null result value. */
+    public static Object requireResult(String endpoint, BridgeResponse response) {
+        return requireResultValue(endpoint, response);
     }
 
-    public <T> T requireResult(String endpoint, BridgeResponse response, Class<T> type) {
-        Objects.requireNonNull(type, "type");
-        Object result = requireResultValue(endpoint, response);
-        try {
-            return mapper.convertValue(result, type);
-        } catch (RuntimeException exception) {
-            throw new IllegalArgumentException("DebugBridge " + endpoint + " response has invalid result: " + safeDisplay(result), exception);
-        }
-    }
 }

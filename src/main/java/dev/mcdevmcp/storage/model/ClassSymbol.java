@@ -6,7 +6,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 
-public record ClassSymbol(long id, SourceNamespace namespace, Optional<FabricApiVersion> fabricApiVersion, String binaryName, String packageName, String simpleName, ElementKind kind, Optional<String> superclassBinaryName, List<String> interfaceBinaryNames, Path sourcePath, int startOffset, int endOffset, int startLine, int endLine) {
+public value record ClassSymbol(long id, SourceNamespace namespace, Optional<FabricApiVersion> fabricApiVersion, String binaryName, String packageName, String simpleName, ElementKind kind, Optional<String> superclassBinaryName, List<String> interfaceBinaryNames, Path sourcePath, int startOffset, int endOffset, int startLine, int endLine) {
     public ClassSymbol {
         Objects.requireNonNull(namespace, "namespace");
         fabricApiVersion = Optional.ofNullable(fabricApiVersion).orElseThrow(() -> new NullPointerException("fabricApiVersion"));

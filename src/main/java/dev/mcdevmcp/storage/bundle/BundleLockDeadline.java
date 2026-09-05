@@ -2,7 +2,7 @@ package dev.mcdevmcp.storage.bundle;
 
 import java.time.Duration;
 
-final class BundleLockDeadline {
+final value class BundleLockDeadline {
     private static final Duration MAX_NANOSECONDS = Duration.ofNanos(Long.MAX_VALUE);
     private final long startedAt;
     private final long timeoutNanos;

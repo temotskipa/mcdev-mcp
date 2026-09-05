@@ -1,14 +1,15 @@
 package dev.mcdevmcp.tools.runtime;
 
-import dev.mcdevmcp.mcp.tool.api.ToolBinding;
-import dev.mcdevmcp.mcp.tool.api.ArgumentDecoder;
+import dev.mcdevmcp.mcp.tool.api.ContentToolBinding;
+import dev.mcdevmcp.mcp.tool.ToolDeclaration;
 
 final class McConnectTool {
+    static final ToolDeclaration<ConnectArguments> DECLARATION = ToolDeclaration.of("mc_connect", ConnectArguments.class);
+
     private McConnectTool() {
     }
 
-    static ToolBinding<ConnectArguments> binding(RuntimeToolSupport support) {
-        var decoder = ArgumentDecoder.sdk(ConnectWireArguments.class).map(ConnectArguments::from);
-        return ToolBinding.compatibility(decoder, (arguments, _) -> support.connect(arguments));
+    static ContentToolBinding<ConnectArguments> binding(RuntimeToolSupport support) {
+        return DECLARATION.bind((arguments, _) -> support.connect(arguments));
     }
 }

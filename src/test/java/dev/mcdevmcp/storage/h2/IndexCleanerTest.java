@@ -21,7 +21,7 @@ import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-//noinspection SqlNoDataSourceInspection,SqlResolve
+@SuppressWarnings({"SqlNoDataSourceInspection", "SqlResolve"})
 class IndexCleanerTest {
     private static final MinecraftVersion VERSION = new MinecraftVersion("1.21.5");
 
@@ -31,7 +31,7 @@ class IndexCleanerTest {
     private static Process process(String mode, Path database) throws Exception {
         String java = System.getProperty("mcdevMcpJava");
         String classpath = System.getProperty("java.class.path");
-        return new ProcessBuilder(java, "-cp", classpath, DatabaseLockProcessMain.class.getName(), mode, database.toString()).start();
+        return new ProcessBuilder(java, "--enable-preview", "-cp", classpath, DatabaseLockProcessMain.class.getName(), mode, database.toString()).start();
     }
 
     private static void stop(Process process) throws Exception {

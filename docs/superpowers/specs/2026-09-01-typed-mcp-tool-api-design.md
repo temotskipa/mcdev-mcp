@@ -30,9 +30,9 @@ tool results, DebugBridge payloads, and user-visible behavior remain stable.
 - Move generic binding, handler, cancellation, and blocking-executor behavior
   into `mcp-tool-api`.
 - Deserialize valid MCP arguments directly into the handler's domain record.
-- Replace raw strings and `Object` values with enums, `BigDecimal`,
-  `MinecraftVersion`, `Duration`, and validated domain values where their
-  semantics are closed.
+- Replace raw strings, `Object`, and arbitrary-precision numeric compatibility
+  values with enums, exact Java primitives/wrappers, `MinecraftVersion`,
+  `Duration`, and validated domain values where their semantics are closed.
 - Keep Java class identity out of client-visible JSON and JSON Schema.
 - Keep DebugBridge as a separate process with its existing endpoint names and
   JSON payload shapes.
@@ -91,13 +91,52 @@ text maps directly to the validated value. Optional record components are
 nullable strong types with convenience `Optional` accessors unless mapper
 support for `Optional<T>` is explicitly proven.
 
+## Runtime Type Policy
+
+Actual DebugBridge provider signatures and checked-out Minecraft source are the
+authority for runtime argument types. Runtime IDs, coordinates, slots, counts,
+limits, frame counts, grid columns, and downscale factors are integral Java
+types. Radii and media quality use binary floating-point types. Time uses
+`Duration`. `BigDecimal`, `BigInteger`, and general `Number` are not runtime
+input domain types.
+
+Required and defaulted numeric/boolean values use primitives in the final
+record. Same-record creator parameters may be boxed solely to distinguish an
+omitted JSON property while materializing defaults, including default-true
+booleans. A wrapper remains nullable in the final record only when absence is a
+domain value, such as a missing port that requests scanning or an omitted
+range/limit. Minecraft-specific values such as
+resource identifiers, block positions, entity equipment slots, and server
+addresses use validated root-project domain types; they do not belong in the
+generic `mcp-tool-api` module.
+
+The authoritative per-tool matrix and source findings live in
+`.superpowers/sdd/2026-09-01-typed-mcp-tool-api/minecraft-runtime-argument-audit.md`.
+It supersedes earlier migration tests or plan prose that modeled runtime
+integers and time as arbitrary-precision numbers.
+
+MCP input JSON may adopt a stronger semantic shape, such as a nested
+`BlockPosition` or a tagged recording cadence. The typed JSON is decoded
+directly, without a compatibility wire decoder. A named bridge payload record
+then performs the explicit protocol projection while preserving DebugBridge
+endpoint names and payload shape.
+
+Every closed JSON boundary carries its target Java type in trusted server-side
+metadata through `JsonType<T>`/SDK `TypeRef<T>` and `McpJsonMapper`; this
+includes parameterized components such as `List<Path>`. Jackson property
+metadata on the final Java type maps differing JSON field names directly. The
+client-visible schema describes semantic JSON shape and optional formats, not
+Java class names, and no handler manually converts raw strings or numbers into
+a closed JDK/domain type after mapper conversion.
+
 ## Parity Policy
 
-Valid requests retain exact functional results and unchanged DebugBridge
-payloads. MCP schema validation rejects wrong JSON types before handler
-deserialization. Tests that previously asserted JavaScript-style malformed
-input coercion move to schema-rejection coverage. Missing, explicit `null`,
-defaults, numeric bounds, and enum values receive focused tests.
+Valid requests retain functional results and unchanged DebugBridge endpoint and
+payload semantics. MCP input shape may change where a typed domain value makes
+the contract clearer. MCP schema validation rejects wrong JSON types before
+handler deserialization. Tests that previously asserted JavaScript-style
+malformed input coercion move to schema-rejection coverage. Missing, explicit
+`null`, defaults, numeric bounds, and enum values receive focused tests.
 
 `mc_find_refs` callers/callees semantics, descriptors, ordering, limits, and
 output remain unchanged.
@@ -116,14 +155,20 @@ domain value.
 ## Acceptance
 
 - `mcp-tool-api` builds independently as explicit module
-  `dev.mcdevmcp.mcp.tool.api` on Java 25 and 26.
+  `dev.mcdevmcp.mcp.tool.api` on Java 26.
 - JPMS smoke verifies the SDK Jackson 3 provider and direct typed decoding.
 - No production binding uses `ArgumentDecoder.map` after migration.
 - No `*WireArguments`, `TextArgument`, `ArgumentShape`, or `LimitInput` remains
   after all tools migrate.
+- No runtime input record or numeric compatibility helper uses `BigDecimal`,
+  `BigInteger`, or general `Number`.
+- Runtime request projection uses named typed bridge payload values rather than
+  assembling protocol maps in tool handlers.
+- Closed runtime response objects deserialize directly into their final typed
+  Java result values rather than being field-cast from raw maps.
 - Every advertised schema is generated from the same type deserialized by its
   binding.
-- Valid static and runtime tool contracts, bridge payloads, Java 25/26 tests,
+- Valid static and runtime tool contracts, bridge payloads, Java 26 tests,
   differential parity, MCP conformance, MCPB, and exact-JAR gates pass.
 - IntelliJ reformat runs after every edit, and changed Java files have no
   warning-or-higher diagnostics.

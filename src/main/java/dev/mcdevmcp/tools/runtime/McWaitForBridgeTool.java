@@ -1,10 +1,8 @@
 package dev.mcdevmcp.tools.runtime;
 
 import dev.mcdevmcp.bridge.SessionInfo;
-import dev.mcdevmcp.mcp.tool.api.ToolBinding;
-import dev.mcdevmcp.mcp.tool.api.ToolHandlers;
-import dev.mcdevmcp.mcp.tool.api.ArgumentDecoder;
-import dev.mcdevmcp.mcp.tool.api.ToolResult;
+import dev.mcdevmcp.mcp.tool.ToolDeclaration;
+import dev.mcdevmcp.mcp.tool.api.*;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -13,12 +11,13 @@ import java.util.concurrent.CompletionStage;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 final class McWaitForBridgeTool {
+    static final ToolDeclaration<WaitForBridgeArguments> DECLARATION = ToolDeclaration.of("mc_wait_for_bridge", WaitForBridgeArguments.class);
+
     private McWaitForBridgeTool() {
     }
 
-    static ToolBinding<WaitForBridgeArguments> binding(SessionControlSupport support) {
-        var decoder = ArgumentDecoder.sdk(WaitForBridgeWireArguments.class).map(WaitForBridgeArguments::from);
-        return ToolBinding.compatibility(decoder, (arguments, cancellation) -> {
+    static ContentToolBinding<WaitForBridgeArguments> binding(SessionControlSupport support) {
+        return DECLARATION.bind((arguments, cancellation) -> {
             List<String> notes = new CopyOnWriteArrayList<>();
             SessionControlSupport.ExpectedInstance expected = expectedInstance(support, arguments);
             CompletionStage<SessionControlSupport.FoundBridge> wait = support.waitForBridge(expected, arguments.timeoutSeconds(), notes, cancellation);
@@ -33,13 +32,13 @@ final class McWaitForBridgeTool {
     }
 
     private static SessionControlSupport.ExpectedInstance expectedInstance(SessionControlSupport support, WaitForBridgeArguments arguments) {
-        if (arguments.expectedVersion().isPresent()) {
-            return new SessionControlSupport.ExpectedInstance(arguments.expectedVersion(), Optional.empty());
+        if (arguments.expectedVersion() != null) {
+            return new SessionControlSupport.ExpectedInstance(Optional.of(arguments.expectedVersion()), Optional.empty());
         }
         return support.sessionInfo().map(info -> new SessionControlSupport.ExpectedInstance(Optional.of(info.version()), info.gameDir())).orElseGet(SessionControlSupport.ExpectedInstance::none);
     }
 
-    private static ToolResult renderSuccess(SessionInfo info, int port, List<String> notes) {
+    private static ContentToolResult<Void> renderSuccess(SessionInfo info, int port, List<String> notes) {
         List<String> noteSnapshot = List.copyOf(notes);
         List<String> lines = new ArrayList<>();
         lines.add("Connected: Minecraft " + info.version().value() + " on port " + port + ".");

@@ -5,7 +5,6 @@ import io.modelcontextprotocol.json.McpJsonMapper;
 import io.modelcontextprotocol.json.TypeRef;
 
 import java.io.IOException;
-import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
 
@@ -29,12 +28,8 @@ public final class BridgeJson {
 
     public String writeRequest(BridgeRequest request) {
         Objects.requireNonNull(request, "request");
-        Map<String, Object> envelope = new LinkedHashMap<>();
-        envelope.put("id", request.id());
-        envelope.put("type", request.endpoint().wireName());
-        envelope.put("payload", request.payload());
         try {
-            return mapper.writeValueAsString(envelope);
+            return mapper.writeValueAsString(new BridgeWireRequest(request.id(), request.endpoint().wireName(), request.payload()));
         } catch (IOException exception) {
             throw new IllegalArgumentException("Unable to serialize DebugBridge request " + request.id(), exception);
         }

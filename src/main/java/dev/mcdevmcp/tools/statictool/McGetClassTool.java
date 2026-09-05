@@ -1,7 +1,7 @@
 package dev.mcdevmcp.tools.statictool;
 
+import dev.mcdevmcp.mcp.tool.ToolDeclaration;
 import dev.mcdevmcp.mcp.tool.api.ToolBinding;
-import dev.mcdevmcp.mcp.tool.api.ArgumentDecoder;
 import dev.mcdevmcp.mcp.tool.api.ToolResult;
 import dev.mcdevmcp.storage.h2.SymbolRepository;
 import dev.mcdevmcp.storage.model.ClassSymbol;
@@ -13,19 +13,14 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 final class McGetClassTool {
+    static final ToolDeclaration<GetClassArguments> DECLARATION = ToolDeclaration.of("mc_get_class", GetClassArguments.class);
+
     private McGetClassTool() {
     }
 
     static ToolBinding<GetClassArguments> binding(StaticToolSupport support) {
-        var decoder = ArgumentDecoder.sdk(GetClassWireArguments.class).map(GetClassArguments::from);
-        return ToolBinding.blockingCompatibility(decoder, (arguments, _) -> support.execute("mc_get_class", () -> {
-            if (arguments.className().isMissing()) {
-                return ToolResult.error("Error executing mc_get_class: Cannot read properties of undefined (reading 'split')");
-            }
-            if (!arguments.className().isText()) {
-                return ToolResult.error("Error executing mc_get_class: fullName.split is not a function");
-            }
-            String className = arguments.className().value();
+        return DECLARATION.bindBlocking((arguments, _) -> support.execute("mc_get_class", () -> {
+            String className = arguments.className();
             var version = support.resolve(arguments.version());
             SymbolRepository repository = support.repository(version);
             ClassSymbol type = repository.classByName(className);

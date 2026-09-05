@@ -9,7 +9,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 
-final class CompilerConfiguration {
+final value class CompilerConfiguration {
     private CompilerConfiguration() {
     }
 

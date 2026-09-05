@@ -1,4 +1,10 @@
 package dev.mcdevmcp.tools.runtime;
 
-record TextureResult(String base64Png, int width, int height, String spriteName) {
+import java.util.Objects;
+
+value record TextureResult(String base64Png, int width, int height, String spriteName) {
+    public TextureResult {
+        Objects.requireNonNull(base64Png, "base64Png");
+        Objects.requireNonNull(spriteName, "spriteName");
+    }
 }

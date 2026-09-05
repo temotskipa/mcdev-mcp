@@ -5,7 +5,7 @@ import java.util.Objects;
 /**
  * An unobfuscated client JAR resolved from a distinct official manifest entry.
  */
-public record OfficialUnobfuscatedClient(VersionEntry manifestEntry, DownloadArtifact artifact) {
+public value record OfficialUnobfuscatedClient(VersionEntry manifestEntry, DownloadArtifact artifact) {
     public OfficialUnobfuscatedClient {
         Objects.requireNonNull(manifestEntry, "manifestEntry");
         Objects.requireNonNull(artifact, "artifact");

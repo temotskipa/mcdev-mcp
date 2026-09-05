@@ -12,7 +12,6 @@ import java.util.Objects;
 import java.util.concurrent.Callable;
 
 @Command(name = "callgraph", description = "Rebuild the JSONL callgraph from prepared sources")
-@SuppressWarnings("unused")
 public final class CallgraphCommand implements Callable<Integer> {
     private final AnalysisOperations operations;
     private final PlatformPaths paths;

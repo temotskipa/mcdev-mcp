@@ -1,43 +1,31 @@
 package dev.mcdevmcp.tools.runtime;
 
-import java.math.BigDecimal;
-import java.util.Objects;
+import com.fasterxml.jackson.annotation.JsonSubTypes;
+import com.fasterxml.jackson.annotation.JsonTypeInfo;
+import dev.mcdevmcp.mcp.tool.api.InputProperty;
 
-sealed interface RecordInterval {
-    Object bridgeValue();
+import java.time.Duration;
 
-    double estimatedMillis();
+@JsonTypeInfo(use = JsonTypeInfo.Id.NAME, include = JsonTypeInfo.As.PROPERTY, property = "kind")
+@JsonSubTypes({@JsonSubTypes.Type(value = RecordInterval.Frame.class, name = "frame"), @JsonSubTypes.Type(value = RecordInterval.Fixed.class, name = "fixed")})
+sealed interface RecordInterval permits RecordInterval.Frame, RecordInterval.Fixed {
 
-    record Milliseconds(BigDecimal value) implements RecordInterval {
-        public Milliseconds {
-            Objects.requireNonNull(value, "value");
-        }
+    value record Frame() implements RecordInterval {
+    }
 
-        @Override
-        public Object bridgeValue() {
-            return value;
-        }
-
-        @Override
-        public double estimatedMillis() {
-            double millis = value.doubleValue();
-            return millis >= 1 ? millis : 17;
+    value record Fixed(@InputProperty(required = true, minimum = "0.001") Duration intervalSeconds) implements RecordInterval {
+        public Fixed {
+            if (intervalSeconds == null || intervalSeconds.isZero() || intervalSeconds.isNegative()) {
+                throw new IllegalArgumentException("intervalSeconds must be at least 0.001 seconds");
+            }
+            double intervalMillis = projectedMillis(intervalSeconds);
+            if (!Double.isFinite(intervalMillis) || intervalMillis < 1.0) {
+                throw new IllegalArgumentException("intervalSeconds must be at least 0.001 seconds");
+            }
         }
     }
 
-    record Text(String value) implements RecordInterval {
-        public Text {
-            Objects.requireNonNull(value, "value");
-        }
-
-        @Override
-        public Object bridgeValue() {
-            return value;
-        }
-
-        @Override
-        public double estimatedMillis() {
-            return 17;
-        }
+    static double projectedMillis(Duration duration) {
+        return duration.getSeconds() * 1000.0 + duration.getNano() / 1_000_000.0;
     }
 }

@@ -1,17 +1,18 @@
 package dev.mcdevmcp.tools.runtime;
 
 import dev.mcdevmcp.bridge.BridgeEndpoint;
-import dev.mcdevmcp.mcp.tool.api.ToolBinding;
-import dev.mcdevmcp.mcp.tool.api.ArgumentDecoder;
+import dev.mcdevmcp.mcp.tool.ToolDeclaration;
+import dev.mcdevmcp.mcp.tool.api.ContentToolBinding;
 
 final class McGetItemTextureTool {
+    static final ToolDeclaration<ItemTextureArguments> DECLARATION = ToolDeclaration.of("mc_get_item_texture", ItemTextureArguments.class);
+
     static final BridgeEndpoint ENDPOINT = new BridgeEndpoint("getItemTexture");
 
     private McGetItemTextureTool() {
     }
 
-    static ToolBinding<ItemTextureArguments> binding(MediaToolSupport support) {
-        var decoder = ArgumentDecoder.sdk(ItemTextureWireArguments.class).map(ItemTextureArguments::from);
-        return ToolBinding.compatibility(decoder, (arguments, _) -> support.itemTexture(arguments));
+    static ContentToolBinding<ItemTextureArguments> binding(MediaToolSupport support) {
+        return DECLARATION.bind((arguments, _) -> support.itemTexture(arguments));
     }
 }
