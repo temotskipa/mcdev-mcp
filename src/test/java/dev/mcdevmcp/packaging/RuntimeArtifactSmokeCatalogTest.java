@@ -33,9 +33,7 @@ class RuntimeArtifactSmokeCatalogTest {
         List<ToolDefinition> definitions = definitions();
         List<Map<String, Object>> tools = sdkWireCatalog(definitions);
         assertEquals(33, tools.size());
-        assertTrue(definitions.stream().anyMatch(definition -> !definition.inputSchema().equals(
-                tools.stream().filter(tool -> definition.name().equals(tool.get("name"))).findFirst().orElseThrow().get("inputSchema"))),
-                "The catalog must exercise Java versus parsed JSON numeric representations");
+        assertTrue(definitions.stream().anyMatch(definition -> !definition.inputSchema().equals(tools.stream().filter(tool -> definition.name().equals(tool.get("name"))).findFirst().orElseThrow().get("inputSchema"))), "The catalog must exercise Java versus parsed JSON numeric representations");
 
         assertDoesNotThrow(() -> RuntimeArtifactSmokeMain.verifyToolCatalog(tools, definitions));
     }
@@ -65,8 +63,7 @@ class RuntimeArtifactSmokeCatalogTest {
     void rejectsAnAlteredOutputSchema() throws Exception {
         List<ToolDefinition> definitions = definitionsWithOutput();
         List<Map<String, Object>> tools = sdkWireCatalog(definitions);
-        tools.stream().filter(tool -> tool.containsKey("outputSchema")).findFirst().orElseThrow()
-                .put("outputSchema", Map.of("type", "object", "properties", Map.of()));
+        tools.stream().filter(tool -> tool.containsKey("outputSchema")).findFirst().orElseThrow().put("outputSchema", Map.of("type", "object", "properties", Map.of()));
         assertRejected(tools, definitions);
     }
 
@@ -74,8 +71,7 @@ class RuntimeArtifactSmokeCatalogTest {
     void rejectsAnUndeclaredOutputSchema() throws Exception {
         List<ToolDefinition> definitions = definitions();
         List<Map<String, Object>> tools = sdkWireCatalog(definitions);
-        tools.stream().filter(tool -> !tool.containsKey("outputSchema")).findFirst().orElseThrow()
-                .put("outputSchema", Map.of("type", "object"));
+        tools.stream().filter(tool -> !tool.containsKey("outputSchema")).findFirst().orElseThrow().put("outputSchema", Map.of("type", "object"));
         assertRejected(tools, definitions);
     }
 
@@ -104,8 +100,7 @@ class RuntimeArtifactSmokeCatalogTest {
     }
 
     private static void assertRejected(List<Map<String, Object>> tools, List<ToolDefinition> definitions) {
-        IllegalStateException exception = assertThrows(IllegalStateException.class,
-                () -> RuntimeArtifactSmokeMain.verifyToolCatalog(tools, definitions));
+        IllegalStateException exception = assertThrows(IllegalStateException.class, () -> RuntimeArtifactSmokeMain.verifyToolCatalog(tools, definitions));
         assertEquals("Exact JAR tools/list differs from Java-owned tools metadata", exception.getMessage());
     }
 

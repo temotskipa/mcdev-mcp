@@ -41,34 +41,34 @@ class NodeCorpusCaptureInteropTest {
         Files.writeString(temporaryDirectory.resolve("package.json"), "{\"type\":\"module\"}");
         Path indexer = Files.createDirectories(temporaryDirectory.resolve("dist/indexer"));
         Files.writeString(indexer.resolve("index.js"), """
-                export async function buildIndex(options) {
-                  if (options.minecraftVersion !== process.env.EXPECTED_VERSION) throw new Error('Indexer version mismatch');
-                  return { minecraftPackages: ['sample'], totalClasses: 1 };
-                }
-                """);
+                                                       export async function buildIndex(options) {
+                                                         if (options.minecraftVersion !== process.env.EXPECTED_VERSION) throw new Error('Indexer version mismatch');
+                                                         return { minecraftPackages: ['sample'], totalClasses: 1 };
+                                                       }
+                                                       """);
         Path callgraph = Files.createDirectories(temporaryDirectory.resolve("dist/callgraph"));
         Files.writeString(callgraph.resolve("query.js"), """
-                import { join } from 'node:path';
-                export function getCallgraphDbPath(version) {
-                  if (version !== process.env.EXPECTED_VERSION) throw new Error('Callgraph version mismatch');
-                  return join(process.env.XDG_CACHE_HOME, version + '.db');
-                }
-                export async function openDb(version) {
-                  getCallgraphDbPath(version);
-                  return { exec: () => [{ values: [[3]] }] };
-                }
-                export function closeDb() {}
-                """);
+                                                         import { join } from 'node:path';
+                                                         export function getCallgraphDbPath(version) {
+                                                           if (version !== process.env.EXPECTED_VERSION) throw new Error('Callgraph version mismatch');
+                                                           return join(process.env.XDG_CACHE_HOME, version + '.db');
+                                                         }
+                                                         export async function openDb(version) {
+                                                           getCallgraphDbPath(version);
+                                                           return { exec: () => [{ values: [[3]] }] };
+                                                         }
+                                                         export function closeDb() {}
+                                                         """);
         Path cache = Files.createDirectories(temporaryDirectory.resolve("cache"));
         Path indexRoot = Files.createDirectories(cache.resolve("mcdev-mcp/index").resolve(version).resolve("minecraft"));
         Files.writeString(indexRoot.resolve("sample.json"), """
-                {"classes":{"Target":{"fields":[{"name":"value"}],"methods":[{"params":[{"name":"input"}]}]}}}
-                """);
+                                                            {"classes":{"Target":{"fields":[{"name":"value"}],"methods":[{"params":[{"name":"input"}]}]}}}
+                                                            """);
         Path database = Files.writeString(cache.resolve(version + ".db"), "fixture callgraph bytes");
         String databaseHash = HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(Files.readAllBytes(database)));
         Path reviewed = Files.writeString(temporaryDirectory.resolve("reviewed.json"), """
-                {"nodeCallgraphIdentity":{"generator":"fixture-generator","generatorArtifactSha256":"%s","protocol":"method-call-tab-v1","databaseSchema":"sqlite-calls-v1"},"probes":[]}
-                """.formatted("3".repeat(64)));
+                                                                                       {"nodeCallgraphIdentity":{"generator":"fixture-generator","generatorArtifactSha256":"%s","protocol":"method-call-tab-v1","databaseSchema":"sqlite-calls-v1"},"probes":[]}
+                                                                                       """.formatted("3".repeat(64)));
         Path output = temporaryDirectory.resolve("captured.json");
         Path log = temporaryDirectory.resolve("capture.log");
         ProcessBuilder builder = new ProcessBuilder("node", capture.toString(), temporaryDirectory.toString(), version, reviewed.toString(), output.toString(), COMMIT, TREE, SOURCE_HASH, JAR_HASH, databaseHash, database.toString()).directory(temporaryDirectory.toFile()).redirectErrorStream(true).redirectOutput(log.toFile());
@@ -76,13 +76,15 @@ class NodeCorpusCaptureInteropTest {
         builder.environment().put("MCDEV_NODE_ORACLE_TREE", TREE);
         builder.environment().put("XDG_CACHE_HOME", cache.toString());
         builder.environment().put("EXPECTED_VERSION", version);
-        Process process = builder.start();
+        // Process.close() waits indefinitely; keep test shutdown bounded.
+        @SuppressWarnings("resource") Process process = builder.start();
         try {
             assertTrue(process.waitFor(30, TimeUnit.SECONDS), "Node capture timed out");
             assertEquals(0, process.exitValue(), () -> readLog(log));
         } finally {
             if (process.isAlive()) {
-                process.destroyForcibly().waitFor();
+                process.destroyForcibly();
+                assertTrue(process.waitFor(10, TimeUnit.SECONDS), "Node capture did not stop after timeout");
             }
         }
 
