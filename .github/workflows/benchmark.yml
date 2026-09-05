@@ -123,6 +123,8 @@ jobs:
             node_generator_hash="$(jq -er '.nodeCallgraphGeneratorSha256 | ascii_downcase | select(test("^[0-9a-f]{64}$"))' <<<"$entry")"
             expectation="$(jq -er '.expectation' <<<"$entry")"
             expectation_hash="$(jq -er '.expectationSha256 | ascii_downcase | select(test("^[0-9a-f]{64}$"))' <<<"$entry")"
+            classpath_manifest="$(jq -er '.classpathManifest' <<<"$entry")"
+            classpath_hash="$(jq -er '.classpathManifestSha256 | ascii_downcase | select(test("^[0-9a-f]{64}$"))' <<<"$entry")"
             production_cache="$(jq -er '.productionCacheRoot' <<<"$entry")"
             test -d "$source_root"
             test -f "$remapped_jar" && test -f "$node_baseline" && test -f "$node_callgraph" && test -f "$node_generator" && test -f "$expectation"
@@ -138,6 +140,15 @@ jobs:
             test "$(jq -er '.nodeCallgraphSha256' "$expectation")" = "$node_callgraph_hash"
             test "$(jq -er '.nodeCallgraphIdentity.generatorArtifactSha256' "$expectation")" = "$node_generator_hash"
             test "$(sha256sum "$expectation" | cut -d' ' -f1)" = "$expectation_hash"
+            test -f "$classpath_manifest"
+            test "$(sha256sum "$classpath_manifest" | cut -d' ' -f1)" = "$classpath_hash"
+            jq -e --arg version "$version" '.schemaVersion == 1 and .kind == "MOJANG" and .minecraftVersion == $version' "$classpath_manifest" >/dev/null
+            jq -e --arg hash "$classpath_hash" '.schemaVersion == 2 and .classpathManifestSha256 == $hash' "$expectation" >/dev/null
+            classpath_identity="$(jq -er '.classpathIdentity | select(test("^[0-9a-f]{64}$"))' "$expectation")"
+            classpath_root="$(dirname "$(realpath "$classpath_manifest")")"
+            test "$classpath_root" != /
+            test -z "$(find "$classpath_root" -type l -print -quit)"
+            classpath_tree_hash="$(logical_hash "$classpath_root")"
             test "$(jq -er '.sourceLogicalHash' "$node_baseline")" = "$source_hash"
             test "$(jq -er '.remappedJarSha256' "$node_baseline")" = "$remapped_hash"
             destination="$root/inputs/$id"
@@ -147,6 +158,11 @@ jobs:
             cp "$node_baseline" "$root/node-oracle/$id.json"
             cp "$node_callgraph" "$root/node-oracle/$id-callgraph.db"
             cp "$expectation" "$destination/expectation.json"
+            mkdir "$destination/classpath"
+            cp -a --reflink=auto "$classpath_root/." "$destination/classpath/"
+            staged_classpath="$destination/classpath/$(basename "$classpath_manifest")"
+            test "$(logical_hash "$destination/classpath")" = "$classpath_tree_hash"
+            test "$(sha256sum "$staged_classpath" | cut -d' ' -f1)" = "$classpath_hash"
             test "$(logical_hash "$destination/source")" = "$source_hash"
             test "$(sha256sum "$destination/remapped.jar" | cut -d' ' -f1)" = "$remapped_hash"
             test "$(sha256sum "$root/node-oracle/$id-callgraph.db" | cut -d' ' -f1)" = "$node_callgraph_hash"
@@ -157,10 +173,11 @@ jobs:
                 generatorArtifactSha256: $generatorArtifactSha256}' \
               > "$root/node-oracle/$id-provenance.json"
             chmod -R a-w "$destination" "$root/node-oracle/$id.json" "$root/node-oracle/$id-callgraph.db" "$root/node-oracle/$id-provenance.json"
-            printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+            printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
               "$id" "$version" "$destination/source" "$destination/remapped.jar" \
               "$root/node-oracle/$id.json" "$root/node-oracle/$id-callgraph.db" \
               "$destination/expectation.json" "$production_cache" \
+              "$staged_classpath" "$classpath_hash" "$classpath_identity" \
               >> "$root/prepared.tsv"
           done < <(jq -r '.corpora[] | @base64' "$manifest")
           test "$(wc -l < "$root/prepared.tsv")" -eq 2
@@ -189,7 +206,7 @@ jobs:
             npm run build
           )
           oracle_tree="$(git -C "$scratch" rev-parse HEAD^{tree})"
-          while IFS=$'\t' read -r id version source remapped reviewed_baseline node_callgraph expectation production_cache; do
+          while IFS=$'\t' read -r id version source remapped reviewed_baseline node_callgraph expectation production_cache classpath_manifest classpath_hash classpath_identity; do
             capture_script="$BENCHMARK_ROOT/node-oracle/capture-$id.mjs"
             cat > "$capture_script" <<'NODE_CAPTURE'
           import { createHash } from 'node:crypto';
@@ -370,22 +387,31 @@ jobs:
           classpath="benchmark-runtime/harness:$jar"
           worker_counts=(1)
           if (( MAX_WORKERS > 1 )); then worker_counts+=("$MAX_WORKERS"); fi
-          while IFS=$'\t' read -r id version source remapped baseline node_callgraph expectation production_cache; do
+          while IFS=$'\t' read -r id version source remapped baseline node_callgraph expectation production_cache classpath_manifest classpath_hash classpath_identity; do
             hashes=()
             for feature in 26; do
               java_home="$JAVA_HOME_26"
               for workers in "${worker_counts[@]}"; do
                 output="$BENCHMARK_ROOT/reports/qualification/$id/java$feature-workers$workers"
                 mkdir -p "$output"
+                test "$(sha256sum "$classpath_manifest" | cut -d' ' -f1)" = "$classpath_hash"
                 "$java_home/bin/java" -Xmx4g -cp "$classpath" \
                   dev.mcdevmcp.benchmark.CorpusQualificationMain \
                   --minecraft-version "$version" --source-root "$source" \
                   --remapped-jar "$remapped" --node-baseline "$baseline" \
+                  --classpath-manifest "$classpath_manifest" \
                   --expectation "$expectation" --output-root "$output" \
                   --production-cache-root "$production_cache" --workers "$workers"
                 report="$output/corpus-qualification.json"
-                jq -e '.qualified == true' "$report" >/dev/null
-                hashes+=("$(jq -cer '{symbolLogicalHash, callgraphLogicalIdentity, callgraphLogicalHash}' "$report")")
+                test "$(sha256sum "$classpath_manifest" | cut -d' ' -f1)" = "$classpath_hash"
+                jq -e --arg identity "$classpath_identity" --arg hash "$classpath_hash" \
+                  --slurpfile manifest "$classpath_manifest" \
+                  '.schemaVersion == 2 and .qualified == true and
+                   .classpath.kind == "MOJANG" and .classpath.identity == $identity and
+                   .classpath.manifestSha256 == $hash and
+                   .classpath.metadataSha256 == $manifest[0].metadataSha256 and
+                   .classpath.artifacts == $manifest[0].artifacts' "$report" >/dev/null
+                hashes+=("$(jq -cer '{symbolLogicalHash, callgraphLogicalIdentity, callgraphLogicalHash, classpath}' "$report")")
               done
             done
             test "$(printf '%s\n' "${hashes[@]}" | sort -u | wc -l)" -eq 1
@@ -396,17 +422,26 @@ jobs:
           set -euo pipefail
           jar="$(find benchmark-runtime/server -maxdepth 1 -name 'mcdev-mcp-*.jar' -type f -print -quit)"
           classpath="benchmark-runtime/harness:$jar"
-          while IFS=$'\t' read -r id version source remapped baseline node_callgraph expectation production_cache; do
+          while IFS=$'\t' read -r id version source remapped baseline node_callgraph expectation production_cache classpath_manifest classpath_hash classpath_identity; do
             output="$BENCHMARK_ROOT/reports/g1/$id/java26"
             mkdir -p "$output"
+            test "$(sha256sum "$classpath_manifest" | cut -d' ' -f1)" = "$classpath_hash"
             "$JAVA_HOME_26/bin/java" -cp "$classpath" \
               dev.mcdevmcp.benchmark.AnalysisBenchmarkMain \
               --minecraft-version "$version" --source-root "$source" \
               --remapped-jar "$remapped" --server-jar "$jar" --output-root "$output" \
+              --classpath-manifest "$classpath_manifest" \
               --production-cache-root "$production_cache" --workers "$MAX_WORKERS" \
               --machine-id "$MACHINE_ID" --run-id "$GITHUB_RUN_NUMBER-$id-java26" --gc G1
             report="$(find "$output" -maxdepth 1 -name 'benchmark-*.json' -type f -print -quit)"
             test -n "$report"
+            test "$(sha256sum "$classpath_manifest" | cut -d' ' -f1)" = "$classpath_hash"
+            jq -e --arg identity "$classpath_identity" --arg hash "$classpath_hash" \
+              --slurpfile manifest "$classpath_manifest" \
+              '.schemaVersion == 2 and .classpath.kind == "MOJANG" and
+               .classpath.identity == $identity and .classpath.manifestSha256 == $hash and
+               .classpath.metadataSha256 == $manifest[0].metadataSha256 and
+               .classpath.artifacts == $manifest[0].artifacts' "$report" >/dev/null
             test "$(jq -er '.runtime.javaFeature' "$report")" -eq 26
             test "$(jq -er '.result.javaFeature' "$report")" -eq 26
             test "$(jq -er '.serverJarSha256' "$report")" = "$BENCHMARK_JAR_SHA256"
@@ -419,15 +454,29 @@ jobs:
           set -euo pipefail
           jar="$(find benchmark-runtime/server -maxdepth 1 -name 'mcdev-mcp-*.jar' -type f -print -quit)"
           classpath="benchmark-runtime/harness:$jar"
-          while IFS=$'\t' read -r id version source remapped baseline node_callgraph expectation production_cache; do
+          while IFS=$'\t' read -r id version source remapped baseline node_callgraph expectation production_cache classpath_manifest classpath_hash classpath_identity; do
             output="$BENCHMARK_ROOT/reports/parallel-gc/$id/java26"
             mkdir -p "$output"
+            test "$(sha256sum "$classpath_manifest" | cut -d' ' -f1)" = "$classpath_hash"
             "$JAVA_HOME_26/bin/java" -cp "$classpath" \
               dev.mcdevmcp.benchmark.AnalysisBenchmarkMain \
               --minecraft-version "$version" --source-root "$source" \
               --remapped-jar "$remapped" --server-jar "$jar" --output-root "$output" \
+              --classpath-manifest "$classpath_manifest" \
               --production-cache-root "$production_cache" --workers "$MAX_WORKERS" \
               --machine-id "$MACHINE_ID" --run-id "$GITHUB_RUN_NUMBER-$id-java26-parallel" --gc PARALLEL
+            report="$(find "$output" -maxdepth 1 -name 'benchmark-*.json' -type f -print -quit)"
+            test -n "$report"
+            test "$(sha256sum "$classpath_manifest" | cut -d' ' -f1)" = "$classpath_hash"
+            jq -e --arg identity "$classpath_identity" --arg hash "$classpath_hash" \
+              --slurpfile manifest "$classpath_manifest" \
+              '.schemaVersion == 2 and .classpath.kind == "MOJANG" and
+               .classpath.identity == $identity and .classpath.manifestSha256 == $hash and
+               .classpath.metadataSha256 == $manifest[0].metadataSha256 and
+               .classpath.artifacts == $manifest[0].artifacts' "$report" >/dev/null
+            test "$(jq -er '.runtime.javaFeature' "$report")" -eq 26
+            test "$(jq -er '.result.javaFeature' "$report")" -eq 26
+            test "$(jq -er '.serverJarSha256' "$report")" = "$BENCHMARK_JAR_SHA256"
           done < "$BENCHMARK_ROOT/prepared.tsv"
       - name: Summarize manual advisory results
         if: github.event_name == 'workflow_dispatch'
@@ -443,6 +492,7 @@ jobs:
           name: benchmark-raw-${{ github.run_number }}-${{ github.run_attempt }}
           path: |
             ${{ env.BENCHMARK_ROOT }}/corpus-manifest.json
+            ${{ env.BENCHMARK_ROOT }}/inputs/*/classpath/**/*.json
             ${{ env.BENCHMARK_ROOT }}/node-oracle/*.json
             ${{ env.BENCHMARK_ROOT }}/reports/**/*.json
           if-no-files-found: error

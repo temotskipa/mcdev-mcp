@@ -14,6 +14,9 @@ Java 26 corpus qualification and index/callgraph benchmarking are required
 release gates. Java 27 and later may be used as separate experiments but are
 not release targets.
 
+See [corpus qualification and benchmark inputs](benchmark/README.md) for the
+immutable compiler-library manifests and evidence required by those gates.
+
 ## Install
 
 Download one of these assets from the matching GitHub Release:
