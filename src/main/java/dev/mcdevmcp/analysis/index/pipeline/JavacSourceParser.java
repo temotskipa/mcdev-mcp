@@ -18,6 +18,8 @@ import java.util.concurrent.Callable;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 final class JavacSourceParser {
+    static final int MAXIMUM_BATCH_UNITS = 512;
+    static final int MAXIMUM_BATCH_CHARACTERS = 4_194_304;
     private final Runnable compilerStarted;
     private final AtomicBoolean compilerStartedNotified = new AtomicBoolean();
 
@@ -35,17 +37,40 @@ final class JavacSourceParser {
             return new ParsedIndex(List.of(), List.of(), List.of());
         }
         SourceCorpus corpus = preflight(request, classpath, discovered);
-        List<DecodedSource> sources = corpus.sources();
-        boolean hasModuleDescriptor = sources.stream().map(DecodedSource::relativePath).map(Path::getFileName).anyMatch(Path.of("module-info.java")::equals);
-        int workerCount = hasModuleDescriptor ? 1 : Math.min(sources.size(), Math.min(request.threads(), Runtime.getRuntime().availableProcessors()));
-        int batchSize = (sources.size() + workerCount - 1) / workerCount;
+        List<List<DecodedSource>> batches = partition(corpus.sources());
+        int workerCount = Math.min(batches.size(), Math.min(request.threads(), Runtime.getRuntime().availableProcessors()));
         List<Callable<ParsedBatch>> tasks = new ArrayList<>();
-        for (int start = 0; start < sources.size(); start += batchSize) {
-            int end = Math.min(start + batchSize, sources.size());
-            List<DecodedSource> batch = List.copyOf(sources.subList(start, end));
+        for (List<DecodedSource> batch : batches) {
             tasks.add(() -> JavacBatchParser.parse(request, catalog, classpath, corpus, batch, this::observeParsedUnits));
         }
         return JavacTaskExecutor.executeAll(request, workerCount, tasks, this::assembleParsedIndex);
+    }
+
+    static List<List<DecodedSource>> partition(List<DecodedSource> sources) {
+        if (sources.isEmpty()) {
+            return List.of();
+        }
+        boolean hasModuleDescriptor = sources.stream().map(DecodedSource::relativePath).map(Path::getFileName).anyMatch(Path.of("module-info.java")::equals);
+        if (hasModuleDescriptor) {
+            return List.of(List.copyOf(sources));
+        }
+        List<List<DecodedSource>> batches = new ArrayList<>();
+        List<DecodedSource> batch = new ArrayList<>();
+        long characters = 0;
+        for (DecodedSource source : sources) {
+            int length = source.content().length();
+            if (!batch.isEmpty() && (batch.size() == MAXIMUM_BATCH_UNITS || characters + length > MAXIMUM_BATCH_CHARACTERS)) {
+                batches.add(List.copyOf(batch));
+                batch.clear();
+                characters = 0;
+            }
+            batch.add(source);
+            characters += length;
+        }
+        if (!batch.isEmpty()) {
+            batches.add(List.copyOf(batch));
+        }
+        return List.copyOf(batches);
     }
 
     private ParsedIndex assembleParsedIndex(List<ParsedBatch> batches) {
