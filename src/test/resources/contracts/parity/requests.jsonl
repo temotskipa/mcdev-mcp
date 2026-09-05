@@ -45,6 +45,7 @@
 {"label":"runtime-nearby-blocks","kind":"runtime","request":{"jsonrpc":"2.0","id":24,"method":"tools/call","params":{"name":"mc_nearby_blocks","arguments":{"range":8.5,"limit":5}}}}
 {"label":"runtime-block-details","kind":"runtime","request":{"jsonrpc":"2.0","id":25,"method":"tools/call","params":{"name":"mc_block_details","arguments":{"position":{"x":1,"y":64,"z":-2}}}}}
 {"label":"runtime-looked-at-entity","kind":"runtime","request":{"jsonrpc":"2.0","id":26,"method":"tools/call","params":{"name":"mc_looked_at_entity","arguments":{"range":32.5}}}}
+{"label":"runtime-looked-at-entity-null","kind":"runtime","request":{"jsonrpc":"2.0","id":"looked-at-null","method":"tools/call","params":{"name":"mc_looked_at_entity","arguments":{}}}}
 {"label":"runtime-set-entity-glow","kind":"runtime","request":{"jsonrpc":"2.0","id":27,"method":"tools/call","params":{"name":"mc_set_entity_glow","arguments":{"entityId":7,"glow":true}}}}
 {"label":"runtime-set-block-glow","kind":"runtime","request":{"jsonrpc":"2.0","id":28,"method":"tools/call","params":{"name":"mc_set_block_glow","arguments":{"position":{"x":1,"y":64,"z":-2},"glow":true}}}}
 {"label":"runtime-clear-block-glow","kind":"runtime","request":{"jsonrpc":"2.0","id":29,"method":"tools/call","params":{"name":"mc_clear_block_glow","arguments":{}}}}

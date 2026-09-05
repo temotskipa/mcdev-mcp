@@ -64,6 +64,11 @@ class DifferentialMcpTest {
                     Map<String, Object> nodeResponse = execute(node, scenario, nodeBridge.port(), true);
                     Map<String, Object> javaResponse = execute(java, scenario, javaBridge.port(), false);
                     nodeResponses.put(scenario.label(), nodeResponse);
+                    if (scenario.label().equals("runtime-looked-at-entity") || scenario.label().equals("runtime-looked-at-entity-null")) {
+                        String expected = scenario.label().equals("runtime-looked-at-entity") ? "{\n  \"entityId\": 7\n}" : "{\n  \"entityId\": null\n}";
+                        assertEquals(expected, toolText(nodeResponse), "Pinned Node provider-object rendering: " + scenario.label());
+                        assertEquals(expected, toolText(javaResponse), "Java provider-object rendering: " + scenario.label());
+                    }
                     if (scenario.kind().equals("static")) {
                         assertStaticOutcome(scenario, nodeResponse, "Node");
                         assertStaticOutcome(scenario, javaResponse, "Java");

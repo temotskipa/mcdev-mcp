@@ -224,7 +224,7 @@ final class RuntimeToolSupport {
                 return failure;
             }
             LookedAtEntityWireResult result = resultDecoder.decode(McLookedAtEntityTool.ENDPOINT, requireResult(McLookedAtEntityTool.ENDPOINT, response), BridgeResultTypes.LOOKED_AT_ENTITY);
-            return ToolResult.text(result.entityId() == null ? "null" : nodeNumber(result.entityId()));
+            return ToolResult.text(prettyJson(result));
         });
     }
 
@@ -280,6 +280,15 @@ final class RuntimeToolSupport {
             case String text -> target.append(quoted(text));
             case Boolean flag -> target.append(flag);
             case Number number -> target.append(nodeNumber(number));
+            case LookedAtEntityWireResult result -> {
+                target.append("{\n");
+                indent(target, depth + 1);
+                target.append(quoted("entityId")).append(": ");
+                appendJson(target, result.entityId(), depth + 1);
+                target.append('\n');
+                indent(target, depth);
+                target.append('}');
+            }
             case Map<?, ?> object -> appendObject(target, object, depth);
             case List<?> array -> appendArray(target, array, depth);
             default ->

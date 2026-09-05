@@ -119,6 +119,40 @@ class CoreRuntimeToolContractTest {
     }
 
     @Test
+    void lookedAtEntityIgnoresAdditiveProviderFieldsWhenRendering() throws Exception {
+        try (var harness = new BridgeTestHarness(MAPPER, ENVIRONMENT, (_, request) -> {
+            if (request.endpoint().wireName().equals("status")) {
+                return CompletableFuture.completedFuture(RuntimeContractFixtures.status(request.id()));
+            }
+            return CompletableFuture.completedFuture(new BridgeResponse(request.id(), true, true, Map.of("entityId", 7, "futureField", "ignored"), null, null));
+        })) {
+            ToolCatalog catalog = ToolCatalog.load(ENVIRONMENT, CompleteToolBindings.including(MAPPER, RuntimeToolModule.handlers(harness.session(), MAPPER)), MAPPER);
+            ToolResult<?> result = dispatch(catalog, "mc_looked_at_entity", Map.of());
+
+            assertFalse(result.isError());
+            assertEquals("{\n  \"entityId\": 7\n}", contentText(result));
+        }
+    }
+
+    @Test
+    void lookedAtEntityRejectsScalarMissingAndInvalidEntityIds() throws Exception {
+        for (Object malformed : List.of(7, Map.of(), Map.of("entityId", "7"), Map.of("entityId", 7.5), Map.of("entityId", true))) {
+            try (var harness = new BridgeTestHarness(MAPPER, ENVIRONMENT, (_, request) -> {
+                if (request.endpoint().wireName().equals("status")) {
+                    return CompletableFuture.completedFuture(RuntimeContractFixtures.status(request.id()));
+                }
+                return CompletableFuture.completedFuture(new BridgeResponse(request.id(), true, true, malformed, null, null));
+            })) {
+                ToolCatalog catalog = ToolCatalog.load(ENVIRONMENT, CompleteToolBindings.including(MAPPER, RuntimeToolModule.handlers(harness.session(), MAPPER)), MAPPER);
+                ToolResult<?> result = dispatch(catalog, "mc_looked_at_entity", Map.of());
+
+                assertTrue(result.isError(), malformed.toString());
+                assertTrue(contentText(result).contains("DebugBridge lookedAtEntity response has invalid result"), malformed.toString());
+            }
+        }
+    }
+
+    @Test
     void reconnectsAfterPeerDisconnectionAndResetCreatesANewSession() throws Exception {
         try (var harness = new BridgeTestHarness(MAPPER, ENVIRONMENT, (connection, request) -> {
             if (request.endpoint().wireName().equals("status")) {

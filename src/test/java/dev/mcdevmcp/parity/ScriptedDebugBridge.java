@@ -282,7 +282,11 @@ final class ScriptedDebugBridge implements AutoCloseable {
             case "screenshot" -> success(response, screenshotResult());
             case "record_video" -> success(response, recordingResult());
             case "getItemTexture", "getEntityItemTexture", "getItemTextureById" -> success(response, textureResult());
-            case "lookedAtEntity" -> success(response, 7);
+            case "lookedAtEntity" -> {
+                var result = new LinkedHashMap<String, Object>();
+                result.put("entityId", payload.containsKey("range") ? 7 : null);
+                success(response, result);
+            }
             case "nearbyEntities", "entityDetails", "nearbyBlocks", "blockDetails", "chatHistory", "screenInspect" ->
                     success(response, containerResult(type, payload));
             case "setEntityGlow", "setBlockGlow", "clearBlockGlow", "runCommand", "joinServer", "disconnect", "quit" ->

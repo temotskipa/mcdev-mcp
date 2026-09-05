@@ -21,8 +21,8 @@
 {"label":"block-details-success","text":"{\n  \u0022x\u0022: 1,\n  \u0022y\u0022: 64,\n  \u0022z\u0022: 2,\n  \u0022type\u0022: \u0022ChestBlockEntity\u0022,\n  \u0022blockId\u0022: \u0022minecraft:chest\u0022,\n  \u0022items\u0022: []\n}","isError":false}
 {"label":"block-details-declared-error","text":"Error: bridge boom","isError":true}
 {"label":"block-details-missing-result","text":"Bridge \u0027blockDetails\u0027 reported success but returned no result. This is a bridge protocol mismatch \u2014 please verify the DebugBridge mod version.","isError":true}
-{"label":"looked-at-entity-success","text":"12","isError":false}
-{"label":"looked-at-entity-null","text":"null","isError":false}
+{"label":"looked-at-entity-success","text":"{\n  \"entityId\": 12\n}","isError":false}
+{"label":"looked-at-entity-null","text":"{\n  \"entityId\": null\n}","isError":false}
 {"label":"looked-at-entity-declared-error","text":"Error: bridge boom","isError":true}
 {"label":"looked-at-entity-missing-result","text":"Bridge \u0027lookedAtEntity\u0027 reported success but returned no result. This is a bridge protocol mismatch \u2014 please verify the DebugBridge mod version.","isError":true}
 {"label":"looked-at-entity-wrong-primitive","text":"DebugBridge lookedAtEntity response has invalid result for debugbridge.looked-at-entity.v1","isError":true}
