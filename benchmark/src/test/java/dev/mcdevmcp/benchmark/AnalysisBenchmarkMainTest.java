@@ -121,7 +121,7 @@ class AnalysisBenchmarkMainTest {
         IOException phaseFailure = assertThrows(IOException.class, () -> AnalysisBenchmarkMain.runParent(arguments, _ -> child(BenchmarkPhase.CALLGRAPH, 1, 1, 1)));
         assertTrue(phaseFailure.getMessage().contains("wrong phase"));
 
-        BenchmarkRuntimeMetadata otherRuntime = new BenchmarkRuntimeMetadata(RUNTIME.javaFeature(), RUNTIME.vendor() + "-other", RUNTIME.javaVersion(), RUNTIME.runtimeVersion(), RUNTIME.vmName(), RUNTIME.vmVersion(), RUNTIME.vmFlags(), RUNTIME.garbageCollectors());
+        BenchmarkRuntimeMetadata otherRuntime = new BenchmarkRuntimeMetadata(RUNTIME.javaFeature(), RUNTIME.vendor() + "-other", RUNTIME.javaVersion(), RUNTIME.runtimeVersion(), RUNTIME.vmName(), RUNTIME.vmVersion(), RUNTIME.vmFlags(), RUNTIME.garbageCollectors(), RUNTIME.osName(), RUNTIME.memoryMetric());
         IOException runtimeFailure = assertThrows(IOException.class, () -> AnalysisBenchmarkMain.runParent(arguments(fixture, temporaryDirectory.resolve("runtime-output"), fixture.cacheRoot()), command -> command.phase() == BenchmarkPhase.INDEX ? child(BenchmarkPhase.INDEX, 1, 1, 1) : child(BenchmarkPhase.CALLGRAPH, 1, 1, 1, otherRuntime)));
         assertTrue(runtimeFailure.getMessage().contains("different runtimes"));
     }

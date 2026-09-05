@@ -118,7 +118,7 @@ public final class CorpusQualificationMain {
             validateInputsUnchanged(failures, arguments, inputs);
             long postGcHeap = postGcLiveHeapBytes();
             memory.sample();
-            report = new CorpusQualificationReport(1, failures.isEmpty(), failures, arguments.minecraftVersion(), arguments.workers(), inputs.sourceHash(), inputs.jarHash(), symbolHash, callgraphHashes.identity(), callgraphHashes.logicalHash(), unitCounts, evidence.discoveredCompilationUnits(), evidence.parsedCompilationUnits(), evidence.typedCompilationUnits(), evidence.typeFreeCompilationUnits(), evidence.diagnostics(), indexCounts, callgraphCounts, probeEvaluation.probes(), appliedDifferences, memory.peakLiveHeapBytes(), postGcHeap, rssProbe.peakRssBytes());
+            report = new CorpusQualificationReport(1, failures.isEmpty(), failures, arguments.minecraftVersion(), arguments.workers(), inputs.sourceHash(), inputs.jarHash(), symbolHash, callgraphHashes.identity(), callgraphHashes.logicalHash(), unitCounts, evidence.discoveredCompilationUnits(), evidence.parsedCompilationUnits(), evidence.typedCompilationUnits(), evidence.typeFreeCompilationUnits(), evidence.diagnostics(), indexCounts, callgraphCounts, probeEvaluation.probes(), appliedDifferences, memory.peakLiveHeapBytes(), postGcHeap, rssProbe.peakRssBytes(), System.getProperty("os.name"), ProcessPeakMemory.metric());
         }
 
         writeReport(arguments.outputRoot(), report);
@@ -500,17 +500,7 @@ public final class CorpusQualificationMain {
     }
 
     static long peakRssBytes() throws IOException {
-        Path status = Path.of("/proc/self/status");
-        if (!Files.isRegularFile(status, LinkOption.NOFOLLOW_LINKS)) {
-            throw new IOException("VmHWM peak RSS is unavailable on this qualification runner");
-        }
-        for (String line : Files.readAllLines(status, StandardCharsets.US_ASCII)) {
-            if (line.startsWith("VmHWM:")) {
-                String[] parts = line.trim().split("\\s+");
-                return Math.multiplyExact(Long.parseLong(parts[1]), 1024L);
-            }
-        }
-        throw new IOException("Linux process status did not provide VmHWM peak RSS");
+        return ProcessPeakMemory.currentPeakBytes();
     }
 
     private static void writeReport(Path outputRoot, CorpusQualificationReport report) throws IOException {
@@ -523,7 +513,7 @@ public final class CorpusQualificationMain {
             System.gc();
             String zero = "0".repeat(64);
             long liveHeap = ManagementFactory.getMemoryMXBean().getHeapMemoryUsage().getUsed();
-            CorpusQualificationReport report = new CorpusQualificationReport(1, false, List.of("Java heap exhausted: " + failure.getClass().getSimpleName()), arguments.minecraftVersion(), arguments.workers(), zero, zero, zero, zero, zero, new CompilationUnitCounts(0, 0, 0, 0), List.of(), List.of(), List.of(), List.of(), List.of(), new CorpusIndexCounts(0, 0, 0, 0, 0), new CorpusCallgraphCounts(0, 0, 0), List.of(), List.of(), liveHeap, liveHeap, 0);
+            CorpusQualificationReport report = new CorpusQualificationReport(1, false, List.of("Java heap exhausted: " + failure.getClass().getSimpleName()), arguments.minecraftVersion(), arguments.workers(), zero, zero, zero, zero, zero, new CompilationUnitCounts(0, 0, 0, 0), List.of(), List.of(), List.of(), List.of(), List.of(), new CorpusIndexCounts(0, 0, 0, 0, 0), new CorpusCallgraphCounts(0, 0, 0), List.of(), List.of(), liveHeap, liveHeap, 0, System.getProperty("os.name"), ProcessMemoryMetric.UNAVAILABLE);
             writeReport(arguments.outputRoot(), report);
         } catch (Throwable reportFailure) {
             failure.addSuppressed(reportFailure);

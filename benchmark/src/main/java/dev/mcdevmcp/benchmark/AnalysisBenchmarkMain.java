@@ -200,20 +200,7 @@ public final class AnalysisBenchmarkMain {
     }
 
     static long peakRssBytes() throws IOException {
-        Path status = Path.of("/proc/self/status");
-        if (!Files.isRegularFile(status, LinkOption.NOFOLLOW_LINKS)) {
-            throw new IOException("Peak RSS measurement is unavailable on this runner; benchmark evidence must not be fabricated");
-        }
-        for (String line : Files.readAllLines(status, StandardCharsets.US_ASCII)) {
-            if (line.startsWith("VmHWM:")) {
-                String[] parts = line.trim().split("\\s+");
-                if (parts.length < 2) {
-                    break;
-                }
-                return Math.multiplyExact(Long.parseLong(parts[1]), 1024L);
-            }
-        }
-        throw new IOException("Linux process status did not provide VmHWM peak RSS");
+        return ProcessPeakMemory.currentPeakBytes();
     }
 
     static String sha256Tree(Path root) throws Exception {
