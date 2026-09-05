@@ -26,6 +26,6 @@ final class CompilerConfiguration {
     }
 
     static List<String> options() {
-        return List.of("--release", "25", "-proc:none", "-implicit:none", "-encoding", "UTF-8");
+        return List.of("--release", "25", "-proc:none", "-implicit:none", "-encoding", "UTF-8", "-Xmaxerrs", "0", "-Xmaxwarns", "0");
     }
 }

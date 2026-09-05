@@ -26,14 +26,21 @@ public final class SourceIndexPipeline {
 
     private final JavacSourceParser parser;
     private final SymbolIndexWriter writer;
+    private final Runnable beforeEvidence;
 
     public SourceIndexPipeline() {
         this(new JavacSourceParser(), new SymbolIndexWriter());
     }
 
     SourceIndexPipeline(JavacSourceParser parser, SymbolIndexWriter writer) {
+        this(parser, writer, () -> {
+        });
+    }
+
+    SourceIndexPipeline(JavacSourceParser parser, SymbolIndexWriter writer, Runnable beforeEvidence) {
         this.parser = Objects.requireNonNull(parser, "parser");
         this.writer = Objects.requireNonNull(writer, "writer");
+        this.beforeEvidence = Objects.requireNonNull(beforeEvidence, "beforeEvidence");
     }
 
     private static void validateInputs(IndexRequest request) throws IOException {
@@ -102,16 +109,18 @@ public final class SourceIndexPipeline {
             }
             request.cancellation().throwIfCancelled();
             String remappedJarSha256 = sha256(request.remappedJar());
-            request.progress().report("index", 75, "Writing validated symbol database");
-            IndexCounts counts = writer.write(request, parsed, remappedJarSha256, Instant.now());
-            Duration elapsed = Duration.ofNanos(System.nanoTime() - started);
-            request.progress().report("index", 100, "Indexed " + counts.types() + " Java types");
+            beforeEvidence.run();
             var discovered = corpus.sources().stream().map(DecodedSource::relativeName).toList();
             var parsedUnits = parsed.parsedCompilationUnits();
             var typed = parsed.types().stream().map(type -> new PortablePath(type.sourcePath()).value()).distinct().toList();
             var typeFree = parsedUnits.stream().filter(path -> !typed.contains(path)).toList();
             var diagnostics = parsed.diagnostics().stream().map(IndexDiagnostic::display).toList();
-            return new IndexSummary(counts.packages(), counts.types(), counts.fields(), counts.methods(), counts.parameters(), elapsed, new IndexBuildEvidence(discovered, parsedUnits, typed, typeFree, diagnostics));
+            IndexBuildEvidence evidence = new IndexBuildEvidence(discovered, parsedUnits, typed, typeFree, diagnostics);
+            request.progress().report("index", 75, "Writing validated symbol database");
+            IndexCounts counts = writer.write(request, parsed, remappedJarSha256, Instant.now());
+            Duration elapsed = Duration.ofNanos(System.nanoTime() - started);
+            request.progress().report("index", 100, "Indexed " + counts.types() + " Java types");
+            return new IndexSummary(counts.packages(), counts.types(), counts.fields(), counts.methods(), counts.parameters(), elapsed, evidence);
         } catch (IndexBuildException exception) {
             throw exception;
         } catch (InterruptedException exception) {
