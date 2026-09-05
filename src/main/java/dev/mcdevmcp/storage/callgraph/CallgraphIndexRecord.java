@@ -2,7 +2,7 @@ package dev.mcdevmcp.storage.callgraph;
 
 import java.util.Objects;
 
-public record CallgraphIndexRecord(String className, String methodName, long byteOffset, long byteLength, long rowCount) {
+public value record CallgraphIndexRecord(String className, String methodName, long byteOffset, long byteLength, long rowCount) {
     public CallgraphIndexRecord {
         className = requireIdentity(className, "className");
         methodName = requireIdentity(methodName, "methodName");

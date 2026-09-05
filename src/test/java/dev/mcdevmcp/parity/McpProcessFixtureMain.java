@@ -103,12 +103,14 @@ final class McpProcessFixtureMain {
         awaitParentEof();
     }
 
+    @SuppressWarnings("resource")
     private static void materializerTree(Path childPidFile) throws IOException, InterruptedException {
         Process child = spawnSleeper();
         Files.writeString(childPidFile, Long.toString(child.pid()), StandardCharsets.UTF_8);
         Thread.sleep(Duration.ofDays(1));
     }
 
+    @SuppressWarnings("resource")
     private static void materializerTreeRootExits(Path childPidFile) throws IOException, InterruptedException {
         Process child = spawnInheritedSleeper();
         Files.writeString(childPidFile, Long.toString(child.pid()), StandardCharsets.UTF_8);
@@ -122,12 +124,12 @@ final class McpProcessFixtureMain {
 
     private static Process spawnSleeper() throws IOException {
         String java = ProcessHandle.current().info().command().orElseThrow();
-        return new ProcessBuilder(java, "-cp", System.getProperty("java.class.path"), McpProcessFixtureMain.class.getName(), "materializer-sleep").start();
+        return new ProcessBuilder(java, "--enable-preview", "-cp", System.getProperty("java.class.path"), McpProcessFixtureMain.class.getName(), "materializer-sleep").start();
     }
 
     private static Process spawnInheritedSleeper() throws IOException {
         String java = ProcessHandle.current().info().command().orElseThrow();
-        return new ProcessBuilder(java, "-cp", System.getProperty("java.class.path"), McpProcessFixtureMain.class.getName(), "materializer-sleep").redirectOutput(ProcessBuilder.Redirect.INHERIT).redirectError(ProcessBuilder.Redirect.INHERIT).start();
+        return new ProcessBuilder(java, "--enable-preview", "-cp", System.getProperty("java.class.path"), McpProcessFixtureMain.class.getName(), "materializer-sleep").redirectOutput(ProcessBuilder.Redirect.INHERIT).redirectError(ProcessBuilder.Redirect.INHERIT).start();
     }
 
     private static void malformedJson() throws IOException {

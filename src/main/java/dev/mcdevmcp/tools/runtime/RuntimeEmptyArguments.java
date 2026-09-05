@@ -1,4 +1,4 @@
 package dev.mcdevmcp.tools.runtime;
 
-record RuntimeEmptyArguments() {
+value record RuntimeEmptyArguments() {
 }

@@ -1,4 +1,4 @@
 package dev.mcdevmcp.mcp.tool.api;
 
-record BindingArguments(String value) {
+value record BindingArguments(String value) {
 }

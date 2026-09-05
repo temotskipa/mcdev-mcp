@@ -1,4 +1,11 @@
 package dev.mcdevmcp.tools.runtime;
 
-record ScreenshotResult(String path, int width, int height, long sizeBytes, String mimeType) {
+import java.nio.file.Path;
+import java.util.Objects;
+
+value record ScreenshotResult(Path path, int width, int height, long sizeBytes, String mimeType) {
+    public ScreenshotResult {
+        Objects.requireNonNull(path, "path");
+        Objects.requireNonNull(mimeType, "mimeType");
+    }
 }

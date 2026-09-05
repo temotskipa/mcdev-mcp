@@ -16,7 +16,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
-public final class McpbBundleSmokeMain {
+public final value class McpbBundleSmokeMain {
     private static final Duration TIMEOUT = Duration.ofSeconds(15);
     private static final McpJsonMapper MAPPER = McpJsonDefaults.getMapper();
     private static final TypeRef<Map<String, Object>> MAP_TYPE = new TypeRef<>() {

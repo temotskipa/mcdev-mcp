@@ -73,11 +73,11 @@ enum CallgraphDirection {
         return new LookupKey(lookupClass(record), lookupMethod(record));
     }
 
-    String dataFile() {
+    String dataFileName() {
         return dataArtifact.fileName();
     }
 
-    String indexFile() {
+    String indexFileName() {
         return indexArtifact.fileName();
     }
 

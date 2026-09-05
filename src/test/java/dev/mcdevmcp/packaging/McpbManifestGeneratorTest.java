@@ -1,13 +1,16 @@
 package dev.mcdevmcp.packaging;
 
-import dev.mcdevmcp.mcp.tool.ToolCatalog;
-import dev.mcdevmcp.mcp.tool.ToolMetadata;
+import dev.mcdevmcp.mcp.McpServerFactory;
+import dev.mcdevmcp.mcp.McpContractTestSupport;
+import dev.mcdevmcp.mcp.tool.ToolDefinition;
+import dev.mcdevmcp.support.AppVersion;
 import dev.mcdevmcp.support.JsonResourceReader;
 import io.modelcontextprotocol.json.McpJsonDefaults;
 import io.modelcontextprotocol.json.TypeRef;
 import org.junit.jupiter.api.Test;
 
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 
@@ -19,17 +22,20 @@ class McpbManifestGeneratorTest {
         var mapper = McpJsonDefaults.getMapper();
         Map<String, Object> template = mapper.readValue(new JsonResourceReader(mapper).readText("/contracts/mcpb/manifest.json"), new TypeRef<>() {
         });
-        ToolMetadata[] metadata = ToolCatalog.loadMetadata(mapper);
-
-        Map<String, Object> manifest = McpbManifestGenerator.generatedRootManifest(template, "3.0.0", metadata);
+        Map<String, Object> manifest;
+        List<ToolDefinition> definitions;
+        try (var composition = McpServerFactory.declarativeComposition(new dev.mcdevmcp.support.AppEnvironment(Map.of()), mapper)) {
+            definitions = composition.definitions();
+            manifest = McpbManifestGenerator.generatedRootManifest(template, "3.0.0", definitions);
+        }
 
         assertEquals("0.3", manifest.get("manifest_version"));
         assertEquals("3.0.0", manifest.get("version"));
         assertNull(manifest.get("server"));
         List<Map<String, Object>> tools = maps(manifest.get("tools"));
-        assertEquals(metadata.length, tools.size());
+        assertEquals(definitions.size(), tools.size());
         assertTrue(tools.stream().anyMatch(tool -> tool.get("name").equals("mc_record_video")));
-        for (ToolMetadata tool : metadata) {
+        for (ToolDefinition tool : definitions) {
             Map<String, Object> generated = tools.stream().filter(candidate -> candidate.get("name").equals(tool.name())).findFirst().orElseThrow();
             assertEquals(tool.description(), generated.get("description"));
             assertEquals(tool.inputSchema(), generated.get("inputSchema"));
@@ -66,6 +72,26 @@ class McpbManifestGeneratorTest {
         assertEquals(generatedRoot.get("name"), generatedStaging.get("name"));
         assertFalse(generatedRoot.containsKey("server"));
         assertTrue(generatedStaging.containsKey("server"));
+
+        try (var composition = McpServerFactory.declarativeComposition(new dev.mcdevmcp.support.AppEnvironment(Map.of()), mapper)) {
+            List<ToolDefinition> definitions = composition.definitions();
+            List<Map<String, Object>> rootTools = maps(generatedRoot.get("tools"));
+            List<Map<String, Object>> stagingTools = maps(generatedStaging.get("tools"));
+            assertEquals(33, definitions.size());
+            assertEquals(definitions.size(), rootTools.size());
+            assertEquals(definitions.size(), stagingTools.size());
+            for (int index = 0; index < definitions.size(); index++) {
+                ToolDefinition definition = definitions.get(index);
+                Map<String, Object> rootTool = rootTools.get(index);
+                Map<String, Object> stagingTool = stagingTools.get(index);
+                assertEquals(definition.name(), rootTool.get("name"));
+                assertEquals(definition.description(), rootTool.get("description"));
+                assertEquals(McpContractTestSupport.normalize(definition.inputSchema()), McpContractTestSupport.normalize(rootTool.get("inputSchema")));
+                assertEquals(Map.of("name", definition.name(), "description", definition.description()), stagingTool);
+                assertFalse(stagingTool.containsKey("inputSchema"));
+            }
+        }
+        assertEquals(Map.of("entry_point", "bootstrap.cjs", "type", "node", "mcp_config", Map.of("command", "node", "args", List.of("bootstrap.cjs"), "env", Map.of("MCDEV_SESSION_LOG_DIR", "${user_config.script_logs}", "MCDEV_RUN_COMMAND", "${user_config.run_command}", "MCDEV_MCP_DEBUG_LOG", "${user_config.debug_log}", "MCDEV_INDEX_THREADS", "${user_config.index_threads}", "DEBUGBRIDGE_PORT", "${user_config.debugbridge_port}"))), generatedStaging.get("server"));
     }
 
     @Test
@@ -86,6 +112,20 @@ class McpbManifestGeneratorTest {
         Map<String, Object> generated = McpJsonDefaults.getMapper().readValue(Files.readString(firstRoot), new TypeRef<>() {
         });
         assertEquals(List.of("manifest_version", "name", "display_name", "description", "author", "version", "tools", "user_config"), List.copyOf(generated.keySet()));
+    }
+
+    @Test
+    void checkedInRootManifestMatchesCurrentCatalog() throws Exception {
+        var root = Files.createTempDirectory("mcpb-manifest-checked-in");
+        var generatedRoot = root.resolve("manifest.json");
+        var generatedStaging = root.resolve("staging/manifest.json");
+
+        McpbManifestGenerator.generate(Path.of("packaging/mcpb/manifest.template.json"), generatedRoot, generatedStaging);
+
+        assertArrayEquals(Files.readAllBytes(Path.of("manifest.json")), Files.readAllBytes(generatedRoot));
+        Map<String, Object> generated = McpJsonDefaults.getMapper().readValue(Files.readString(generatedRoot), new TypeRef<>() {
+        });
+        assertEquals(AppVersion.current(), generated.get("version"));
     }
 
     @SuppressWarnings("unchecked")

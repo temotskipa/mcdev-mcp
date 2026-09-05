@@ -1,17 +1,19 @@
 package dev.mcdevmcp.tools.runtime;
 
 import dev.mcdevmcp.bridge.BridgeEndpoint;
-import dev.mcdevmcp.mcp.tool.api.ToolBinding;
-import dev.mcdevmcp.mcp.tool.api.ArgumentDecoder;
+import dev.mcdevmcp.bridge.payload.EntityDetailsPayload;
+import dev.mcdevmcp.mcp.tool.ToolDeclaration;
+import dev.mcdevmcp.mcp.tool.api.ContentToolBinding;
 
 final class McEntityDetailsTool {
+    static final ToolDeclaration<EntityDetailsArguments> DECLARATION = ToolDeclaration.of("mc_entity_details", EntityDetailsArguments.class);
+
     private static final BridgeEndpoint ENDPOINT = new BridgeEndpoint("entityDetails");
 
     private McEntityDetailsTool() {
     }
 
-    static ToolBinding<EntityDetailsArguments> binding(RuntimeToolSupport support) {
-        var decoder = ArgumentDecoder.sdk(EntityDetailsWireArguments.class).map(EntityDetailsArguments::from);
-        return ToolBinding.compatibility(decoder, (arguments, _) -> support.container(ENDPOINT, RuntimeToolSupport.payload("entityId", arguments.entityId())));
+    static ContentToolBinding<EntityDetailsArguments> binding(RuntimeToolSupport support) {
+        return DECLARATION.bind((arguments, _) -> support.container(ENDPOINT, new EntityDetailsPayload(arguments.entityId())));
     }
 }

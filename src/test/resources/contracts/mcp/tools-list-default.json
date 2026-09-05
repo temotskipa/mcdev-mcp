@@ -22,7 +22,8 @@
           },
           "required": [
             "action"
-          ]
+          ],
+          "additionalProperties": false
         }
       },
       {
@@ -45,8 +46,8 @@
               "description": "Optional: filter by type (class, method, or field)"
             },
             "limit": {
-              "type": "number",
-              "description": "Optional: max results to return (default 50, ceiling 1000). Non-positive or non-finite values fall back to the default.",
+              "type": "integer",
+              "description": "Optional: max results to return (default 50, ceiling 1000). Omit this property to use the default; values below 1 are invalid; oversized values are capped.",
               "minimum": 1
             },
             "version": {
@@ -56,7 +57,8 @@
           },
           "required": [
             "query"
-          ]
+          ],
+          "additionalProperties": false
         }
       },
       {
@@ -86,7 +88,8 @@
           },
           "required": [
             "className"
-          ]
+          ],
+          "additionalProperties": false
         }
       },
       {
@@ -111,7 +114,8 @@
           "required": [
             "className",
             "methodName"
-          ]
+          ],
+          "additionalProperties": false
         }
       },
       {
@@ -137,8 +141,8 @@
               "description": "callers = who calls this method, callees = what this method calls"
             },
             "limit": {
-              "type": "number",
-              "description": "Optional: max results to return (default 100, ceiling 5000). Non-positive or non-finite values fall back to the default.",
+              "type": "integer",
+              "description": "Optional: max results to return (default 100, ceiling 5000). Omit this property to use the default; values below 1 are invalid; oversized values are capped.",
               "minimum": 1
             },
             "version": {
@@ -150,7 +154,8 @@
             "className",
             "methodName",
             "direction"
-          ]
+          ],
+          "additionalProperties": false
         }
       },
       {
@@ -164,8 +169,8 @@
               "description": "Package path to list classes from (e.g., \"net.minecraft.client\", \"net.minecraft.world.entity\"). Matches exact package and all subpackages."
             },
             "limit": {
-              "type": "number",
-              "description": "Optional: max results to return (default 200, ceiling 5000). Non-positive or non-finite values fall back to the default.",
+              "type": "integer",
+              "description": "Optional: max results to return (default 200, ceiling 5000). Omit this property to use the default; values below 1 are invalid; oversized values are capped.",
               "minimum": 1
             },
             "version": {
@@ -175,7 +180,8 @@
           },
           "required": [
             "packagePath"
-          ]
+          ],
+          "additionalProperties": false
         }
       },
       {
@@ -193,8 +199,8 @@
               "description": "Optional: filter by namespace (minecraft or fabric)"
             },
             "limit": {
-              "type": "number",
-              "description": "Optional: max results to return (default 500, ceiling 5000). Non-positive or non-finite values fall back to the default.",
+              "type": "integer",
+              "description": "Optional: max results to return (default 500, ceiling 5000). Omit this property to use the default; values below 1 are invalid; oversized values are capped.",
               "minimum": 1
             },
             "version": {
@@ -202,7 +208,7 @@
               "description": "Optional: Minecraft version to use (e.g., \"1.21.1\"). If not provided, uses the active version set by mc_version."
             }
           },
-          "required": []
+          "additionalProperties": false
         }
       },
       {
@@ -224,8 +230,8 @@
               "description": "subclasses = classes that extend this class, implementors = classes that implement this interface"
             },
             "limit": {
-              "type": "number",
-              "description": "Optional: max results to return (default 200, ceiling 5000). Non-positive or non-finite values fall back to the default.",
+              "type": "integer",
+              "description": "Optional: max results to return (default 200, ceiling 5000). Omit this property to use the default; values below 1 are invalid; oversized values are capped.",
               "minimum": 1
             },
             "version": {
@@ -236,7 +242,8 @@
           "required": [
             "className",
             "direction"
-          ]
+          ],
+          "additionalProperties": false
         }
       },
       {
@@ -246,20 +253,23 @@
           "type": "object",
           "properties": {
             "port": {
-              "type": "number",
-              "description": "WebSocket port. Default: scan 9876-9886"
+              "type": "integer",
+              "description": "WebSocket port. Default: scan 9876-9886",
+              "minimum": 1,
+              "maximum": 65535
             },
             "reset": {
               "type": "boolean",
-              "description": "Disconnect and clear state before connecting (for switching instances)"
+              "description": "Disconnect and clear state before connecting (for switching instances)",
+              "default": false
             }
           },
-          "required": []
+          "additionalProperties": false
         }
       },
       {
         "name": "mc_execute",
-        "description": "Execute GROOVY code in the Minecraft session (the runtime migrated from Lua to Apache Groovy 5 in mid-2026 — see the migration note at the end if you knew the old surface). The binding is persistent: undeclared assignments (x = 5) survive to later calls; def x is script-local.\n\nPREFER NATIVE TOOLS WHERE POSSIBLE — they're faster and avoid script overhead:\n- Player state (x/y/z/yaw/pitch/look/velocity/vehicle/raycast target/world): mc_snapshot\n- Nearby entities or one entity's details: mc_nearby_entities / mc_entity_details\n- Nearby block entities (signs, chests, etc.): mc_nearby_blocks / mc_block_details\n- Open screen / inventory contents: mc_screen_inspect\n- Recent chat: mc_chat_history\n- Item textures: mc_get_item_texture (by slot or by id)\nReach for mc_execute when you need to explore the Java API or do something\nthe native tools don't cover.\n\nPre-bound globals: mc (Minecraft instance), player, level — plus the \"java\" helper.\n\nMojang names everywhere, on every Minecraft version: obj.foo reads a field\n(JavaBean getter fallback), obj.foo(args) calls a method. Overloads resolve by\nargument types; decimal literals coerce to double/float params.\n\nMinecraft classes can't be named directly on obfuscated builds — load them via\njava.type: def Vec3 = java.type('net.minecraft.world.phys.Vec3'); construct with\nVec3(1, 2, 3) or Vec3.create(1, 2, 3). (Single-quote class names: double-quoted\nGStrings interpolate the $ in inner-class names.)\n\nThe \"java\" helper provides:\n- java.type(className) - class handle for statics + construction, by Mojang name\n- java.list(x) - Java collection/array -> Groovy List (use for iteration)\n- java.typeName(obj) - the Mojang class name\n- java.isNull(obj) - null check\n- java.ref(refId) - retrieve a stored object reference ($ref_N from results)\n- sync { ... } - run the closure ON THE GAME THREAD in one hop. Use it to batch\n  bulk loops (hundreds of entities/slots run in milliseconds instead of one\n  thread-hop per call): sync { java.list(level.entitiesForRendering()).collect { java.typeName(it) } }\n\nReflection helpers for exploring API:\n- java.describe(obj) - full dump: class, fields, methods, supers\n- java.methods(obj, [filter]) - list methods (optional name filter)\n- java.fields(obj, [filter]) - list fields (optional name filter)\n- java.supers(obj) - class hierarchy and interfaces\n- java.find(pattern, [scope]) - search mappings for classes/methods/fields\n\nPlain JDK classes work natively (System.currentTimeMillis(), new File(path).text = \"...\").\nSandbox: Runtime / ProcessBuilder / java.net.* are blocked; file I/O is allowed.\nCaveat: bridge-wrapped Minecraft objects don't auto-unwrap when passed to NATIVE\nJava calls like new File(wrappedFile, name) — pass strings/primitives or unwrap\nwith wrapped.getTarget(). Bridge-dispatched calls (anything on mc/player/level or\na java.type class) unwrap arguments automatically.\n\nUse \"return <value>\" to get a value back; println/print output is captured.\nReturned Minecraft objects serialize as {className, ref, toString, fields} —\nresume them later with java.ref(ref).\n\ntimeoutMs: optional per-call deadline in ms (default 10000, max 300000 = 5 min).\nBump it for bulk reflection or heavy file I/O — but prefer sync{} batching or a\nnative tool over raising the timeout.\n\nMIGRATING FROM THE OLD LUA SURFACE (pre-2026-06): obj:method(args) -> obj.method(args);\njava.import(name) -> java.type(name); java.new(Cls, args) -> Cls(args) or\nCls.create(args); java.iter/java.array -> java.list; java.typeof -> java.typeName;\njava.cast - removed (dispatch walks the runtime hierarchy, no cast needed);\nio.open(...) -> new File(...); os.time() -> System.currentTimeMillis();\nprint(x) -> println x; pcall -> try/catch; local x -> def x;\n{a = 1} tables -> [a: 1] maps and [1, 2, 3] lists.",
+        "description": "Execute GROOVY code in the Minecraft session (the runtime migrated from Lua to Apache Groovy 5 in mid-2026 — see the migration note at the end if you knew the old surface). The binding is persistent: undeclared assignments (x = 5) survive to later calls; def x is script-local.\n\nPREFER NATIVE TOOLS WHERE POSSIBLE — they're faster and avoid script overhead:\n- Player state (x/y/z/yaw/pitch/look/velocity/vehicle/raycast target/world): mc_snapshot\n- Nearby entities or one entity's details: mc_nearby_entities / mc_entity_details\n- Nearby block entities (signs, chests, etc.): mc_nearby_blocks / mc_block_details\n- Open screen / inventory contents: mc_screen_inspect\n- Recent chat: mc_chat_history\n- Item textures: mc_get_item_texture (by slot or by id)\nReach for mc_execute when you need to explore the Java API or do something\nthe native tools don't cover.\n\nPre-bound globals: mc (Minecraft instance), player, level — plus the \"java\" helper.\n\nMojang names everywhere, on every Minecraft version: obj.foo reads a field\n(JavaBean getter fallback), obj.foo(args) calls a method. Overloads resolve by\nargument types; decimal literals coerce to double/float params.\n\nMinecraft classes can't be named directly on obfuscated builds — load them via\njava.type: def Vec3 = java.type('net.minecraft.world.phys.Vec3'); construct with\nVec3(1, 2, 3) or Vec3.create(1, 2, 3). (Single-quote class names: double-quoted\nGStrings interpolate the $ in inner-class names.)\n\nThe \"java\" helper provides:\n- java.type(className) - class handle for statics + construction, by Mojang name\n- java.list(x) - Java collection/array -> Groovy List (use for iteration)\n- java.typeName(obj) - the Mojang class name\n- java.isNull(obj) - null check\n- java.ref(refId) - retrieve a stored object reference ($ref_N from results)\n- sync { ... } - run the closure ON THE GAME THREAD in one hop. Use it to batch\n  bulk loops (hundreds of entities/slots run in milliseconds instead of one\n  thread-hop per call): sync { java.list(level.entitiesForRendering()).collect { java.typeName(it) } }\n\nReflection helpers for exploring API:\n- java.describe(obj) - full dump: class, fields, methods, supers\n- java.methods(obj, [filter]) - list methods (optional name filter)\n- java.fields(obj, [filter]) - list fields (optional name filter)\n- java.supers(obj) - class hierarchy and interfaces\n- java.find(pattern, [scope]) - search mappings for classes/methods/fields\n\nPlain JDK classes work natively (System.currentTimeMillis(), new File(path).text = \"...\").\nSandbox: Runtime / ProcessBuilder / java.net.* are blocked; file I/O is allowed.\nCaveat: bridge-wrapped Minecraft objects don't auto-unwrap when passed to NATIVE\nJava calls like new File(wrappedFile, name) — pass strings/primitives or unwrap\nwith wrapped.getTarget(). Bridge-dispatched calls (anything on mc/player/level or\na java.type class) unwrap arguments automatically.\n\nUse \"return <value>\" to get a value back; println/print output is captured.\nReturned Minecraft objects serialize as {className, ref, toString, fields} —\nresume them later with java.ref(ref).\n\ntimeoutSeconds: optional per-call deadline in seconds (default 10, max 300 = 5 min).\nBump it for bulk reflection or heavy file I/O — but prefer sync{} batching or a\nnative tool over raising the timeout.\n\nMIGRATING FROM THE OLD LUA SURFACE (pre-2026-06): obj:method(args) -> obj.method(args);\njava.import(name) -> java.type(name); java.new(Cls, args) -> Cls(args) or\nCls.create(args); java.iter/java.array -> java.list; java.typeof -> java.typeName;\njava.cast - removed (dispatch walks the runtime hierarchy, no cast needed);\nio.open(...) -> new File(...); os.time() -> System.currentTimeMillis();\nprint(x) -> println x; pcall -> try/catch; local x -> def x;\n{a = 1} tables -> [a: 1] maps and [1, 2, 3] lists.",
         "inputSchema": {
           "type": "object",
           "properties": {
@@ -267,16 +277,18 @@
               "type": "string",
               "description": "Groovy code to execute"
             },
-            "timeoutMs": {
-              "type": "integer",
-              "description": "Optional per-call execution deadline in milliseconds. Range 1000-300000, default 10000 (10s). Use a longer value for bulk reflection or heavy file I/O.",
-              "minimum": 1000,
-              "maximum": 300000
+            "timeoutSeconds": {
+              "type": "number",
+              "description": "Optional per-call execution deadline in seconds. Range 1-300, default 10 (10s). Use a longer value for bulk reflection or heavy file I/O.",
+              "minimum": 1,
+              "maximum": 300,
+              "default": 10
             }
           },
           "required": [
             "code"
-          ]
+          ],
+          "additionalProperties": false
         }
       },
       {
@@ -285,7 +297,7 @@
         "inputSchema": {
           "type": "object",
           "properties": {},
-          "required": []
+          "additionalProperties": false
         }
       },
       {
@@ -295,39 +307,67 @@
           "type": "object",
           "properties": {
             "downscale": {
-              "type": "number",
-              "description": "Integer downscale factor. 1 = full window resolution. 2 = half each axis (default)."
+              "type": "integer",
+              "description": "Integer downscale factor. 1 = full window resolution. 2 = half each axis (default).",
+              "minimum": 1,
+              "default": 2
             },
             "quality": {
               "type": "number",
-              "description": "JPEG quality in [0.05, 1.0]. Default: 0.75."
+              "description": "JPEG quality in [0.05, 1.0]. Default: 0.75.",
+              "minimum": 0.05,
+              "maximum": 1,
+              "default": 0.75
             }
           },
-          "required": []
+          "additionalProperties": false
         }
       },
       {
         "name": "mc_record_video",
-        "description": "Capture a short burst of the Minecraft client framebuffer for debugging\ntemporal rendering issues — animation glitches, shader bugs, particles,\nsub-tick artifacts that mc_screenshot can't resolve. Use the Read tool to\nview the result.\n\nTwo output modes:\n- \"grid\" (default): one composed JPEG laid out as a frame grid. Best for\n  Claude — the whole recording in a single Read.\n- \"frames\": N separate JPEGs. Use only when you need to inspect individual\n  frames closely.\n\nCaps (validated mod-side, request rejected if exceeded):\n- frames: 1..300 (≈5 s at 60 Hz)\n- interval: \"frame\" (every render tick) or milliseconds >= 1\n- downscale: integer >= 1 (default 2)\n- quality: [0.05, 1.0] (default 0.75)\n\nPick interval deliberately. Default to a numeric ms (50–100 ms is usually\nright) — smooth motion, never drops frames. Use \"frame\" only when sub-tick\ndetail matters; at that cadence the encoder may fall behind and the\nresponse's \"dropped\" count tells you how many frames were skipped.\n\nThe mod and the MCP server must run on the same machine for the returned\npaths to be readable here. Files land under\n<gameDir>/debugbridge-recordings/<requestId>/.",
+        "description": "Capture a short burst of the Minecraft client framebuffer for debugging\ntemporal rendering issues — animation glitches, shader bugs, particles,\nsub-tick artifacts that mc_screenshot can't resolve. Use the Read tool to\nview the result.\n\nTwo output modes:\n- \"grid\" (default): one composed JPEG laid out as a frame grid. Best for\n  Claude — the whole recording in a single Read.\n- \"frames\": N separate JPEGs. Use only when you need to inspect individual\n  frames closely.\n\nCaps (validated mod-side, request rejected if exceeded):\n- frames: 1..300 (≈5 s at 60 Hz)\n- interval: {kind:\"frame\"} (every render tick) or {kind:\"fixed\",intervalSeconds:0.05} (fixed seconds >= 0.001)\n- downscale: integer >= 1 (default 2)\n- quality: [0.05, 1.0] (default 0.75)\n\nPick interval deliberately. Default to {kind:\"frame\"} (every render tick). Use a fixed interval such as\n{kind:\"fixed\",intervalSeconds:0.05} for smooth motion, never drops frames. At frame cadence, the\nencoder may fall behind and the response's \"dropped\" count tells you how many frames were skipped.\n\nThe mod and the MCP server must run on the same machine for the returned\npaths to be readable here. Files land under\n<gameDir>/debugbridge-recordings/<requestId>/.",
         "inputSchema": {
           "type": "object",
           "properties": {
             "frames": {
-              "type": "number",
-              "description": "Number of frames to capture, 1..300. Required."
+              "type": "integer",
+              "description": "Number of frames to capture, 1..300. Required.",
+              "minimum": 1,
+              "maximum": 300
             },
             "interval": {
-              "description": "\"frame\" for every render tick (~60 Hz), or milliseconds (number, >= 1). Default \"frame\". Recommended: 50–100 ms unless you specifically need sub-tick detail.",
+              "description": "Use {kind:\"fixed\",intervalSeconds:0.05} for a fixed cadence, or {kind:\"frame\"} for every render tick (~60 Hz). Default {kind:\"frame\"}.",
               "oneOf": [
                 {
-                  "type": "string",
-                  "enum": [
-                    "frame"
-                  ]
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "type": "string",
+                      "const": "frame"
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ],
+                  "additionalProperties": false
                 },
                 {
-                  "type": "number",
-                  "minimum": 1
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "type": "string",
+                      "const": "fixed"
+                    },
+                    "intervalSeconds": {
+                      "type": "number",
+                      "minimum": 0.001
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "intervalSeconds"
+                  ],
+                  "additionalProperties": false
                 }
               ]
             },
@@ -337,24 +377,32 @@
                 "grid",
                 "frames"
               ],
-              "description": "\"grid\" (one composed JPEG, default) or \"frames\" (N separate JPEGs)."
+              "description": "\"grid\" (one composed JPEG, default) or \"frames\" (N separate JPEGs).",
+              "default": "grid"
             },
             "gridCols": {
-              "type": "number",
-              "description": "Columns in grid layout. Default ceil(sqrt(frames)). Only used in \"grid\" mode."
+              "type": "integer",
+              "description": "Columns in grid layout. Default max(1, ceil(sqrt(frames))). Only used in \"grid\" mode.",
+              "minimum": 1
             },
             "downscale": {
-              "type": "number",
-              "description": "Integer downscale factor. Default 2 (half each axis)."
+              "type": "integer",
+              "description": "Integer downscale factor. Default 2 (half each axis).",
+              "minimum": 1,
+              "default": 2
             },
             "quality": {
               "type": "number",
-              "description": "JPEG quality in [0.05, 1.0]. Default 0.75. In \"grid\" mode applies once to the composed image."
+              "description": "JPEG quality in [0.05, 1.0]. Default 0.75. In \"grid\" mode applies once to the composed image.",
+              "minimum": 0.05,
+              "maximum": 1,
+              "default": 0.75
             }
           },
           "required": [
             "frames"
-          ]
+          ],
+          "additionalProperties": false
         }
       },
       {
@@ -365,18 +413,23 @@
           "properties": {
             "range": {
               "type": "number",
-              "description": "Search radius in blocks. Default 64."
+              "description": "Search radius in blocks. Default 64.",
+              "minimum": 0,
+              "default": 64
             },
             "limit": {
-              "type": "number",
-              "description": "Max entries returned. Default 100."
+              "type": "integer",
+              "description": "Max entries returned. Default 100.",
+              "minimum": 0,
+              "default": 100
             },
             "includeIcons": {
               "type": "boolean",
-              "description": "Render each unique primaryEquipment item's icon. Default false."
+              "description": "Render each unique primaryEquipment item's icon. Default false.",
+              "default": false
             }
           },
-          "required": []
+          "additionalProperties": false
         }
       },
       {
@@ -386,13 +439,14 @@
           "type": "object",
           "properties": {
             "entityId": {
-              "type": "number",
+              "type": "integer",
               "description": "Entity id from mc_nearby_entities or mc_looked_at_entity."
             }
           },
           "required": [
             "entityId"
-          ]
+          ],
+          "additionalProperties": false
         }
       },
       {
@@ -403,14 +457,18 @@
           "properties": {
             "range": {
               "type": "number",
-              "description": "Search radius in blocks. Default 16."
+              "description": "Search radius in blocks. Default 16.",
+              "minimum": 0,
+              "default": 16
             },
             "limit": {
-              "type": "number",
-              "description": "Max entries returned. Default 100."
+              "type": "integer",
+              "description": "Max entries returned. Default 100.",
+              "minimum": 0,
+              "default": 100
             }
           },
-          "required": []
+          "additionalProperties": false
         }
       },
       {
@@ -419,21 +477,31 @@
         "inputSchema": {
           "type": "object",
           "properties": {
-            "x": {
-              "type": "number"
-            },
-            "y": {
-              "type": "number"
-            },
-            "z": {
-              "type": "number"
+            "position": {
+              "type": "object",
+              "properties": {
+                "x": {
+                  "type": "integer"
+                },
+                "y": {
+                  "type": "integer"
+                },
+                "z": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "x",
+                "y",
+                "z"
+              ],
+              "additionalProperties": false
             }
           },
           "required": [
-            "x",
-            "y",
-            "z"
-          ]
+            "position"
+          ],
+          "additionalProperties": false
         }
       },
       {
@@ -444,10 +512,12 @@
           "properties": {
             "range": {
               "type": "number",
-              "description": "Raycast distance in blocks. Default 64."
+              "description": "Raycast distance in blocks. Default 64.",
+              "minimum": 0,
+              "default": 64
             }
           },
-          "required": []
+          "additionalProperties": false
         }
       },
       {
@@ -457,7 +527,7 @@
           "type": "object",
           "properties": {
             "entityId": {
-              "type": "number",
+              "type": "integer",
               "description": "Entity id from mc_nearby_entities."
             },
             "glow": {
@@ -468,7 +538,8 @@
           "required": [
             "entityId",
             "glow"
-          ]
+          ],
+          "additionalProperties": false
         }
       },
       {
@@ -477,14 +548,25 @@
         "inputSchema": {
           "type": "object",
           "properties": {
-            "x": {
-              "type": "number"
-            },
-            "y": {
-              "type": "number"
-            },
-            "z": {
-              "type": "number"
+            "position": {
+              "type": "object",
+              "properties": {
+                "x": {
+                  "type": "integer"
+                },
+                "y": {
+                  "type": "integer"
+                },
+                "z": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "x",
+                "y",
+                "z"
+              ],
+              "additionalProperties": false
             },
             "glow": {
               "type": "boolean",
@@ -492,11 +574,10 @@
             }
           },
           "required": [
-            "x",
-            "y",
-            "z",
+            "position",
             "glow"
-          ]
+          ],
+          "additionalProperties": false
         }
       },
       {
@@ -505,7 +586,7 @@
         "inputSchema": {
           "type": "object",
           "properties": {},
-          "required": []
+          "additionalProperties": false
         }
       },
       {
@@ -515,13 +596,16 @@
           "type": "object",
           "properties": {
             "slot": {
-              "type": "number",
-              "description": "Inventory slot index (0-35 main inv, 36-39 armor, 40 offhand)."
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 40,
+              "description": "Inventory slot index (0-35 main inventory, 36 feet, 37 legs, 38 chest, 39 head, 40 offhand)."
             }
           },
           "required": [
             "slot"
-          ]
+          ],
+          "additionalProperties": false
         }
       },
       {
@@ -531,24 +615,29 @@
           "type": "object",
           "properties": {
             "entityId": {
-              "type": "number"
+              "type": "integer"
             },
             "slot": {
               "type": "string",
               "enum": [
                 "mainhand",
                 "offhand",
-                "head",
-                "chest",
+                "feet",
                 "legs",
-                "feet"
+                "chest",
+                "head",
+                "body",
+                "saddle",
+                "frame",
+                "display"
               ]
             }
           },
           "required": [
             "entityId",
             "slot"
-          ]
+          ],
+          "additionalProperties": false
         }
       },
       {
@@ -564,7 +653,8 @@
           },
           "required": [
             "itemId"
-          ]
+          ],
+          "additionalProperties": false
         }
       },
       {
@@ -574,15 +664,18 @@
           "type": "object",
           "properties": {
             "limit": {
-              "type": "number",
-              "description": "Max messages returned. Default 50."
+              "type": "integer",
+              "description": "Max messages returned. Default 50.",
+              "minimum": 0,
+              "default": 50
             },
             "includeJson": {
               "type": "boolean",
-              "description": "Include the Component as JSON for each message. Default false."
+              "description": "Include the Component as JSON for each message. Default false.",
+              "default": false
             }
           },
-          "required": []
+          "additionalProperties": false
         }
       },
       {
@@ -593,10 +686,11 @@
           "properties": {
             "includeIcons": {
               "type": "boolean",
-              "description": "Render each unique item's icon and attach as an icons map. Default false."
+              "description": "Render each unique item's icon and attach as an icons map. Default false.",
+              "default": false
             }
           },
-          "required": []
+          "additionalProperties": false
         }
       },
       {
@@ -611,20 +705,25 @@
             },
             "acceptResourcePacks": {
               "type": "boolean",
-              "description": "Pre-accept the server resource pack. Default true."
+              "description": "Pre-accept the server resource pack. Default true.",
+              "default": true
             },
             "wait": {
               "type": "boolean",
-              "description": "Poll until in-world / disconnected before returning. Default true."
+              "description": "Poll until in-world / disconnected before returning. Default true.",
+              "default": true
             },
             "timeoutSeconds": {
               "type": "number",
-              "description": "How long to wait for the join to complete. Default 60."
+              "description": "How long to wait for the join to complete. Default 60.",
+              "minimum": 0,
+              "default": 60
             }
           },
           "required": [
             "address"
-          ]
+          ],
+          "additionalProperties": false
         }
       },
       {
@@ -633,7 +732,7 @@
         "inputSchema": {
           "type": "object",
           "properties": {},
-          "required": []
+          "additionalProperties": false
         }
       },
       {
@@ -644,14 +743,17 @@
           "properties": {
             "timeoutSeconds": {
               "type": "number",
-              "description": "Give up after this many seconds. Default 60."
+              "description": "Give up after this many seconds. Default 60.",
+              "minimum": 0,
+              "default": 60
             },
             "requireAbsenceFirst": {
               "type": "boolean",
-              "description": "Only count a player snapshot as in-world after the old session visibly dropped (one successful snapshot without a player). Use when a join was issued from inside a world. Default false."
+              "description": "Only count a player snapshot as in-world after the old session visibly dropped (one successful snapshot without a player). Use when a join was issued from inside a world. Default false.",
+              "default": false
             }
           },
-          "required": []
+          "additionalProperties": false
         }
       },
       {
@@ -662,14 +764,17 @@
           "properties": {
             "waitForExit": {
               "type": "boolean",
-              "description": "Wait until the client is actually gone — bridge port closed, then the client process exited (when its PID could be resolved) — before returning. Default true."
+              "description": "Wait until the client is actually gone — bridge port closed, then the client process exited (when its PID could be resolved) — before returning. Default true.",
+              "default": true
             },
             "timeoutSeconds": {
               "type": "number",
-              "description": "How long to wait for the whole shutdown (port close + process exit). Default 30."
+              "description": "How long to wait for the whole shutdown (port close + process exit). Default 30.",
+              "minimum": 0,
+              "default": 30
             }
           },
-          "required": []
+          "additionalProperties": false
         }
       },
       {
@@ -684,10 +789,12 @@
             },
             "timeoutSeconds": {
               "type": "number",
-              "description": "Give up after this many seconds. Default 120."
+              "description": "Give up after this many seconds. Default 120.",
+              "minimum": 0,
+              "default": 120
             }
           },
-          "required": []
+          "additionalProperties": false
         }
       }
     ]

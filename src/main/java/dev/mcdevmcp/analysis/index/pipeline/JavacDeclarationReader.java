@@ -61,8 +61,8 @@ final class JavacDeclarationReader {
     }
 
     static void captureRange(CompilationUnitTree unit, Tree tree, SourcePositions positions, Map<Tree, SourceRange> ranges) throws IndexBuildException {
-        long start = positions.getStartPosition(unit, tree);
-        long end = positions.getEndPosition(unit, tree);
+        long start = positions.getStartPosition(tree);
+        long end = positions.getEndPosition(tree);
         if (start >= 0 && end < start && tree instanceof VariableTree) {
             return;
         }

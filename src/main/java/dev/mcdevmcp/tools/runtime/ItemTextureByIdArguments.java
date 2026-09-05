@@ -1,7 +1,12 @@
 package dev.mcdevmcp.tools.runtime;
 
-record ItemTextureByIdArguments(String itemId) {
-    static ItemTextureByIdArguments from(ItemTextureByIdWireArguments wire) {
-        return new ItemTextureByIdArguments(RuntimeToolSupport.requiredString(wire.itemId(), "itemId"));
+import dev.mcdevmcp.minecraft.ResourceIdentifier;
+import dev.mcdevmcp.mcp.tool.api.InputProperty;
+
+value record ItemTextureByIdArguments(@InputProperty(required = true, description = "Registry id like \"minecraft:diamond\".") ResourceIdentifier itemId) {
+    public ItemTextureByIdArguments {
+        if (itemId == null) {
+            throw new IllegalArgumentException("'itemId' is required");
+        }
     }
 }

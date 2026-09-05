@@ -115,7 +115,7 @@ public final class CallgraphBundleValidator {
             byte[] indexLine;
             while ((indexLine = indexLines.next()) != null) {
                 cancellation.throwIfCancelled();
-                CallgraphIndexRecord range = parse(indexLine, CallgraphIndexRecord.class, direction.indexFile());
+                CallgraphIndexRecord range = parse(indexLine, CallgraphIndexRecord.class, direction.indexFileName());
                 CallgraphDirection.LookupKey key = new CallgraphDirection.LookupKey(range.className(), range.methodName());
                 if (previousKey != null && previousKey.compareTo(key) >= 0) {
                     throw new IOException("Callgraph index keys are not strictly increasing");
@@ -125,7 +125,7 @@ public final class CallgraphBundleValidator {
                 }
                 long end = add(range.byteOffset(), range.byteLength(), "Callgraph index byte range overflow");
                 if (end > dataMetadata.byteLength()) {
-                    throw new IOException("Callgraph index range exceeds " + direction.dataFile());
+                    throw new IOException("Callgraph index range exceeds " + direction.dataFileName());
                 }
                 long start = dataLines.bytesRead();
                 CallgraphDataRecord previousRecord = null;
@@ -135,7 +135,7 @@ public final class CallgraphBundleValidator {
                     if (dataLine == null) {
                         throw new IOException("Callgraph data ended inside index range " + key);
                     }
-                    CallgraphDataRecord record = parse(dataLine, CallgraphDataRecord.class, direction.dataFile());
+                    CallgraphDataRecord record = parse(dataLine, CallgraphDataRecord.class, direction.dataFileName());
                     if (!direction.lookupKey(record).equals(key)) {
                         throw new IOException("Callgraph data lookup key does not match index range " + key);
                     }
@@ -178,11 +178,11 @@ public final class CallgraphBundleValidator {
         }
     }
 
-    private static <T> T parse(byte[] bytes, Class<T> type, String file) throws IOException {
+    private static <T> T parse(byte[] bytes, Class<T> type, String artifactFileName) throws IOException {
         try {
-            return CallgraphJson.readCanonical(bytes, type, file);
+            return CallgraphJson.readCanonical(bytes, type, artifactFileName);
         } catch (IOException | RuntimeException exception) {
-            throw new IOException("Invalid typed JSON record in " + file, exception);
+            throw new IOException("Invalid typed JSON record in " + artifactFileName, exception);
         }
     }
 }

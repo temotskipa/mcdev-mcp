@@ -135,7 +135,7 @@ public final class BridgeClient implements AutoCloseable {
         }
     }
 
-    public CompletionStage<BridgeResponse> send(BridgeEndpoint endpoint, Object payload, Duration endpointTimeout) {
+    public CompletionStage<BridgeResponse> send(BridgeEndpoint endpoint, BridgePayload payload, Duration endpointTimeout) {
         Objects.requireNonNull(endpoint, "endpoint");
         Duration effectiveTimeout = effectiveTimeout(endpointTimeout);
         timeoutObserver.accept(effectiveTimeout);

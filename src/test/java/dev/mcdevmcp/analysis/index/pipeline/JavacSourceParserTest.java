@@ -31,16 +31,21 @@ class JavacSourceParserTest {
 
     private static void assertRecordRange(List<String> dump, String table, String name, String source, String declaration) {
         String row = dump.stream().filter(candidate -> candidate.startsWith(table + "|") && candidate.split("\\|", -1)[4].equals(name)).findFirst().orElseThrow();
+        assertRecordRange(row, source, declaration);
+    }
+
+    private static void assertRecordRange(String row, String source, String declaration) {
+        int startColumn = row.startsWith("methods|") ? 9 : 7;
         String[] columns = row.split("\\|", -1);
         int start = source.indexOf(declaration);
         int end = start + declaration.length();
         int startLine = 1 + (int) source.substring(0, start).chars().filter(character -> character == '\n').count();
         int endLine = startLine + (int) declaration.chars().filter(character -> character == '\n').count();
-        assertEquals(start, Integer.parseInt(columns[7]), row);
-        assertEquals(end, Integer.parseInt(columns[8]), row);
-        assertEquals(startLine, Integer.parseInt(columns[9]), row);
-        assertEquals(endLine, Integer.parseInt(columns[10]), row);
-        assertEquals(declaration, source.substring(Integer.parseInt(columns[7]), Integer.parseInt(columns[8])));
+        assertEquals(start, Integer.parseInt(columns[startColumn]), row);
+        assertEquals(end, Integer.parseInt(columns[startColumn + 1]), row);
+        assertEquals(startLine, Integer.parseInt(columns[startColumn + 2]), row);
+        assertEquals(endLine, Integer.parseInt(columns[startColumn + 3]), row);
+        assertEquals(declaration, source.substring(Integer.parseInt(columns[startColumn]), Integer.parseInt(columns[startColumn + 1])));
     }
 
     @Test
@@ -217,5 +222,41 @@ class JavacSourceParserTest {
         assertEquals(2, summary.types());
         assertEquals(2, summary.methods());
         assertTrue(summary.evidence().diagnostics().stream().anyMatch(diagnostic -> diagnostic.contains("compiler.err.override.weaker.access")));
+    }
+
+    @Test
+    void indexesQualifiedNestedTypeUseAnnotationDespiteJavacDiagnostic() throws Exception {
+        Path sources = Files.createDirectories(temporaryDirectory.resolve("qualified-nested/nested"));
+        String source = """
+                        package nested;
+                        import java.lang.annotation.ElementType;
+                        import java.lang.annotation.Target;
+                        public class RealmsPdpScreen {
+                            static class PdpHeaderEntry {
+                                static class Subtitle {}
+                            }
+                            @Target(ElementType.TYPE_USE)
+                            @interface Nullable {}
+                            void inadmissible(final @Nullable RealmsPdpScreen.PdpHeaderEntry.Subtitle subTitle) {}
+                            void admissible(final RealmsPdpScreen.PdpHeaderEntry.@Nullable Subtitle subTitle) {}
+                        }
+                        """;
+        Files.writeString(sources.resolve("RealmsPdpScreen.java"), source, StandardCharsets.UTF_8);
+        Path jar = IndexerTestSupport.createJar(temporaryDirectory.resolve("qualified-nested-empty.jar"), Map.of());
+        Path database = temporaryDirectory.resolve("qualified-nested.mv.db");
+
+        IndexSummary summary = new SourceIndexer().build(IndexerTestSupport.request(sources.getParent(), jar, database, 1));
+        List<String> dump = IndexerTestSupport.dump(database);
+
+        assertEquals(1, summary.types());
+        assertEquals(List.of("nested/RealmsPdpScreen.java"), summary.evidence().typedCompilationUnits());
+        assertTrue(dump.stream().anyMatch(row -> row.contains("|nested.RealmsPdpScreen|RealmsPdpScreen|class|java.lang.Object|nested/RealmsPdpScreen.java|")), dump.toString());
+        String indexedMethod = dump.stream().filter(row -> row.contains("|inadmissible|(Lnested/RealmsPdpScreen$PdpHeaderEntry$Subtitle;)V|void||false|")).findFirst().orElseThrow(() -> new AssertionError(dump));
+        String methodId = indexedMethod.split("\\|", -1)[1];
+        assertRecordRange(indexedMethod, source, "void inadmissible(final @Nullable RealmsPdpScreen.PdpHeaderEntry.Subtitle subTitle) {}");
+        assertTrue(dump.stream().anyMatch(row -> row.contains("|admissible|(Lnested/RealmsPdpScreen$PdpHeaderEntry$Subtitle;)V|void||false|")), dump.toString());
+        String indexedParameter = dump.stream().filter(row -> row.startsWith("parameters|") && row.split("\\|", -1)[2].equals(methodId) && row.contains("|subTitle|nested.RealmsPdpScreen$PdpHeaderEntry$Subtitle|false|")).findFirst().orElseThrow(() -> new AssertionError(dump));
+        assertRecordRange(indexedParameter, source, "final @Nullable RealmsPdpScreen.PdpHeaderEntry.Subtitle subTitle");
+        assertTrue(summary.evidence().diagnostics().stream().anyMatch(diagnostic -> diagnostic.startsWith("nested/RealmsPdpScreen.java:10:69: ") && diagnostic.contains("compiler.err.type.annotation.inadmissible")), summary.evidence().diagnostics().toString());
     }
 }

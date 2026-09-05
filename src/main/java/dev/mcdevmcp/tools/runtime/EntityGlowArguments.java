@@ -1,9 +1,6 @@
 package dev.mcdevmcp.tools.runtime;
 
-import java.math.BigDecimal;
+import dev.mcdevmcp.mcp.tool.api.InputProperty;
 
-record EntityGlowArguments(BigDecimal entityId, boolean glow) {
-    static EntityGlowArguments from(EntityGlowWireArguments wire) {
-        return new EntityGlowArguments(RuntimeToolSupport.requiredDecimal(wire.entityId(), "entityId"), RuntimeToolSupport.requiredGlow(wire.glow()));
-    }
+value record EntityGlowArguments(@InputProperty(description = "Entity id from mc_nearby_entities.", required = true) int entityId, @InputProperty(description = "true to outline, false to remove.", required = true) boolean glow) {
 }

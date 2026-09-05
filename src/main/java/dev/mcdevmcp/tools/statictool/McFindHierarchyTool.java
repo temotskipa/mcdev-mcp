@@ -1,35 +1,32 @@
 package dev.mcdevmcp.tools.statictool;
 
+import dev.mcdevmcp.mcp.tool.ToolDeclaration;
 import dev.mcdevmcp.mcp.tool.api.ToolBinding;
-import dev.mcdevmcp.mcp.tool.api.ArgumentDecoder;
 import dev.mcdevmcp.mcp.tool.api.ToolResult;
 import dev.mcdevmcp.storage.model.ClassSymbol;
 
 import java.util.stream.Collectors;
 
 final class McFindHierarchyTool {
+    static final ToolDeclaration<FindHierarchyArguments> DECLARATION = ToolDeclaration.of("mc_find_hierarchy", FindHierarchyArguments.class);
+
     private static final LimitSpec LIMIT = new LimitSpec(200, 5000);
 
     private McFindHierarchyTool() {
     }
 
     static ToolBinding<FindHierarchyArguments> binding(StaticToolSupport support) {
-        var decoder = ArgumentDecoder.sdk(FindHierarchyWireArguments.class).map(FindHierarchyArguments::from);
-        return ToolBinding.blockingCompatibility(decoder, (arguments, _) -> support.execute("mc_find_hierarchy", () -> {
+        return DECLARATION.bindBlocking((arguments, _) -> support.execute("mc_find_hierarchy", () -> {
             var version = support.resolve(arguments.version());
-            var limit = LIMIT.normalize(arguments.limit().value());
-            if (arguments.direction() == HierarchyDirection.UNKNOWN) {
-                return ToolResult.text("No " + arguments.directionText().display() + " found for " + arguments.className().display());
-            }
-            int queryLimit = limit.value() == 0 ? Integer.MAX_VALUE : limit.value() + 1;
-            String classNameValue = arguments.className().isText() ? arguments.className().value() : null;
-            var rows = support.repository(version).hierarchy(classNameValue, arguments.direction() == HierarchyDirection.subclasses, queryLimit);
-            boolean truncated = limit.value() > 0 && rows.size() >= limit.value();
+            var limit = LIMIT.normalize(arguments.limit());
+            int queryLimit = limit.value() + 1;
+            var rows = support.repository(version).hierarchy(arguments.className(), arguments.direction() == HierarchyDirection.subclasses, queryLimit);
+            boolean truncated = rows.size() >= limit.value();
             if (truncated) {
                 rows = rows.subList(0, limit.value());
             }
-            String direction = arguments.directionText().display();
-            String className = arguments.className().display();
+            String direction = arguments.direction().wireValue();
+            String className = arguments.className();
             if (rows.isEmpty()) {
                 return ToolResult.text("No " + direction + " found for " + className);
             }

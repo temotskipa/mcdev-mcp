@@ -1,6 +1,7 @@
 package dev.mcdevmcp.bridge;
 
 import io.modelcontextprotocol.json.McpJsonDefaults;
+import io.modelcontextprotocol.json.TypeRef;
 
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
@@ -23,7 +24,7 @@ final class FakeDebugBridge {
 
     static BridgeClient client(BridgeJson json, String version) {
         Map<String, Object> status = Map.of("version", version, "mappingStatus", "mojang", "obfuscated", false, "refs", 0L, "gameDir", gameDirectory());
-        return BridgeClient.testing(json, request -> CompletableFuture.completedFuture(new BridgeResponse(request.id(), true, true, request.endpoint().wireName().equals("status") ? status : request.payload(), "", null)));
+        return BridgeClient.testing(json, request -> CompletableFuture.completedFuture(new BridgeResponse(request.id(), true, true, request.endpoint().wireName().equals("status") ? status : wirePayload(json, request.payload()), "", null)));
     }
 
     private static String gameDirectory() {
@@ -31,6 +32,12 @@ final class FakeDebugBridge {
     }
 
     BridgeClient client() {
-        return BridgeClient.testing(new BridgeJson(McpJsonDefaults.getMapper()), request -> CompletableFuture.completedFuture(new BridgeResponse(request.id(), true, true, request.endpoint().wireName().equals("status") ? status : request.payload(), "", null)));
+        BridgeJson json = new BridgeJson(McpJsonDefaults.getMapper());
+        return BridgeClient.testing(json, request -> CompletableFuture.completedFuture(new BridgeResponse(request.id(), true, true, request.endpoint().wireName().equals("status") ? status : wirePayload(json, request.payload()), "", null)));
+    }
+
+    private static Map<String, Object> wirePayload(BridgeJson json, BridgePayload payload) {
+        return json.mapper().convertValue(payload, new TypeRef<>() {
+        });
     }
 }

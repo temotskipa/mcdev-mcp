@@ -43,7 +43,7 @@ final class CliContractTest {
     private static CliResult execute(AnalysisOperations operations, PlatformPaths paths, String... arguments) {
         var output = new StringWriter();
         var error = new StringWriter();
-        int exitCode = Main.execute(arguments, 25, new PrintWriter(output), new PrintWriter(error), new CommandContext(operations, paths));
+        int exitCode = Main.execute(arguments, 28, new PrintWriter(output), new PrintWriter(error), new CommandContext(operations, paths));
         return new CliResult(exitCode, output.toString(), error.toString());
     }
 

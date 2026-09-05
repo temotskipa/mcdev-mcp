@@ -1,9 +1,11 @@
 package dev.mcdevmcp.tools.runtime;
 
-import java.math.BigDecimal;
+import dev.mcdevmcp.mcp.tool.api.InputProperty;
 
-record EntityItemTextureArguments(BigDecimal entityId, String slot) {
-    static EntityItemTextureArguments from(EntityItemTextureWireArguments wire) {
-        return new EntityItemTextureArguments(RuntimeToolSupport.requiredDecimal(wire.entityId(), "entityId"), RuntimeToolSupport.requiredString(wire.slot(), "slot"));
+value record EntityItemTextureArguments(@InputProperty(required = true) int entityId, @InputProperty(required = true) EntityItemSlot slot) {
+    public EntityItemTextureArguments {
+        if (slot == null) {
+            throw new IllegalArgumentException("'slot' is required");
+        }
     }
 }

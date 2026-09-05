@@ -8,7 +8,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 
-record ParsedMethod(int ordinal, String name, MethodTypeDesc descriptor, Optional<String> returnType, Set<Modifier> modifiers, boolean constructor, List<ParsedParameter> parameters, SourceRange range) {
+value record ParsedMethod(int ordinal, String name, MethodTypeDesc descriptor, Optional<String> returnType, Set<Modifier> modifiers, boolean constructor, List<ParsedParameter> parameters, SourceRange range) {
     ParsedMethod {
         if (ordinal < 0) {
             throw new IllegalArgumentException("Method ordinal must not be negative");

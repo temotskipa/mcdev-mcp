@@ -1,7 +1,8 @@
 package dev.mcdevmcp.tools.statictool;
 
+import dev.mcdevmcp.mcp.tool.ToolDeclaration;
 import dev.mcdevmcp.mcp.tool.api.ToolBinding;
-import dev.mcdevmcp.mcp.tool.api.ArgumentDecoder;
+import dev.mcdevmcp.mcp.tool.api.ContentToolResult;
 import dev.mcdevmcp.mcp.tool.api.ToolResult;
 import dev.mcdevmcp.storage.h2.SymbolRepository;
 import dev.mcdevmcp.storage.model.ClassSymbol;
@@ -11,26 +12,15 @@ import java.util.Arrays;
 import java.util.stream.Collectors;
 
 final class McGetMethodTool {
+    static final ToolDeclaration<GetMethodArguments> DECLARATION = ToolDeclaration.of("mc_get_method", GetMethodArguments.class);
+
     private McGetMethodTool() {
     }
 
     static ToolBinding<GetMethodArguments> binding(StaticToolSupport support) {
-        var decoder = ArgumentDecoder.sdk(GetMethodWireArguments.class).map(GetMethodArguments::from);
-        return ToolBinding.blockingCompatibility(decoder, (arguments, _) -> support.execute("mc_get_method", () -> {
-            if (arguments.className().isMissing()) {
-                return ToolResult.error("Error executing mc_get_method: Cannot read properties of undefined (reading 'split')");
-            }
-            if (!arguments.className().isText()) {
-                return ToolResult.error("Error executing mc_get_method: fullName.split is not a function");
-            }
-            if (arguments.methodName().isMissing()) {
-                return ToolResult.error("Error executing mc_get_method: Cannot read properties of undefined (reading 'toLowerCase')");
-            }
-            if (!arguments.methodName().isText()) {
-                return ToolResult.error("Error executing mc_get_method: methodName.toLowerCase is not a function");
-            }
-            String className = arguments.className().value();
-            String methodName = arguments.methodName().value();
+        return DECLARATION.bindBlocking((arguments, _) -> support.execute("mc_get_method", () -> {
+            String className = arguments.className();
+            String methodName = arguments.methodName();
             var version = support.resolve(arguments.version());
             SymbolRepository repository = support.repository(version);
             ClassSymbol type = repository.classByName(className);
@@ -63,7 +53,7 @@ final class McGetMethodTool {
         return "// Method: " + className + "#" + method.name() + "\n" + "// Signature: " + StaticToolSupport.returnType(method.returnType().orElse(null)) + " " + method.name() + "(" + parameters + ")\n" + "// Modifiers: " + StaticToolSupport.modifiers(method.modifiers()).stripTrailing() + "\n" + "// Lines: " + method.startLine() + "-" + method.endLine() + "\n\n" + type.superclassBinaryName().map(value -> "// Class extends: " + value + "\n\n").orElse("");
     }
 
-    private static ToolResult missing(String className, String methodName) {
+    private static ContentToolResult<Void> missing(String className, String methodName) {
         return ToolResult.text("Method \"" + methodName + "\" not found in class " + className);
     }
 }

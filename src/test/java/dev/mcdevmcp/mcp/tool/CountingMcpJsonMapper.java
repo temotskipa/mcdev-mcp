@@ -5,15 +5,15 @@ import io.modelcontextprotocol.json.TypeRef;
 
 import java.io.IOException;
 
-final class CountingMcpJsonMapper implements McpJsonMapper {
+public final class CountingMcpJsonMapper implements McpJsonMapper {
     private final McpJsonMapper delegate;
     private int convertValueCalls;
 
-    CountingMcpJsonMapper(McpJsonMapper delegate) {
+    public CountingMcpJsonMapper(McpJsonMapper delegate) {
         this.delegate = delegate;
     }
 
-    int convertValueCalls() {
+    public int convertValueCalls() {
         return convertValueCalls;
     }
 

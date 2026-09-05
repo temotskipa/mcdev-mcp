@@ -12,11 +12,11 @@ import dev.mcdevmcp.support.AppEnvironment;
 import dev.mcdevmcp.support.AppVersion;
 import dev.mcdevmcp.support.Cancellation;
 import io.modelcontextprotocol.json.McpJsonDefaults;
+import io.modelcontextprotocol.spec.McpSchema;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
-import java.math.BigDecimal;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.sql.DriverManager;
@@ -30,6 +30,10 @@ import java.util.concurrent.Executors;
 import static org.junit.jupiter.api.Assertions.*;
 
 class McFindRefsContractTest {
+    private static String contentText(ToolResult<?> result) {
+        return assertInstanceOf(McpSchema.TextContent.class, result.content().getFirst()).text();
+    }
+
     private static final MinecraftVersion PRIMARY = new MinecraftVersion("1.21.5");
     private static final MinecraftVersion SECONDARY = new MinecraftVersion("1.21.6");
     private static final MinecraftVersion NO_GRAPH = new MinecraftVersion("1.21.nocg");
@@ -45,14 +49,14 @@ class McFindRefsContractTest {
     }
 
     private static String text(ToolCatalog catalog, String tool, Map<String, Object> arguments) {
-        return result(catalog, arguments, tool).content().getFirst().text();
+        return contentText(result(catalog, arguments, tool));
     }
 
-    private static ToolResult result(ToolCatalog catalog, Map<String, Object> arguments) {
+    private static ToolResult<?> result(ToolCatalog catalog, Map<String, Object> arguments) {
         return result(catalog, arguments, "mc_find_refs");
     }
 
-    private static ToolResult result(ToolCatalog catalog, Map<String, Object> arguments, String tool) {
+    private static ToolResult<?> result(ToolCatalog catalog, Map<String, Object> arguments, String tool) {
         return catalog.dispatch(tool, arguments, Cancellation.none()).toCompletableFuture().join();
     }
 
@@ -102,7 +106,10 @@ class McFindRefsContractTest {
     @Test
     void usesTheFrozenLimitContract() {
         assertEquals(new NormalizedLimit(100, false, true), McFindRefsTool.LIMIT.normalize(null));
-        assertEquals(new NormalizedLimit(5000, true, false), McFindRefsTool.LIMIT.normalize(BigDecimal.valueOf(5001)));
+        assertEquals(new NormalizedLimit(5000, false, false), McFindRefsTool.LIMIT.normalize(5000));
+        assertEquals(new NormalizedLimit(5000, true, false), McFindRefsTool.LIMIT.normalize(Integer.MAX_VALUE));
+        assertThrows(IllegalArgumentException.class, () -> McFindRefsTool.LIMIT.normalize(0));
+        assertThrows(IllegalArgumentException.class, () -> McFindRefsTool.LIMIT.normalize(-1));
     }
 
     @Test
@@ -119,21 +126,16 @@ class McFindRefsContractTest {
                      caller.Alpha.entry()V (line 11)
                      Total: 5 callers""", text(catalog, "mc_find_refs", Map.of("className", "target.Target", "methodName", "hit", "direction", "callers")));
         assertEquals("""
-                     Found 3 sideways:
+                     Found 3 callees:
                      callee.Empty.none
                      callee.Overload.work
                      callee.Overload.work()V (line 7)
-                     Total: 3 sideways""", text(catalog, "mc_find_refs", Map.of("className", "origin.Origin", "methodName", "dispatch", "direction", "sideways")));
-        assertEquals("""
-                     Found 3 undefined:
-                     callee.Empty.none
-                     callee.Overload.work
-                     callee.Overload.work()V (line 7)
-                     Total: 3 undefined""", text(catalog, "mc_find_refs", Map.of("className", "origin.Origin", "methodName", "dispatch")));
+                     Total: 3 callees""", text(catalog, "mc_find_refs", Map.of("className", "origin.Origin", "methodName", "dispatch", "direction", "callees")));
+        assertEquals("Error executing mc_find_refs: 'direction' is required", text(catalog, "mc_find_refs", Map.of("className", "origin.Origin", "methodName", "dispatch")));
     }
 
     @Test
-    void honorsDefaultFractionalSubunitNonpositiveExactAndCappedLimits() throws Exception {
+    void honorsDefaultIntegerExactAndCappedLimits() throws Exception {
         ToolCatalog catalog = catalog(fixture());
         text(catalog, "mc_version", Map.of("action", "set", "version", PRIMARY.value()));
         Map<String, Object> base = Map.of("className", "many.Target", "methodName", "hit", "direction", "callers");
@@ -142,17 +144,9 @@ class McFindRefsContractTest {
         assertTrue(defaulted.startsWith("Found 101 callers:\nmany.Caller0000.call()V (line 1)\n"));
         assertTrue(defaulted.endsWith("... and 1+ more callers (showing first 100; pass a larger `limit` to see more)"));
 
-        String fractional = text(catalog, "mc_find_refs", withLimit(base, 3.9d));
-        assertTrue(fractional.startsWith("""
-                                         Found 4 callers:
-                                         many.Caller0000.call()V (line 1)
-                                         many.Caller0001.call()V (line 2)
-                                         many.Caller0002.call()V (line 3)
-                                         """));
-        assertTrue(fractional.endsWith("... and 1+ more callers (showing first 3; pass a larger `limit` to see more)"));
-
-        assertEquals("Found 1 callers:\n\n... and 1+ more callers (showing first 0; pass a larger `limit` to see more)", text(catalog, "mc_find_refs", withLimit(base, 0.9d)));
-        assertEquals(defaulted, text(catalog, "mc_find_refs", withLimit(base, -1)));
+        assertEquals("Error executing mc_find_refs: 'limit' must be an integer", text(catalog, "mc_find_refs", withLimit(base, 3.9d)));
+        assertEquals("Error executing mc_find_refs: 'limit' must not be below 1", text(catalog, "mc_find_refs", withLimit(base, 0)));
+        assertEquals("Error executing mc_find_refs: 'limit' must not be below 1", text(catalog, "mc_find_refs", withLimit(base, -1)));
 
         String exact = text(catalog, "mc_find_refs", withLimit(base, 5000));
         assertTrue(exact.startsWith("Found 5001 callers:\n"));
@@ -162,6 +156,8 @@ class McFindRefsContractTest {
 
         String capped = text(catalog, "mc_find_refs", withLimit(base, 5001));
         assertTrue(capped.endsWith("... and 1+ more callers (showing first 5000; pass a larger `limit` to see more)" + " (limit was capped to 5000 by the server)"));
+        String maxValue = text(catalog, "mc_find_refs", withLimit(base, Integer.MAX_VALUE));
+        assertTrue(maxValue.endsWith("... and 1+ more callers (showing first 5000; pass a larger `limit` to see more)" + " (limit was capped to 5000 by the server)"));
     }
 
     @Test
@@ -188,19 +184,19 @@ class McFindRefsContractTest {
                      Or for full reinitialization:
                        java -jar %s init -v 1.21.nocg""".formatted(AppVersion.executableJarName(), AppVersion.executableJarName()), text(catalog, "mc_find_refs", Map.of("className", "x.Y", "methodName", "z", "direction", "callers", "version", NO_GRAPH.value())));
 
-        ToolResult missingClass = result(catalog, Map.of("methodName", "hit", "direction", "callers"));
+        ToolResult<?> missingClass = result(catalog, Map.of("methodName", "hit", "direction", "callers"));
         assertTrue(missingClass.isError());
-        assertEquals("Failed to query callgraph for undefined#hit (callers): Wrong API use : tried to bind a value " + "of an unknown type (undefined).", missingClass.content().getFirst().text());
-        ToolResult missingAll = result(catalog, Map.of());
+        assertEquals("Error executing mc_find_refs: 'className' is required", contentText(missingClass));
+        ToolResult<?> missingAll = result(catalog, Map.of());
         assertTrue(missingAll.isError());
-        assertEquals("Failed to query callgraph for undefined#undefined (undefined): Wrong API use : tried to bind a " + "value of an unknown type (undefined).", missingAll.content().getFirst().text());
-        assertEquals("No callers found for 42#hit", text(catalog, "mc_find_refs", Map.of("className", 42, "methodName", "hit", "direction", "callers")));
+        assertEquals("Error executing mc_find_refs: 'className' is required", contentText(missingAll));
+        assertEquals("Error executing mc_find_refs: 'className' must be a string", text(catalog, "mc_find_refs", Map.of("className", 42, "methodName", "hit", "direction", "callers")));
 
         assertEquals("Active version set to 1.21.bad.\nIndexed: yes\nCallgraph: corrupt\n\nSTOP and ask the USER to run this command in their terminal:\n  java -jar " + AppVersion.executableJarName() + " callgraph -v 1.21.bad\n\nOr for full reinitialization:\n  java -jar " + AppVersion.executableJarName() + " init -v 1.21.bad", text(catalog, "mc_version", Map.of("action", "set", "version", BAD_GRAPH.value())));
 
-        ToolResult corrupt = result(catalog, Map.of("className", "x.Y", "methodName", "z", "direction", "callers", "version", BAD_GRAPH.value()));
+        ToolResult<?> corrupt = result(catalog, Map.of("className", "x.Y", "methodName", "z", "direction", "callers", "version", BAD_GRAPH.value()));
         assertFalse(corrupt.isError());
-        assertEquals("Version 1.21.bad has corrupt callgraph data.\n\nSTOP and ask the USER to run this command in their terminal:\n  java -jar " + AppVersion.executableJarName() + " callgraph -v 1.21.bad\n\nOr for full reinitialization:\n  java -jar " + AppVersion.executableJarName() + " init -v 1.21.bad", corrupt.content().getFirst().text());
+        assertEquals("Version 1.21.bad has corrupt callgraph data.\n\nSTOP and ask the USER to run this command in their terminal:\n  java -jar " + AppVersion.executableJarName() + " callgraph -v 1.21.bad\n\nOr for full reinitialization:\n  java -jar " + AppVersion.executableJarName() + " init -v 1.21.bad", contentText(corrupt));
     }
 
     @Test
@@ -209,9 +205,9 @@ class McFindRefsContractTest {
         assertEquals(8, StaticToolModule.handlers(paths).size());
         assertTrue(StaticToolModule.handlers(paths).containsKey("mc_find_refs"));
         ToolCatalog catalog = catalog(paths);
-        ToolResult result = result(catalog, Map.of("className", "target.Target", "methodName", "hit", "direction", "callers", "version", PRIMARY.value()));
+        ToolResult<?> result = result(catalog, Map.of("className", "target.Target", "methodName", "hit", "direction", "callers", "version", PRIMARY.value()));
         assertFalse(result.isError());
-        assertTrue(result.content().getFirst().text().startsWith("Found 5 callers:"));
+        assertTrue(contentText(result).startsWith("Found 5 callers:"));
     }
 
     private ToolCatalog catalog(PlatformPaths paths) {

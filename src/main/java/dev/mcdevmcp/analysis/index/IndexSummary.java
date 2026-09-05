@@ -3,7 +3,7 @@ package dev.mcdevmcp.analysis.index;
 import java.time.Duration;
 import java.util.Objects;
 
-public record IndexSummary(int packages, int types, int fields, int methods, int parameters, Duration elapsed, IndexBuildEvidence evidence) {
+public value record IndexSummary(int packages, int types, int fields, int methods, int parameters, Duration elapsed, IndexBuildEvidence evidence) {
     public IndexSummary(int packages, int types, int fields, int methods, int parameters, Duration elapsed) {
         this(packages, types, fields, methods, parameters, elapsed, new IndexBuildEvidence(java.util.List.of(), java.util.List.of(), java.util.List.of(), java.util.List.of(), java.util.List.of()));
     }

@@ -1,12 +1,22 @@
 package dev.mcdevmcp.tools.statictool;
 
-enum VersionAction {
-    set, list, unknown;
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonValue;
 
-    static VersionAction from(TextArgument value) {
-        if ("set".equals(value.value())) {
-            return set;
-        }
-        return "list".equals(value.value()) ? list : unknown;
+enum VersionAction {
+    set, list;
+
+    @JsonCreator(mode = JsonCreator.Mode.DELEGATING)
+    public static VersionAction fromWireValue(String value) {
+        return switch (value) {
+            case "set" -> set;
+            case "list" -> list;
+            default -> throw new IllegalArgumentException("Unsupported version action: " + value);
+        };
+    }
+
+    @JsonValue
+    public String wireValue() {
+        return name();
     }
 }

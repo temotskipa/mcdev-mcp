@@ -2,7 +2,7 @@ package dev.mcdevmcp.support;
 
 import java.util.*;
 
-public final class JsonValues {
+public final value class JsonValues {
     private JsonValues() {
     }
 

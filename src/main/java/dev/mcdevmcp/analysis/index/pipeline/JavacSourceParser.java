@@ -17,7 +17,7 @@ import java.util.Objects;
 import java.util.concurrent.Callable;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-final class JavacSourceParser {
+final value class JavacSourceParser {
     private final Runnable compilerStarted;
     private final AtomicBoolean compilerStartedNotified = new AtomicBoolean();
 

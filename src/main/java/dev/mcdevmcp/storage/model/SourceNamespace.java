@@ -1,5 +1,8 @@
 package dev.mcdevmcp.storage.model;
 
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonValue;
+
 import java.util.Locale;
 import java.util.Objects;
 
@@ -12,6 +15,7 @@ public enum SourceNamespace {
         this.wireName = wireName;
     }
 
+    @JsonCreator(mode = JsonCreator.Mode.DELEGATING)
     public static SourceNamespace fromWireName(String wireName) {
         Objects.requireNonNull(wireName, "wireName");
         for (SourceNamespace namespace : values()) {
@@ -22,6 +26,7 @@ public enum SourceNamespace {
         throw new IllegalArgumentException("Unsupported source namespace: " + wireName);
     }
 
+    @JsonValue
     public String wireName() {
         return wireName;
     }

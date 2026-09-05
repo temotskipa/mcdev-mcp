@@ -2,7 +2,7 @@ package dev.mcdevmcp.storage.callgraph;
 
 import java.util.Objects;
 
-public record CallgraphDataRecord(long edgeId, String callerClass, String callerMethod, String callerDescriptor, String calleeClass, String calleeMethod, String calleeDescriptor, Integer lineNumber) {
+public value record CallgraphDataRecord(long edgeId, String callerClass, String callerMethod, String callerDescriptor, String calleeClass, String calleeMethod, String calleeDescriptor, Integer lineNumber) {
     public CallgraphDataRecord {
         if (edgeId < 1) {
             throw new IllegalArgumentException("edgeId must be positive");

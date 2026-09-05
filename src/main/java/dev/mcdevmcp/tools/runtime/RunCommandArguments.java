@@ -1,7 +1,9 @@
 package dev.mcdevmcp.tools.runtime;
 
-record RunCommandArguments(String command) {
-    static RunCommandArguments from(RunCommandWireArguments wire) {
-        return new RunCommandArguments(RuntimeToolSupport.requiredString(wire.command(), "command"));
+import dev.mcdevmcp.mcp.tool.api.InputProperty;
+
+value record RunCommandArguments(@InputProperty(description = "The command to run", required = true) String command) {
+    RunCommandArguments {
+        command = RuntimeToolSupport.requiredString(command, "command");
     }
 }

@@ -9,7 +9,7 @@ import java.nio.file.Path;
 import java.util.*;
 
 final class JavacDiagnostics {
-    private static final Set<String> RECOVERABLE_DECLARATION_ERRORS = Set.of("compiler.err.override.weaker.access");
+    private static final Set<String> RECOVERABLE_DECLARATION_ERRORS = Set.of("compiler.err.override.weaker.access", "compiler.err.type.annotation.inadmissible");
 
     private JavacDiagnostics() {
     }

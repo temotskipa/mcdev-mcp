@@ -1,22 +1,25 @@
 package dev.mcdevmcp.tools.runtime;
 
-import dev.mcdevmcp.mcp.tool.api.ToolBinding;
+import dev.mcdevmcp.mcp.tool.ToolAvailability;
+import dev.mcdevmcp.mcp.tool.ToolDeclaration;
+import dev.mcdevmcp.mcp.tool.api.ContentToolResult;
+import dev.mcdevmcp.mcp.tool.api.ContentToolBinding;
 import dev.mcdevmcp.mcp.tool.api.ToolHandlers;
-import dev.mcdevmcp.mcp.tool.api.ArgumentDecoder;
 import dev.mcdevmcp.mcp.tool.api.ToolResult;
 
 import java.util.List;
 
 final class McScriptLogsTool {
+    static final ToolDeclaration<ScriptLogsArguments> DECLARATION = ToolDeclaration.of("mc_script_logs", ScriptLogsArguments.class, ToolAvailability.SCRIPT_LOGS);
+
     private McScriptLogsTool() {
     }
 
-    static ToolBinding<ScriptLogsArguments> binding(ScriptLogger logger) {
-        var decoder = ArgumentDecoder.sdk(ScriptLogsWireArguments.class).map(ScriptLogsArguments::from);
-        return ToolBinding.compatibility(decoder, (arguments, _) -> ToolHandlers.completed(render(logger, arguments)));
+    static ContentToolBinding<ScriptLogsArguments> binding(ScriptLogger logger) {
+        return DECLARATION.bind((arguments, _) -> ToolHandlers.completed(render(logger, arguments)));
     }
 
-    private static ToolResult render(ScriptLogger logger, ScriptLogsArguments arguments) {
+    private static ContentToolResult<Void> render(ScriptLogger logger, ScriptLogsArguments arguments) {
         if (logger == null) {
             return ToolResult.text("Session logging is disabled. Set MCDEV_SCRIPT_LOGS=1 or MCDEV_SESSION_LOG_DIR to enable it.");
         }
@@ -29,14 +32,10 @@ final class McScriptLogsTool {
     }
 
     private static int limit(ScriptLogsArguments arguments) {
-        long value = arguments.limit().longValue();
-        if (value <= 0) {
-            return 0;
-        }
-        return (int) Math.min(Integer.MAX_VALUE, value);
+        return Math.max(arguments.limit(), 0);
     }
 
-    private static ToolResult renderStats(List<ScriptLogger.ScriptErrorStat> stats) {
+    private static ContentToolResult<Void> renderStats(List<ScriptLogger.ScriptErrorStat> stats) {
         if (stats.isEmpty()) {
             return ToolResult.text("No errors logged yet.");
         }
@@ -53,7 +52,7 @@ final class McScriptLogsTool {
         return ToolResult.text(text.toString());
     }
 
-    private static ToolResult renderErrors(List<ScriptLogger.ScriptLogEntry> errors) {
+    private static ContentToolResult<Void> renderErrors(List<ScriptLogger.ScriptLogEntry> errors) {
         if (errors.isEmpty()) {
             return ToolResult.text("No errors logged yet.");
         }

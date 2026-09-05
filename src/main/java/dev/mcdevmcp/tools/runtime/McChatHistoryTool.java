@@ -1,17 +1,19 @@
 package dev.mcdevmcp.tools.runtime;
 
 import dev.mcdevmcp.bridge.BridgeEndpoint;
-import dev.mcdevmcp.mcp.tool.api.ToolBinding;
-import dev.mcdevmcp.mcp.tool.api.ArgumentDecoder;
+import dev.mcdevmcp.bridge.payload.ChatHistoryPayload;
+import dev.mcdevmcp.mcp.tool.ToolDeclaration;
+import dev.mcdevmcp.mcp.tool.api.ContentToolBinding;
 
 final class McChatHistoryTool {
+    static final ToolDeclaration<ChatHistoryArguments> DECLARATION = ToolDeclaration.of("mc_chat_history", ChatHistoryArguments.class);
+
     private static final BridgeEndpoint ENDPOINT = new BridgeEndpoint("chatHistory");
 
     private McChatHistoryTool() {
     }
 
-    static ToolBinding<ChatHistoryArguments> binding(RuntimeToolSupport support) {
-        var decoder = ArgumentDecoder.sdk(ChatHistoryWireArguments.class).map(ChatHistoryArguments::from);
-        return ToolBinding.compatibility(decoder, (arguments, _) -> support.container(ENDPOINT, RuntimeToolSupport.payload("limit", arguments.limit(), "includeJson", arguments.includeJson())));
+    static ContentToolBinding<ChatHistoryArguments> binding(RuntimeToolSupport support) {
+        return DECLARATION.bind((arguments, _) -> support.container(ENDPOINT, new ChatHistoryPayload(arguments.limit(), arguments.includeJson())));
     }
 }

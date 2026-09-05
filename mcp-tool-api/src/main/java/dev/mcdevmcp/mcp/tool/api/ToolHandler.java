@@ -4,5 +4,5 @@ import java.util.concurrent.CompletionStage;
 
 @FunctionalInterface
 public interface ToolHandler<A> {
-    CompletionStage<ToolResult> handle(A arguments, ToolCancellation cancellation);
+    CompletionStage<? extends ContentToolResult<Void>> handle(A arguments, ToolCancellation cancellation);
 }

@@ -48,11 +48,11 @@ if (version.error !== undefined) {
     const outcome = version.signal === null ? `status ${version.status}` : `signal ${version.signal}`;
     process.stderr.write(`Unable to determine Java version: java -version exited with ${outcome}.\n`);
     process.exitCode = 1;
-} else if (!Number.isInteger(feature) || feature < 25) {
-    process.stderr.write(`Java 25 or newer is required; detected ${Number.isInteger(feature) ? `Java ${feature}` : "an unknown Java version"}.\n`);
+} else if (!Number.isInteger(feature) || feature < 28) {
+    process.stderr.write(`Java 28 with preview features is required; detected ${Number.isInteger(feature) ? `Java ${feature}` : "an unknown Java version"}.\n`);
     process.exitCode = 1;
 } else {
-    const child = spawn(javaCommand, javaArguments(["-jar", jar, "serve"]), {
+    const child = spawn(javaCommand, javaArguments(["--enable-preview", "-jar", jar, "serve"]), {
         env: childEnvironment(process.env),
         stdio: "inherit"
     });

@@ -20,7 +20,7 @@ import java.time.OffsetDateTime;
 import java.util.*;
 
 @SuppressWarnings({"SqlNoDataSourceInspection", "SqlResolve"})
-record SymbolIndexSnapshot(SymbolIndexMetadata metadata, List<IndexedPackageSnapshot> packages, List<IndexedTypeSnapshot> types, List<IndexedInterfaceSnapshot> interfaces, List<IndexedFieldSnapshot> fields, List<IndexedMethodSnapshot> methods, List<IndexedParameterSnapshot> parameters) {
+value record SymbolIndexSnapshot(SymbolIndexMetadata metadata, List<IndexedPackageSnapshot> packages, List<IndexedTypeSnapshot> types, List<IndexedInterfaceSnapshot> interfaces, List<IndexedFieldSnapshot> fields, List<IndexedMethodSnapshot> methods, List<IndexedParameterSnapshot> parameters) {
     SymbolIndexSnapshot {
         packages = List.copyOf(packages);
         types = List.copyOf(types);

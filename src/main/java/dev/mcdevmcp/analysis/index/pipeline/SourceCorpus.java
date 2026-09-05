@@ -15,7 +15,7 @@ import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.util.*;
 
-final class SourceCorpus {
+final value class SourceCorpus {
     private final List<DecodedSource> sources;
     private final Map<URI, DecodedSource> byUri;
 

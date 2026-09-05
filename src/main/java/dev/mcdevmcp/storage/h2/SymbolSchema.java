@@ -7,7 +7,8 @@ import java.sql.*;
 import java.time.Instant;
 import java.util.*;
 
-//noinspection SqlNoDataSourceInspection,SqlResolve
+@SuppressWarnings("SqlNoDataSourceInspection")
+//noinspection SqlResolve
 public final class SymbolSchema {
     public static final int VERSION = 1;
     private static final Set<String> TABLES = Set.of("METADATA", "PACKAGES", "TYPES", "TYPE_INTERFACES", "FIELDS", "METHODS", "PARAMETERS");

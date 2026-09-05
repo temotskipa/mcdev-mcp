@@ -24,9 +24,9 @@ import java.util.jar.Manifest;
 public final class MinecraftDecompiler {
     private static final LinkOption[] NO_FOLLOW_LINKS = {LinkOption.NOFOLLOW_LINKS};
 
-    static Path resolveSourcePath(Path staging, String path, String entryName) throws IOException {
+    static Path resolveSourcePath(Path staging, String outputPath, String entryName) throws IOException {
         Path root = staging.toAbsolutePath().normalize();
-        Path directory = relativeOutputPath(path, "directory", true);
+        Path directory = relativeOutputPath(outputPath, "directory", true);
         Path entry = relativeOutputPath(entryName, "entry", false);
         Path file = root.resolve(directory).resolve(entry).normalize();
         if (!file.startsWith(root) || file.equals(root) || !file.getFileName().toString().endsWith(".java")) {
@@ -35,11 +35,11 @@ public final class MinecraftDecompiler {
         return file;
     }
 
-    static void createOutputDirectory(Path staging, String path) throws IOException {
+    static void createOutputDirectory(Path staging, String outputPath) throws IOException {
         Path root = staging.toAbsolutePath().normalize();
-        Path directory = root.resolve(relativeOutputPath(path, "directory", true)).normalize();
+        Path directory = root.resolve(relativeOutputPath(outputPath, "directory", true)).normalize();
         if (!directory.startsWith(root)) {
-            throw new IOException("Unsafe decompiler output directory: " + path);
+            throw new IOException("Unsafe decompiler output directory: " + outputPath);
         }
         ensureDirectoryWithinStaging(root, directory);
     }
@@ -47,10 +47,10 @@ public final class MinecraftDecompiler {
     private static IResultSaver saver(Path staging, AtomicInteger written, Cancellation cancellation) {
         return new IResultSaver() {
             @Override
-            public void saveFolder(String path) {
+            public void saveFolder(String outputPath) {
                 try {
                     checkCancelled(cancellation);
-                    createOutputDirectory(staging, path);
+                    createOutputDirectory(staging, outputPath);
                 } catch (IOException exception) {
                     throw new UncheckedIOException(exception);
                 }
@@ -61,8 +61,8 @@ public final class MinecraftDecompiler {
             }
 
             @Override
-            public void saveClassFile(String path, String qualifiedName, String entryName, String content, int[] mapping) {
-                write(path, entryName, content);
+            public void saveClassFile(String outputPath, String qualifiedName, String entryName, String content, int[] mapping) {
+                write(outputPath, entryName, content);
             }
 
             @Override
@@ -78,18 +78,18 @@ public final class MinecraftDecompiler {
             }
 
             @Override
-            public void saveClassEntry(String path, String archiveName, String qualifiedName, String entryName, String content) {
-                write(path, entryName, content);
+            public void saveClassEntry(String outputPath, String archiveName, String qualifiedName, String entryName, String content) {
+                write(outputPath, entryName, content);
             }
 
             @Override
             public void closeArchive(String path, String archiveName) {
             }
 
-            private void write(String path, String entryName, String content) {
+            private void write(String outputPath, String entryName, String content) {
                 try {
                     checkCancelled(cancellation);
-                    Path file = resolveSourcePath(staging, path, entryName);
+                    Path file = resolveSourcePath(staging, outputPath, entryName);
                     ensureDirectoryWithinStaging(staging, file.getParent());
                     Files.writeString(file, Objects.requireNonNull(content, "content"), StandardCharsets.UTF_8, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE);
                     checkCancelled(cancellation);

@@ -1,9 +1,12 @@
 package dev.mcdevmcp.tools.runtime;
 
-import java.math.BigDecimal;
+import dev.mcdevmcp.minecraft.BlockPosition;
+import dev.mcdevmcp.mcp.tool.api.InputProperty;
 
-record BlockDetailsArguments(BigDecimal x, BigDecimal y, BigDecimal z) {
-    static BlockDetailsArguments from(BlockDetailsWireArguments wire) {
-        return new BlockDetailsArguments(RuntimeToolSupport.requiredDecimal(wire.x(), "x"), RuntimeToolSupport.requiredDecimal(wire.y(), "y"), RuntimeToolSupport.requiredDecimal(wire.z(), "z"));
+import java.util.Objects;
+
+value record BlockDetailsArguments(@InputProperty(required = true) BlockPosition position) {
+    BlockDetailsArguments {
+        Objects.requireNonNull(position, "position");
     }
 }

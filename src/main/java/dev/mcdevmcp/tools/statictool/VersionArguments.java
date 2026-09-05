@@ -1,8 +1,7 @@
 package dev.mcdevmcp.tools.statictool;
 
-record VersionArguments(VersionAction action, TextArgument actionText, String version) {
-    static VersionArguments from(VersionWireArguments wire) {
-        TextArgument actionText = TextArgument.fromWire(wire.action());
-        return new VersionArguments(VersionAction.from(actionText), actionText, wire.version());
-    }
+import dev.mcdevmcp.mcp.tool.api.InputProperty;
+import dev.mcdevmcp.storage.model.MinecraftVersion;
+
+record VersionArguments(@InputProperty(description = "Action to perform", required = true) VersionAction action, @InputProperty(description = "(set) Minecraft version to activate (e.g., \"1.21.11\")") MinecraftVersion version) {
 }

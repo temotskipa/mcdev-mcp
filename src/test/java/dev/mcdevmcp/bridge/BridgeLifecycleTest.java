@@ -1,6 +1,7 @@
 package dev.mcdevmcp.bridge;
 
 import dev.mcdevmcp.support.AppEnvironment;
+import dev.mcdevmcp.bridge.payload.EmptyBridgePayload;
 import io.modelcontextprotocol.json.McpJsonDefaults;
 import org.junit.jupiter.api.Test;
 
@@ -24,7 +25,7 @@ final class BridgeLifecycleTest {
         CompletableFuture<BridgeResponse> delayed = new CompletableFuture<>();
         BridgeClient client = BridgeClient.testing(JSON, ignored -> delayed, diagnostics::add);
 
-        CompletableFuture<BridgeResponse> request = client.send(new BridgeEndpoint("status"), Map.of(), Duration.ofMillis(1)).toCompletableFuture();
+        CompletableFuture<BridgeResponse> request = client.send(new BridgeEndpoint("status"), new EmptyBridgePayload(), Duration.ofMillis(1)).toCompletableFuture();
         client.peerClosed(new IllegalStateException("peer"));
         assertThrows(Exception.class, request::join);
         assertEquals(0, client.pendingRequestCount());
@@ -40,7 +41,7 @@ final class BridgeLifecycleTest {
         CompletableFuture<BridgeResponse> delayed = new CompletableFuture<>();
         BridgeClient client = BridgeClient.testing(JSON, ignored -> delayed, diagnostics::add);
 
-        CompletableFuture<BridgeResponse> timeout = client.send(new BridgeEndpoint("status"), Map.of(), Duration.ofMillis(1)).toCompletableFuture();
+        CompletableFuture<BridgeResponse> timeout = client.send(new BridgeEndpoint("status"), new EmptyBridgePayload(), Duration.ofMillis(1)).toCompletableFuture();
         assertThrows(Exception.class, () -> timeout.get(6, TimeUnit.SECONDS));
         client.receiveText("{\"id\":\"req_99\",", false);
         client.receiveText("\"success\":true,\"result\":{}}", true);
@@ -140,6 +141,7 @@ final class BridgeLifecycleTest {
     }
 
     @Test
+    @SuppressWarnings("ALL")
     void peerClosureClearsSessionAndLaterSendReconnects() {
         Path firstDirectory = Path.of("run-first").toAbsolutePath().normalize();
         Path secondDirectory = Path.of("run-second").toAbsolutePath().normalize();
@@ -153,7 +155,8 @@ final class BridgeLifecycleTest {
         first.peerClosed(new IllegalStateException("gone"));
         assertFalse(session.connectedPort().isPresent());
         assertEquals("first", session.sessionInfo().orElseThrow().version().value());
-        assertTrue(session.send(new BridgeEndpoint("echo"), Map.of(), Duration.ofSeconds(1)).toCompletableFuture().join().success());
+        BridgePayload payload = new EmptyBridgePayload();
+        assertTrue(session.send(new BridgeEndpoint("echo"), payload, Duration.ofSeconds(1)).toCompletableFuture().join().success());
         assertEquals("second", session.sessionInfo().orElseThrow().version().value());
         assertEquals(1, diagnostics.size());
         assertTrue(diagnostics.getFirst().contains("identity changed"));
