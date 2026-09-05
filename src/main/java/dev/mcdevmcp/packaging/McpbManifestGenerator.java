@@ -136,7 +136,7 @@ public final class McpbManifestGenerator {
             if (parent != null) {
                 Files.createDirectories(parent);
             }
-            Files.writeString(target, mapper.writeValueAsString(value) + System.lineSeparator(), StandardCharsets.UTF_8);
+            Files.writeString(target, mapper.writeValueAsString(value) + "\n", StandardCharsets.UTF_8);
         } catch (IOException exception) {
             throw new IllegalStateException("Unable to write MCPB manifest: " + target, exception);
         }

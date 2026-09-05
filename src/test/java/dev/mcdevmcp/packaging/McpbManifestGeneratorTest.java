@@ -109,6 +109,8 @@ class McpbManifestGeneratorTest {
 
         assertArrayEquals(Files.readAllBytes(firstRoot), Files.readAllBytes(secondRoot));
         assertArrayEquals(Files.readAllBytes(firstStaging), Files.readAllBytes(secondStaging));
+        assertLfTerminatedJson(Files.readAllBytes(firstRoot));
+        assertLfTerminatedJson(Files.readAllBytes(firstStaging));
         Map<String, Object> generated = McpJsonDefaults.getMapper().readValue(Files.readString(firstRoot), new TypeRef<>() {
         });
         assertEquals(List.of("manifest_version", "name", "display_name", "description", "author", "version", "tools", "user_config"), List.copyOf(generated.keySet()));
@@ -119,13 +121,31 @@ class McpbManifestGeneratorTest {
         var root = Files.createTempDirectory("mcpb-manifest-checked-in");
         var generatedRoot = root.resolve("manifest.json");
         var generatedStaging = root.resolve("staging/manifest.json");
+        var checkedInManifestPath = Path.of("manifest.json");
+        var template = Path.of("packaging/mcpb/manifest.template.json");
+        byte[] checkedInManifest = Files.readAllBytes(checkedInManifestPath);
+        assertLfTerminatedJson(checkedInManifest);
+        Files.copy(checkedInManifestPath, generatedRoot);
 
-        McpbManifestGenerator.generate(Path.of("packaging/mcpb/manifest.template.json"), generatedRoot, generatedStaging);
+        McpbManifestGenerator.generate(template, generatedRoot, generatedStaging);
 
-        assertArrayEquals(Files.readAllBytes(Path.of("manifest.json")), Files.readAllBytes(generatedRoot));
+        assertArrayEquals(checkedInManifest, Files.readAllBytes(generatedRoot));
+        byte[] firstStagingManifest = Files.readAllBytes(generatedStaging);
+        McpbManifestGenerator.generate(template, generatedRoot, generatedStaging);
+        assertArrayEquals(checkedInManifest, Files.readAllBytes(generatedRoot));
+        assertArrayEquals(firstStagingManifest, Files.readAllBytes(generatedStaging));
         Map<String, Object> generated = McpJsonDefaults.getMapper().readValue(Files.readString(generatedRoot), new TypeRef<>() {
         });
         assertEquals(AppVersion.current(), generated.get("version"));
+    }
+
+    private static void assertLfTerminatedJson(byte[] bytes) {
+        assertTrue(bytes.length >= 2);
+        assertEquals('}', bytes[bytes.length - 2]);
+        assertEquals('\n', bytes[bytes.length - 1]);
+        for (byte value : bytes) {
+            assertNotEquals('\r', value, "Manifest JSON must use platform-independent LF line endings");
+        }
     }
 
     @SuppressWarnings("unchecked")
