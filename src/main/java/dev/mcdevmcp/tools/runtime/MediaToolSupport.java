@@ -1,22 +1,9 @@
 package dev.mcdevmcp.tools.runtime;
 
-import dev.mcdevmcp.bridge.BridgeEndpoint;
-import dev.mcdevmcp.bridge.BridgePayload;
-import dev.mcdevmcp.bridge.BridgeResultTypes;
-import dev.mcdevmcp.bridge.BridgeResponse;
-import dev.mcdevmcp.bridge.RecordVideoWireResult;
-import dev.mcdevmcp.bridge.RecordVideoFramesWireResult;
-import dev.mcdevmcp.bridge.RecordVideoGridWireResult;
-import dev.mcdevmcp.bridge.ScreenshotWireResult;
-import dev.mcdevmcp.bridge.TextureWireResult;
-import dev.mcdevmcp.bridge.payload.EntityItemTexturePayload;
-import dev.mcdevmcp.bridge.payload.ItemTextureByIdPayload;
-import dev.mcdevmcp.bridge.payload.ItemTexturePayload;
-import dev.mcdevmcp.bridge.payload.RecordVideoFramePayload;
-import dev.mcdevmcp.bridge.payload.RecordVideoTimedPayload;
-import dev.mcdevmcp.bridge.payload.ScreenshotPayload;
-import dev.mcdevmcp.mcp.tool.api.ToolResult;
+import dev.mcdevmcp.bridge.*;
+import dev.mcdevmcp.bridge.payload.*;
 import dev.mcdevmcp.mcp.tool.api.ContentToolResult;
+import dev.mcdevmcp.mcp.tool.api.ToolResult;
 import io.modelcontextprotocol.spec.McpSchema;
 
 import java.nio.file.Path;

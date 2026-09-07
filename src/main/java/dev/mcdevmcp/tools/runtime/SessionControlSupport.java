@@ -1,12 +1,8 @@
 package dev.mcdevmcp.tools.runtime;
 
-import dev.mcdevmcp.bridge.BridgeEndpoint;
-import dev.mcdevmcp.bridge.BridgePayload;
-import dev.mcdevmcp.bridge.BridgeResponse;
-import dev.mcdevmcp.bridge.BridgeSession;
-import dev.mcdevmcp.bridge.SessionInfo;
-import dev.mcdevmcp.mcp.tool.api.ToolCancellation;
+import dev.mcdevmcp.bridge.*;
 import dev.mcdevmcp.mcp.tool.api.ContentToolResult;
+import dev.mcdevmcp.mcp.tool.api.ToolCancellation;
 import dev.mcdevmcp.mcp.tool.api.ToolResult;
 import dev.mcdevmcp.storage.model.MinecraftVersion;
 import dev.mcdevmcp.support.AppEnvironment;
@@ -295,7 +291,6 @@ final class SessionControlSupport {
         return listeningPidResolver(scheduler, command -> new ProcessBuilder(command).redirectError(ProcessBuilder.Redirect.DISCARD).start());
     }
 
-    @SuppressWarnings("resource")
     static ListeningPidResolver listeningPidResolver(ScheduledExecutorService scheduler, ProcessStarter processStarter) {
         Objects.requireNonNull(scheduler, "scheduler");
         Objects.requireNonNull(processStarter, "processStarter");
