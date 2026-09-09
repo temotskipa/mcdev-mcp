@@ -34,7 +34,8 @@ final class StaticToolSupport {
     private volatile MinecraftVersion activeVersion;
 
     StaticToolSupport(PlatformPaths paths) {
-        this(paths, () -> {});
+        this(paths, () -> {
+        });
     }
 
     StaticToolSupport(PlatformPaths paths, Runnable beforeSourceRead) {

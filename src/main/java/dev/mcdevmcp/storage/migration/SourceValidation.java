@@ -3,8 +3,7 @@ package dev.mcdevmcp.storage.migration;
 import java.util.List;
 import java.util.Objects;
 
-public record SourceValidation(SourceValidationStatus status, List<String> diagnostics,
-                               List<String> requiredUnits, List<String> parsedUnits) {
+public record SourceValidation(SourceValidationStatus status, List<String> diagnostics, List<String> requiredUnits, List<String> parsedUnits) {
     public SourceValidation {
         Objects.requireNonNull(status, "status");
         diagnostics = List.copyOf(diagnostics);

@@ -12,8 +12,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.TreeMap;
 
-public record SourceProducerIdentity(String implementation, String version, SourceArtifactIdentity artifact,
-                                     Map<String, String> settings, String resourcePolicy) {
+public record SourceProducerIdentity(String implementation, String version, SourceArtifactIdentity artifact, Map<String, String> settings, String resourcePolicy) {
     public static final String JAVA_ONLY_RESOURCE_POLICY = "mcdev-java-only-v1: IResultSaver copyFile/copyEntry and archive metadata callbacks intentionally emit no resources";
 
     public SourceProducerIdentity {
@@ -24,16 +23,13 @@ public record SourceProducerIdentity(String implementation, String version, Sour
         Objects.requireNonNull(resourcePolicy, "resourcePolicy");
     }
 
-    public static SourceProducerIdentity capture(Class<?> producerClass, String version,
-                                                 Map<String, String> settings, Cancellation cancellation) throws IOException {
+    public static SourceProducerIdentity capture(Class<?> producerClass, String version, Map<String, String> settings, Cancellation cancellation) throws IOException {
         var source = producerClass.getProtectionDomain().getCodeSource();
         if (source == null || !"file".equals(source.getLocation().getProtocol())) {
             throw new IOException("Cannot identify loaded source producer artifact: " + producerClass.getName());
         }
         try {
-            return new SourceProducerIdentity(producerClass.getName(), version,
-                    captureRuntimeArtifact(Path.of(source.getLocation().toURI()), cancellation),
-                    settings, JAVA_ONLY_RESOURCE_POLICY);
+            return new SourceProducerIdentity(producerClass.getName(), version, captureRuntimeArtifact(Path.of(source.getLocation().toURI()), cancellation), settings, JAVA_ONLY_RESOURCE_POLICY);
         } catch (URISyntaxException exception) {
             throw new IOException("Invalid loaded source producer location", exception);
         }
@@ -45,11 +41,11 @@ public record SourceProducerIdentity(String implementation, String version, Sour
         // The JVM supplies this producer location. Pin its physical artifact while allowing system ancestor aliases.
         Path physical = logical.toRealPath();
         BasicFileAttributes pinned = regularArtifact(physical);
-        if (!sameIdentity(selected, pinned)) {
+        if (differentIdentity(selected, pinned)) {
             throw new IOException("Source producer artifact changed while resolving: " + logical);
         }
         SourceArtifactIdentity identity = SourceArtifactIdentity.capture(physical, cancellation);
-        if (!physical.toRealPath().equals(physical) || !sameIdentity(pinned, regularArtifact(physical))) {
+        if (!physical.toRealPath().equals(physical) || differentIdentity(pinned, regularArtifact(physical))) {
             throw new IOException("Pinned source producer artifact changed: " + physical);
         }
         return identity;
@@ -63,8 +59,7 @@ public record SourceProducerIdentity(String implementation, String version, Sour
         return attributes;
     }
 
-    private static boolean sameIdentity(BasicFileAttributes first, BasicFileAttributes second) {
-        return Objects.equals(first.fileKey(), second.fileKey()) && first.creationTime().equals(second.creationTime())
-                && first.lastModifiedTime().equals(second.lastModifiedTime()) && first.size() == second.size();
+    private static boolean differentIdentity(BasicFileAttributes first, BasicFileAttributes second) {
+        return !Objects.equals(first.fileKey(), second.fileKey()) || !first.creationTime().equals(second.creationTime()) || !first.lastModifiedTime().equals(second.lastModifiedTime()) || first.size() != second.size();
     }
 }

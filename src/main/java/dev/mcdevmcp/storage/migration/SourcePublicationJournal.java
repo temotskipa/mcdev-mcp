@@ -5,9 +5,7 @@ import dev.mcdevmcp.storage.model.MinecraftVersion;
 import java.util.Objects;
 import java.util.UUID;
 
-public record SourcePublicationJournal(int schemaVersion, MinecraftVersion minecraftVersion, String cacheRoot,
-                                       UUID transactionId, SourcePublicationPhase phase, SourcePublicationMode mode,
-                                       SourceIndexSnapshot before, SourceIndexSnapshot candidate) {
+public record SourcePublicationJournal(int schemaVersion, MinecraftVersion minecraftVersion, String cacheRoot, UUID transactionId, SourcePublicationPhase phase, SourcePublicationMode mode, SourceIndexSnapshot before, SourceIndexSnapshot candidate) {
     public SourcePublicationJournal {
         if (schemaVersion != 1) throw new IllegalArgumentException("Unsupported migration journal schema");
         Objects.requireNonNull(minecraftVersion, "minecraftVersion");

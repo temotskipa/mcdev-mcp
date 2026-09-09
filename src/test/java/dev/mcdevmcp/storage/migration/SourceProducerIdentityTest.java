@@ -98,6 +98,7 @@ final class SourceProducerIdentityTest {
         assertEquals(0, ToolProvider.getSystemJavaCompiler().run(null, null, null, "--release", "21", "-d", directory.toString(), source.toString()));
     }
 
+    @SuppressWarnings("resource") // Explicit finally cleanup verifies subprocess termination.
     private static void directoryAlias(Path link, Path destination) throws Exception {
         if (!System.getProperty("os.name").toLowerCase(Locale.ROOT).startsWith("windows")) {
             Files.createSymbolicLink(link, destination);

@@ -18,7 +18,8 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.*;
 
 class SourceIndexTransactionPublisherTest {
-    @TempDir Path temporary;
+    @TempDir
+    Path temporary;
 
     @ParameterizedTest
     @EnumSource(SourcePublicationPhase.class)
@@ -28,15 +29,19 @@ class SourceIndexTransactionPublisherTest {
         try (var lease = VersionOperationLease.write(fixture.paths(), fixture.version())) {
             SourceIndexSnapshot before = stable.captureBefore(fixture.paths(), fixture.version(), lease, Cancellation.none());
             SourceTreeInventory candidate = SourceTreeInventory.capture(fixture.source(), Cancellation.none());
-            var interrupted = new SourceIndexTransactionPublisher((event, path) -> {
+            var interrupted = new SourceIndexTransactionPublisher((event, _) -> {
                 if (event.equals(phase.name())) throw new SourcePublicationCrash();
             });
             assertThrows(SourcePublicationCrash.class, () -> publish(interrupted, fixture, lease, before, Cancellation.none()));
             assertTrue(Files.exists(pending(fixture)));
             stable.recover(fixture.paths(), fixture.version(), lease);
             assertFalse(Files.exists(pending(fixture)));
-            if (phase == SourcePublicationPhase.COMMITTED) assertEquals(candidate, SourceTreeInventory.capture(fixture.paths().sourceRoot(fixture.version()), Cancellation.none()));
-            else assertEquals(before, stable.captureBefore(fixture.paths(), fixture.version(), lease, Cancellation.none()));
+            if (phase == SourcePublicationPhase.COMMITTED) {
+                assertEquals(candidate, SourceTreeInventory.capture(fixture.paths().sourceRoot(fixture.version()), Cancellation.none()));
+            }
+            else {
+                assertEquals(before, stable.captureBefore(fixture.paths(), fixture.version(), lease, Cancellation.none()));
+            }
             assertEquals(before.source(), SourceTreeInventory.capture(fixture.transaction().resolve("old/client"), Cancellation.none()));
             assertEquals(before.index(), SourceTreeInventory.capture(fixture.transaction().resolve("old/index"), Cancellation.none()));
             stable.recover(fixture.paths(), fixture.version(), lease);
@@ -48,7 +53,7 @@ class SourceIndexTransactionPublisherTest {
     void cancellationAtEveryPrecommitPhaseRestoresValidOldDatabase(SourcePublicationPhase phase) throws Exception {
         SourcePublicationFixture fixture = SourcePublicationFixture.create(temporary, false);
         var cancelled = new AtomicBoolean();
-        var publisher = new SourceIndexTransactionPublisher((event, path) -> {
+        var publisher = new SourceIndexTransactionPublisher((event, _) -> {
             if (event.equals(phase.name())) cancelled.set(true);
         });
         try (var lease = VersionOperationLease.write(fixture.paths(), fixture.version())) {
@@ -94,7 +99,11 @@ class SourceIndexTransactionPublisherTest {
             assertTrue(Files.exists(pending(fixture)));
             assertThrows(IOException.class, () -> new SourceIndexTransactionPublisher().recover(fixture.paths(), fixture.version(), lease));
         }
-        assertThrows(IOException.class, () -> VersionOperationLease.read(fixture.paths(), fixture.version()));
+        assertThrows(IOException.class, () -> {
+            try (var unexpected = VersionOperationLease.read(fixture.paths(), fixture.version())) {
+                unexpected.require(fixture.paths(), fixture.version());
+            }
+        });
     }
 
     @Test
@@ -127,10 +136,11 @@ class SourceIndexTransactionPublisherTest {
         Object originalKey = Files.readAttributes(source, java.nio.file.attribute.BasicFileAttributes.class).fileKey();
         SourcePreparationStamp staged = SourceProvenance.read(fixture.stamp()).orElseThrow();
         Files.delete(fixture.stamp());
-        SourceProvenance.write(fixture.stamp(), new SourcePreparationStamp(1, SourceOwnership.VALIDATED_EXTERNAL, null, staged.inputs(),
-                SourceTreeInventory.capture(source, Cancellation.none()), new SourceValidation(SourceValidationStatus.VALID, List.of(), List.of("Old.java"), List.of("Old.java"))));
+        SourceProvenance.write(fixture.stamp(), new SourcePreparationStamp(1, SourceOwnership.VALIDATED_EXTERNAL, null, staged.inputs(), SourceTreeInventory.capture(source, Cancellation.none()), new SourceValidation(SourceValidationStatus.VALID, List.of(), List.of("Old.java"), List.of("Old.java"))));
         var publisher = new SourceIndexTransactionPublisher((event, path) -> {
-            if (event.equals("BEFORE_MOVE") && (path.equals(source) || path.equals(fixture.transaction().resolve("held/client")))) fail("Reused source was moved");
+            if (event.equals("BEFORE_MOVE") && (path.equals(source) || path.equals(fixture.transaction().resolve("held/client")))) {
+                fail("Reused source was moved");
+            }
         });
         try (var lease = VersionOperationLease.write(fixture.paths(), fixture.version())) {
             SourceIndexSnapshot before = publisher.captureBefore(fixture.paths(), fixture.version(), lease, Cancellation.none());
@@ -145,7 +155,7 @@ class SourceIndexTransactionPublisherTest {
     @ValueSource(strings = {"corrupt-journal", "missing-backup", "altered-backup"})
     void uncertainRecoveryLeavesPendingAndOriginalArtifacts(String fault) throws Exception {
         SourcePublicationFixture fixture = SourcePublicationFixture.create(temporary, true);
-        var publisher = new SourceIndexTransactionPublisher((event, path) -> {
+        var publisher = new SourceIndexTransactionPublisher((event, _) -> {
             if (event.equals("BACKED_UP")) throw new SourcePublicationCrash();
         });
         try (var lease = VersionOperationLease.write(fixture.paths(), fixture.version())) {
@@ -154,7 +164,8 @@ class SourceIndexTransactionPublisherTest {
             switch (fault) {
                 case "corrupt-journal" -> Files.writeString(pending(fixture), "{");
                 case "missing-backup" -> Files.delete(fixture.transaction().resolve("old/client/Old.java"));
-                case "altered-backup" -> Files.writeString(fixture.transaction().resolve("old/client/Old.java"), "altered");
+                case "altered-backup" ->
+                        Files.writeString(fixture.transaction().resolve("old/client/Old.java"), "altered");
                 default -> throw new AssertionError(fault);
             }
             assertThrows(IOException.class, () -> new SourceIndexTransactionPublisher().recover(fixture.paths(), fixture.version(), lease));
@@ -162,13 +173,17 @@ class SourceIndexTransactionPublisherTest {
             assertEquals(before.source(), SourceTreeInventory.capture(fixture.transaction().resolve("held/client"), Cancellation.none()));
             assertTrue(Files.exists(fixture.source()));
         }
-        assertThrows(IOException.class, () -> VersionOperationLease.read(fixture.paths(), fixture.version()));
+        assertThrows(IOException.class, () -> {
+            try (var unexpected = VersionOperationLease.read(fixture.paths(), fixture.version())) {
+                unexpected.require(fixture.paths(), fixture.version());
+            }
+        });
     }
 
     @Test
     void rollbackClearsInterruptionTemporarilyAndRestoresItAfterward() throws Exception {
         SourcePublicationFixture fixture = SourcePublicationFixture.create(temporary, true);
-        var publisher = new SourceIndexTransactionPublisher((event, path) -> {
+        var publisher = new SourceIndexTransactionPublisher((event, _) -> {
             if (event.equals("INSTALLING_DATABASE")) Thread.currentThread().interrupt();
         });
         try (var lease = VersionOperationLease.write(fixture.paths(), fixture.version())) {
@@ -176,7 +191,10 @@ class SourceIndexTransactionPublisherTest {
             try {
                 assertThrows(IOException.class, () -> publish(publisher, fixture, lease, before, Cancellation.none()));
                 assertTrue(Thread.currentThread().isInterrupted());
-            } finally { Thread.interrupted(); }
+            } finally {
+                //noinspection ResultOfMethodCallIgnored
+                Thread.interrupted();
+            }
             assertEquals(before, publisher.captureBefore(fixture.paths(), fixture.version(), lease, Cancellation.none()));
         }
     }
@@ -185,7 +203,7 @@ class SourceIndexTransactionPublisherTest {
     void lateCancellationReturnsCommittedResult() throws Exception {
         SourcePublicationFixture fixture = SourcePublicationFixture.create(temporary, true);
         var cancelled = new AtomicBoolean();
-        var publisher = new SourceIndexTransactionPublisher((event, path) -> {
+        var publisher = new SourceIndexTransactionPublisher((event, _) -> {
             if (event.equals("COMMITTED")) cancelled.set(true);
         });
         try (var lease = VersionOperationLease.write(fixture.paths(), fixture.version())) {
@@ -200,7 +218,7 @@ class SourceIndexTransactionPublisherTest {
     void committedTransactionRecordSurvivesStalePendingPointer() throws Exception {
         SourcePublicationFixture fixture = SourcePublicationFixture.create(temporary, true);
         var previousPointer = new AtomicReference<byte[]>();
-        var publisher = new SourceIndexTransactionPublisher((event, path) -> {
+        var publisher = new SourceIndexTransactionPublisher((event, _) -> {
             if (event.equals("VALIDATING_PAIR")) previousPointer.set(Files.readAllBytes(pending(fixture)));
             if (event.equals("COMMITTED")) {
                 Files.write(pending(fixture), previousPointer.get());
@@ -223,7 +241,9 @@ class SourceIndexTransactionPublisherTest {
         SourcePublicationFixture fixture = SourcePublicationFixture.create(temporary, true);
         var injected = new AtomicBoolean();
         var publisher = new SourceIndexTransactionPublisher((event, path) -> {
-            if (event.equals("AFTER_MOVE") && path.equals(fixture.paths().sourceRoot(fixture.version())) && injected.compareAndSet(false, true)) throw new IOException("Provider reported uncertain completed move");
+            if (event.equals("AFTER_MOVE") && path.equals(fixture.paths().sourceRoot(fixture.version())) && injected.compareAndSet(false, true)) {
+                throw new IOException("Provider reported uncertain completed move");
+            }
         });
         try (var lease = VersionOperationLease.write(fixture.paths(), fixture.version())) {
             SourceIndexSnapshot before = publisher.captureBefore(fixture.paths(), fixture.version(), lease, Cancellation.none());
@@ -241,7 +261,9 @@ class SourceIndexTransactionPublisherTest {
         SourcePublicationFixture fixture = SourcePublicationFixture.create(temporary, true);
         var publisher = new SourceIndexTransactionPublisher((event, path) -> {
             if (event.equals("INSTALLING_DATABASE")) throw new IOException("Injected installation failure");
-            if (event.equals("BEFORE_MOVE") && path.getParent().equals(fixture.transaction().resolve("failed"))) throw new IOException("Injected rollback failure");
+            if (event.equals("BEFORE_MOVE") && path.getParent().equals(fixture.transaction().resolve("failed"))) {
+                throw new IOException("Injected rollback failure");
+            }
         });
         try (var lease = VersionOperationLease.write(fixture.paths(), fixture.version())) {
             SourceIndexSnapshot before = publisher.captureBefore(fixture.paths(), fixture.version(), lease, Cancellation.none());
@@ -285,20 +307,27 @@ class SourceIndexTransactionPublisherTest {
         SourceTreeInventory candidate = SourceTreeInventory.capture(fixture.source(), Cancellation.none());
         assertEquals(73, runProcess(fixture, event));
         assertTrue(Files.exists(pending(fixture)));
-        assertThrows(IOException.class, () -> VersionOperationLease.read(fixture.paths(), fixture.version()));
+        assertThrows(IOException.class, () -> {
+            try (var unexpected = VersionOperationLease.read(fixture.paths(), fixture.version())) {
+                unexpected.require(fixture.paths(), fixture.version());
+            }
+        });
         assertEquals(0, runProcess(fixture, "RECOVER"));
         try (var lease = VersionOperationLease.write(fixture.paths(), fixture.version())) {
-            if (committed) assertEquals(candidate, publisher.captureBefore(fixture.paths(), fixture.version(), lease, Cancellation.none()).source());
-            else assertEquals(before, publisher.captureBefore(fixture.paths(), fixture.version(), lease, Cancellation.none()));
+            if (committed) {
+                assertEquals(candidate, publisher.captureBefore(fixture.paths(), fixture.version(), lease, Cancellation.none()).source());
+            }
+            else {
+                assertEquals(before, publisher.captureBefore(fixture.paths(), fixture.version(), lease, Cancellation.none()));
+            }
         }
         assertEquals(before.source(), SourceTreeInventory.capture(fixture.transaction().resolve("old/client"), Cancellation.none()));
         assertEquals(before.index(), SourceTreeInventory.capture(fixture.transaction().resolve("old/index"), Cancellation.none()));
     }
 
+    @SuppressWarnings("resource") // Explicit finally cleanup verifies subprocess termination.
     private static int runProcess(SourcePublicationFixture fixture, String event) throws Exception {
-        Process process = new ProcessBuilder(System.getProperty("mcdevMcpJava"), "-cp", System.getProperty("java.class.path"),
-                SourcePublicationProcessMain.class.getName(), fixture.paths().cacheRoot().toString(), fixture.transaction().toString(), event)
-                .redirectErrorStream(true).redirectOutput(fixture.transaction().resolve("process-" + event + ".log").toFile()).start();
+        Process process = new ProcessBuilder(System.getProperty("mcdevMcpJava"), "-cp", System.getProperty("java.class.path"), SourcePublicationProcessMain.class.getName(), fixture.paths().cacheRoot().toString(), fixture.transaction().toString(), event).redirectErrorStream(true).redirectOutput(fixture.transaction().resolve("process-" + event + ".log").toFile()).start();
         try {
             assertTrue(process.waitFor(30, TimeUnit.SECONDS), "Migration process did not terminate: " + event);
             return process.exitValue();
@@ -310,8 +339,7 @@ class SourceIndexTransactionPublisherTest {
         }
     }
 
-    private static SourcePublicationResult publish(SourceIndexTransactionPublisher publisher, SourcePublicationFixture fixture,
-                                                    VersionOperationLease lease, SourceIndexSnapshot before, Cancellation cancellation) throws IOException {
+    private static SourcePublicationResult publish(SourceIndexTransactionPublisher publisher, SourcePublicationFixture fixture, VersionOperationLease lease, SourceIndexSnapshot before, Cancellation cancellation) throws IOException {
         return publisher.publish(fixture.paths(), fixture.version(), lease, fixture.transaction(), fixture.source(), fixture.database(), fixture.stamp(), before, cancellation);
     }
 

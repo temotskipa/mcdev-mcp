@@ -258,7 +258,8 @@ public final class AnalysisPipeline implements AnalysisOperations {
                 SourceProducerIdentity producer = SourceProducerIdentity.capture(Fernflower.class, "1.12.0", MinecraftDecompiler.settings(), cancellation);
                 stamp = SourceProvenance.generated(inputs, candidateInventory, validation, producer);
                 mode = SourcePublicationMode.REPLACE_SOURCES;
-            } else {
+            }
+            else {
                 stamp = SourceProvenance.observed(inputs, candidateInventory, validation, previous);
                 mode = SourcePublicationMode.REUSE_SOURCES;
             }
@@ -349,7 +350,7 @@ public final class AnalysisPipeline implements AnalysisOperations {
             Objects.requireNonNull(cancellation, "cancellation");
             sourceTransactions.recover(paths, version, lease);
             checkCancelled(cancellation);
-            cachedSourceRoots(paths, boundary, version, cancellation);
+            requireCachedSources(paths, boundary, version, cancellation);
             if (!Files.isRegularFile(boundary.require(paths.symbolDatabase(version)), LinkOption.NOFOLLOW_LINKS)) {
                 throw new IllegalStateException("Minecraft %s not indexed. Run 'init -v %s' first.".formatted(version.value(), version.value()));
             }
@@ -363,13 +364,12 @@ public final class AnalysisPipeline implements AnalysisOperations {
         }
     }
 
-    private List<SourceRoot> cachedSourceRoots(PlatformPaths paths, CachePathBoundary boundary, MinecraftVersion version, Cancellation cancellation) throws IOException, InterruptedException {
+    private void requireCachedSources(PlatformPaths paths, CachePathBoundary boundary, MinecraftVersion version, Cancellation cancellation) throws IOException, InterruptedException {
         Path source = boundary.require(paths.sourceRoot(version));
         SourceTreeInventory.capture(source, boundary, cancellation);
         if (javaSourceCacheMissing(source, cancellation)) {
             throw new IllegalStateException("No prepared Java source cache for " + version.value() + "; run init first");
         }
-        return List.of(new SourceRoot(SourceNamespace.MINECRAFT, Optional.empty(), source));
     }
 
     private Path cachedRemappedJar(PlatformPaths paths, CachePathBoundary boundary, MinecraftVersion version, Cancellation cancellation) throws IOException, InterruptedException {

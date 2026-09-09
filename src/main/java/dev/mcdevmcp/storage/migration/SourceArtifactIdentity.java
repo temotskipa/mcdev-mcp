@@ -30,9 +30,7 @@ public record SourceArtifactIdentity(String path, long size, String sha256) {
         try {
             String hash = BundleHashes.sha256(path, cancellation);
             BasicFileAttributes after = Files.readAttributes(path, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
-            if (!after.isRegularFile() || after.size() != before.size()
-                    || !after.lastModifiedTime().equals(before.lastModifiedTime())
-                    || !Objects.equals(after.fileKey(), before.fileKey())) {
+            if (!after.isRegularFile() || after.size() != before.size() || !after.lastModifiedTime().equals(before.lastModifiedTime()) || !Objects.equals(after.fileKey(), before.fileKey())) {
                 throw new IOException("Source input changed while hashing: " + path);
             }
             return new SourceArtifactIdentity(path.toString(), after.size(), hash);

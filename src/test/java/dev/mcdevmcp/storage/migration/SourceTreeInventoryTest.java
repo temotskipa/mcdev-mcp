@@ -16,7 +16,8 @@ import java.util.HexFormat;
 import static org.junit.jupiter.api.Assertions.*;
 
 class SourceTreeInventoryTest {
-    @TempDir Path temporary;
+    @TempDir
+    Path temporary;
 
     @Test
     void coversEmptyDirectoriesMarkersAndMissingRoot() throws Exception {
@@ -47,33 +48,25 @@ class SourceTreeInventoryTest {
 
     @Test
     void missingRootHasMagicOnlyGoldenFrame() throws Exception {
-        assertGolden(temporary.resolve("missing"),
-                "6d636465762d736f757263652d696e76656e746f72792d7631",
-                "42e3d2828fbdc463b3772feb9209cf1165ca86caf9023166be6a25e834867796");
+        assertGolden(temporary.resolve("missing"), "6d636465762d736f757263652d696e76656e746f72792d7631", "42e3d2828fbdc463b3772feb9209cf1165ca86caf9023166be6a25e834867796");
     }
 
     @Test
     void emptyDirectoryHasExplicitRootGoldenFrame() throws Exception {
-        assertGolden(temporary,
-                "6d636465762d736f757263652d696e76656e746f72792d76314400000000",
-                "4e5f4d2189046ff83e7e9bd6b6a03107ee2b52b3636cb10ea6c8b223093fb735");
+        assertGolden(temporary, "6d636465762d736f757263652d696e76656e746f72792d76314400000000", "4e5f4d2189046ff83e7e9bd6b6a03107ee2b52b3636cb10ea6c8b223093fb735");
     }
 
     @Test
     void fileGoldenFrameUsesRawDigestAndUnsignedLength() throws Exception {
         Path file = Files.writeString(temporary.resolve("file"), "abc");
-        assertGolden(file,
-                "6d636465762d736f757263652d696e76656e746f72792d763146000000000000000000000003ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
-                "46ac128ae96013fa97dc3a5e77e27ddbef656e330db09fdf5007212ea95c3533");
+        assertGolden(file, "6d636465762d736f757263652d696e76656e746f72792d763146000000000000000000000003ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad", "46ac128ae96013fa97dc3a5e77e27ddbef656e330db09fdf5007212ea95c3533");
     }
 
     @Test
     void unicodeGoldenFrameUsesUtf8LengthsAndUtf16PathOrdering() throws Exception {
         Files.createDirectory(temporary.resolve("\uE000"));
         Files.createDirectory(temporary.resolve("\uD800\uDC00"));
-        assertGolden(temporary,
-                "6d636465762d736f757263652d696e76656e746f72792d763144000000004400000004f09080804400000003ee8080",
-                "2581b152732f5fc2dab6fc2ec73df683603b5047e8f721992f5a2728208aa529");
+        assertGolden(temporary, "6d636465762d736f757263652d696e76656e746f72792d763144000000004400000004f09080804400000003ee8080", "2581b152732f5fc2dab6fc2ec73df683603b5047e8f721992f5a2728208aa529");
         assertEquals(List.of("", "\uD800\uDC00", "\uE000"), SourceTreeInventory.capture(temporary, Cancellation.none()).entries().stream().map(SourceInventoryEntry::relativePath).toList());
     }
 
@@ -81,9 +74,7 @@ class SourceTreeInventoryTest {
     void markerAndEmptyDirectoryGoldenFrameExcludesNothingByFilename() throws Exception {
         Files.createDirectory(temporary.resolve("empty"));
         Files.writeString(temporary.resolve("source-preparation.json"), "abc");
-        assertGolden(temporary,
-                "6d636465762d736f757263652d696e76656e746f72792d763144000000004400000005656d7074794600000017736f757263652d7072657061726174696f6e2e6a736f6e0000000000000003ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
-                "30e78082687cb67626009125ae119d3748f4b20fc6efaf8e877a85ceb239cd9f");
+        assertGolden(temporary, "6d636465762d736f757263652d696e76656e746f72792d763144000000004400000005656d7074794600000017736f757263652d7072657061726174696f6e2e6a736f6e0000000000000003ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad", "30e78082687cb67626009125ae119d3748f4b20fc6efaf8e877a85ceb239cd9f");
     }
 
     private static void assertGolden(Path root, String frameHex, String expectedHash) throws Exception {
@@ -94,6 +85,8 @@ class SourceTreeInventoryTest {
     }
 
     @Test
+    @SuppressWarnings("resource")
+        // Explicit finally cleanup verifies subprocess termination.
     void refusesActualDirectoryLinkAndPreservesDestination() throws Exception {
         Path destination = Files.createDirectory(temporary.resolve("destination"));
         Path sentinel = Files.writeString(destination.resolve("sentinel.txt"), "destination bytes");
@@ -111,7 +104,10 @@ class SourceTreeInventoryTest {
                         assertTrue(process.waitFor(5, TimeUnit.SECONDS));
                     }
                 }
-            } else Files.createSymbolicLink(link, destination);
+            }
+            else {
+                Files.createSymbolicLink(link, destination);
+            }
             assertThrows(IOException.class, () -> SourceTreeInventory.capture(tree, Cancellation.none()));
             assertThrows(IOException.class, () -> SourceTreeInventory.capture(link.resolve("sentinel.txt"), Cancellation.none()));
             assertEquals("destination bytes", Files.readString(sentinel));

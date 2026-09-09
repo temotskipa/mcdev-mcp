@@ -11,12 +11,15 @@ public record SourceInventoryEntry(String relativePath, SourceEntryKind kind, lo
         for (int index = 0; index < relativePath.length(); index++) {
             char unit = relativePath.charAt(index);
             if (Character.isHighSurrogate(unit)) {
-                if (++index >= relativePath.length() || !Character.isLowSurrogate(relativePath.charAt(index))) throw new IllegalArgumentException("Inventory path contains an unpaired surrogate");
-            } else if (Character.isLowSurrogate(unit)) throw new IllegalArgumentException("Inventory path contains an unpaired surrogate");
+                if (++index >= relativePath.length() || !Character.isLowSurrogate(relativePath.charAt(index))) {
+                    throw new IllegalArgumentException("Inventory path contains an unpaired surrogate");
+                }
+            }
+            else if (Character.isLowSurrogate(unit)) {
+                throw new IllegalArgumentException("Inventory path contains an unpaired surrogate");
+            }
         }
-        if (relativePath.indexOf('\\') >= 0 || relativePath.indexOf(':') >= 0
-                || relativePath.startsWith("/") || (!relativePath.isEmpty()
-                && !Path.of(relativePath).normalize().toString().replace('\\', '/').equals(relativePath))) {
+        if (relativePath.indexOf('\\') >= 0 || relativePath.indexOf(':') >= 0 || relativePath.startsWith("/") || (!relativePath.isEmpty() && !Path.of(relativePath).normalize().toString().replace('\\', '/').equals(relativePath))) {
             throw new IllegalArgumentException("Unsafe inventory path: " + relativePath);
         }
         for (String part : relativePath.split("/", -1)) {

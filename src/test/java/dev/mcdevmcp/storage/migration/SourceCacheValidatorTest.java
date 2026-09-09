@@ -29,11 +29,7 @@ final class SourceCacheValidatorTest {
 
     @Test
     void accountsForNestedLocalAnonymousDollarNamedAndDescriptorUnits() throws Exception {
-        Path sources = sources(Map.of(
-                "sample/Outer.java", "package sample; public class Outer { class Nested {} Object value() { class Local {} return new Runnable() { public void run() {} }; } }",
-                "sample/Dollar$Name.java", "package sample; public class Dollar$Name {}",
-                "sample/package-info.java", "@Deprecated package sample;",
-                "module-info.java", "module sample.module { exports sample; }"));
+        Path sources = sources(Map.of("sample/Outer.java", "package sample; public class Outer { class Nested {} Object value() { class Local {} return new Runnable() { public void run() {} }; } }", "sample/Dollar$Name.java", "package sample; public class Dollar$Name {}", "sample/package-info.java", "@Deprecated package sample;", "module-info.java", "module sample.module { exports sample; }"));
         Path jar = compile(sources, "-g:source");
         SourceValidation validation = new SourceCacheValidator().validate(sources, jar, Cancellation.none());
         assertEquals(SourceValidationStatus.VALID, validation.status(), validation.diagnostics().toString());
@@ -91,7 +87,8 @@ final class SourceCacheValidatorTest {
         Path sources = sources(Map.of("Outer.java", "class Outer { class Inner {} }"));
         Path jar = compile(sources, "-g:source");
         Path changed = temporary.resolve("ambiguous.jar");
-        try (JarFile input = new JarFile(jar.toFile()); JarOutputStream output = new JarOutputStream(Files.newOutputStream(changed))) {
+        try (JarFile input = new JarFile(jar.toFile());
+             JarOutputStream output = new JarOutputStream(Files.newOutputStream(changed))) {
             for (var entry : input.stream().toList()) {
                 byte[] bytes;
                 try (var stream = input.getInputStream(entry)) {
@@ -101,7 +98,8 @@ final class SourceCacheValidatorTest {
                     bytes = ClassFile.of().transformClass(ClassFile.of().parse(bytes), (builder, element) -> {
                         if (element instanceof SourceFileAttribute) {
                             builder.with(SourceFileAttribute.of("Other.java"));
-                        } else {
+                        }
+                        else {
                             builder.with(element);
                         }
                     });
@@ -182,11 +180,9 @@ final class SourceCacheValidatorTest {
         SourceInputIdentity inputs = SourceInputIdentity.capture(jar, List.of(), Cancellation.none());
         Path missing = temporary.resolve("missing");
         var validator = new SourceCacheValidator();
-        assertEquals(SourceSelection.GENERATE, SourceProvenance.select(SourceTreeInventory.capture(missing, Cancellation.none()),
-                validator.validate(missing, jar, Cancellation.none()), Optional.empty(), inputs, false));
+        assertEquals(SourceSelection.GENERATE, SourceProvenance.select(SourceTreeInventory.capture(missing, Cancellation.none()), validator.validate(missing, jar, Cancellation.none()), Optional.empty(), inputs, false));
         Files.createDirectory(missing);
-        assertEquals(SourceSelection.REQUIRE_REFRESH, SourceProvenance.select(SourceTreeInventory.capture(missing, Cancellation.none()),
-                validator.validate(missing, jar, Cancellation.none()), Optional.empty(), inputs, false));
+        assertEquals(SourceSelection.REQUIRE_REFRESH, SourceProvenance.select(SourceTreeInventory.capture(missing, Cancellation.none()), validator.validate(missing, jar, Cancellation.none()), Optional.empty(), inputs, false));
     }
 
     @Test
@@ -209,7 +205,8 @@ final class SourceCacheValidatorTest {
         Files.writeString(mapping, "tiny\t2\t0\tofficial\tnamed\nc\ta\tsample/Example\n");
         Path mapped = temporary.resolve("mapped.jar");
         new MinecraftRemapper(1).remap(original, mapping, mapped);
-        try (JarFile jar = new JarFile(mapped.toFile()); var stream = jar.getInputStream(jar.getJarEntry("sample/Example.class"))) {
+        try (JarFile jar = new JarFile(mapped.toFile());
+             var stream = jar.getInputStream(jar.getJarEntry("sample/Example.class"))) {
             var model = ClassFile.of().parse(stream.readAllBytes());
             assertEquals("a.java", model.findAttribute(Attributes.sourceFile()).orElseThrow().sourceFile().stringValue());
         }
@@ -237,7 +234,8 @@ final class SourceCacheValidatorTest {
         }
         assertEquals(0, ToolProvider.getSystemJavaCompiler().run(null, null, null, args.toArray(String[]::new)));
         Path jar = Files.createTempFile(temporary, "input", ".jar");
-        try (JarOutputStream output = new JarOutputStream(Files.newOutputStream(jar)); var paths = Files.walk(classes)) {
+        try (JarOutputStream output = new JarOutputStream(Files.newOutputStream(jar));
+             var paths = Files.walk(classes)) {
             for (Path file : paths.filter(Files::isRegularFile).sorted().toList()) {
                 output.putNextEntry(new JarEntry(classes.relativize(file).toString().replace('\\', '/')));
                 Files.copy(file, output);

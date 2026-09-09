@@ -47,7 +47,11 @@ class VersionOperationLeaseTest {
         Path pending = paths.cacheRoot().resolve("migrations").resolve(VERSION.value()).resolve("pending.json");
         Files.createDirectories(pending.getParent());
         Files.writeString(pending, "corrupt pointer still blocks reads");
-        RecoveryRequiredException failure = assertThrows(RecoveryRequiredException.class, () -> VersionOperationLease.read(paths, VERSION));
+        RecoveryRequiredException failure = assertThrows(RecoveryRequiredException.class, () -> {
+            try (var unexpected = VersionOperationLease.read(paths, VERSION)) {
+                unexpected.require(paths, VERSION);
+            }
+        });
         assertTrue(failure.getMessage().contains(pending.toString()));
         assertThrows(RecoveryRequiredException.class, () -> new VersionStateRepository(paths).state(VERSION));
         CacheCleaner cleaner = new CacheCleaner(paths);
@@ -116,24 +120,24 @@ class VersionOperationLeaseTest {
         Process process = new ProcessBuilder(System.getProperty("mcdevMcpJava"), "-cp", System.getProperty("java.class.path"), VersionOperationLeaseProcessMain.class.getName(), temporaryDirectory.toString(), VERSION.value()).start();
         try (var executor = Executors.newVirtualThreadPerTaskExecutor(); var output = process.inputReader()) {
             try {
-            assertEquals("read-held", executor.submit(output::readLine).get(10, TimeUnit.SECONDS));
-            var started = new java.util.concurrent.CountDownLatch(1);
-            var writer = executor.submit(() -> {
-                started.countDown();
-                try (var lease = VersionOperationLease.write(paths, VERSION)) {
-                    lease.require(paths, VERSION);
-                    return lease.isWrite();
+                assertEquals("read-held", executor.submit(output::readLine).get(10, TimeUnit.SECONDS));
+                var started = new java.util.concurrent.CountDownLatch(1);
+                var writer = executor.submit(() -> {
+                    started.countDown();
+                    try (var lease = VersionOperationLease.write(paths, VERSION)) {
+                        lease.require(paths, VERSION);
+                        return lease.isWrite();
+                    }
+                });
+                try {
+                    assertTrue(started.await(5, TimeUnit.SECONDS));
+                    assertThrows(java.util.concurrent.TimeoutException.class, () -> writer.get(150, TimeUnit.MILLISECONDS));
+                } finally {
+                    process.getOutputStream().close();
                 }
-            });
-            try {
-                assertTrue(started.await(5, TimeUnit.SECONDS));
-                assertThrows(java.util.concurrent.TimeoutException.class, () -> writer.get(150, TimeUnit.MILLISECONDS));
-            } finally {
-                process.getOutputStream().close();
-            }
-            assertTrue(writer.get(10, TimeUnit.SECONDS));
-            assertTrue(process.waitFor(5, TimeUnit.SECONDS));
-            assertEquals(0, process.exitValue());
+                assertTrue(writer.get(10, TimeUnit.SECONDS));
+                assertTrue(process.waitFor(5, TimeUnit.SECONDS));
+                assertEquals(0, process.exitValue());
             } finally {
                 if (process.isAlive()) {
                     process.destroyForcibly();

@@ -376,6 +376,8 @@ class StaticToolContractTest {
     }
 
     @Test
+    @SuppressWarnings("ExtractMethodRecommender")
+        // Keep the alias-retargeting sequence visible in one regression.
     void methodSqlAndSourceStayPinnedWhenAncestorAliasChangesBetweenQueries() throws Exception {
         PlatformPaths first = fixture(temporaryDirectory.resolve("first/cache-root"));
         PlatformPaths second = fixture(temporaryDirectory.resolve("second/cache-root"));
@@ -421,14 +423,7 @@ class StaticToolContractTest {
         text(catalog, "mc_version", Map.of("action", "set", "version", VERSION.value()));
         Path pending = paths.cacheRoot().resolve("migrations").resolve(VERSION.value()).resolve("pending.json");
         Files.createDirectories(pending.getParent());
-        Map<String, Map<String, Object>> requests = Map.of(
-            "mc_get_method", Map.of("className", "alpha.Alpha", "methodName", "needle"),
-            "mc_get_class", Map.of("className", "alpha.Alpha"),
-            "mc_search", Map.of("query", "needle"),
-            "mc_list_classes", Map.of("packagePath", "alpha"),
-            "mc_list_packages", Map.of(),
-            "mc_find_hierarchy", Map.of("className", "alpha.Alpha", "direction", "subclasses"),
-            "mc_find_refs", Map.of("className", "alpha.Alpha", "methodName", "needle", "direction", "callers"));
+        Map<String, Map<String, Object>> requests = Map.of("mc_get_method", Map.of("className", "alpha.Alpha", "methodName", "needle"), "mc_get_class", Map.of("className", "alpha.Alpha"), "mc_search", Map.of("query", "needle"), "mc_list_classes", Map.of("packagePath", "alpha"), "mc_list_packages", Map.of(), "mc_find_hierarchy", Map.of("className", "alpha.Alpha", "direction", "subclasses"), "mc_find_refs", Map.of("className", "alpha.Alpha", "methodName", "needle", "direction", "callers"));
         for (String phase : List.of("PREPARED", "BACKING_UP", "BACKED_UP", "INSTALLING_SOURCE", "INSTALLING_DATABASE", "INSTALLING_STAMP", "VALIDATING_PAIR", "COMMITTED", "corrupt")) {
             Files.writeString(pending, phase);
             for (var entry : requests.entrySet()) {

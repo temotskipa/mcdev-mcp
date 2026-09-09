@@ -7,7 +7,8 @@ import java.nio.file.Path;
 
 @SuppressWarnings("JavaPrintToLogpoint")
 final class VersionOperationLeaseProcessMain {
-    private VersionOperationLeaseProcessMain() {}
+    private VersionOperationLeaseProcessMain() {
+    }
 
     static void main(String[] arguments) throws Exception {
         PlatformPaths paths = new PlatformPaths(Path.of(arguments[0]));
@@ -16,6 +17,7 @@ final class VersionOperationLeaseProcessMain {
             lease.require(paths, version);
             System.out.println("read-held");
             System.out.flush();
+            //noinspection StatementWithEmptyBody
             while (System.in.read() != -1) {
                 // Parent closes stdin to release the operation lease.
             }

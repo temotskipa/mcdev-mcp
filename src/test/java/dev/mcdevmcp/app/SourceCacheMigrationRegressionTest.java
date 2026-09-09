@@ -46,10 +46,8 @@ final class SourceCacheMigrationRegressionTest {
         HttpServer server = AnalysisPipelineIntegrationTest.server();
         String base = "http://127.0.0.1:" + server.getAddress().getPort();
         String sha1 = AnalysisPipelineIntegrationTest.sha1(jar);
-        server.createContext("/manifest", exchange -> AnalysisPipelineIntegrationTest.respond(exchange,
-                McpJsonDefaults.getMapper().writeValueAsBytes(Map.of("versions", List.of(Map.of("id", VERSION.value(), "url", base + "/version"))))));
-        server.createContext("/version", exchange -> AnalysisPipelineIntegrationTest.respond(exchange,
-                McpJsonDefaults.getMapper().writeValueAsBytes(Map.of("downloads", Map.of("client", Map.of("url", base + "/client", "sha1", sha1, "size", jar.length))))));
+        server.createContext("/manifest", exchange -> AnalysisPipelineIntegrationTest.respond(exchange, McpJsonDefaults.getMapper().writeValueAsBytes(Map.of("versions", List.of(Map.of("id", VERSION.value(), "url", base + "/version"))))));
+        server.createContext("/version", exchange -> AnalysisPipelineIntegrationTest.respond(exchange, McpJsonDefaults.getMapper().writeValueAsBytes(Map.of("downloads", Map.of("client", Map.of("url", base + "/client", "sha1", sha1, "size", jar.length))))));
         server.createContext("/client", exchange -> AnalysisPipelineIntegrationTest.respond(exchange, jar));
         return new Fixture(paths, AnalysisPipelineIntegrationTest.pipeline(paths, server), server);
     }
@@ -124,6 +122,7 @@ final class SourceCacheMigrationRegressionTest {
                 await(releaseCleanup);
             });
             CommandLine cli = new CommandLine(command).setOut(new PrintWriter(output)).setErr(new PrintWriter(error));
+            @SuppressWarnings("resource") // The finally block explicitly bounds worker cleanup.
             var executor = Executors.newFixedThreadPool(2);
             try {
                 var cleanup = executor.submit(() -> cli.execute("--all"));
@@ -131,8 +130,7 @@ final class SourceCacheMigrationRegressionTest {
                 var initializing = executor.submit(() -> {
                     initThread.set(Thread.currentThread());
                     initEntered.countDown();
-                    return fixture.pipeline().initialize(VERSION, SourceRefreshPolicy.NORMAL,
-                            (_, _, _) -> initStarted.countDown(), Cancellation.none());
+                    return fixture.pipeline().initialize(VERSION, SourceRefreshPolicy.NORMAL, (_, _, _) -> initStarted.countDown(), Cancellation.none());
                 });
                 assertTrue(initEntered.await(10, TimeUnit.SECONDS));
                 awaitLockWait(initThread.get());
@@ -170,8 +168,7 @@ final class SourceCacheMigrationRegressionTest {
             byte[] oldStamp = Files.readAllBytes(stampPath);
             List<String> stages = new ArrayList<>();
 
-            InitializationResult result = fixture.pipeline().initialize(VERSION, SourceRefreshPolicy.NORMAL,
-                    (stage, _, _) -> stages.add(stage), Cancellation.none());
+            InitializationResult result = fixture.pipeline().initialize(VERSION, SourceRefreshPolicy.NORMAL, (stage, _, _) -> stages.add(stage), Cancellation.none());
 
             assertTrue(stages.contains("decompile"));
             Path old = result.retainedMigration().orElseThrow().resolve("old");
@@ -196,34 +193,36 @@ final class SourceCacheMigrationRegressionTest {
             AtomicBoolean cancel = new AtomicBoolean();
             AtomicBoolean injected = new AtomicBoolean();
             try {
-                IllegalStateException failure = assertThrows(IllegalStateException.class, () -> fixture.pipeline().initialize(
-                        VERSION, SourceRefreshPolicy.EXPLICIT_REFRESH, (stage, percent, _) -> {
-                            boolean boundary = switch (fault) {
-                                case "decompile-cancel" -> stage.equals("decompile") && percent == 0;
-                                case "decompile-failure", "validation-failure", "validation-cancel" -> stage.equals("decompile") && percent == 100;
-                                default -> stage.equals("index") && percent == 75;
-                            };
-                            if (!boundary) return;
-                            injected.set(true);
-                            if (fault.endsWith("cancel")) {
-                                cancel.set(true);
-                            } else if (fault.equals("validation-failure")) {
-                                try (var staged = Files.walk(fixture.paths().cacheRoot().resolve("migrations"))) {
-                                    Path generated = staged.filter(path -> path.endsWith("candidate/client/sample/Example.java"))
-                                            .findFirst().orElseThrow();
-                                    Files.writeString(generated, MALFORMED);
-                                } catch (Exception exception) {
-                                    throw new IllegalStateException(exception);
-                                }
-                            } else {
-                                throw new IllegalStateException("injected " + fault);
-                            }
-                        }, cancel::get));
+                IllegalStateException failure = assertThrows(IllegalStateException.class, () -> fixture.pipeline().initialize(VERSION, SourceRefreshPolicy.EXPLICIT_REFRESH, (stage, percent, _) -> {
+                    boolean boundary = switch (fault) {
+                        case "decompile-cancel" -> stage.equals("decompile") && percent == 0;
+                        case "decompile-failure", "validation-failure", "validation-cancel" ->
+                                stage.equals("decompile") && percent == 100;
+                        default -> stage.equals("index") && percent == 75;
+                    };
+                    if (!boundary) return;
+                    injected.set(true);
+                    if (fault.endsWith("cancel")) {
+                        cancel.set(true);
+                    }
+                    else if (fault.equals("validation-failure")) {
+                        try (var staged = Files.walk(fixture.paths().cacheRoot().resolve("migrations"))) {
+                            Path generated = staged.filter(path -> path.endsWith("candidate/client/sample/Example.java")).findFirst().orElseThrow();
+                            Files.writeString(generated, MALFORMED);
+                        } catch (Exception exception) {
+                            throw new IllegalStateException(exception);
+                        }
+                    }
+                    else {
+                        throw new IllegalStateException("injected " + fault);
+                    }
+                }, cancel::get));
                 assertTrue(injected.get(), fault);
                 if (fault.equals("validation-failure")) {
                     assertTrue(failure.getMessage().contains("Generated sources failed complete source validation"), failure.getMessage());
                 }
             } finally {
+                //noinspection ResultOfMethodCallIgnored
                 Thread.interrupted();
             }
             assertEquals(source, SourceTreeInventory.capture(fixture.paths().sourceRoot(VERSION), Cancellation.none()));
@@ -239,7 +238,8 @@ final class SourceCacheMigrationRegressionTest {
     void realCliPostCommitGraphFailureDoesNotRollBackPairOrOldGraph(String mode) throws Exception {
         try (Fixture fixture = fixture()) {
             fixture.initialize();
-            fixture.pipeline().rebuildCallgraph(VERSION, (_, _, _) -> {}, Cancellation.none());
+            fixture.pipeline().rebuildCallgraph(VERSION, (_, _, _) -> {
+            }, Cancellation.none());
             Path source = fixture.paths().sourceRoot(VERSION).resolve("sample/Example.java");
             Files.writeString(source, SOURCE.replace("generated", "old edited source"));
             byte[] oldIndex = Files.readAllBytes(fixture.paths().symbolDatabase(VERSION));
@@ -249,12 +249,17 @@ final class SourceCacheMigrationRegressionTest {
             StringWriter error = new StringWriter();
             PrintWriter writer = new PrintWriter(output) {
                 @Override
+                @SuppressWarnings("NullableProblems")
                 public PrintWriter printf(String format, Object... arguments) {
                     super.printf(format, arguments);
                     if (arguments.length == 3 && "callgraph".equals(arguments[0]) && Integer.valueOf(5).equals(arguments[1])) {
                         graphEntered.set(true);
-                        if (mode.equals("cancel")) Thread.currentThread().interrupt();
-                        else throw new IllegalStateException("injected real callgraph progress failure");
+                        if (mode.equals("cancel")) {
+                            Thread.currentThread().interrupt();
+                        }
+                        else {
+                            throw new IllegalStateException("injected real callgraph progress failure");
+                        }
                     }
                     return this;
                 }
@@ -265,21 +270,26 @@ final class SourceCacheMigrationRegressionTest {
             try {
                 exitCode = Main.execute(arguments.toArray(String[]::new), 26, writer, new PrintWriter(error), new CommandContext(fixture.pipeline(), fixture.paths()));
             } finally {
+                //noinspection ResultOfMethodCallIgnored
                 Thread.interrupted();
             }
             assertEquals(mode.equals("skip") ? 0 : 1, exitCode, error.toString());
             assertEquals(!mode.equals("skip"), graphEntered.get());
-            if (!mode.equals("skip")) assertTrue(error.toString().contains("Source/index committed; callgraph failed"), error.toString());
+            if (!mode.equals("skip")) {
+                assertTrue(error.toString().contains("Source/index committed; callgraph failed"), error.toString());
+            }
             assertTrue(output.toString().contains("Prepared 1 source root(s); indexed 1 types."));
             assertFalse(Files.readString(source).contains("old edited source"));
             assertEquals(VersionState.READY, new VersionStateRepository(fixture.paths()).state(VERSION));
             assertEquals(oldGraph, SourceTreeInventory.capture(fixture.paths().callgraphBundle(VERSION), Cancellation.none()));
             try (var retained = Files.walk(fixture.paths().cacheRoot().resolve("migrations/26.1"))) {
-                Path oldSource = retained.filter(path -> path.endsWith("old/client/sample/Example.java"))
-                        .filter(path -> {
-                            try { return Files.readString(path).contains("old edited source"); }
-                            catch (Exception exception) { throw new IllegalStateException(exception); }
-                        }).findFirst().orElseThrow();
+                Path oldSource = retained.filter(path -> path.endsWith("old/client/sample/Example.java")).filter(path -> {
+                    try {
+                        return Files.readString(path).contains("old edited source");
+                    } catch (Exception exception) {
+                        throw new IllegalStateException(exception);
+                    }
+                }).findFirst().orElseThrow();
                 Path old = oldSource.getParent().getParent().getParent();
                 assertArrayEquals(oldIndex, Files.readAllBytes(old.resolve("index/symbols.mv.db")));
             }
@@ -298,11 +308,10 @@ final class SourceCacheMigrationRegressionTest {
     private static void awaitLockWait(Thread thread) throws InterruptedException {
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
         while (System.nanoTime() < deadline) {
-            if (thread.getState() == Thread.State.TIMED_WAITING
-                    && java.util.Arrays.stream(thread.getStackTrace()).anyMatch(frame ->
-                    frame.getClassName().equals("dev.mcdevmcp.storage.h2.DatabaseLock") && frame.getMethodName().equals("acquire"))) {
+            if (thread.getState() == Thread.State.TIMED_WAITING && java.util.Arrays.stream(thread.getStackTrace()).anyMatch(frame -> frame.getClassName().equals("dev.mcdevmcp.storage.h2.DatabaseLock") && frame.getMethodName().equals("acquire"))) {
                 return;
             }
+            //noinspection BusyWait
             Thread.sleep(10);
         }
         fail("Initializer did not queue on the fair version-operation lock");
@@ -315,11 +324,13 @@ final class SourceCacheMigrationRegressionTest {
         return new CliResult(exitCode, output.toString(), error.toString());
     }
 
-    private record CliResult(int exitCode, String stdout, String stderr) {}
+    private record CliResult(int exitCode, String stdout, String stderr) {
+    }
 
     private record Fixture(PlatformPaths paths, AnalysisPipeline pipeline, HttpServer server) implements AutoCloseable {
-        InitializationResult initialize() {
-            return pipeline.initialize(VERSION, SourceRefreshPolicy.NORMAL, (_, _, _) -> {}, Cancellation.none());
+        void initialize() {
+            pipeline.initialize(VERSION, SourceRefreshPolicy.NORMAL, (_, _, _) -> {
+            }, Cancellation.none());
         }
 
         @Override

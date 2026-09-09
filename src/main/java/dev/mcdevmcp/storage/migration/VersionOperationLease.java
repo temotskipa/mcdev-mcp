@@ -11,7 +11,9 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.Objects;
 
-/** Holds one version's source/index generation stable for an entire operation. */
+/**
+ * Holds one version's source/index generation stable for an entire operation.
+ */
 public final class VersionOperationLease implements AutoCloseable {
     private static final Duration TIMEOUT = Duration.ofSeconds(30);
     private final CachePathBoundary boundary;

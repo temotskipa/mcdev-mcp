@@ -53,6 +53,7 @@ import java.util.zip.ZipEntry;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+@SuppressWarnings("SqlNoDataSourceInspection") // Fixture databases are created at runtime.
 final class AnalysisPipelineIntegrationTest {
     @TempDir
     Path temporaryDirectory;
@@ -401,13 +402,15 @@ final class AnalysisPipelineIntegrationTest {
             server.createContext("/version", exchange -> respond(exchange, McpJsonDefaults.getMapper().writeValueAsBytes(Map.of("downloads", Map.of("client", Map.of("url", base + "/client", "sha1", jarSha1, "size", jar.length))))));
             server.createContext("/client", exchange -> respond(exchange, jar));
             AnalysisPipeline pipeline = pipeline(paths, server);
-            IllegalStateException refusal = assertThrows(IllegalStateException.class, () -> pipeline.initialize(version, SourceRefreshPolicy.NORMAL, (_, _, _) -> {}, Cancellation.none()));
+            IllegalStateException refusal = assertThrows(IllegalStateException.class, () -> pipeline.initialize(version, SourceRefreshPolicy.NORMAL, (_, _, _) -> {
+            }, Cancellation.none()));
             assertTrue(refusal.getMessage().contains("--refresh-sources"), refusal.getMessage());
             assertEquals(malformed, Files.readString(source));
             assertEquals("original user content", Files.readString(marker));
             assertFalse(Files.exists(paths.symbolDatabase(version)));
 
-            InitializationResult initialized = pipeline.initialize(version, SourceRefreshPolicy.EXPLICIT_REFRESH, (_, _, _) -> {}, Cancellation.none());
+            InitializationResult initialized = pipeline.initialize(version, SourceRefreshPolicy.EXPLICIT_REFRESH, (_, _, _) -> {
+            }, Cancellation.none());
             Path retained = initialized.retainedMigration().orElseThrow();
             assertEquals(malformed, Files.readString(retained.resolve("old/client").resolve(paths.sourceRoot(version).relativize(source))));
             assertEquals("original user content", Files.readString(retained.resolve("old/client/user-cache-marker.txt")));
@@ -417,7 +420,8 @@ final class AnalysisPipelineIntegrationTest {
             assertFalse(Files.readString(source).contains("VAR_NAMELESS_ENCLOSURE"));
             assertEquals(VersionState.READY, new VersionStateRepository(paths).state(version));
             new SymbolRepository(paths.symbolDatabase(version)).query(connection -> {
-                try (var statement = connection.createStatement(); var rows = statement.executeQuery("SELECT source_root FROM metadata")) {
+                try (var statement = connection.createStatement();
+                     var rows = statement.executeQuery("SELECT source_root FROM metadata")) {
                     assertTrue(rows.next());
                     assertEquals(paths.sourceRoot(version).toAbsolutePath().normalize().toString(), rows.getString(1));
                 }
@@ -438,6 +442,7 @@ final class AnalysisPipelineIntegrationTest {
             CountDownLatch parsedOldSources = new CountDownLatch(1);
             CountDownLatch releaseOldRebuild = new CountDownLatch(1);
             CountDownLatch refreshMetadataStarted = new CountDownLatch(1);
+            @SuppressWarnings("resource") // The finally block explicitly bounds worker cleanup.
             var executor = Executors.newFixedThreadPool(2);
             try {
                 var rebuilding = executor.submit(() -> pipeline.rebuildIndex(version, (stage, percent, _) -> {
@@ -474,7 +479,8 @@ final class AnalysisPipelineIntegrationTest {
                 assertTrue(executor.awaitTermination(10, TimeUnit.SECONDS));
             }
             server.stop(0);
-            assertEquals(1, pipeline.rebuildIndex(version, (_, _, _) -> {}, Cancellation.none()).types());
+            assertEquals(1, pipeline.rebuildIndex(version, (_, _, _) -> {
+            }, Cancellation.none()).types());
         } finally {
             server.stop(0);
         }

@@ -50,7 +50,8 @@ public final class CleanCommand implements Callable<Integer> {
     private picocli.CommandLine.Model.CommandSpec spec;
 
     public CleanCommand(PlatformPaths paths) {
-        this(paths, _ -> {});
+        this(paths, _ -> {
+        });
     }
 
     CleanCommand(PlatformPaths paths, Consumer<MinecraftVersion> afterCacheCleanup) {

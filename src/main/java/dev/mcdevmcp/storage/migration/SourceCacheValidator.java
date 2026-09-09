@@ -29,7 +29,9 @@ import java.util.TreeSet;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 
-/** Syntax and class-file ownership checks, without attribution or dependency guessing. */
+/**
+ * Syntax and class-file ownership checks, without attribution or dependency guessing.
+ */
 public final class SourceCacheValidator {
     public SourceValidation validate(Path sourceRoot, Path remappedJar, Cancellation cancellation) throws IOException {
         Path root = sourceRoot.toAbsolutePath().normalize();
@@ -46,9 +48,7 @@ public final class SourceCacheValidator {
         for (RequiredSourceClass type : classes.values()) {
             verifyOwner(type, classes, unverified);
         }
-        List<Path> sources = inventory.entries().stream()
-                .filter(entry -> entry.kind() == SourceEntryKind.FILE && entry.relativePath().endsWith(".java"))
-                .map(entry -> root.resolve(entry.relativePath())).toList();
+        List<Path> sources = inventory.entries().stream().filter(entry -> entry.kind() == SourceEntryKind.FILE && entry.relativePath().endsWith(".java")).map(entry -> root.resolve(entry.relativePath())).toList();
         List<String> invalid = new ArrayList<>();
         Map<String, ParsedSourceUnit> parsed = parse(root, sources, cancellation, invalid);
         classes = emittedUnits(classes, parsed);
@@ -75,20 +75,20 @@ public final class SourceCacheValidator {
                 if (!unit.module()) {
                     invalid.add("Missing module declaration: " + type.unit());
                 }
-            } else if (!unit.packageName().equals(type.packageName())) {
+            }
+            else if (!unit.packageName().equals(type.packageName())) {
                 invalid.add("Package does not match class-file ownership: " + type.unit() + " expected " + type.packageName());
-            } else if (type.topLevel() && !type.packageInfo() && !unit.declarations().contains(type.simpleName())) {
+            }
+            else if (type.topLevel() && !type.packageInfo() && !unit.declarations().contains(type.simpleName())) {
                 invalid.add("Missing top-level declaration " + type.binaryName() + " in " + type.unit());
             }
         }
-        if (!SourceTreeInventory.capture(root, cancellation).equals(inventory)
-                || !SourceArtifactIdentity.capture(remappedJar, cancellation).equals(input)) {
+        if (!SourceTreeInventory.capture(root, cancellation).equals(inventory) || !SourceArtifactIdentity.capture(remappedJar, cancellation).equals(input)) {
             throw new IOException("Source tree or remapped JAR changed during source validation");
         }
         List<String> diagnostics = new ArrayList<>(invalid);
         diagnostics.addAll(unverified);
-        SourceValidationStatus status = !invalid.isEmpty() ? SourceValidationStatus.INVALID
-                : !unverified.isEmpty() ? SourceValidationStatus.UNVERIFIED_COMPLETENESS : SourceValidationStatus.VALID;
+        SourceValidationStatus status = !invalid.isEmpty() ? SourceValidationStatus.INVALID : !unverified.isEmpty() ? SourceValidationStatus.UNVERIFIED_COMPLETENESS : SourceValidationStatus.VALID;
         return new SourceValidation(status, diagnostics, List.copyOf(required), List.copyOf(parsed.keySet()));
     }
 
@@ -103,8 +103,7 @@ public final class SourceCacheValidator {
             String unit = type.unit();
             if (unit != null && unit.equals(root.unit()) && root.topLevel()) {
                 ParsedSourceUnit original = parsed.get(unit);
-                boolean originalDeclaresRoot = original != null && original.packageName().equals(root.packageName())
-                        && (root.packageInfo() || root.module() || original.declarations().contains(root.simpleName()));
+                boolean originalDeclaresRoot = original != null && original.packageName().equals(root.packageName()) && (root.packageInfo() || root.module() || original.declarations().contains(root.simpleName()));
                 // Vineflower 1.12.0 Fernflower.getClassEntryName emits ROOT archive paths with a .java suffix.
                 // SourceFile and InnerClasses/EnclosingMethod still prove grouping; this is only an output-name alias.
                 String emitted = root.binaryName() + ".java";
@@ -112,18 +111,15 @@ public final class SourceCacheValidator {
                     unit = emitted;
                 }
             }
-            result.put(type.binaryName(), new RequiredSourceClass(type.binaryName(), type.packageName(), type.simpleName(), unit,
-                    type.owner(), type.topLevel(), type.packageInfo(), type.module()));
+            result.put(type.binaryName(), new RequiredSourceClass(type.binaryName(), type.packageName(), type.simpleName(), unit, type.owner(), type.topLevel(), type.packageInfo(), type.module()));
         }
         return result;
     }
 
-    private static Map<String, RequiredSourceClass> requiredClasses(Path remappedJar, Cancellation cancellation,
-                                                             List<String> diagnostics) throws IOException {
+    private static Map<String, RequiredSourceClass> requiredClasses(Path remappedJar, Cancellation cancellation, List<String> diagnostics) throws IOException {
         Map<String, RequiredSourceClass> result = new TreeMap<>();
         try (ZipFile zip = new ZipFile(remappedJar.toFile())) {
-            List<? extends ZipEntry> entries = zip.stream().filter(entry -> !entry.isDirectory() && entry.getName().endsWith(".class"))
-                    .sorted(java.util.Comparator.comparing(ZipEntry::getName)).toList();
+            List<? extends ZipEntry> entries = zip.stream().filter(entry -> !entry.isDirectory() && entry.getName().endsWith(".class")).sorted(java.util.Comparator.comparing(ZipEntry::getName)).toList();
             for (ZipEntry entry : entries) {
                 checkCancellation(cancellation);
                 ClassModel model;
@@ -143,19 +139,18 @@ public final class SourceCacheValidator {
                 String unit = null;
                 if (!safeSourceName(source)) {
                     diagnostics.add("Missing or unsafe SourceFile metadata: " + binary + " (" + source + ")");
-                } else {
+                }
+                else {
                     unit = packagePath.isEmpty() ? source : packagePath + "/" + source;
                 }
-                List<InnerClassInfo> self = model.findAttribute(Attributes.innerClasses()).stream()
-                        .flatMap(attribute -> attribute.classes().stream())
-                        .filter(info -> info.innerClass().asInternalName().equals(binary)).toList();
-                String enclosing = model.findAttribute(Attributes.enclosingMethod())
-                        .map(attribute -> attribute.enclosingClass().asInternalName()).orElse(null);
+                List<InnerClassInfo> self = model.findAttribute(Attributes.innerClasses()).stream().flatMap(attribute -> attribute.classes().stream()).filter(info -> info.innerClass().asInternalName().equals(binary)).toList();
+                String enclosing = model.findAttribute(Attributes.enclosingMethod()).map(attribute -> attribute.enclosingClass().asInternalName()).orElse(null);
                 String owner = null;
                 if (self.size() > 1) {
                     diagnostics.add("Ambiguous InnerClasses ownership: " + binary);
-                } else if (self.size() == 1) {
-                    owner = self.getFirst().outerClass().map(value -> value.asInternalName()).orElse(null);
+                }
+                else if (self.size() == 1) {
+                    owner = self.getFirst().outerClass().map(java.lang.classfile.constantpool.ClassEntry::asInternalName).orElse(null);
                     if (owner == null && enclosing == null) {
                         diagnostics.add("Inner class has no declaring or enclosing class: " + binary);
                     }
@@ -171,8 +166,7 @@ public final class SourceCacheValidator {
                 if (module && !"module-info.java".equals(source) || packageInfo && !"package-info.java".equals(source)) {
                     diagnostics.add("Descriptor SourceFile does not match descriptor kind: " + binary);
                 }
-                RequiredSourceClass value = new RequiredSourceClass(binary, packagePath.replace('/', '.'), simple, unit, owner,
-                        self.isEmpty() && enclosing == null, packageInfo, module);
+                RequiredSourceClass value = new RequiredSourceClass(binary, packagePath.replace('/', '.'), simple, unit, owner, self.isEmpty() && enclosing == null, packageInfo, module);
                 if (result.putIfAbsent(binary, value) != null) {
                     diagnostics.add("Duplicate class-file declaration: " + binary);
                 }
@@ -185,8 +179,7 @@ public final class SourceCacheValidator {
     }
 
     private static boolean safeSourceName(String source) {
-        if (source == null || source.isEmpty() || !source.endsWith(".java") || source.indexOf('/') >= 0
-                || source.indexOf('\\') >= 0 || source.indexOf(':') >= 0 || source.indexOf('\0') >= 0) {
+        if (source == null || !source.endsWith(".java") || source.indexOf('/') >= 0 || source.indexOf('\\') >= 0 || source.indexOf(':') >= 0 || source.indexOf('\0') >= 0) {
             return false;
         }
         try {
@@ -217,8 +210,7 @@ public final class SourceCacheValidator {
         }
     }
 
-    private static Map<String, ParsedSourceUnit> parse(Path root, List<Path> sources, Cancellation cancellation,
-                                                List<String> diagnostics) throws IOException {
+    private static Map<String, ParsedSourceUnit> parse(Path root, List<Path> sources, Cancellation cancellation, List<String> diagnostics) throws IOException {
         Map<String, ParsedSourceUnit> result = new TreeMap<>();
         var compiler = ToolProvider.getSystemJavaCompiler();
         if (compiler == null) {
@@ -230,8 +222,7 @@ public final class SourceCacheValidator {
             DiagnosticCollector<JavaFileObject> collector = new DiagnosticCollector<>();
             try (var manager = compiler.getStandardFileManager(collector, Locale.ROOT, StandardCharsets.UTF_8)) {
                 var files = manager.getJavaFileObjectsFromPaths(sources.subList(offset, Math.min(offset + 128, sources.size())));
-                JavacTask task = (JavacTask) compiler.getTask(null, manager, collector,
-                        List.of("-proc:none", "--release", "25", "-encoding", "UTF-8", "-Xmaxerrs", "0", "-Xmaxwarns", "0"), null, files);
+                JavacTask task = (JavacTask) compiler.getTask(null, manager, collector, List.of("-proc:none", "--release", "25", "-encoding", "UTF-8", "-Xmaxerrs", "0", "-Xmaxwarns", "0"), null, files);
                 for (CompilationUnitTree tree : task.parse()) {
                     checkCancellation(cancellation);
                     String relative = root.relativize(Path.of(tree.getSourceFile().toUri()).toAbsolutePath().normalize()).toString().replace('\\', '/');
@@ -241,14 +232,12 @@ public final class SourceCacheValidator {
                             declarations.add(type.getSimpleName().toString());
                         }
                     }
-                    result.put(relative, new ParsedSourceUnit(tree.getPackageName() == null ? "" : tree.getPackageName().toString(),
-                            Set.copyOf(declarations), tree.getModule() != null));
+                    result.put(relative, new ParsedSourceUnit(tree.getPackageName() == null ? "" : tree.getPackageName().toString(), Set.copyOf(declarations), tree.getModule() != null));
                 }
             }
             for (Diagnostic<? extends JavaFileObject> diagnostic : collector.getDiagnostics()) {
                 if (diagnostic.getKind() == Diagnostic.Kind.ERROR) {
-                    diagnostics.add((diagnostic.getSource() == null ? "<compiler>" : diagnostic.getSource().getName())
-                            + ":" + diagnostic.getLineNumber() + ":" + diagnostic.getColumnNumber() + ": " + diagnostic.getMessage(Locale.ROOT));
+                    diagnostics.add((diagnostic.getSource() == null ? "<compiler>" : diagnostic.getSource().getName()) + ":" + diagnostic.getLineNumber() + ":" + diagnostic.getColumnNumber() + ": " + diagnostic.getMessage(Locale.ROOT));
                 }
             }
         }

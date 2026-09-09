@@ -23,10 +23,12 @@ public record SourceTreeInventory(boolean present, List<SourceInventoryEntry> en
         entries = List.copyOf(entries);
         String previous = null;
         for (SourceInventoryEntry entry : entries) {
-            if (previous != null && previous.compareTo(entry.relativePath()) >= 0) throw new IllegalArgumentException("Unsorted or duplicate inventory path");
+            if (previous != null && previous.compareTo(entry.relativePath()) >= 0) {
+                throw new IllegalArgumentException("Unsorted or duplicate inventory path");
+            }
             previous = entry.relativePath();
         }
-        if (present != !entries.isEmpty() || present && !entries.getFirst().relativePath().isEmpty()) {
+        if (present == entries.isEmpty() || present && !entries.getFirst().relativePath().isEmpty()) {
             throw new IllegalArgumentException("Invalid inventory root");
         }
         var directories = new HashSet<String>();
@@ -34,7 +36,9 @@ public record SourceTreeInventory(boolean present, List<SourceInventoryEntry> en
             if (!entry.relativePath().isEmpty()) {
                 int slash = entry.relativePath().lastIndexOf('/');
                 String parent = slash < 0 ? "" : entry.relativePath().substring(0, slash);
-                if (!directories.contains(parent)) throw new IllegalArgumentException("Missing inventory parent directory");
+                if (!directories.contains(parent)) {
+                    throw new IllegalArgumentException("Missing inventory parent directory");
+                }
             }
             if (entry.kind() == SourceEntryKind.DIRECTORY) directories.add(entry.relativePath());
         }
@@ -61,6 +65,7 @@ public record SourceTreeInventory(boolean present, List<SourceInventoryEntry> en
         var entries = new ArrayList<SourceInventoryEntry>();
         Files.walkFileTree(absolute, new SimpleFileVisitor<>() {
             @Override
+            @SuppressWarnings("NullableProblems")
             public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) throws IOException {
                 checkCancelled(cancellation);
                 checkPath(dir, boundary);
@@ -69,12 +74,15 @@ public record SourceTreeInventory(boolean present, List<SourceInventoryEntry> en
             }
 
             @Override
+            @SuppressWarnings("NullableProblems")
             public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
                 checkCancelled(cancellation);
                 checkPath(file, boundary);
                 String relative = relative(file);
                 if (excluded.contains(relative)) return FileVisitResult.CONTINUE;
-                if (!attrs.isRegularFile() || attrs.isOther() || attrs.isSymbolicLink()) throw new IOException("Unsafe inventory file: " + file);
+                if (!attrs.isRegularFile() || attrs.isOther() || attrs.isSymbolicLink()) {
+                    throw new IOException("Unsafe inventory file: " + file);
+                }
                 MessageDigest digest = newDigest();
                 long count = 0;
                 try (var input = Files.newInputStream(file, LinkOption.NOFOLLOW_LINKS)) {
@@ -94,7 +102,9 @@ public record SourceTreeInventory(boolean present, List<SourceInventoryEntry> en
                 return FileVisitResult.CONTINUE;
             }
 
-            private String relative(Path path) { return absolute.relativize(path).toString().replace('\\', '/'); }
+            private String relative(Path path) {
+                return absolute.relativize(path).toString().replace('\\', '/');
+            }
         });
         entries.sort(Comparator.comparing(SourceInventoryEntry::relativePath));
         return of(true, entries);
@@ -123,13 +133,20 @@ public record SourceTreeInventory(boolean present, List<SourceInventoryEntry> en
     }
 
     private static void checkPath(Path path, CachePathBoundary boundary) throws IOException {
-        if (boundary == null) checkPath(path);
-        else boundary.require(path);
+        if (boundary == null) {
+            checkPath(path);
+        }
+        else {
+            boundary.require(path);
+        }
     }
 
     private static MessageDigest newDigest() {
-        try { return MessageDigest.getInstance("SHA-256"); }
-        catch (NoSuchAlgorithmException exception) { throw new IllegalStateException(exception); }
+        try {
+            return MessageDigest.getInstance("SHA-256");
+        } catch (NoSuchAlgorithmException exception) {
+            throw new IllegalStateException(exception);
+        }
     }
 
     private static String digest(List<SourceInventoryEntry> entries) {
@@ -144,7 +161,9 @@ public record SourceTreeInventory(boolean present, List<SourceInventoryEntry> en
                     out.write(HexFormat.of().parseHex(entry.sha256()));
                 }
             }
-        } catch (IOException exception) { throw new IllegalStateException(exception); }
+        } catch (IOException exception) {
+            throw new IllegalStateException(exception);
+        }
         return HexFormat.of().formatHex(digest.digest());
     }
 

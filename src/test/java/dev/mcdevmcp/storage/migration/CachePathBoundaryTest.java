@@ -12,7 +12,8 @@ import java.nio.file.Path;
 import static org.junit.jupiter.api.Assertions.*;
 
 class CachePathBoundaryTest {
-    @TempDir Path temporary;
+    @TempDir
+    Path temporary;
 
     @Test
     void selectedCacheBelowAncestorAliasUsesPinnedPhysicalRoot() throws Exception {
@@ -26,13 +27,14 @@ class CachePathBoundaryTest {
             assertEquals(real.resolve("cache").toRealPath(), boundary.physicalRoot());
             Path source = Files.createDirectory(boundary.resolve(logical.cacheRoot().resolve("source")));
             Files.writeString(source.resolve("marker"), "inside");
-            assertEquals(SourceTreeInventory.capture(source, Cancellation.none()),
-                    SourceTreeInventory.capture(logical.cacheRoot().resolve("source"), boundary, Cancellation.none()));
+            assertEquals(SourceTreeInventory.capture(source, Cancellation.none()), SourceTreeInventory.capture(logical.cacheRoot().resolve("source"), boundary, Cancellation.none()));
             assertThrows(IOException.class, () -> SourceTreeInventory.capture(logical.cacheRoot().resolve("source"), Cancellation.none()));
             boundary.require(logical);
             boundary.require(boundary.resolvedPaths());
             assertEquals("outside", Files.readString(sentinel));
-        } finally { DirectoryAliasFixture.remove(alias); }
+        } finally {
+            DirectoryAliasFixture.remove(alias);
+        }
         assertEquals("outside", Files.readString(sentinel));
     }
 
@@ -41,8 +43,11 @@ class CachePathBoundaryTest {
         Path real = Files.createDirectory(temporary.resolve("real"));
         Path alias = temporary.resolve("alias");
         DirectoryAliasFixture.create(alias, real);
-        try { assertThrows(IOException.class, () -> CachePathBoundary.open(new PlatformPaths(alias))); }
-        finally { DirectoryAliasFixture.remove(alias); }
+        try {
+            assertThrows(IOException.class, () -> CachePathBoundary.open(new PlatformPaths(alias)));
+        } finally {
+            DirectoryAliasFixture.remove(alias);
+        }
         CachePathBoundary boundary = CachePathBoundary.open(new PlatformPaths(real.resolve("cache")));
         Path outside = Files.createDirectory(temporary.resolve("outside"));
         Path sentinel = Files.writeString(outside.resolve("sentinel"), "outside");
@@ -55,7 +60,9 @@ class CachePathBoundaryTest {
             assertThrows(IOException.class, () -> SourceTreeInventory.capture(internal.resolve("sentinel"), boundary, Cancellation.none()));
             assertThrows(IOException.class, () -> boundary.require(new PlatformPaths(outside)));
             assertEquals("outside", Files.readString(sentinel));
-        } finally { DirectoryAliasFixture.remove(internal); }
+        } finally {
+            DirectoryAliasFixture.remove(internal);
+        }
     }
 
     @Test
@@ -75,7 +82,9 @@ class CachePathBoundaryTest {
             assertEquals("first", Files.readString(pinned.resolve(selected.cacheRoot().resolve("marker"))));
             assertEquals("second", Files.readString(later.resolve(selected.cacheRoot().resolve("marker"))));
             assertNotEquals(pinned.physicalRoot(), later.physicalRoot());
-        } finally { DirectoryAliasFixture.remove(alias); }
+        } finally {
+            DirectoryAliasFixture.remove(alias);
+        }
     }
 
     @Test

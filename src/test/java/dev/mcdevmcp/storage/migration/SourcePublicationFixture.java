@@ -12,8 +12,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 
-record SourcePublicationFixture(PlatformPaths paths, MinecraftVersion version, Path transaction,
-                                Path source, Path database, Path stamp) {
+record SourcePublicationFixture(PlatformPaths paths, MinecraftVersion version, Path transaction, Path source, Path database, Path stamp) {
     static SourcePublicationFixture create(Path root, boolean invalidOldDatabase) throws Exception {
         var paths = new PlatformPaths(root.resolve("cache"));
         var version = new MinecraftVersion("1.21.11");
@@ -26,8 +25,12 @@ record SourcePublicationFixture(PlatformPaths paths, MinecraftVersion version, P
         Files.createDirectories(paths.remappedJar(version).getParent());
         Files.writeString(paths.remappedJar(version), "pinned input witness");
         SourceInputIdentity inputs = SourceInputIdentity.capture(paths.remappedJar(version), List.of(), Cancellation.none());
-        if (invalidOldDatabase) Files.writeString(paths.symbolDatabase(version), "invalid old database preserved exactly");
-        else createDatabase(paths.symbolDatabase(version), paths.sourceRoot(version), version, inputs);
+        if (invalidOldDatabase) {
+            Files.writeString(paths.symbolDatabase(version), "invalid old database preserved exactly");
+        }
+        else {
+            createDatabase(paths.symbolDatabase(version), paths.sourceRoot(version), version, inputs);
+        }
         Files.writeString(paths.indexRoot(version).resolve("symbols.trace.db"), "closed trace");
         Files.writeString(paths.indexRoot(version).resolve("symbols.mv.db.bak"), "old backup bytes");
         Files.writeString(paths.versionCache(version).resolve("source-preparation.json"), "old unknown stamp");
@@ -38,8 +41,7 @@ record SourcePublicationFixture(PlatformPaths paths, MinecraftVersion version, P
         Path database = transaction.resolve("candidate/symbols.mv.db");
         createDatabase(database, paths.sourceRoot(version), version, inputs);
         Path stamp = transaction.resolve("candidate/source-preparation.json");
-        SourceProvenance.write(stamp, new SourcePreparationStamp(1, SourceOwnership.VALIDATED_EXTERNAL, null, inputs,
-                SourceTreeInventory.capture(source, Cancellation.none()), new SourceValidation(SourceValidationStatus.VALID, List.of(), List.of("New.java"), List.of("New.java"))));
+        SourceProvenance.write(stamp, new SourcePreparationStamp(1, SourceOwnership.VALIDATED_EXTERNAL, null, inputs, SourceTreeInventory.capture(source, Cancellation.none()), new SourceValidation(SourceValidationStatus.VALID, List.of(), List.of("New.java"), List.of("New.java"))));
         return new SourcePublicationFixture(paths, version, transaction, source, database, stamp);
     }
 

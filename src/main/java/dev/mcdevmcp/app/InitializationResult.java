@@ -11,6 +11,6 @@ public record InitializationResult(PreparedSources sources, IndexSummary index, 
         Objects.requireNonNull(sources, "sources");
         Objects.requireNonNull(index, "index");
         Objects.requireNonNull(sourceIdentity, "sourceIdentity");
-        retainedMigration = Objects.requireNonNull(retainedMigration, "retainedMigration");
+        Objects.requireNonNull(retainedMigration, "retainedMigration");
     }
 }
