@@ -9,6 +9,7 @@ import org.junit.jupiter.api.io.TempDir;
 import java.nio.file.Path;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Deque;
 import java.util.Iterator;
 import java.util.List;
@@ -105,7 +106,7 @@ class JavacTaskExecutorTest {
     }
 
     @Test
-    void workerFailureStopsAdmissionAndTerminatesOtherAdmittedWorker() throws Exception {
+    void workerFailureStopsAdmissionAndTerminatesOtherAdmittedWorker() {
         CountDownLatch secondStarted = new CountDownLatch(1);
         CountDownLatch secondTerminated = new CountDownLatch(1);
         IndexBuildException failure = new IndexBuildException("deliberate worker failure");
@@ -114,7 +115,7 @@ class JavacTaskExecutorTest {
             throw failure;
         }, blockingWorker(secondStarted, secondTerminated), () -> fail("Unadmitted worker ran")));
 
-        IndexBuildException actual = assertThrows(IndexBuildException.class, () -> JavacTaskExecutor.executeAll(request(Cancellation.none()), 2, admittedTasks(tasks, new AtomicInteger()), value -> fail("Failed batch was consumed")));
+        IndexBuildException actual = assertThrows(IndexBuildException.class, () -> JavacTaskExecutor.executeAll(request(Cancellation.none()), 2, admittedTasks(tasks, new AtomicInteger()), _ -> fail("Failed batch was consumed")));
 
         assertSame(failure, actual);
         assertEquals(1, tasks.size());
@@ -122,7 +123,7 @@ class JavacTaskExecutorTest {
     }
 
     @Test
-    void consumerFailureStopsAdmissionAndTerminatesOtherAdmittedWorker() throws Exception {
+    void consumerFailureStopsAdmissionAndTerminatesOtherAdmittedWorker() {
         CountDownLatch secondStarted = new CountDownLatch(1);
         CountDownLatch secondTerminated = new CountDownLatch(1);
         IllegalStateException failure = new IllegalStateException("deliberate consumer failure");
@@ -131,7 +132,7 @@ class JavacTaskExecutorTest {
             return 0;
         }, blockingWorker(secondStarted, secondTerminated), () -> fail("Unadmitted worker ran")));
 
-        IllegalStateException actual = assertThrows(IllegalStateException.class, () -> JavacTaskExecutor.executeAll(request(Cancellation.none()), 2, admittedTasks(tasks, new AtomicInteger()), value -> {
+        IllegalStateException actual = assertThrows(IllegalStateException.class, () -> JavacTaskExecutor.executeAll(request(Cancellation.none()), 2, admittedTasks(tasks, new AtomicInteger()), _ -> {
             throw failure;
         }));
 
@@ -149,7 +150,7 @@ class JavacTaskExecutorTest {
         ExecutorService coordinator = Executors.newSingleThreadExecutor();
         try {
             Future<?> execution = coordinator.submit(() -> {
-                JavacTaskExecutor.executeAll(request(cancelled::get), 2, admittedTasks(tasks, new AtomicInteger()), value -> fail("Cancelled batch was consumed"));
+                JavacTaskExecutor.executeAll(request(cancelled::get), 2, admittedTasks(tasks, new AtomicInteger()), _ -> fail("Cancelled batch was consumed"));
                 return null;
             });
             await(started);
@@ -165,7 +166,7 @@ class JavacTaskExecutorTest {
     }
 
     @Test
-    void cancellationDuringConsumptionPreventsReplacementAdmission() throws Exception {
+    void cancellationDuringConsumptionPreventsReplacementAdmission() {
         AtomicBoolean cancelled = new AtomicBoolean();
         Deque<Callable<Integer>> tasks = new ArrayDeque<>(List.of(() -> 0, () -> fail("Unadmitted worker ran")));
         List<Integer> results = new ArrayList<>();
@@ -180,32 +181,32 @@ class JavacTaskExecutorTest {
     }
 
     @Test
-    void alreadyCancelledRequestDoesNotAdmitAnyTasks() throws Exception {
+    void alreadyCancelledRequestDoesNotAdmitAnyTasks() {
         Deque<Callable<Integer>> tasks = new ArrayDeque<>(List.of(() -> fail("Cancelled worker ran")));
-        assertThrows(InterruptedException.class, () -> JavacTaskExecutor.executeAll(request(() -> true), 1, admittedTasks(tasks, new AtomicInteger()), value -> fail("Cancelled batch was consumed")));
+        assertThrows(InterruptedException.class, () -> JavacTaskExecutor.executeAll(request(() -> true), 1, admittedTasks(tasks, new AtomicInteger()), _ -> fail("Cancelled batch was consumed")));
         assertEquals(1, tasks.size());
     }
 
     @Test
-    void workerCancellationBeforeReturningDoesNotDeliverItsResult() throws Exception {
+    void workerCancellationBeforeReturningDoesNotDeliverItsResult() {
         AtomicBoolean cancelled = new AtomicBoolean();
         Deque<Callable<Integer>> tasks = new ArrayDeque<>(List.of(() -> {
             cancelled.set(true);
             return 0;
         }, () -> fail("Unadmitted worker ran")));
 
-        assertThrows(InterruptedException.class, () -> JavacTaskExecutor.executeAll(request(cancelled::get), 1, admittedTasks(tasks, new AtomicInteger()), value -> fail("Cancelled result was delivered")));
+        assertThrows(InterruptedException.class, () -> JavacTaskExecutor.executeAll(request(cancelled::get), 1, admittedTasks(tasks, new AtomicInteger()), _ -> fail("Cancelled result was delivered")));
         assertEquals(1, tasks.size());
     }
 
     @Test
-    void unexpectedWorkerExceptionRetainsItsCauseAndStopsAdmission() throws Exception {
+    void unexpectedWorkerExceptionRetainsItsCauseAndStopsAdmission() {
         IllegalStateException failure = new IllegalStateException("unexpected worker failure");
         Deque<Callable<Integer>> tasks = new ArrayDeque<>(List.of(() -> {
             throw failure;
         }, () -> fail("Unadmitted worker ran")));
 
-        IndexBuildException actual = assertThrows(IndexBuildException.class, () -> JavacTaskExecutor.executeAll(request(Cancellation.none()), 1, admittedTasks(tasks, new AtomicInteger()), value -> fail("Failed result was delivered")));
+        IndexBuildException actual = assertThrows(IndexBuildException.class, () -> JavacTaskExecutor.executeAll(request(Cancellation.none()), 1, admittedTasks(tasks, new AtomicInteger()), _ -> fail("Failed result was delivered")));
 
         assertSame(failure, actual.getCause());
         assertEquals("Javac source worker failed", actual.getMessage());
@@ -214,9 +215,9 @@ class JavacTaskExecutorTest {
 
     @Test
     void emptyTasksDoNotConsumeAndInvalidWorkerCountDoesNotDrainTasks() throws Exception {
-        JavacTaskExecutor.executeAll(request(Cancellation.none()), 1, List.<Callable<Integer>>of().iterator(), value -> fail("Empty input was consumed"));
+        JavacTaskExecutor.executeAll(request(Cancellation.none()), 1, Collections.<Callable<Integer>>emptyIterator(), _ -> fail("Empty input was consumed"));
         Deque<Callable<Integer>> tasks = new ArrayDeque<>(List.of(() -> 0));
-        assertThrows(IllegalArgumentException.class, () -> JavacTaskExecutor.executeAll(request(Cancellation.none()), 0, admittedTasks(tasks, new AtomicInteger()), value -> fail("Invalid worker count was accepted")));
+        assertThrows(IllegalArgumentException.class, () -> JavacTaskExecutor.executeAll(request(Cancellation.none()), 0, admittedTasks(tasks, new AtomicInteger()), _ -> fail("Invalid worker count was accepted")));
         assertEquals(1, tasks.size());
     }
 
