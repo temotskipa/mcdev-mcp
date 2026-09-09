@@ -57,19 +57,19 @@ final class AnalysisPipelineIntegrationTest {
     @TempDir
     Path temporaryDirectory;
 
-    private static AnalysisPipeline pipeline(PlatformPaths paths, HttpServer server) {
+    static AnalysisPipeline pipeline(PlatformPaths paths, HttpServer server) {
         HttpClient http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(2)).followRedirects(HttpClient.Redirect.NEVER).build();
         URI manifest = URI.create("http://127.0.0.1:" + server.getAddress().getPort() + "/manifest");
         return new AnalysisPipeline(paths, new VersionManifestClient(http, McpJsonDefaults.getMapper(), manifest, Duration.ofSeconds(2)), new DownloadService(http, Duration.ofSeconds(2)), new MappingConverter(), new MinecraftRemapper(1), new MinecraftDecompiler(), new SourceIndexer(), new CallgraphScanner(), 1);
     }
 
-    private static HttpServer server() throws IOException {
+    static HttpServer server() throws IOException {
         HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         server.start();
         return server;
     }
 
-    private static byte[] compileJar(Path root, String binaryName, String sourceText) throws IOException {
+    static byte[] compileJar(Path root, String binaryName, String sourceText) throws IOException {
         Path source = root.resolve("source").resolve(binaryName.replace('.', '/') + ".java");
         Path classes = root.resolve("classes");
         Files.createDirectories(source.getParent());
@@ -119,13 +119,13 @@ final class AnalysisPipelineIntegrationTest {
         throw new AssertionError("stored ZIP fixture did not contain its entry bytes");
     }
 
-    private static void respond(HttpExchange exchange, byte[] body) throws IOException {
+    static void respond(HttpExchange exchange, byte[] body) throws IOException {
         exchange.sendResponseHeaders(200, body.length);
         exchange.getResponseBody().write(body);
         exchange.close();
     }
 
-    private static String sha1(byte[] bytes) throws Exception {
+    static String sha1(byte[] bytes) throws Exception {
         return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-1").digest(bytes));
     }
 

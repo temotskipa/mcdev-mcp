@@ -42,18 +42,18 @@ public final class SourceCacheValidator {
         }
         SourceArtifactIdentity input = SourceArtifactIdentity.capture(remappedJar, cancellation);
         List<String> unverified = new ArrayList<>();
-        Map<String, RequiredClass> classes = requiredClasses(remappedJar, cancellation, unverified);
-        for (RequiredClass type : classes.values()) {
+        Map<String, RequiredSourceClass> classes = requiredClasses(remappedJar, cancellation, unverified);
+        for (RequiredSourceClass type : classes.values()) {
             verifyOwner(type, classes, unverified);
         }
         List<Path> sources = inventory.entries().stream()
                 .filter(entry -> entry.kind() == SourceEntryKind.FILE && entry.relativePath().endsWith(".java"))
                 .map(entry -> root.resolve(entry.relativePath())).toList();
         List<String> invalid = new ArrayList<>();
-        Map<String, ParsedUnit> parsed = parse(root, sources, cancellation, invalid);
+        Map<String, ParsedSourceUnit> parsed = parse(root, sources, cancellation, invalid);
         classes = emittedUnits(classes, parsed);
         Set<String> required = new TreeSet<>();
-        for (RequiredClass type : classes.values()) {
+        for (RequiredSourceClass type : classes.values()) {
             if (type.unit() != null) {
                 required.add(type.unit());
             }
@@ -63,11 +63,11 @@ public final class SourceCacheValidator {
                 invalid.add("Missing required compilation unit: " + unit);
             }
         }
-        for (RequiredClass type : classes.values()) {
+        for (RequiredSourceClass type : classes.values()) {
             if (type.unit() == null) {
                 continue;
             }
-            ParsedUnit unit = parsed.get(type.unit());
+            ParsedSourceUnit unit = parsed.get(type.unit());
             if (unit == null) {
                 continue;
             }
@@ -92,17 +92,17 @@ public final class SourceCacheValidator {
         return new SourceValidation(status, diagnostics, List.copyOf(required), List.copyOf(parsed.keySet()));
     }
 
-    private static Map<String, RequiredClass> emittedUnits(Map<String, RequiredClass> classes, Map<String, ParsedUnit> parsed) {
-        Map<String, RequiredClass> result = new TreeMap<>();
-        for (RequiredClass type : classes.values()) {
-            RequiredClass root = type;
+    private static Map<String, RequiredSourceClass> emittedUnits(Map<String, RequiredSourceClass> classes, Map<String, ParsedSourceUnit> parsed) {
+        Map<String, RequiredSourceClass> result = new TreeMap<>();
+        for (RequiredSourceClass type : classes.values()) {
+            RequiredSourceClass root = type;
             Set<String> visited = new HashSet<>();
             while (root.owner() != null && visited.add(root.binaryName()) && classes.containsKey(root.owner())) {
                 root = classes.get(root.owner());
             }
             String unit = type.unit();
             if (unit != null && unit.equals(root.unit()) && root.topLevel()) {
-                ParsedUnit original = parsed.get(unit);
+                ParsedSourceUnit original = parsed.get(unit);
                 boolean originalDeclaresRoot = original != null && original.packageName().equals(root.packageName())
                         && (root.packageInfo() || root.module() || original.declarations().contains(root.simpleName()));
                 // Vineflower 1.12.0 Fernflower.getClassEntryName emits ROOT archive paths with a .java suffix.
@@ -112,15 +112,15 @@ public final class SourceCacheValidator {
                     unit = emitted;
                 }
             }
-            result.put(type.binaryName(), new RequiredClass(type.binaryName(), type.packageName(), type.simpleName(), unit,
+            result.put(type.binaryName(), new RequiredSourceClass(type.binaryName(), type.packageName(), type.simpleName(), unit,
                     type.owner(), type.topLevel(), type.packageInfo(), type.module()));
         }
         return result;
     }
 
-    private static Map<String, RequiredClass> requiredClasses(Path remappedJar, Cancellation cancellation,
+    private static Map<String, RequiredSourceClass> requiredClasses(Path remappedJar, Cancellation cancellation,
                                                              List<String> diagnostics) throws IOException {
-        Map<String, RequiredClass> result = new TreeMap<>();
+        Map<String, RequiredSourceClass> result = new TreeMap<>();
         try (ZipFile zip = new ZipFile(remappedJar.toFile())) {
             List<? extends ZipEntry> entries = zip.stream().filter(entry -> !entry.isDirectory() && entry.getName().endsWith(".class"))
                     .sorted(java.util.Comparator.comparing(ZipEntry::getName)).toList();
@@ -171,7 +171,7 @@ public final class SourceCacheValidator {
                 if (module && !"module-info.java".equals(source) || packageInfo && !"package-info.java".equals(source)) {
                     diagnostics.add("Descriptor SourceFile does not match descriptor kind: " + binary);
                 }
-                RequiredClass value = new RequiredClass(binary, packagePath.replace('/', '.'), simple, unit, owner,
+                RequiredSourceClass value = new RequiredSourceClass(binary, packagePath.replace('/', '.'), simple, unit, owner,
                         self.isEmpty() && enclosing == null, packageInfo, module);
                 if (result.putIfAbsent(binary, value) != null) {
                     diagnostics.add("Duplicate class-file declaration: " + binary);
@@ -197,15 +197,15 @@ public final class SourceCacheValidator {
         }
     }
 
-    private static void verifyOwner(RequiredClass type, Map<String, RequiredClass> classes, List<String> diagnostics) {
+    private static void verifyOwner(RequiredSourceClass type, Map<String, RequiredSourceClass> classes, List<String> diagnostics) {
         Set<String> visited = new HashSet<>();
-        RequiredClass current = type;
+        RequiredSourceClass current = type;
         while (current.owner() != null) {
             if (!visited.add(current.binaryName())) {
                 diagnostics.add("Cyclic class-file source ownership: " + type.binaryName());
                 return;
             }
-            RequiredClass owner = classes.get(current.owner());
+            RequiredSourceClass owner = classes.get(current.owner());
             if (owner == null || owner.unit() == null || !owner.unit().equals(type.unit())) {
                 diagnostics.add("Unverified declaring compilation unit: " + type.binaryName() + " -> " + current.owner());
                 return;
@@ -217,9 +217,9 @@ public final class SourceCacheValidator {
         }
     }
 
-    private static Map<String, ParsedUnit> parse(Path root, List<Path> sources, Cancellation cancellation,
+    private static Map<String, ParsedSourceUnit> parse(Path root, List<Path> sources, Cancellation cancellation,
                                                 List<String> diagnostics) throws IOException {
-        Map<String, ParsedUnit> result = new TreeMap<>();
+        Map<String, ParsedSourceUnit> result = new TreeMap<>();
         var compiler = ToolProvider.getSystemJavaCompiler();
         if (compiler == null) {
             throw new IOException("A JDK compiler is required to validate cached sources");
@@ -241,7 +241,7 @@ public final class SourceCacheValidator {
                             declarations.add(type.getSimpleName().toString());
                         }
                     }
-                    result.put(relative, new ParsedUnit(tree.getPackageName() == null ? "" : tree.getPackageName().toString(),
+                    result.put(relative, new ParsedSourceUnit(tree.getPackageName() == null ? "" : tree.getPackageName().toString(),
                             Set.copyOf(declarations), tree.getModule() != null));
                 }
             }
@@ -263,10 +263,4 @@ public final class SourceCacheValidator {
         }
     }
 
-    private record RequiredClass(String binaryName, String packageName, String simpleName, String unit,
-                                 String owner, boolean topLevel, boolean packageInfo, boolean module) {
-    }
-
-    private record ParsedUnit(String packageName, Set<String> declarations, boolean module) {
-    }
 }

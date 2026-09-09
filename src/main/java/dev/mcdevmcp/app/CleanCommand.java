@@ -18,14 +18,17 @@ import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.SimpleFileVisitor;
 import java.nio.file.attribute.BasicFileAttributes;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.Callable;
+import java.util.function.Consumer;
 
 @Command(name = "clean", description = "Clean cached analysis artifacts")
 @SuppressWarnings("unused")
 public final class CleanCommand implements Callable<Integer> {
     private final PlatformPaths paths;
+    private final Consumer<MinecraftVersion> afterCacheCleanup;
     private CachePathBoundary boundary;
 
     @Option(names = {"-v", "--version"}, description = "Minecraft version")
@@ -47,7 +50,12 @@ public final class CleanCommand implements Callable<Integer> {
     private picocli.CommandLine.Model.CommandSpec spec;
 
     public CleanCommand(PlatformPaths paths) {
+        this(paths, _ -> {});
+    }
+
+    CleanCommand(PlatformPaths paths, Consumer<MinecraftVersion> afterCacheCleanup) {
         this.paths = Objects.requireNonNull(paths, "paths");
+        this.afterCacheCleanup = Objects.requireNonNull(afterCacheCleanup, "afterCacheCleanup");
     }
 
     @Override
@@ -97,11 +105,11 @@ public final class CleanCommand implements Callable<Integer> {
             boolean succeeded = true;
             if (cache) {
                 Path versionCache = boundary.resolvedPaths().versionCache(minecraft);
-                succeeded &= tryRemove(versionCache, "cache for " + version, () -> cleanVersionCache(minecraft));
+                succeeded &= tryRemove(versionCache, "cache for " + version, () -> cleanVersionCache(minecraft, lease));
             }
             if (index) {
                 Path versionIndex = boundary.resolvedPaths().indexRoot(minecraft);
-                succeeded &= tryRemove(versionIndex, "index for " + version, () -> cleanVersionIndex(minecraft));
+                succeeded &= tryRemove(versionIndex, "index for " + version, () -> cleanVersionIndex(minecraft, lease));
             }
             spec.commandLine().getOut().printf("%nRun 'mcdev-mcp init -v %s' to reinitialize.%n", version);
             return succeeded ? 0 : 1;
@@ -113,13 +121,29 @@ public final class CleanCommand implements Callable<Integer> {
         Path indexRoot = boundary.resolvedPaths().cacheRoot().resolve("index");
         Path temporaryRoot = boundary.resolvedPaths().cacheRoot().resolve("tmp");
         List<MinecraftVersion> versions = new CacheCleaner(boundary).cachedVersions();
+        List<Exception> cacheFailures = new ArrayList<>();
+        List<Exception> indexFailures = new ArrayList<>();
         boolean succeeded = true;
 
+        for (MinecraftVersion minecraft : versions) {
+            try (var lease = VersionOperationLease.write(boundary, minecraft)) {
+                lease.requireNoPending(paths, minecraft);
+                if (cache) {
+                    attemptCleanup(cacheFailures, () -> cleanVersionCache(minecraft, lease));
+                }
+                if (index) {
+                    attemptCleanup(indexFailures, () -> cleanVersionIndex(minecraft, lease));
+                }
+            } catch (IOException | RuntimeException failure) {
+                if (cache) cacheFailures.add(failure);
+                if (index) indexFailures.add(failure);
+            }
+        }
         if (cache) {
-            succeeded &= tryRemove(cacheRoot, "cache", () -> cleanCacheRoot(cacheRoot, versions));
+            succeeded &= tryRemove(cacheRoot, "cache", () -> finishCleanup(cacheRoot, cacheFailures));
         }
         if (index) {
-            succeeded &= tryRemove(indexRoot, "index", () -> cleanIndexRoot(indexRoot, versions));
+            succeeded &= tryRemove(indexRoot, "index", () -> finishCleanup(indexRoot, indexFailures));
         }
         if (all) {
             succeeded &= tryRemove(temporaryRoot, "tmp", () -> deleteContainedTree(temporaryRoot));
@@ -129,34 +153,34 @@ public final class CleanCommand implements Callable<Integer> {
         return succeeded ? 0 : 1;
     }
 
-    private void cleanVersionCache(MinecraftVersion minecraft) throws IOException {
+    private void cleanVersionCache(MinecraftVersion minecraft, VersionOperationLease lease) throws IOException {
+        lease.requireNoPending(paths, minecraft);
         Path versionCache = boundary.resolvedPaths().versionCache(minecraft);
         preflightContainedTree(versionCache);
         new CallgraphCleaner().clean(boundary.resolvedPaths().callgraphBundle(minecraft));
         deleteContainedTree(versionCache);
+        afterCacheCleanup.accept(minecraft);
     }
 
-    private void cleanCacheRoot(Path cacheRoot, List<MinecraftVersion> versions) throws IOException {
-        for (MinecraftVersion minecraft : versions) {
-            try (var lease = VersionOperationLease.write(boundary, minecraft)) {
-                lease.requireNoPending(paths, minecraft);
-                cleanVersionCache(minecraft);
-            }
+    private static void attemptCleanup(List<Exception> failures, Cleanup cleanup) {
+        try {
+            cleanup.run();
+        } catch (IOException | RuntimeException failure) {
+            failures.add(failure);
         }
-        removeEmptyRoot(cacheRoot);
     }
 
-    private void cleanIndexRoot(Path indexRoot, List<MinecraftVersion> versions) throws IOException {
-        for (MinecraftVersion minecraft : versions) {
-            try (var lease = VersionOperationLease.write(boundary, minecraft)) {
-                lease.requireNoPending(paths, minecraft);
-                cleanVersionIndex(minecraft);
-            }
+    private void finishCleanup(Path root, List<Exception> failures) throws IOException {
+        if (!failures.isEmpty()) {
+            IOException failure = new IOException(failures.getFirst().getMessage(), failures.getFirst());
+            failures.stream().skip(1).forEach(failure::addSuppressed);
+            throw failure;
         }
-        removeEmptyRoot(indexRoot);
+        removeEmptyRoot(root);
     }
 
-    private void cleanVersionIndex(MinecraftVersion version) throws IOException {
+    private void cleanVersionIndex(MinecraftVersion version, VersionOperationLease lease) throws IOException {
+        lease.requireNoPending(paths, version);
         preflightContainedTree(boundary.resolvedPaths().indexRoot(version));
         new IndexCleaner(boundary.resolvedPaths()).cleanIndex(version);
     }

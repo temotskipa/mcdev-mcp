@@ -298,13 +298,18 @@ public final class AnalysisPipeline implements AnalysisOperations {
             Objects.requireNonNull(cancellation, "cancellation");
             sourceTransactions.recover(paths, version, lease);
             checkCancelled(cancellation);
-            List<SourceRoot> sourceRoots = cachedSourceRoots(paths, boundary, version, cancellation);
+            Path source = boundary.require(paths.sourceRoot(version));
+            SourceTreeInventory sourceInventory = SourceTreeInventory.capture(source, boundary, cancellation);
+            if (!sourceInventory.present()) {
+                throw new IllegalStateException("No prepared Java source cache for " + version.value() + "; run init first");
+            }
             Path remapped = cachedRemappedJar(paths, boundary, version, cancellation);
-            SourceValidation validation = sourceValidator.validate(paths.sourceRoot(version), remapped, cancellation);
+            SourceValidation validation = sourceValidator.validate(source, remapped, cancellation);
             if (!validation.valid()) {
                 throw sourceRefreshRequired(version, validation);
             }
             List<Path> classpath = cachedClasspath(paths, boundary, version, cancellation);
+            List<SourceRoot> sourceRoots = List.of(new SourceRoot(SourceNamespace.MINECRAFT, Optional.empty(), source));
             Path database = boundary.require(paths.symbolDatabase(version));
             SourceTreeInventory.capture(database.getParent(), boundary, cancellation);
             return indexer.build(new IndexRequest(version, sourceRoots, remapped, classpath, database, threads, progress, cancellation));
@@ -345,6 +350,9 @@ public final class AnalysisPipeline implements AnalysisOperations {
             sourceTransactions.recover(paths, version, lease);
             checkCancelled(cancellation);
             cachedSourceRoots(paths, boundary, version, cancellation);
+            if (!Files.isRegularFile(boundary.require(paths.symbolDatabase(version)), LinkOption.NOFOLLOW_LINKS)) {
+                throw new IllegalStateException("Minecraft %s not indexed. Run 'init -v %s' first.".formatted(version.value(), version.value()));
+            }
             Path remapped = cachedRemappedJar(paths, boundary, version, cancellation);
             Path bundle = boundary.require(paths.callgraphBundle(version));
             SourceTreeInventory.capture(bundle, boundary, cancellation);
