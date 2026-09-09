@@ -3,10 +3,13 @@ package dev.mcdevmcp.analysis.index.pipeline;
 import dev.mcdevmcp.analysis.index.IndexBuildException;
 import dev.mcdevmcp.analysis.index.IndexRequest;
 
-import java.util.ArrayList;
+import java.util.ArrayDeque;
+import java.util.Collection;
+import java.util.Deque;
+import java.util.Iterator;
 import java.util.List;
 import java.util.concurrent.*;
-import java.util.function.Function;
+import java.util.function.Consumer;
 
 final class JavacTaskExecutor {
     private static final long CANCELLATION_POLL_MILLIS = 25;
@@ -27,26 +30,34 @@ final class JavacTaskExecutor {
         }
     }
 
-    static <T, R> R executeAll(IndexRequest request, int workerCount, List<? extends Callable<T>> tasks, Function<List<T>, R> resultAssembler) throws IndexBuildException, InterruptedException {
+    // The coordinator advances tasks only when a complete admission slot is available.
+    static <T> void executeAll(IndexRequest request, int workerCount, Iterator<? extends Callable<T>> tasks, Consumer<T> resultConsumer) throws IndexBuildException, InterruptedException {
         ExecutorService executor = Executors.newFixedThreadPool(workerCount);
-        List<Future<T>> futures = new ArrayList<>();
-        R result;
+        Deque<Future<T>> futures = new ArrayDeque<>();
         try {
-            for (Callable<T> task : tasks) {
-                futures.add(executor.submit(task));
-            }
-            List<T> results = new ArrayList<>();
-            for (Future<T> future : futures) {
+            while (futures.size() < workerCount && tasks.hasNext()) {
                 request.cancellation().throwIfCancelled();
-                results.add(get(future, request));
+                futures.addLast(executor.submit(tasks.next()));
             }
-            result = resultAssembler.apply(results);
+            while (!futures.isEmpty()) {
+                consume(futures.getFirst(), request, resultConsumer);
+                futures.removeFirst();
+                if (tasks.hasNext()) {
+                    request.cancellation().throwIfCancelled();
+                    futures.addLast(executor.submit(tasks.next()));
+                }
+            }
         } catch (IndexBuildException | InterruptedException | RuntimeException | Error failure) {
             terminateSuppressing(executor, futures, failure);
             throw failure;
         }
         terminate(executor, futures);
-        return result;
+    }
+
+    private static <T> void consume(Future<T> future, IndexRequest request, Consumer<T> resultConsumer) throws IndexBuildException, InterruptedException {
+        T result = get(future, request);
+        request.cancellation().throwIfCancelled();
+        resultConsumer.accept(result);
     }
 
     private static <T> T get(Future<T> future, IndexRequest request) throws IndexBuildException, InterruptedException {
@@ -70,7 +81,7 @@ final class JavacTaskExecutor {
         }
     }
 
-    private static void terminate(ExecutorService executor, List<? extends Future<?>> futures) throws IndexBuildException, InterruptedException {
+    private static void terminate(ExecutorService executor, Collection<? extends Future<?>> futures) throws IndexBuildException, InterruptedException {
         futures.forEach(future -> future.cancel(true));
         executor.shutdownNow();
         if (!executor.awaitTermination(30, TimeUnit.SECONDS)) {
@@ -78,7 +89,7 @@ final class JavacTaskExecutor {
         }
     }
 
-    private static void terminateSuppressing(ExecutorService executor, List<? extends Future<?>> futures, Throwable failure) {
+    private static void terminateSuppressing(ExecutorService executor, Collection<? extends Future<?>> futures, Throwable failure) {
         try {
             terminate(executor, futures);
         } catch (IndexBuildException cleanupFailure) {

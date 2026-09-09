@@ -10,7 +10,10 @@ import dev.mcdevmcp.analysis.index.IndexRequest;
 
 import java.net.URI;
 import java.nio.file.Path;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Deque;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -37,13 +40,29 @@ final class JavacSourceParser {
             return new ParsedIndex(List.of(), List.of(), List.of());
         }
         SourceCorpus corpus = preflight(request, classpath, discovered);
-        List<List<DecodedSource>> batches = partition(corpus.sources());
+        Deque<List<DecodedSource>> batches = new ArrayDeque<>(partition(corpus.sources()));
         int workerCount = Math.min(batches.size(), Math.min(request.threads(), Runtime.getRuntime().availableProcessors()));
-        List<Callable<ParsedBatch>> tasks = new ArrayList<>();
-        for (List<DecodedSource> batch : batches) {
-            tasks.add(() -> JavacBatchParser.parse(request, catalog, classpath, corpus, batch, this::observeParsedUnits));
-        }
-        return JavacTaskExecutor.executeAll(request, workerCount, tasks, this::assembleParsedIndex);
+        Iterator<Callable<ParsedBatch>> tasks = new Iterator<>() {
+            @Override
+            public boolean hasNext() {
+                return !batches.isEmpty();
+            }
+
+            @Override
+            public Callable<ParsedBatch> next() {
+                List<DecodedSource> batch = batches.removeFirst();
+                return () -> JavacBatchParser.parse(request, catalog, classpath, corpus, batch, JavacSourceParser.this::observeParsedUnits);
+            }
+        };
+        List<ParsedType> types = new ArrayList<>();
+        List<String> units = new ArrayList<>();
+        List<IndexDiagnostic> diagnostics = new ArrayList<>();
+        JavacTaskExecutor.executeAll(request, workerCount, tasks, batch -> {
+            types.addAll(batch.types());
+            units.addAll(batch.parsedCompilationUnits());
+            diagnostics.addAll(batch.diagnostics());
+        });
+        return new ParsedIndex(types, units, diagnostics);
     }
 
     static List<List<DecodedSource>> partition(List<DecodedSource> sources) {
@@ -69,18 +88,6 @@ final class JavacSourceParser {
         }
         batches.add(List.copyOf(batch));
         return List.copyOf(batches);
-    }
-
-    private ParsedIndex assembleParsedIndex(List<ParsedBatch> batches) {
-        List<ParsedType> types = new ArrayList<>();
-        List<String> units = new ArrayList<>();
-        List<IndexDiagnostic> diagnostics = new ArrayList<>();
-        for (ParsedBatch batch : batches) {
-            types.addAll(batch.types());
-            units.addAll(batch.parsedCompilationUnits());
-            diagnostics.addAll(batch.diagnostics());
-        }
-        return new ParsedIndex(types, units, diagnostics);
     }
 
     private SourceCorpus preflight(IndexRequest request, CompilerClasspath classpath, SourceCorpus discovered) throws IndexBuildException, InterruptedException {
