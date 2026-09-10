@@ -43,6 +43,7 @@ dependencies {
 
 application {
     mainClass.set("dev.mcdevmcp.conformance.ConformanceServerMain")
+    applicationDefaultJvmArgs = listOf("--enable-preview")
 }
 
 tasks.withType<JavaCompile>().configureEach {
@@ -73,6 +74,7 @@ tasks.register<JavaExec>("conformanceRun") {
     mainClass.set(application.mainClass)
     javaLauncher.set(conformanceJavaLauncher)
     jvmArgs(
+        "--enable-preview",
         "--add-opens=java.base/java.lang=ALL-UNNAMED",
         "--add-opens=java.rmi/sun.rmi.transport=ALL-UNNAMED"
     )

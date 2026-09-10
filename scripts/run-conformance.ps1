@@ -60,6 +60,7 @@ function Start-ConformanceHarness {
     $startInfo.CreateNoWindow = $true
     $startInfo.RedirectStandardOutput = $false
     $startInfo.RedirectStandardError = $false
+    $startInfo.ArgumentList.Add("--enable-preview")
     $startInfo.ArgumentList.Add("--add-opens=java.base/java.lang=ALL-UNNAMED")
     $startInfo.ArgumentList.Add("--add-opens=java.rmi/sun.rmi.transport=ALL-UNNAMED")
     $startInfo.ArgumentList.Add("-Ddev.mcdevmcp.conformance.shutdownFile=$shutdownFile")

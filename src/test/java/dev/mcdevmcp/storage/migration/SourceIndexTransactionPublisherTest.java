@@ -327,7 +327,7 @@ class SourceIndexTransactionPublisherTest {
 
     @SuppressWarnings("resource") // Explicit finally cleanup verifies subprocess termination.
     private static int runProcess(SourcePublicationFixture fixture, String event) throws Exception {
-        Process process = new ProcessBuilder(System.getProperty("mcdevMcpJava"), "-cp", System.getProperty("java.class.path"), SourcePublicationProcessMain.class.getName(), fixture.paths().cacheRoot().toString(), fixture.transaction().toString(), event).redirectErrorStream(true).redirectOutput(fixture.transaction().resolve("process-" + event + ".log").toFile()).start();
+        Process process = new ProcessBuilder(System.getProperty("mcdevMcpJava"), "--enable-preview", "-cp", System.getProperty("java.class.path"), SourcePublicationProcessMain.class.getName(), fixture.paths().cacheRoot().toString(), fixture.transaction().toString(), event).redirectErrorStream(true).redirectOutput(fixture.transaction().resolve("process-" + event + ".log").toFile()).start();
         try {
             assertTrue(process.waitFor(30, TimeUnit.SECONDS), "Migration process did not terminate: " + event);
             return process.exitValue();

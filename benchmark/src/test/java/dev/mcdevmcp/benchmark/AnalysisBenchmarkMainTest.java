@@ -159,6 +159,8 @@ class AnalysisBenchmarkMainTest {
         AnalysisBenchmarkMain.ChildCommand command = new AnalysisBenchmarkMain.ChildCommand(javaExecutable(), System.getProperty("java.class.path"), new MinecraftVersion("1.21.11"), fixture.sourceRoot(), fixture.remappedJar(), temporaryDirectory.resolve("child-output"), fixture.cacheRoot(), 2, BenchmarkPhase.INDEX, BenchmarkGarbageCollector.G1, ClasspathFixtures.empty(fixture.cacheRoot().resolve("dependencies")), ClasspathFixtures.IDENTITY, ClasspathFixtures.RAW_HASH);
         List<String> processCommand = command.asProcessCommand();
         assertEquals(javaExecutable().toString(), processCommand.getFirst());
+        assertEquals("--enable-preview", processCommand.get(1));
+        assertEquals(1, processCommand.stream().filter("--enable-preview"::equals).count());
         assertTrue(processCommand.contains("--child"));
         assertTrue(processCommand.contains("-Xmx4g"));
         assertTrue(processCommand.contains("-XX:+UseG1GC"));
@@ -269,7 +271,7 @@ class AnalysisBenchmarkMainTest {
     }
 
     private static List<String> fixtureProcessCommand(String command) {
-        return List.of(javaExecutable().toString(), "-cp", System.getProperty("java.class.path"), BenchmarkChildProcessFixtureMain.class.getName(), command);
+        return List.of(javaExecutable().toString(), "--enable-preview", "-cp", System.getProperty("java.class.path"), BenchmarkChildProcessFixtureMain.class.getName(), command);
     }
 
     private static Path javaExecutable() {

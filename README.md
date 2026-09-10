@@ -7,12 +7,13 @@ DebugBridge mod.
 
 ## Requirements
 
-- Java 26 or newer. Java 26 is the minimum and the release build target.
+- A released Java 26 JDK, launched with `--enable-preview`.
 - No Maven, Gradle, npm, or IDE subscription is required to run a release.
 
 Java 26 corpus qualification and index/callgraph benchmarking are required
-release gates. Java 27 and later may be used as separate experiments but are
-not release targets.
+release gates. Preview bytecode is specific to Java 26: Java 25, Java 27, and
+later runtimes cannot run this release. The MCPB launcher enables preview
+automatically; direct JAR launches must include the flag.
 
 See [corpus qualification and benchmark inputs](benchmark/README.md) for the
 immutable compiler-library manifests and evidence required by those gates.
@@ -44,6 +45,7 @@ Use an absolute path to the downloaded JAR:
     "mcdev-mcp": {
       "command": "java",
       "args": [
+        "--enable-preview",
         "-jar",
         "C:/tools/mcdev-mcp-3.0.0.jar",
         "serve"
@@ -56,20 +58,20 @@ Use an absolute path to the downloaded JAR:
 Initialize each Minecraft version once before using its static-analysis tools:
 
 ```powershell
-java -jar mcdev-mcp-3.0.0.jar init -v 1.21.11
-java -jar mcdev-mcp-3.0.0.jar status
+java --enable-preview -jar mcdev-mcp-3.0.0.jar init -v 1.21.11
+java --enable-preview -jar mcdev-mcp-3.0.0.jar status
 ```
 
 Useful maintenance commands:
 
 ```powershell
-java -jar mcdev-mcp-3.0.0.jar rebuild -v 1.21.11 --with-callgraph
-java -jar mcdev-mcp-3.0.0.jar callgraph -v 1.21.11
-java -jar mcdev-mcp-3.0.0.jar clean --index -v 1.21.11
-java -jar mcdev-mcp-3.0.0.jar clean --all
+java --enable-preview -jar mcdev-mcp-3.0.0.jar rebuild -v 1.21.11 --with-callgraph
+java --enable-preview -jar mcdev-mcp-3.0.0.jar callgraph -v 1.21.11
+java --enable-preview -jar mcdev-mcp-3.0.0.jar clean --index -v 1.21.11
+java --enable-preview -jar mcdev-mcp-3.0.0.jar clean --all
 ```
 
-Run `java -jar mcdev-mcp-3.0.0.jar --help` for the complete CLI.
+Run `java --enable-preview -jar mcdev-mcp-3.0.0.jar --help` for the complete CLI.
 
 ## Storage Migration
 

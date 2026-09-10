@@ -21,21 +21,29 @@ class McpbLauncherTest {
         ProcessResult result = runLauncher("25", "17", Map.of());
 
         assertEquals(1, result.exitCode(), result.error());
-        assertTrue(result.error().contains("Java 26 or newer is required"));
+        assertTrue(result.error().contains("Java 26 with preview enabled is required"));
+        assertEquals("", result.output());
         assertFalse(Files.exists(temporaryDirectory.resolve("environment.txt")));
     }
 
     @Test
-    void acceptsJava26And27AndForwardsTheChildExitStatus() throws Exception {
+    void acceptsJava26WithPreviewAndForwardsTheChildExitStatus() throws Exception {
         ProcessResult java26 = runLauncher("26", "17", Map.of());
 
         assertEquals(17, java26.exitCode(), java26.error());
         String launchedArguments = Files.readString(temporaryDirectory.resolve("arguments.txt"), StandardCharsets.UTF_8);
-        assertTrue(launchedArguments.startsWith("-jar|"));
+        assertTrue(launchedArguments.startsWith("--enable-preview|-jar|"));
         assertTrue(launchedArguments.endsWith("|serve"));
+        assertEquals("", java26.output());
+    }
 
+    @Test
+    void rejectsNewerJavaBeforeStartingTheServer() throws Exception {
         ProcessResult java27 = runLauncher("27", "17", Map.of());
-        assertEquals(17, java27.exitCode(), java27.error());
+        assertEquals(1, java27.exitCode(), java27.error());
+        assertTrue(java27.error().contains("Java 26 with preview enabled is required"));
+        assertEquals("", java27.output());
+        assertFalse(Files.exists(temporaryDirectory.resolve("arguments.txt")));
     }
 
     @Test
@@ -56,7 +64,7 @@ class McpbLauncherTest {
 
     @Test
     void stripsOnlyUnresolvedOptionalConfigurationValues() throws Exception {
-        ProcessResult result = runLauncher("28", "0", Map.of("MCDEV_SESSION_LOG_DIR", "${user_config.script_logs}", "MCDEV_RUN_COMMAND", "false", "MCDEV_MCP_DEBUG_LOG", "${user_config.debug_log}", "MCDEV_INDEX_THREADS", "${user_config.index_threads}", "DEBUGBRIDGE_PORT", "${user_config.debugbridge_port}"));
+        ProcessResult result = runLauncher("26", "0", Map.of("MCDEV_SESSION_LOG_DIR", "${user_config.script_logs}", "MCDEV_RUN_COMMAND", "false", "MCDEV_MCP_DEBUG_LOG", "${user_config.debug_log}", "MCDEV_INDEX_THREADS", "${user_config.index_threads}", "DEBUGBRIDGE_PORT", "${user_config.debugbridge_port}"));
 
         assertEquals(0, result.exitCode(), result.error());
         assertEquals("||false||", Files.readString(temporaryDirectory.resolve("environment.txt"), StandardCharsets.UTF_8).trim());

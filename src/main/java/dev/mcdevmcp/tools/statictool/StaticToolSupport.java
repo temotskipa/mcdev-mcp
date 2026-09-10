@@ -84,10 +84,10 @@ final class StaticToolSupport {
     private void validateExplicit(MinecraftVersion explicit, VersionOperationLease lease) throws IOException {
         if (explicit != null) {
             if (!Files.isDirectory(lease.boundary().require(lease.resolvedPaths().sourceRoot(explicit)))) {
-                throw new ExpectedVersionException("Version " + explicit.value() + " not initialized. STOP and ask the USER to run this command in their terminal:\n" + "  java -jar " + AppVersion.executableJarName() + " init -v " + explicit.value() + "\n\n" + "This will download, decompile, and index Minecraft " + explicit.value() + " sources (including callgraph).");
+                throw new ExpectedVersionException("Version " + explicit.value() + " not initialized. STOP and ask the USER to run this command in their terminal:\n" + "  java --enable-preview -jar " + AppVersion.executableJarName() + " init -v " + explicit.value() + "\n\n" + "This will download, decompile, and index Minecraft " + explicit.value() + " sources (including callgraph).");
             }
             if (!indexed(explicit, lease)) {
-                throw new ExpectedVersionException("Version " + explicit.value() + " not indexed. STOP and ask the USER to run this command in their terminal:\n" + "  java -jar " + AppVersion.executableJarName() + " init -v " + explicit.value() + "\n\n" + "This will index Minecraft " + explicit.value() + " sources (including callgraph).");
+                throw new ExpectedVersionException("Version " + explicit.value() + " not indexed. STOP and ask the USER to run this command in their terminal:\n" + "  java --enable-preview -jar " + AppVersion.executableJarName() + " init -v " + explicit.value() + "\n\n" + "This will index Minecraft " + explicit.value() + " sources (including callgraph).");
             }
         }
     }

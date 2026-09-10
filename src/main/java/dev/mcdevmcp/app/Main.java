@@ -1,18 +1,20 @@
 package dev.mcdevmcp.app;
 
+import dev.mcdevmcp.support.AppVersion;
 import picocli.CommandLine;
 
 import java.io.FileDescriptor;
 import java.io.FileOutputStream;
 import java.io.OutputStreamWriter;
 import java.io.PrintWriter;
+import java.lang.management.ManagementFactory;
 import java.nio.charset.StandardCharsets;
 import java.util.Objects;
 
 public final class Main {
     public static int execute(String[] arguments, int javaFeature, PrintWriter output, PrintWriter error) {
-        if (javaFeature < 26) {
-            return rejectOldJava(javaFeature, error);
+        if (javaFeature != 26) {
+            return rejectUnsupportedJava(javaFeature, error);
         }
         return execute(arguments, javaFeature, output, error, CommandContext.production());
     }
@@ -23,8 +25,8 @@ public final class Main {
         Objects.requireNonNull(output, "output");
         Objects.requireNonNull(error, "error");
         Objects.requireNonNull(context, "context");
-        if (javaFeature < 26) {
-            return rejectOldJava(javaFeature, error);
+        if (javaFeature != 26) {
+            return rejectUnsupportedJava(javaFeature, error);
         }
 
         CliHelp.Preflight preflight = CliHelp.preflight(arguments);
@@ -54,9 +56,9 @@ public final class Main {
     }
 
     @SuppressWarnings("SameReturnValue")
-    private static int rejectOldJava(int javaFeature, PrintWriter error) {
+    private static int rejectUnsupportedJava(int javaFeature, PrintWriter error) {
         Objects.requireNonNull(error, "error");
-        error.printf("Java 26 or newer is required; detected Java %d.%n", javaFeature);
+        error.printf("Java 26 with --enable-preview is required; detected Java %d.%n", javaFeature);
         error.flush();
         return 1;
     }
@@ -70,6 +72,11 @@ public final class Main {
     void main(String[] arguments) {
         var output = new PrintWriter(new OutputStreamWriter(new FileOutputStream(FileDescriptor.out), StandardCharsets.UTF_8), true);
         var error = new PrintWriter(new OutputStreamWriter(new FileOutputStream(FileDescriptor.err), StandardCharsets.UTF_8), true);
+        if (!ManagementFactory.getRuntimeMXBean().getInputArguments().contains("--enable-preview")) {
+            error.println("Java 26 with --enable-preview is required. Launch with java --enable-preview -jar " + AppVersion.executableJarName() + ".");
+            System.exit(1);
+            return;
+        }
         System.exit(execute(arguments, Runtime.version().feature(), output, error));
     }
 }

@@ -2,7 +2,7 @@
   "manifest_version": "0.3",
   "name": "mcdev-mcp",
   "display_name": "Minecraft Development MCP",
-  "description": "Minecraft development tools backed by the mcdev-mcp Java server.",
+  "description": "Minecraft development tools backed by the mcdev-mcp server. Requires a released Java 26 JDK; the launcher enables Java 26 preview features.",
   "author": {
     "name": "mcdev-mcp contributors"
   },

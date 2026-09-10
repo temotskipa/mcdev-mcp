@@ -161,7 +161,7 @@ class DifferentialMcpTest {
     private static ProcessBuilder javaProcess(Path root) {
         String executable = requiredProperty("mcdevMcpJava");
         Path jar = Path.of(requiredProperty("mcdevMcpJar")).toAbsolutePath().normalize();
-        return new ProcessBuilder(executable, "-Dfile.encoding=UTF-8", "-Duser.language=en", "-Duser.country=US", "-Duser.home=" + root.resolve("home"), "-Djava.io.tmpdir=" + root.resolve("tmp"), "-jar", jar.toString(), "serve");
+        return new ProcessBuilder(executable, "--enable-preview", "-Dfile.encoding=UTF-8", "-Duser.language=en", "-Duser.country=US", "-Duser.home=" + root.resolve("home"), "-Djava.io.tmpdir=" + root.resolve("tmp"), "-jar", jar.toString(), "serve");
     }
 
     private static String requiredProperty(String name) {
@@ -748,7 +748,7 @@ class DifferentialMcpTest {
         String prefix = "Version " + version + " not initialized. STOP and ask the USER to run this command in their terminal:\n  ";
         String suffix = " init -v " + version + "\n\nThis will download, decompile, and index Minecraft " + version + " sources (including callgraph).";
         assertEquals(prefix + "node dist/cli.js" + suffix, toolText(nodeResponse), "Pinned Node launcher guidance changed for " + scenario.label());
-        assertEquals(prefix + "java -jar mcdev-mcp-" + requiredProperty("mcdevMcpVersion") + ".jar" + suffix, toolText(javaResponse), "Java missing-cache guidance must use the distributable JAR launcher for " + scenario.label());
+        assertEquals(prefix + "java --enable-preview -jar mcdev-mcp-" + requiredProperty("mcdevMcpVersion") + ".jar" + suffix, toolText(javaResponse), "Java missing-cache guidance must use the distributable JAR launcher for " + scenario.label());
 
         Map<String, Object> normalizedNode = withApprovedToolText(normalize(nodeResponse, scenario, nodeRoot, nodePort), "$APPROVED_JAVA_LAUNCHER");
         Map<String, Object> normalizedJava = withApprovedToolText(normalize(javaResponse, scenario, javaRoot, javaPort), "$APPROVED_JAVA_LAUNCHER");

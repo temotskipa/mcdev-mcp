@@ -395,7 +395,7 @@ jobs:
                 output="$BENCHMARK_ROOT/reports/qualification/$id/java$feature-workers$workers"
                 mkdir -p "$output"
                 test "$(sha256sum "$classpath_manifest" | cut -d' ' -f1)" = "$classpath_hash"
-                "$java_home/bin/java" -Xmx4g -cp "$classpath" \
+                "$java_home/bin/java" --enable-preview -Xmx4g -cp "$classpath" \
                   dev.mcdevmcp.benchmark.CorpusQualificationMain \
                   --minecraft-version "$version" --source-root "$source" \
                   --remapped-jar "$remapped" --node-baseline "$baseline" \
@@ -426,7 +426,7 @@ jobs:
             output="$BENCHMARK_ROOT/reports/g1/$id/java26"
             mkdir -p "$output"
             test "$(sha256sum "$classpath_manifest" | cut -d' ' -f1)" = "$classpath_hash"
-            "$JAVA_HOME_26/bin/java" -cp "$classpath" \
+            "$JAVA_HOME_26/bin/java" --enable-preview -cp "$classpath" \
               dev.mcdevmcp.benchmark.AnalysisBenchmarkMain \
               --minecraft-version "$version" --source-root "$source" \
               --remapped-jar "$remapped" --server-jar "$jar" --output-root "$output" \
@@ -458,7 +458,7 @@ jobs:
             output="$BENCHMARK_ROOT/reports/parallel-gc/$id/java26"
             mkdir -p "$output"
             test "$(sha256sum "$classpath_manifest" | cut -d' ' -f1)" = "$classpath_hash"
-            "$JAVA_HOME_26/bin/java" -cp "$classpath" \
+            "$JAVA_HOME_26/bin/java" --enable-preview -cp "$classpath" \
               dev.mcdevmcp.benchmark.AnalysisBenchmarkMain \
               --minecraft-version "$version" --source-root "$source" \
               --remapped-jar "$remapped" --server-jar "$jar" --output-root "$output" \

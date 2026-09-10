@@ -77,7 +77,7 @@ class ProcessPeakMemoryTest {
     private static List<String> probe(String mode) throws Exception {
         String executable = System.getProperty("os.name").startsWith("Windows") ? "java.exe" : "java";
         String classes = Path.of(QueryProbe.class.getProtectionDomain().getCodeSource().getLocation().toURI()).toString();
-        return List.of(Path.of(System.getProperty("java.home"), "bin", executable).toString(), "-cp", classes, QueryProbe.class.getName(), mode);
+        return List.of(Path.of(System.getProperty("java.home"), "bin", executable).toString(), "--enable-preview", "-cp", classes, QueryProbe.class.getName(), mode);
     }
 
     public static final class QueryProbe {

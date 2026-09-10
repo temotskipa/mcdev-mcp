@@ -29,10 +29,10 @@ final class McFindRefsTool {
                 String methodName = arguments.methodName();
                 CallgraphRepository.PublicationStatus publicationStatus = CallgraphRepository.publicationStatus(lease.boundary().require(lease.resolvedPaths().callgraphBundle(version)));
                 if (publicationStatus == CallgraphRepository.PublicationStatus.CORRUPT) {
-                    return ToolResult.text("Version " + version.value() + " has corrupt callgraph data.\n\n" + "STOP and ask the USER to run this command in their terminal:\n" + "  java -jar " + AppVersion.executableJarName() + " callgraph -v " + version.value() + "\n\n" + "Or for full reinitialization:\n  java -jar " + AppVersion.executableJarName() + " init -v " + version.value());
+                    return ToolResult.text("Version " + version.value() + " has corrupt callgraph data.\n\n" + "STOP and ask the USER to run this command in their terminal:\n" + "  java --enable-preview -jar " + AppVersion.executableJarName() + " callgraph -v " + version.value() + "\n\n" + "Or for full reinitialization:\n  java --enable-preview -jar " + AppVersion.executableJarName() + " init -v " + version.value());
                 }
                 if (publicationStatus == CallgraphRepository.PublicationStatus.ABSENT) {
-                    return ToolResult.text("Version " + version.value() + " does not have callgraph data.\n\n" + "STOP and ask the USER to run this command in their terminal:\n" + "  java -jar " + AppVersion.executableJarName() + " callgraph -v " + version.value() + "\n\n" + "Or for full reinitialization:\n  java -jar " + AppVersion.executableJarName() + " init -v " + version.value());
+                    return ToolResult.text("Version " + version.value() + " does not have callgraph data.\n\n" + "STOP and ask the USER to run this command in their terminal:\n" + "  java --enable-preview -jar " + AppVersion.executableJarName() + " callgraph -v " + version.value() + "\n\n" + "Or for full reinitialization:\n  java --enable-preview -jar " + AppVersion.executableJarName() + " init -v " + version.value());
                 }
                 var limit = LIMIT.normalize(arguments.limit());
                 int queryLimit = limit.value() + 1;

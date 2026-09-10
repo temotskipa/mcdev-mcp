@@ -399,7 +399,7 @@ public final class AnalysisBenchmarkMain {
         }
 
         List<String> asProcessCommand() {
-            return List.of(javaExecutable.toString(), "-Xmx4g", garbageCollector.jvmFlag(), "-cp", classpath, AnalysisBenchmarkMain.class.getName(), CHILD_COMMAND, "--minecraft-version", minecraftVersion.value(), "--source-root", sourceRoot.toString(), "--remapped-jar", remappedJar.toString(), "--output-root", outputRoot.toString(), "--production-cache-root", productionCacheRoot.toString(), "--workers", Integer.toString(workers), "--phase", phase.name(), "--classpath-manifest", classpathManifest.toString(), "--classpath-identity", classpathIdentity, "--classpath-manifest-sha256", classpathManifestSha256);
+            return List.of(javaExecutable.toString(), "--enable-preview", "-Xmx4g", garbageCollector.jvmFlag(), "-cp", classpath, AnalysisBenchmarkMain.class.getName(), CHILD_COMMAND, "--minecraft-version", minecraftVersion.value(), "--source-root", sourceRoot.toString(), "--remapped-jar", remappedJar.toString(), "--output-root", outputRoot.toString(), "--production-cache-root", productionCacheRoot.toString(), "--workers", Integer.toString(workers), "--phase", phase.name(), "--classpath-manifest", classpathManifest.toString(), "--classpath-identity", classpathIdentity, "--classpath-manifest-sha256", classpathManifestSha256);
         }
     }
 

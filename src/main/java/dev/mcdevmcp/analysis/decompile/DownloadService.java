@@ -50,7 +50,7 @@ public final class DownloadService {
             cancellation.throwIfCancelled();
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
-            throw new IOException("download cancelled; retry with java -jar " + AppVersion.executableJarName() + " init", exception);
+            throw new IOException("download cancelled; retry with java --enable-preview -jar " + AppVersion.executableJarName() + " init", exception);
         }
     }
 

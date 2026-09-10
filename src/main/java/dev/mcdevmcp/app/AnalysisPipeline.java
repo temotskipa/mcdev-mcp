@@ -281,7 +281,7 @@ public final class AnalysisPipeline implements AnalysisOperations {
     }
 
     private static IOException sourceRefreshRequired(MinecraftVersion version, SourceValidation validation) {
-        return new IOException("Cached sources require explicit refresh: " + validationMessage(validation) + ". Originals are unchanged. Run java -jar " + AppVersion.executableJarName() + " init -v " + version.value() + " --refresh-sources to regenerate with retained originals.");
+        return new IOException("Cached sources require explicit refresh: " + validationMessage(validation) + ". Originals are unchanged. Run java --enable-preview -jar " + AppVersion.executableJarName() + " init -v " + version.value() + " --refresh-sources to regenerate with retained originals.");
     }
 
     private static String validationMessage(SourceValidation validation) {

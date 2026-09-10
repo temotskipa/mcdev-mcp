@@ -135,7 +135,7 @@ jobs:
           fi
           test "$actual" = "$recorded"
           cd ../..
-          java --illegal-native-access=deny \
+          java --enable-preview --illegal-native-access=deny \
             -cp "runtime/harness:runtime/server/${jars[0]#./}" \
             dev.mcdevmcp.packaging.RuntimeArtifactSmokeMain \
             "runtime/server/${jars[0]#./}"

@@ -98,6 +98,7 @@ val jpmsSmokeTest = tasks.register<JavaExec>("jpmsSmokeTest") {
     mainModule.set("dev.mcdevmcp.mcp.tool.api.smoke")
     mainClass.set("dev.mcdevmcp.mcp.tool.api.smoke.JpmsSmokeMain")
     javaLauncher.set(testJavaLauncher)
+    jvmArgs("--enable-preview")
 }
 
 tasks.named("check") {

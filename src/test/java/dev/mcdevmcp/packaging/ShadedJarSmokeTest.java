@@ -20,6 +20,7 @@ class ShadedJarSmokeTest {
     private static Process start(Path localAppData, String... arguments) throws Exception {
         var command = new ArrayList<String>();
         command.add(JAVA.toString());
+        command.add("--enable-preview");
         command.add("-Duser.home=" + localAppData);
         command.add("-jar");
         command.add(JAR.toString());
@@ -53,7 +54,7 @@ class ShadedJarSmokeTest {
         String classpath = testClasses + java.io.File.pathSeparator + JAR;
         String stdout;
         String stderr;
-        try (var process = new ProcessBuilder(JAVA.toString(), "--illegal-native-access=deny", "-cp", classpath, H2ServiceLoaderProbeMain.class.getName(), database.toString(), JAR.toString()).start();
+        try (var process = new ProcessBuilder(JAVA.toString(), "--enable-preview", "--illegal-native-access=deny", "-cp", classpath, H2ServiceLoaderProbeMain.class.getName(), database.toString(), JAR.toString()).start();
              var output = new BufferedReader(new InputStreamReader(process.getInputStream()));
              var errors = new BufferedReader(new InputStreamReader(process.getErrorStream()))) {
             stdout = output.lines().collect(java.util.stream.Collectors.joining("\n"));
@@ -68,7 +69,7 @@ class ShadedJarSmokeTest {
     @Test
     void shadedJarPrintsItsManifestVersion() throws Exception {
         String output;
-        try (var process = new ProcessBuilder(JAVA.toString(), "-jar", JAR.toString(), "--version").redirectErrorStream(true).start();
+        try (var process = new ProcessBuilder(JAVA.toString(), "--enable-preview", "-jar", JAR.toString(), "--version").redirectErrorStream(true).start();
              var reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
             output = reader.readLine();
             assertEquals(0, process.waitFor());
@@ -78,10 +79,26 @@ class ShadedJarSmokeTest {
     }
 
     @Test
+    void shadedJarRejectsMissingPreviewFlagWithoutProtocolOutput() throws Exception {
+        var builder = new ProcessBuilder(JAVA.toString(), "-jar", JAR.toString(), "--version");
+        for (String variable : java.util.List.of("JAVA_TOOL_OPTIONS", "JDK_JAVA_OPTIONS", "_JAVA_OPTIONS")) {
+            builder.environment().remove(variable);
+        }
+        try (var process = builder.start()) {
+            String stdout = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+            String stderr = new String(process.getErrorStream().readAllBytes(), StandardCharsets.UTF_8);
+            assertTrue(process.waitFor(Duration.ofSeconds(10)));
+            assertEquals(1, process.exitValue());
+            assertEquals("", stdout);
+            assertTrue(stderr.contains("java --enable-preview -jar " + JAR.getFileName()), stderr);
+        }
+    }
+
+    @Test
     void shadedJarStartsWithNativeAccessDeniedWithoutWarnings() throws Exception {
         String stdout;
         String stderr;
-        try (var process = new ProcessBuilder(JAVA.toString(), "--illegal-native-access=deny", "-jar", JAR.toString(), "--version").start();
+        try (var process = new ProcessBuilder(JAVA.toString(), "--enable-preview", "--illegal-native-access=deny", "-jar", JAR.toString(), "--version").start();
              var output = new BufferedReader(new InputStreamReader(process.getInputStream()));
              var errors = new BufferedReader(new InputStreamReader(process.getErrorStream()))) {
             stdout = output.readLine();

@@ -40,6 +40,10 @@ class StaticToolContractTest {
     }
 
     private static final MinecraftVersion VERSION = new MinecraftVersion("1.21.5");
+    private static final Map<String, String> PREVIEW_LAUNCH_GUIDANCE = Map.of(
+            "version_set_unknown", "Version 9.9.9 not initialized.\n\nSTOP and ask the USER to run this command in their terminal:\n  java -jar mcdev-mcp-3.0.0.jar init -v 9.9.9\n\nThis will download, decompile, and index Minecraft 9.9.9 sources.",
+            "version_set_unindexed", "Version 1.21.4 not indexed.\n\nSTOP and ask the USER to run this command in their terminal:\n  java -jar mcdev-mcp-3.0.0.jar init -v 1.21.4\n\nThis will index Minecraft 1.21.4 sources.",
+            "search_explicit_missing", "Version 9.9.9 not initialized. STOP and ask the USER to run this command in their terminal:\n  java -jar mcdev-mcp-3.0.0.jar init -v 9.9.9\n\nThis will download, decompile, and index Minecraft 9.9.9 sources (including callgraph).");
     private static final Set<String> SCHEMA_INVALID_LABELS = Set.of("version_missing_action", "version_unknown_action", "search_missing_query", "search_malformed_query_number", "search_invalid_enum_wire", "search_fractional_limit", "search_subunit_fractional_limit", "search_max_plus_point_one_limit", "search_nonpositive_limit", "search_nonfinite_string_wire", "class_missing_class_name", "class_wrong_class_name_type", "class_invalid_enum_wire", "method_missing_class_name", "method_missing_method_name", "packages_invalid_enum_wire", "packages_wrong_namespace_type", "packages_fractional_truncation", "packages_subunit_fractional_limit", "packages_max_plus_point_one_limit", "classes_missing_package_path", "classes_subunit_fractional_limit", "classes_max_plus_point_one_limit", "hierarchy_missing_class_name", "hierarchy_missing_direction", "hierarchy_root_missing_direction", "hierarchy_root_sideways_direction", "hierarchy_subunit_fractional_limit", "hierarchy_max_plus_point_one_limit", "hierarchy_invalid_enum_wire", "classes_wrong_package_path_type");
     private final List<ExecutorService> catalogExecutors = new ArrayList<>();
     @TempDir
@@ -207,8 +211,8 @@ class StaticToolContractTest {
         assertTrue(text(catalog, "mc_get_class", Map.of("className", "alpha.Alpha", "view", "full")).endsWith("public void Needle() { }\n}\n"));
         assertEquals("Class not found: Alpha", text(catalog, "mc_get_class", Map.of("className", "Alpha")));
         String executableJar = AppVersion.executableJarName();
-        assertEquals("Version 9.9.9 not initialized.\n\nSTOP and ask the USER to run this command in their terminal:\n  java -jar " + executableJar + " init -v 9.9.9\n\nThis will download, decompile, and index Minecraft 9.9.9 sources.", text(catalog, "mc_version", Map.of("action", "set", "version", "9.9.9")));
-        assertEquals("Version 9.9.9 not initialized. STOP and ask the USER to run this command in their terminal:\n  java -jar " + executableJar + " init -v 9.9.9\n\nThis will download, decompile, and index Minecraft 9.9.9 sources (including callgraph).", text(catalog, "mc_search", Map.of("query", "needle", "version", "9.9.9")));
+        assertEquals("Version 9.9.9 not initialized.\n\nSTOP and ask the USER to run this command in their terminal:\n  java --enable-preview -jar " + executableJar + " init -v 9.9.9\n\nThis will download, decompile, and index Minecraft 9.9.9 sources.", text(catalog, "mc_version", Map.of("action", "set", "version", "9.9.9")));
+        assertEquals("Version 9.9.9 not initialized. STOP and ask the USER to run this command in their terminal:\n  java --enable-preview -jar " + executableJar + " init -v 9.9.9\n\nThis will download, decompile, and index Minecraft 9.9.9 sources (including callgraph).", text(catalog, "mc_search", Map.of("query", "needle", "version", "9.9.9")));
     }
 
     @Test
@@ -446,7 +450,7 @@ class StaticToolContractTest {
     }
 
     /**
-     * Captured by the frozen Node process; schema-valid requests replay exactly, while the reviewed 31 schema-invalid requests remain frozen and are checked as explicit pre-mapper exclusions. Provenance and hashes live in ignored task6-node-oracle evidence.
+     * Frozen responses remain unchanged; only three exact launcher-guidance responses adapt to the Java 26 preview policy. The reviewed 31 schema-invalid requests remain explicit pre-mapper exclusions.
      */
     @Test
     void replaysSchemaValidFrozenNodeJsonlCorpusExactly() throws Exception {
@@ -476,6 +480,7 @@ class StaticToolContractTest {
         }
         assertEquals(SCHEMA_INVALID_LABELS, observedSchemaInvalidLabels, "The reviewed schema-invalid exclusion set must match the frozen corpus");
         assertTrue(corpusLabels.containsAll(SCHEMA_INVALID_LABELS), "Every schema-invalid exclusion must remain represented in the frozen corpus");
+        assertTrue(corpusLabels.containsAll(PREVIEW_LAUNCH_GUIDANCE.keySet()), "Every reviewed preview-guidance case must remain represented in the frozen corpus");
         for (int index = 0; index < requests.size(); index++) {
             Map<String, Object> request = requests.get(index);
             String label = (String) request.get("label");
@@ -493,9 +498,27 @@ class StaticToolContractTest {
             }), Cancellation.none()).toCompletableFuture().join();
             List<Map<String, Object>> content = McpJsonDefaults.getMapper().convertValue(result.get("content"), new TypeRef<>() {
             });
-            assertEquals(content.getFirst().get("text"), contentText(actual), "corpus line " + index + " " + request.get("label"));
+            String expectedText = java26PreviewCorpusText(label, assertInstanceOf(String.class, content.getFirst().get("text")));
+            assertEquals(expectedText, contentText(actual), "corpus line " + index + " " + request.get("label"));
             assertEquals(Boolean.TRUE.equals(result.get("isError")), actual.isError(), "corpus line " + index + " " + request.get("label"));
         }
+    }
+
+    private static String java26PreviewCorpusText(String label, String frozenText) {
+        String approved = PREVIEW_LAUNCH_GUIDANCE.get(label);
+        if (approved == null) {
+            return frozenText;
+        }
+        assertEquals(approved, frozenText, "Unreviewed frozen launcher-guidance change: " + label);
+        return approved.replace("java -jar mcdev-mcp-3.0.0.jar", "java --enable-preview -jar mcdev-mcp-3.0.0.jar");
+    }
+
+    @Test
+    void previewGuidanceAdaptationRejectsChangedTextAndDoesNotNormalizeOtherCases() {
+        String frozen = PREVIEW_LAUNCH_GUIDANCE.get("version_set_unknown");
+        assertTrue(java26PreviewCorpusText("version_set_unknown", frozen).contains("java --enable-preview -jar"));
+        assertEquals(frozen, java26PreviewCorpusText("unreviewed_label", frozen));
+        assertThrows(AssertionError.class, () -> java26PreviewCorpusText("version_set_unknown", frozen + " changed"));
     }
 
     private static Map<String, Object> requestParams(Map<String, Object> request) {

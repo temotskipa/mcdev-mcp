@@ -147,6 +147,7 @@ dependencies {
 
 application {
     mainClass.set("dev.mcdevmcp.app.Main")
+    applicationDefaultJvmArgs = listOf("--enable-preview")
 }
 
 tasks.withType<JavaCompile>().configureEach {
@@ -282,6 +283,7 @@ val generateMcpbManifest = tasks.register<JavaExec>("generateMcpbManifest") {
     dependsOn(tasks.named("classes"))
     classpath = sourceSets.main.get().runtimeClasspath
     mainClass.set("dev.mcdevmcp.packaging.McpbManifestGenerator")
+    jvmArgs("--enable-preview")
     args(
         layout.projectDirectory.file("packaging/mcpb/manifest.template.json").asFile.absolutePath,
         layout.projectDirectory.file("manifest.json").asFile.absolutePath,
@@ -303,6 +305,7 @@ tasks.register<JavaExec>("mcpbBundleSmoke") {
     dependsOn(tasks.named("classes"))
     classpath = sourceSets.main.get().runtimeClasspath
     mainClass.set("dev.mcdevmcp.packaging.McpbBundleSmokeMain")
+    jvmArgs("--enable-preview")
     argumentProviders.add(CommandLineArgumentProvider {
         listOf(mcpbBundleDirectory.get())
     })
@@ -390,6 +393,7 @@ tasks.register<JavaExec>("runtimeArtifactSmoke") {
     dependsOn(tasks.named(runtimeTest.classesTaskName), generateJarChecksum)
     classpath = files(runtimeTest.output, releaseJar)
     mainClass.set("dev.mcdevmcp.packaging.RuntimeArtifactSmokeMain")
+    jvmArgs("--enable-preview")
     args(releaseJar.get().asFile.absolutePath)
 }
 

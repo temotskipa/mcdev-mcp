@@ -179,10 +179,10 @@ class McFindRefsContractTest {
                      Version 1.21.nocg does not have callgraph data.
                      
                      STOP and ask the USER to run this command in their terminal:
-                       java -jar %s callgraph -v 1.21.nocg
+                       java --enable-preview -jar %s callgraph -v 1.21.nocg
                      
                      Or for full reinitialization:
-                       java -jar %s init -v 1.21.nocg""".formatted(AppVersion.executableJarName(), AppVersion.executableJarName()), text(catalog, "mc_find_refs", Map.of("className", "x.Y", "methodName", "z", "direction", "callers", "version", NO_GRAPH.value())));
+                       java --enable-preview -jar %s init -v 1.21.nocg""".formatted(AppVersion.executableJarName(), AppVersion.executableJarName()), text(catalog, "mc_find_refs", Map.of("className", "x.Y", "methodName", "z", "direction", "callers", "version", NO_GRAPH.value())));
 
         ToolResult<?> missingClass = result(catalog, Map.of("methodName", "hit", "direction", "callers"));
         assertTrue(missingClass.isError());
@@ -192,11 +192,11 @@ class McFindRefsContractTest {
         assertEquals("Error executing mc_find_refs: 'className' is required", contentText(missingAll));
         assertEquals("Error executing mc_find_refs: 'className' must be a string", text(catalog, "mc_find_refs", Map.of("className", 42, "methodName", "hit", "direction", "callers")));
 
-        assertEquals("Active version set to 1.21.bad.\nIndexed: yes\nCallgraph: corrupt\n\nSTOP and ask the USER to run this command in their terminal:\n  java -jar " + AppVersion.executableJarName() + " callgraph -v 1.21.bad\n\nOr for full reinitialization:\n  java -jar " + AppVersion.executableJarName() + " init -v 1.21.bad", text(catalog, "mc_version", Map.of("action", "set", "version", BAD_GRAPH.value())));
+        assertEquals("Active version set to 1.21.bad.\nIndexed: yes\nCallgraph: corrupt\n\nSTOP and ask the USER to run this command in their terminal:\n  java --enable-preview -jar " + AppVersion.executableJarName() + " callgraph -v 1.21.bad\n\nOr for full reinitialization:\n  java --enable-preview -jar " + AppVersion.executableJarName() + " init -v 1.21.bad", text(catalog, "mc_version", Map.of("action", "set", "version", BAD_GRAPH.value())));
 
         ToolResult<?> corrupt = result(catalog, Map.of("className", "x.Y", "methodName", "z", "direction", "callers", "version", BAD_GRAPH.value()));
         assertFalse(corrupt.isError());
-        assertEquals("Version 1.21.bad has corrupt callgraph data.\n\nSTOP and ask the USER to run this command in their terminal:\n  java -jar " + AppVersion.executableJarName() + " callgraph -v 1.21.bad\n\nOr for full reinitialization:\n  java -jar " + AppVersion.executableJarName() + " init -v 1.21.bad", contentText(corrupt));
+        assertEquals("Version 1.21.bad has corrupt callgraph data.\n\nSTOP and ask the USER to run this command in their terminal:\n  java --enable-preview -jar " + AppVersion.executableJarName() + " callgraph -v 1.21.bad\n\nOr for full reinitialization:\n  java --enable-preview -jar " + AppVersion.executableJarName() + " init -v 1.21.bad", contentText(corrupt));
     }
 
     @Test

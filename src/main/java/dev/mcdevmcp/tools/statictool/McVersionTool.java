@@ -42,15 +42,15 @@ final class McVersionTool {
         MinecraftVersion version = arguments.version();
         try (var lease = VersionOperationLease.read(support.paths(), version)) {
             if (!Files.isDirectory(lease.boundary().require(lease.resolvedPaths().sourceRoot(version)))) {
-                return ToolResult.text("Version " + version.value() + " not initialized.\n\n" + "STOP and ask the USER to run this command in their terminal:\n" + "  java -jar " + AppVersion.executableJarName() + " init -v " + version.value() + "\n\n" + "This will download, decompile, and index Minecraft " + version.value() + " sources.");
+                return ToolResult.text("Version " + version.value() + " not initialized.\n\n" + "STOP and ask the USER to run this command in their terminal:\n" + "  java --enable-preview -jar " + AppVersion.executableJarName() + " init -v " + version.value() + "\n\n" + "This will download, decompile, and index Minecraft " + version.value() + " sources.");
             }
             if (!support.indexed(version, lease)) {
-                return ToolResult.text("Version " + version.value() + " not indexed.\n\n" + "STOP and ask the USER to run this command in their terminal:\n" + "  java -jar " + AppVersion.executableJarName() + " init -v " + version.value() + "\n\n" + "This will index Minecraft " + version.value() + " sources.");
+                return ToolResult.text("Version " + version.value() + " not indexed.\n\n" + "STOP and ask the USER to run this command in their terminal:\n" + "  java --enable-preview -jar " + AppVersion.executableJarName() + " init -v " + version.value() + "\n\n" + "This will index Minecraft " + version.value() + " sources.");
             }
             support.activate(version);
             CallgraphRepository.PublicationStatus status = CallgraphRepository.publicationStatus(lease.boundary().require(lease.resolvedPaths().callgraphBundle(version)));
             if (status == CallgraphRepository.PublicationStatus.CORRUPT) {
-                return ToolResult.text("Active version set to " + version.value() + ".\nIndexed: yes\nCallgraph: corrupt\n\n" + "STOP and ask the USER to run this command in their terminal:\n" + "  java -jar " + AppVersion.executableJarName() + " callgraph -v " + version.value() + "\n\n" + "Or for full reinitialization:\n  java -jar " + AppVersion.executableJarName() + " init -v " + version.value());
+                return ToolResult.text("Active version set to " + version.value() + ".\nIndexed: yes\nCallgraph: corrupt\n\n" + "STOP and ask the USER to run this command in their terminal:\n" + "  java --enable-preview -jar " + AppVersion.executableJarName() + " callgraph -v " + version.value() + "\n\n" + "Or for full reinitialization:\n  java --enable-preview -jar " + AppVersion.executableJarName() + " init -v " + version.value());
             }
             String callgraph = status == CallgraphRepository.PublicationStatus.PUBLISHED ? "yes" : "no";
             return ToolResult.text("Active version set to " + version.value() + ".\nIndexed: yes\nCallgraph: " + callgraph);
@@ -80,7 +80,7 @@ final class McVersionTool {
             }
         }
         if (lines.isEmpty()) {
-            return ToolResult.text("No Minecraft versions found.\n\nRun this command to initialize a version:\n  java -jar " + AppVersion.executableJarName() + " init -v <version>\n\nExample:\n  java -jar " + AppVersion.executableJarName() + " init -v 1.21.11");
+            return ToolResult.text("No Minecraft versions found.\n\nRun this command to initialize a version:\n  java --enable-preview -jar " + AppVersion.executableJarName() + " init -v <version>\n\nExample:\n  java --enable-preview -jar " + AppVersion.executableJarName() + " init -v 1.21.11");
         }
         String active = support.active().map(version -> "\n\nActive version: " + version.value()).orElse("\n\nNo active version set. Use mc_version with action=\"set\".");
         return ToolResult.text("Available Minecraft versions:\n" + String.join("\n", lines) + active);

@@ -117,7 +117,7 @@ class VersionOperationLeaseTest {
     @Test
     void anotherProcessHoldsReadLeaseUntilItsWholeOperationEnds() throws Exception {
         PlatformPaths paths = new PlatformPaths(temporaryDirectory);
-        Process process = new ProcessBuilder(System.getProperty("mcdevMcpJava"), "-cp", System.getProperty("java.class.path"), VersionOperationLeaseProcessMain.class.getName(), temporaryDirectory.toString(), VERSION.value()).start();
+        Process process = new ProcessBuilder(System.getProperty("mcdevMcpJava"), "--enable-preview", "-cp", System.getProperty("java.class.path"), VersionOperationLeaseProcessMain.class.getName(), temporaryDirectory.toString(), VERSION.value()).start();
         try (var executor = Executors.newVirtualThreadPerTaskExecutor(); var output = process.inputReader()) {
             try {
                 assertEquals("read-held", executor.submit(output::readLine).get(10, TimeUnit.SECONDS));

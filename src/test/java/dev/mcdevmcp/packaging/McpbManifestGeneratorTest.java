@@ -31,6 +31,8 @@ class McpbManifestGeneratorTest {
 
         assertEquals("0.3", manifest.get("manifest_version"));
         assertEquals("3.0.0", manifest.get("version"));
+        assertTrue(manifest.get("description").toString().contains("released Java 26 JDK"));
+        assertTrue(manifest.get("description").toString().contains("Java 26 preview features"));
         assertNull(manifest.get("server"));
         List<Map<String, Object>> tools = maps(manifest.get("tools"));
         assertEquals(definitions.size(), tools.size());

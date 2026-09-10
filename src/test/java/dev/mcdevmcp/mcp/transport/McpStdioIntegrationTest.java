@@ -91,7 +91,7 @@ class McpStdioIntegrationTest {
 
     @Test
     void shadedJarServesOnlyJsonRpcOverStdio() throws Exception {
-        var processBuilder = new ProcessBuilder(JAVA.toString(), "-Duser.home=" + temporaryDirectory, "-jar", JAR.toString(), "serve");
+        var processBuilder = new ProcessBuilder(JAVA.toString(), "--enable-preview", "-Duser.home=" + temporaryDirectory, "-jar", JAR.toString(), "serve");
         processBuilder.environment().put("LOCALAPPDATA", temporaryDirectory.toString());
         processBuilder.environment().put("XDG_CACHE_HOME", temporaryDirectory.toString());
         var process = processBuilder.start();
@@ -128,7 +128,7 @@ class McpStdioIntegrationTest {
                     var versionResult = MAPPER.convertValue(versionList.get("result"), MAP_TYPE);
                     var versionContent = MAPPER.convertValue(versionResult.get("content"), LIST_OF_MAPS_TYPE);
                     String executableJar = AppVersion.executableJarName();
-                    assertEquals("No Minecraft versions found.\n\nRun this command to initialize a version:\n  java -jar " + executableJar + " init -v <version>\n\nExample:\n  java -jar " + executableJar + " init -v 1.21.11", versionContent.getFirst().get("text"));
+                    assertEquals("No Minecraft versions found.\n\nRun this command to initialize a version:\n  java --enable-preview -jar " + executableJar + " init -v <version>\n\nExample:\n  java --enable-preview -jar " + executableJar + " init -v 1.21.11", versionContent.getFirst().get("text"));
                     assertNotEquals(Boolean.TRUE, versionResult.get("isError"));
                     assertProtocolMatches("resources-list.json", resources, false);
                     var resourceResult = MAPPER.convertValue(resource.get("result"), MAP_TYPE);

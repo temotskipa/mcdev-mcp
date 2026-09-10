@@ -132,7 +132,7 @@ if ($sourceHash -ne $innerHash) {
 if ($env:MCDEV_MCP_SKIP_SMOKE -ne "1") {
     if ($SkipBuild) {
         $java = Join-Path $env:JAVA_HOME "bin\java.exe"
-        & $java -cp $jarPath dev.mcdevmcp.packaging.McpbBundleSmokeMain $extract
+        & $java --enable-preview -cp $jarPath dev.mcdevmcp.packaging.McpbBundleSmokeMain $extract
     } else {
         & (Join-Path $root "gradlew.bat") mcpbBundleSmoke "-PmcpbBundleDirectory=$extract" --console=plain --no-configuration-cache
     }
