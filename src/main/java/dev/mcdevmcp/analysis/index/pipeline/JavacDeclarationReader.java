@@ -32,7 +32,7 @@ final class JavacDeclarationReader {
         List<ClassDesc> interfaces;
         Optional<ClassFileType> catalogType = catalog.find(binaryName);
         if (catalogType.isPresent()) {
-            superclass = catalogType.orElseThrow().superclass();
+            superclass = kind.isInterface() ? Optional.empty() : catalogType.orElseThrow().superclass();
             interfaces = catalogType.orElseThrow().interfaces();
         }
         else {

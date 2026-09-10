@@ -341,9 +341,14 @@ multiply the decoded corpus or create an unbounded task/result queue.
 
 Before parsing sources, the Class-File API builds a type catalog from the same
 remapped JAR. For every class present in that JAR, the catalog is authoritative
-for binary identity, superclass, and directly implemented interfaces. Javac AST
-declarations join to the catalog by fully qualified binary name; the indexer
-never guesses a hierarchy target from a simple name.
+for exact binary hierarchy identities. Its raw VM superclass metadata is
+preserved, but the source-symbol projection has no superclass for interfaces
+or annotation interfaces: their VM-required Object slot is not a source-language
+superclass relation. Direct superinterfaces, including an annotation
+interface's Annotation parent, retain their catalog identities and order.
+Ordinary class, enum, and record superclass identities remain unchanged.
+Javac AST declarations join to the catalog by fully qualified binary name;
+the indexer never guesses a hierarchy target from a simple name.
 
 For source-only types that have no class-file entry, Javac attribution runs
 against the supplied source path and classpath. `Trees.getElement` and
