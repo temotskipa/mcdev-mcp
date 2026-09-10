@@ -35,19 +35,19 @@ import static org.junit.jupiter.api.Assertions.*;
 class InterfaceSuperclassTest {
     private static final MinecraftVersion VERSION = new MinecraftVersion("1.21.5");
     private static final Map<String, String> SOURCES = Map.of("hierarchy/Fixture.java", """
-            package hierarchy;
-            class Plain { void method() {} }
-            class Child extends Plain {}
-            enum Choice { FIRST }
-            record Value(int number) {}
-            interface Parent<T> {}
-            interface Extra {}
-            interface ChildInterface extends Parent<String>, Extra {
-                default int marker() { return 1; }
-            }
-            @interface Mark { String value(); }
-            class Implementation implements ChildInterface {}
-            """);
+                                                                                        package hierarchy;
+                                                                                        class Plain { void method() {} }
+                                                                                        class Child extends Plain {}
+                                                                                        enum Choice { FIRST }
+                                                                                        record Value(int number) {}
+                                                                                        interface Parent<T> {}
+                                                                                        interface Extra {}
+                                                                                        interface ChildInterface extends Parent<String>, Extra {
+                                                                                            default int marker() { return 1; }
+                                                                                        }
+                                                                                        @interface Mark { String value(); }
+                                                                                        class Implementation implements ChildInterface {}
+                                                                                        """);
     private static final List<String> INTERFACES = List.of("Parent", "Extra", "ChildInterface", "Mark");
     @TempDir
     Path temporaryDirectory;
