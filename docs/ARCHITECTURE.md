@@ -37,19 +37,23 @@ Production code lives below `dev.mcdevmcp`:
 | `packaging`          | Deterministic MCPB metadata and packed-artifact smoke tests.   |
 | `support`            | Environment, JSON, logging, cancellation, and version helpers. |
 
-The Gradle build has four projects with one-way dependencies:
+The Gradle build has five projects with one-way dependencies:
 
 ```text
 benchmark ----\
-               -> root application -> mcp-tool-api
-conformance --/
+               -> root application -> storage-model -> mcp-tool-api
+conformance --/                  \-> mcp-tool-api
 ```
 
-`mcp-tool-api` is the only production library boundary. `benchmark` and
-`conformance` are independently buildable harness projects that consume the
-root application; the root never depends on them. They are not server
-artifacts, and their JSON/reporting and Tomcat dependencies cannot enter the
-production runtime. The root project still produces the only release JAR.
+`mcp-tool-api` and `storage-model` are the production library boundaries.
+`benchmark` (`dev.mcdevmcp.benchmark`) and `conformance`
+(`dev.mcdevmcp.conformance`) are independently buildable named modules that
+consume the root application; the root never depends on them. They are not
+server artifacts, and their JSON/reporting and Tomcat dependencies cannot enter
+the production runtime. The root project still produces the only release JAR.
+The application module stays closed at compile time. The harness modules
+compile and run with `--add-exports` for the indexer, storage, MCP, and
+support packages they consume.
 
 `mcp-tool-api` is an explicit JPMS module named
 `dev.mcdevmcp.mcp.tool.api`. Its public descriptor exports whole-value JSON and

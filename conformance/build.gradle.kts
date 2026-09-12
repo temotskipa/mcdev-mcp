@@ -21,6 +21,7 @@ abstract class Utf8TextFileTask : DefaultTask() {
 plugins {
     application
     id("com.gradleup.shadow") version "9.6.1"
+    id("org.gradlex.extra-java-module-info")
 }
 
 val applicationVersion = rootProject.providers.gradleProperty("version").get()
@@ -29,6 +30,7 @@ val conformanceJavaLauncher = javaToolchains.launcherFor {
 }
 
 java {
+    modularity.inferModulePath.set(true)
     toolchain {
         languageVersion.set(JavaLanguageVersion.of(26))
     }
@@ -39,17 +41,46 @@ dependencies {
     implementation(project(":mcp-tool-api"))
     implementation("io.modelcontextprotocol.sdk:mcp:2.0.1")
     implementation("org.apache.tomcat.embed:tomcat-embed-core:11.0.25")
+    implementation("jakarta.servlet:jakarta.servlet-api:6.1.0")
+}
+
+apply(from = rootProject.file("gradle/mcp-sdk-modules.gradle"))
+
+extraJavaModuleInfo {
+    automaticModule("net.fabricmc:tiny-remapper", "net.fabricmc.tinyremapper")
+    module("org.apache.tomcat.embed:tomcat-embed-core", "org.apache.tomcat.embed.core") {
+        patchRealModule()
+        preserveExisting()
+        removePackage("jakarta.servlet")
+        removePackage("jakarta.servlet.annotation")
+        removePackage("jakarta.servlet.descriptor")
+        removePackage("jakarta.servlet.http")
+        removePackage("jakarta.servlet.resources")
+        requires("jakarta.servlet")
+    }
 }
 
 application {
+    mainModule.set("dev.mcdevmcp.conformance")
     mainClass.set("dev.mcdevmcp.conformance.ConformanceServerMain")
     applicationDefaultJvmArgs = listOf("--enable-preview")
 }
 
+val applicationExports = listOf(
+    "dev.mcdevmcp/dev.mcdevmcp.mcp=dev.mcdevmcp.conformance",
+    "dev.mcdevmcp/dev.mcdevmcp.mcp.resource=dev.mcdevmcp.conformance",
+    "dev.mcdevmcp/dev.mcdevmcp.mcp.tool=dev.mcdevmcp.conformance",
+    "dev.mcdevmcp/dev.mcdevmcp.mcp.transport=dev.mcdevmcp.conformance",
+    "dev.mcdevmcp/dev.mcdevmcp.support=dev.mcdevmcp.conformance",
+)
+
 tasks.withType<JavaCompile>().configureEach {
     options.release.set(26)
     options.encoding = "UTF-8"
-    options.compilerArgs.addAll(listOf("-Xlint:all", "-Xlint:-preview", "-Werror", "--enable-preview"))
+    options.compilerArgs.addAll(listOf("-Xlint:all", "-Xlint:-preview", "-Xlint:-requires-automatic", "-Xlint:-requires-transitive-automatic", "-Xlint:-classfile", "-Xlint:-serial", "-Werror", "--enable-preview"))
+    applicationExports.forEach { export ->
+        options.compilerArgs.addAll(listOf("--add-exports", export))
+    }
 }
 
 val generateConformanceVersionProperties = tasks.register<WriteProperties>("generateConformanceVersionProperties") {
@@ -71,12 +102,18 @@ tasks.register<JavaExec>("conformanceRun") {
     description = "Runs the test-only Streamable HTTP conformance server."
     dependsOn(tasks.named("classes"))
     classpath = sourceSets.main.get().runtimeClasspath
+    mainModule.set(application.mainModule)
     mainClass.set(application.mainClass)
     javaLauncher.set(conformanceJavaLauncher)
     jvmArgs(
         "--enable-preview",
         "--add-opens=java.base/java.lang=ALL-UNNAMED",
-        "--add-opens=java.rmi/sun.rmi.transport=ALL-UNNAMED"
+        "--add-opens=java.rmi/sun.rmi.transport=ALL-UNNAMED",
+        "--add-exports=dev.mcdevmcp/dev.mcdevmcp.mcp=dev.mcdevmcp.conformance",
+        "--add-exports=dev.mcdevmcp/dev.mcdevmcp.mcp.resource=dev.mcdevmcp.conformance",
+        "--add-exports=dev.mcdevmcp/dev.mcdevmcp.mcp.tool=dev.mcdevmcp.conformance",
+        "--add-exports=dev.mcdevmcp/dev.mcdevmcp.mcp.transport=dev.mcdevmcp.conformance",
+        "--add-exports=dev.mcdevmcp/dev.mcdevmcp.support=dev.mcdevmcp.conformance",
     )
     systemProperty("dev.mcdevmcp.test.versionFallback", "true")
     systemProperty("mcdevMcpVersion", applicationVersion)
@@ -120,8 +157,9 @@ tasks.named<ShadowJar>("shadowJar") {
     enabled = false
 }
 
-tasks.jar {
+tasks.named<Jar>("jar") {
     manifest {
-        attributes["Automatic-Module-Name"] = "dev.mcdevmcp.conformance"
+        attributes["Main-Class"] = application.mainClass.get()
+        attributes["Implementation-Version"] = applicationVersion
     }
 }
