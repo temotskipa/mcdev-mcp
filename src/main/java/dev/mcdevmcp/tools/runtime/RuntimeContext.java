@@ -7,7 +7,6 @@ import io.modelcontextprotocol.json.McpJsonMapper;
 import java.nio.file.Path;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.concurrent.ScheduledExecutorService;
 
 /**
  * The typed, inert-to-construct runtime dependencies shared by runtime bindings.
@@ -18,11 +17,10 @@ public final class RuntimeContext {
     private final MediaToolSupport media;
     private final ScriptLogger scriptLogger;
 
-    RuntimeContext(BridgeSession session, McpJsonMapper mapper, AppEnvironment environment, ScheduledExecutorService scheduler) {
+    RuntimeContext(BridgeSession session, McpJsonMapper mapper, AppEnvironment environment) {
         Objects.requireNonNull(session, "session");
         Objects.requireNonNull(mapper, "mapper");
         Objects.requireNonNull(environment, "environment");
-        Objects.requireNonNull(scheduler, "scheduler");
         runtime = new RuntimeToolSupport(session, mapper);
         Optional<Path> sessionLogDirectory = environment.value("MCDEV_SESSION_LOG_DIR").filter(value -> !value.isBlank()).map(Path::of).or(() -> environment.isTruthy("MCDEV_SCRIPT_LOGS") ? Optional.of(ScriptLogger.dataDirectory(System.getProperty("os.name"), environment, Path.of(System.getProperty("user.home")))) : Optional.empty());
         scriptLogger = sessionLogDirectory.map(directory -> new ScriptLogger(directory, mapper, System.err::println)).orElse(null);

@@ -15,7 +15,9 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.BooleanSupplier;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -204,7 +206,7 @@ final class BridgeSessionTest {
     }
 
     @Test
-    void cancellingSendDuringImplicitConnectLeavesTheOpeningAliveAndNeverSendsItsEndpoint() {
+    void cancellingSendDuringImplicitConnectLeavesTheOpeningAliveAndNeverSendsItsEndpoint() throws InterruptedException {
         CompletableFuture<BridgeClient> opening = new CompletableFuture<>();
         AtomicInteger endpointSends = new AtomicInteger();
         Map<String, Object> status = Map.of("version", "1.21.11", "mappingStatus", "mojang", "obfuscated", false, "refs", 0L, "gameDir", Path.of("run").toAbsolutePath().normalize().toString());
@@ -223,7 +225,7 @@ final class BridgeSessionTest {
         assertFalse(opening.isCancelled());
         assertTrue(opening.complete(client));
         assertEquals(0, endpointSends.get());
-        assertEquals(9876, session.connectedPort().orElseThrow());
+        awaitUntil(() -> session.connectedPort().orElse(-1) == 9876);
         session.close();
     }
 
@@ -254,7 +256,7 @@ final class BridgeSessionTest {
     }
 
     @Test
-    void cancellingSendAfterConnectRemovesTheClientRequest() {
+    void cancellingSendAfterConnectRemovesTheClientRequest() throws InterruptedException {
         CompletableFuture<BridgeResponse> delayed = new CompletableFuture<>();
         Map<String, Object> status = Map.of("version", "1.21.11", "mappingStatus", "mojang", "obfuscated", false, "refs", 0L, "gameDir", Path.of("run").toAbsolutePath().normalize().toString());
         BridgeClient client = BridgeClient.testing(JSON, request -> request.endpoint().wireName().equals("status") ? CompletableFuture.completedFuture(new BridgeResponse(request.id(), true, true, status, "", null)) : delayed);
@@ -262,10 +264,10 @@ final class BridgeSessionTest {
         session.connect(null).toCompletableFuture().join();
 
         CompletableFuture<BridgeResponse> call = session.send(new BridgeEndpoint("echo"), new EmptyBridgePayload(), Duration.ofSeconds(1)).toCompletableFuture();
-        assertEquals(1, client.pendingRequestCount());
+        awaitUntil(() -> client.pendingRequestCount() == 1);
 
         assertTrue(call.cancel(true));
-        assertEquals(0, client.pendingRequestCount());
+        awaitUntil(() -> client.pendingRequestCount() == 0);
         delayed.complete(new BridgeResponse("req_2", true, true, null, "", null));
         assertEquals(0, client.pendingRequestCount());
         session.close();
@@ -281,6 +283,16 @@ final class BridgeSessionTest {
         assertFalse(session.connectedPort().isPresent());
         assertEquals(remembered, session.sessionInfo().orElseThrow());
         session.close();
+    }
+
+    private static void awaitUntil(BooleanSupplier condition) throws InterruptedException {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+        while (!condition.getAsBoolean()) {
+            if (System.nanoTime() >= deadline) {
+                fail("timed out waiting for structured session work");
+            }
+            Thread.sleep(5);
+        }
     }
 
     private record TestPayload(int value) implements BridgePayload {

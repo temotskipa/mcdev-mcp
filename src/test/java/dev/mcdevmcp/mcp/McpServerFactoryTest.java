@@ -23,7 +23,6 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
@@ -207,15 +206,12 @@ class McpServerFactoryTest {
             assertFalse(composition.runtimeActivated());
             assertEquals(failurePoint == FailurePoint.CLIENT ? 0 : 1, failing.clientCloseCount());
             assertEquals(failurePoint == FailurePoint.CLIENT || failurePoint == FailurePoint.SESSION ? 0 : 1, failing.sessionCloseCount());
-            assertEquals(failurePoint == FailurePoint.CLIENT || failurePoint == FailurePoint.SESSION || failurePoint == FailurePoint.SCHEDULER ? 0 : 1, failing.schedulerCloseCount());
             int clientCreations = failing.clientCreateCount();
             int sessionCreations = failing.sessionCreateCount();
-            int schedulerCreations = failing.schedulerCreateCount();
             int bindingCreations = failing.bindingCreateCount();
             assertThrows(IllegalStateException.class, () -> binding.invoke(MAPPER, Map.of(), Cancellation.none()));
             assertEquals(clientCreations, failing.clientCreateCount(), failurePoint.name());
             assertEquals(sessionCreations, failing.sessionCreateCount(), failurePoint.name());
-            assertEquals(schedulerCreations, failing.schedulerCreateCount(), failurePoint.name());
             assertEquals(bindingCreations, failing.bindingCreateCount(), failurePoint.name());
             composition.close();
         }
@@ -223,7 +219,7 @@ class McpServerFactoryTest {
 
     @Test
     void runtimeActivationCloseFailuresRemainSuppressedOnTheOriginalFailure() {
-        Set<String> closeFailures = Set.of("session", "client", "scheduler");
+        Set<String> closeFailures = Set.of("session", "client");
         TrackingRuntimeResourceFactory failing = new TrackingRuntimeResourceFactory(McpServerFactory.productionResourceFactory(), FailurePoint.BINDINGS, closeFailures);
         try (var composition = McpServerFactory.declarativeComposition(new AppEnvironment(Map.of()), MAPPER, failing)) {
             ToolBinding<?> binding = composition.definitions().stream().filter(definition -> definition.name().equals("mc_script_logs")).findFirst().orElseThrow().binding();
@@ -233,7 +229,6 @@ class McpServerFactoryTest {
             assertEquals("BINDINGS failure", failure.getMessage());
             assertEquals(1, failing.clientCloseCount());
             assertEquals(1, failing.sessionCloseCount());
-            assertEquals(1, failing.schedulerCloseCount());
             for (String resource : closeFailures) {
                 assertTrue(hasSuppressedMessage(failure, resource + " close failure"), resource);
             }
@@ -272,14 +267,9 @@ class McpServerFactoryTest {
             }
 
             @Override
-            public ScheduledExecutorService createScheduler() {
-                return delegate.createScheduler();
-            }
-
-            @Override
-            public RuntimeContext createContext(BridgeSession session, McpJsonMapper mapper, AppEnvironment environment, ScheduledExecutorService scheduler) {
+            public RuntimeContext createContext(BridgeSession session, McpJsonMapper mapper, AppEnvironment environment) {
                 activations.incrementAndGet();
-                return delegate.createContext(session, mapper, environment, scheduler);
+                return delegate.createContext(session, mapper, environment);
             }
         };
     }
@@ -302,11 +292,9 @@ class McpServerFactoryTest {
         private final Set<String> closeFailures;
         private final AtomicInteger clientCreateCount = new AtomicInteger();
         private final AtomicInteger sessionCreateCount = new AtomicInteger();
-        private final AtomicInteger schedulerCreateCount = new AtomicInteger();
         private final AtomicInteger bindingCreateCount = new AtomicInteger();
         private final AtomicInteger clientCloseCount = new AtomicInteger();
         private final AtomicInteger sessionCloseCount = new AtomicInteger();
-        private final AtomicInteger schedulerCloseCount = new AtomicInteger();
 
         private TrackingRuntimeResourceFactory(McpServerFactory.RuntimeResourceFactory delegate, FailurePoint failurePoint, Set<String> closeFailures) {
             this.delegate = delegate;
@@ -333,21 +321,12 @@ class McpServerFactoryTest {
         }
 
         @Override
-        public ScheduledExecutorService createScheduler() {
-            schedulerCreateCount.incrementAndGet();
-            if (failurePoint == FailurePoint.SCHEDULER) {
-                throw failure(failurePoint);
-            }
-            return delegate.createScheduler();
-        }
-
-        @Override
-        public RuntimeContext createContext(BridgeSession session, McpJsonMapper mapper, AppEnvironment environment, ScheduledExecutorService scheduler) {
+        public RuntimeContext createContext(BridgeSession session, McpJsonMapper mapper, AppEnvironment environment) {
             bindingCreateCount.incrementAndGet();
             if (failurePoint == FailurePoint.BINDINGS) {
                 throw failure(failurePoint);
             }
-            return delegate.createContext(session, mapper, environment, scheduler);
+            return delegate.createContext(session, mapper, environment);
         }
 
         @Override
@@ -368,25 +347,12 @@ class McpServerFactoryTest {
             delegate.closeClient(client);
         }
 
-        @Override
-        public void closeScheduler(ScheduledExecutorService scheduler) {
-            schedulerCloseCount.incrementAndGet();
-            if (closeFailures.contains("scheduler")) {
-                throw new IllegalStateException("scheduler close failure");
-            }
-            delegate.closeScheduler(scheduler);
-        }
-
         private int clientCreateCount() {
             return clientCreateCount.get();
         }
 
         private int sessionCreateCount() {
             return sessionCreateCount.get();
-        }
-
-        private int schedulerCreateCount() {
-            return schedulerCreateCount.get();
         }
 
         private int bindingCreateCount() {
@@ -399,10 +365,6 @@ class McpServerFactoryTest {
 
         private int sessionCloseCount() {
             return sessionCloseCount.get();
-        }
-
-        private int schedulerCloseCount() {
-            return schedulerCloseCount.get();
         }
     }
 
@@ -420,12 +382,7 @@ class McpServerFactoryTest {
             }
 
             @Override
-            public ScheduledExecutorService createScheduler() {
-                return delegate.createScheduler();
-            }
-
-            @Override
-            public RuntimeContext createContext(BridgeSession session, McpJsonMapper mapper, AppEnvironment environment, ScheduledExecutorService scheduler) {
+            public RuntimeContext createContext(BridgeSession session, McpJsonMapper mapper, AppEnvironment environment) {
                 entered.countDown();
                 try {
                     if (!release.await(5, TimeUnit.SECONDS)) {
@@ -435,7 +392,7 @@ class McpServerFactoryTest {
                     Thread.currentThread().interrupt();
                     throw new IllegalStateException("activation interrupted", exception);
                 }
-                return delegate.createContext(session, mapper, environment, scheduler);
+                return delegate.createContext(session, mapper, environment);
             }
         };
     }
@@ -445,7 +402,7 @@ class McpServerFactoryTest {
     }
 
     private enum FailurePoint {
-        CLIENT, SESSION, SCHEDULER, BINDINGS
+        CLIENT, SESSION, BINDINGS
     }
 
     private static long pollThreadCount() {

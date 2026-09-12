@@ -7,6 +7,7 @@ import org.junit.jupiter.api.Test;
 import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
 import java.util.stream.IntStream;
@@ -50,6 +51,18 @@ final class BridgeClientTest {
 
         assertThrows(Exception.class, call::join);
         assertFalse(client.pendingRequestCount() > 0);
+    }
+
+    @Test
+    void requestTimeoutCompletesTheCallAndDropsThePendingRequest() {
+        CompletableFuture<BridgeResponse> delayed = new CompletableFuture<>();
+        BridgeClient client = BridgeClient.testing(new BridgeJson(McpJsonDefaults.getMapper()), ignored -> delayed);
+        CompletableFuture<BridgeResponse> call = client.send(new BridgeEndpoint("status"), new EmptyBridgePayload(), Duration.ofMillis(1)).toCompletableFuture();
+
+        CompletionException failure = assertThrows(CompletionException.class, call::join);
+        assertTrue(failure.getCause().getMessage().contains("timed out"));
+        assertEquals(0, client.pendingRequestCount());
+        client.close();
     }
 
     @Test

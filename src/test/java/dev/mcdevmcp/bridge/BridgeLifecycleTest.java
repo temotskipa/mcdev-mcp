@@ -13,6 +13,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.BooleanSupplier;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -52,7 +53,7 @@ final class BridgeLifecycleTest {
     }
 
     @Test
-    void resetFencesDelayedScansAndClosesFailedAndReplacedCandidates() {
+    void resetFencesDelayedScansAndClosesFailedAndReplacedCandidates() throws InterruptedException {
         CompletableFuture<BridgeClient> delayedOpen = new CompletableFuture<>();
         BridgeClient stale = BridgeClient.testing(JSON, ignored -> CompletableFuture.completedFuture(new BridgeResponse("req_1", true, true, Map.of("version", "stale", "mappingStatus", "mojang", "obfuscated", false, "refs", 0L), "", null)));
         BridgeSession resetSession = new BridgeSession(JSON, new AppEnvironment(Map.of()), _ -> delayedOpen);
@@ -60,7 +61,7 @@ final class BridgeLifecycleTest {
         resetSession.reset();
         delayedOpen.complete(stale);
         assertThrows(Exception.class, connecting::join);
-        assertTrue(stale.isClosed());
+        awaitUntil(stale::isClosed);
         assertFalse(resetSession.connectedPort().isPresent());
 
         AtomicInteger attempts = new AtomicInteger();
@@ -82,7 +83,7 @@ final class BridgeLifecycleTest {
     }
 
     @Test
-    void explicitConnectFencesAnEarlierDelayedAutoScan() {
+    void explicitConnectFencesAnEarlierDelayedAutoScan() throws InterruptedException {
         CompletableFuture<BridgeClient> delayedScan = new CompletableFuture<>();
         BridgeClient explicit = FakeDebugBridge.client(JSON, "explicit");
         BridgeSession session = new BridgeSession(JSON, new AppEnvironment(Map.of()), port -> port == 9876 ? delayedScan : CompletableFuture.completedFuture(explicit));
@@ -93,18 +94,18 @@ final class BridgeLifecycleTest {
         delayedScan.complete(stale);
 
         assertThrows(Exception.class, scanning::join);
-        assertTrue(stale.isClosed());
+        awaitUntil(stale::isClosed);
         assertEquals(9999, session.connectedPort().orElseThrow());
         session.close();
     }
 
     @Test
-    void resetClosesAnOpenedCandidateAwaitingStatusAndRejectsTheExplicitAttempt() {
+    void resetClosesAnOpenedCandidateAwaitingStatusAndRejectsTheExplicitAttempt() throws InterruptedException {
         CompletableFuture<BridgeResponse> delayedStatus = new CompletableFuture<>();
         BridgeClient candidate = BridgeClient.testing(JSON, ignored -> delayedStatus);
         BridgeSession session = new BridgeSession(JSON, new AppEnvironment(Map.of()), _ -> CompletableFuture.completedFuture(candidate));
         CompletableFuture<SessionInfo> connecting = session.connect(9999).toCompletableFuture();
-        assertEquals(1, candidate.pendingRequestCount());
+        awaitUntil(() -> candidate.pendingRequestCount() == 1);
 
         session.reset();
 
@@ -161,5 +162,15 @@ final class BridgeLifecycleTest {
         assertEquals(1, diagnostics.size());
         assertTrue(diagnostics.getFirst().contains("identity changed"));
         session.close();
+    }
+
+    private static void awaitUntil(BooleanSupplier condition) throws InterruptedException {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+        while (!condition.getAsBoolean()) {
+            if (System.nanoTime() >= deadline) {
+                fail("timed out waiting for structured session work");
+            }
+            Thread.sleep(5);
+        }
     }
 }

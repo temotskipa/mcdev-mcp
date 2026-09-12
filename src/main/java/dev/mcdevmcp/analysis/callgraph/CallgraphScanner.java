@@ -7,10 +7,10 @@ import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.time.Duration;
 import java.util.*;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
+import java.util.concurrent.StructuredTaskScope;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 
@@ -18,6 +18,7 @@ public final class CallgraphScanner {
     static final int MAXIMUM_CLASS_BYTES = 16 * 1024 * 1024;
     private static final int MAX_BATCH_WINDOW = 256;
     private static final long MAXIMUM_IN_FLIGHT_CLASS_BYTES = 64L * 1024 * 1024;
+    private static final Duration CANCELLATION_POLL = Duration.ofMillis(25);
     private final CallgraphWriter writer;
 
     public CallgraphScanner() {
@@ -77,6 +78,7 @@ public final class CallgraphScanner {
         return threads >= MAX_BATCH_WINDOW / 2 ? MAX_BATCH_WINDOW : Math.max(1, threads * 2);
     }
 
+    @SuppressWarnings("preview")
     public CallgraphSummary scan(CallgraphRequest request) throws IOException {
         Objects.requireNonNull(request, "request");
         long started = System.nanoTime();
@@ -88,15 +90,23 @@ public final class CallgraphScanner {
             throw new IOException("Callgraph scan cancelled", exception);
         }
         try (ZipFile jar = new ZipFile(request.remappedJar().toFile());
-             ExecutorService executor = Executors.newFixedThreadPool(request.threads())) {
+             StructuredTaskScope<Object, Void> scope = StructuredTaskScope.open(StructuredTaskScope.Joiner.awaitAllSuccessfulOrThrow(), config -> config.withName("callgraph-scan"))) {
             List<String> entries = discover(jar, request);
             request.progress().report("callgraph", 5, "Extracting calls from " + entries.size() + " classes");
-            var source = new OrderedBatchSource(jar, entries, executor, request);
+            var source = new OrderedBatchSource(jar, entries, scope, request);
+            scope.fork(source::watch);
             CallgraphWriter.Counts counts;
             try {
                 counts = writer.write(request, source);
+                source.finish();
+                scope.join();
             } catch (Exception | Error failure) {
-                source.cancelOutstanding();
+                source.abort();
+                try {
+                    scope.join();
+                } catch (Exception joinFailure) {
+                    failure.addSuppressed(joinFailure);
+                }
                 throw failure;
             }
             Duration elapsed = Duration.ofNanos(System.nanoTime() - started);
@@ -118,23 +128,27 @@ public final class CallgraphScanner {
         }
     }
 
+    @SuppressWarnings("preview")
     private static final class OrderedBatchSource implements CallgraphWriter.BatchSource {
         private final ZipFile jar;
         private final List<String> entries;
-        private final ExecutorService executor;
+        private final StructuredTaskScope<Object, Void> scope;
         private final CallgraphRequest request;
         private final int window;
         private final ArrayDeque<PendingExtraction> futures = new ArrayDeque<>();
         private final Map<String, String> firstEntryByClass = new HashMap<>();
+        private final AtomicBoolean finished = new AtomicBoolean();
+        private final AtomicBoolean abort = new AtomicBoolean();
         private int submitted;
         private int completed;
         private int lastReportedPercent = -1;
         private long inFlightClassBytes;
 
-        private OrderedBatchSource(ZipFile jar, List<String> entries, ExecutorService executor, CallgraphRequest request) {
+        @SuppressWarnings("preview")
+        private OrderedBatchSource(ZipFile jar, List<String> entries, StructuredTaskScope<Object, Void> scope, CallgraphRequest request) {
             this.jar = jar;
             this.entries = entries;
-            this.executor = executor;
+            this.scope = scope;
             this.request = request;
             window = parserWindow(request.threads());
         }
@@ -189,6 +203,28 @@ public final class CallgraphScanner {
             }
         }
 
+        private Void watch() throws InterruptedException {
+            while (!finished.get() && !abort.get()) {
+                request.cancellation().throwIfCancelled();
+                Thread.sleep(CANCELLATION_POLL);
+            }
+            if (abort.get()) {
+                throw new InterruptedException("Callgraph workers aborted");
+            }
+            return null;
+        }
+
+        private void finish() {
+            finished.set(true);
+        }
+
+        private void abort() {
+            abort.set(true);
+            finished.set(true);
+            futures.forEach(pending -> pending.future().cancel(true));
+        }
+
+        @SuppressWarnings("preview")
         private void fillWindow() throws IOException, InterruptedException {
             while (futures.size() < window && submitted < entries.size()) {
                 request.cancellation().throwIfCancelled();
@@ -212,22 +248,25 @@ public final class CallgraphScanner {
                     throw new IOException("Queued class entries exceed the expanded-byte limit of " + MAXIMUM_IN_FLIGHT_CLASS_BYTES);
                 }
                 request.cancellation().throwIfCancelled();
-                Future<InvocationExtractor.Extraction> future = executor.submit(() -> {
-                    request.cancellation().throwIfCancelled();
-                    return new InvocationExtractor().extract(bytes, request.cancellation());
+                var done = new CompletableFuture<InvocationExtractor.Extraction>();
+                scope.fork(() -> {
+                    try {
+                        request.cancellation().throwIfCancelled();
+                        InvocationExtractor.Extraction extraction = new InvocationExtractor().extract(bytes, request.cancellation());
+                        done.complete(extraction);
+                        return extraction;
+                    } catch (Throwable exception) {
+                        done.completeExceptionally(exception);
+                        throw exception;
+                    }
                 });
                 submitted++;
                 inFlightClassBytes += bytes.length;
-                futures.addLast(new PendingExtraction(name, bytes.length, future));
+                futures.addLast(new PendingExtraction(name, bytes.length, done));
             }
         }
 
-        private void cancelOutstanding() {
-            futures.forEach(pending -> pending.future().cancel(true));
-            executor.shutdownNow();
-        }
-
-        private record PendingExtraction(String entryName, int byteLength, Future<InvocationExtractor.Extraction> future) {
+        private record PendingExtraction(String entryName, int byteLength, CompletableFuture<InvocationExtractor.Extraction> future) {
         }
     }
 }

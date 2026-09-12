@@ -23,7 +23,6 @@ public final class BridgeClient implements AutoCloseable {
     private final Object stateLock = new Object();
     private final Transport transport;
     private final BridgeJson json;
-    private final ScheduledExecutorService scheduler;
     private final Consumer<String> diagnostics;
     private final Consumer<Duration> timeoutObserver;
     private final AtomicLong requestCounter = new AtomicLong();
@@ -34,10 +33,9 @@ public final class BridgeClient implements AutoCloseable {
     };
     private boolean closed;
 
-    private BridgeClient(Transport transport, BridgeJson json, ScheduledExecutorService scheduler, Consumer<String> diagnostics, Consumer<Duration> timeoutObserver) {
+    private BridgeClient(Transport transport, BridgeJson json, Consumer<String> diagnostics, Consumer<Duration> timeoutObserver) {
         this.transport = Objects.requireNonNull(transport, "transport");
         this.json = Objects.requireNonNull(json, "json");
-        this.scheduler = Objects.requireNonNull(scheduler, "scheduler");
         this.diagnostics = Objects.requireNonNull(diagnostics, "diagnostics");
         this.timeoutObserver = Objects.requireNonNull(timeoutObserver, "timeoutObserver");
     }
@@ -45,11 +43,9 @@ public final class BridgeClient implements AutoCloseable {
     public static CompletionStage<BridgeClient> connect(HttpClient client, URI uri, BridgeJson json) {
         Objects.requireNonNull(client, "client");
         Objects.requireNonNull(uri, "uri");
-        // noinspection resource
-        ScheduledExecutorService scheduler = scheduler();
         ConnectionListener listener = new ConnectionListener();
         return client.newWebSocketBuilder().buildAsync(uri, listener).thenApply(socket -> {
-            BridgeClient connected = new BridgeClient(new WebSocketTransport(socket), json, scheduler, ignored -> {
+            BridgeClient connected = new BridgeClient(new WebSocketTransport(socket), json, ignored -> {
             }, ignored -> {
             });
             Throwable earlyFailure = listener.attach(connected);
@@ -57,10 +53,6 @@ public final class BridgeClient implements AutoCloseable {
                 throw new CompletionException(earlyFailure);
             }
             return connected;
-        }).whenComplete((ignored, failure) -> {
-            if (failure != null) {
-                scheduler.shutdownNow();
-            }
         });
     }
 
@@ -101,7 +93,7 @@ public final class BridgeClient implements AutoCloseable {
                 }
             }
         };
-        BridgeClient client = new BridgeClient(transport, json, scheduler(), diagnostics, timeoutObserver);
+        BridgeClient client = new BridgeClient(transport, json, diagnostics, timeoutObserver);
         reference.set(client);
         return client;
     }
@@ -123,8 +115,21 @@ public final class BridgeClient implements AutoCloseable {
         return "Request timed out after " + effective.toMillis() + "ms" + capNote + ". The game may be frozen or the script may be in an infinite loop.";
     }
 
-    private static ScheduledExecutorService scheduler() {
-        return Executors.newSingleThreadScheduledExecutor(runnable -> Thread.ofPlatform().daemon(true).name("debugbridge-timeout").unstarted(runnable));
+    @SuppressWarnings("preview")
+    private Thread timeoutWatcher(String id, PendingRequest pendingRequest, Duration requested, Duration effective) {
+        return Thread.ofVirtual().name("debugbridge-timeout").unstarted(() -> {
+            try (var scope = StructuredTaskScope.open(StructuredTaskScope.Joiner.awaitAllSuccessfulOrThrow(), config -> config.withName("debugbridge-timeout").withTimeout(effective))) {
+                scope.fork(() -> {
+                    Thread.sleep(Long.MAX_VALUE);
+                    return null;
+                });
+                scope.join();
+            } catch (StructuredTaskScope.TimeoutException | StructuredTaskScope.FailedException ignored) {
+                completeExceptionally(id, pendingRequest, new IllegalStateException(timeoutMessage(requested, effective)));
+            } catch (InterruptedException | CancellationException ignored) {
+                // The request completed, was cancelled, or the client closed.
+            }
+        });
     }
 
     private static Duration extendedTimeout(Duration requested) {
@@ -153,12 +158,8 @@ public final class BridgeClient implements AutoCloseable {
                     pendingRequest.cancelTimeout();
                 }
             });
-            try {
-                pendingRequest.timeout = scheduler.schedule(() -> completeExceptionally(request.id(), pendingRequest, new IllegalStateException(timeoutMessage(endpointTimeout, effectiveTimeout))), effectiveTimeout.toMillis(), TimeUnit.MILLISECONDS);
-            } catch (RejectedExecutionException exception) {
-                completeExceptionally(request.id(), pendingRequest, new IllegalStateException("DebugBridge client is closed", exception));
-                return pendingRequest.future;
-            }
+            pendingRequest.timeout = timeoutWatcher(request.id(), pendingRequest, endpointTimeout, effectiveTimeout);
+            pendingRequest.timeout.start();
         }
         try {
             CompletionStage<?> sent = transport.send(request, json.writeRequest(request));
@@ -265,15 +266,15 @@ public final class BridgeClient implements AutoCloseable {
 
     private void complete(String id, PendingRequest pendingRequest, BridgeResponse response) {
         if (pending.remove(id, pendingRequest)) {
-            pendingRequest.cancelTimeout();
             pendingRequest.future.complete(response);
+            pendingRequest.cancelTimeout();
         }
     }
 
     private void completeExceptionally(String id, PendingRequest pendingRequest, Throwable failure) {
         if (pending.remove(id, pendingRequest)) {
-            pendingRequest.cancelTimeout();
             pendingRequest.future.completeExceptionally(failure);
+            pendingRequest.cancelTimeout();
         }
     }
 
@@ -291,7 +292,6 @@ public final class BridgeClient implements AutoCloseable {
         for (PendingRequest pendingRequest : outstanding) {
             completeExceptionally(pendingRequest.request.id(), pendingRequest, failure);
         }
-        scheduler.shutdownNow();
         try {
             transport.close();
         } catch (RuntimeException ignored) {
@@ -409,7 +409,7 @@ public final class BridgeClient implements AutoCloseable {
     private static final class PendingRequest {
         private final BridgeRequest request;
         private final CompletableFuture<BridgeResponse> future;
-        private ScheduledFuture<?> timeout;
+        private Thread timeout;
 
         private PendingRequest(BridgeRequest request, CompletableFuture<BridgeResponse> future) {
             this.request = request;
@@ -418,7 +418,7 @@ public final class BridgeClient implements AutoCloseable {
 
         private void cancelTimeout() {
             if (timeout != null) {
-                timeout.cancel(false);
+                timeout.interrupt();
             }
         }
     }

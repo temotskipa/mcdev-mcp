@@ -2,18 +2,18 @@ package dev.mcdevmcp.mcp;
 
 import dev.mcdevmcp.bridge.BridgeSession;
 import dev.mcdevmcp.mcp.resource.ResourceCatalog;
-import dev.mcdevmcp.mcp.tool.api.ToolBinding;
 import dev.mcdevmcp.mcp.tool.ToolCatalog;
 import dev.mcdevmcp.mcp.tool.ToolDeclarations;
 import dev.mcdevmcp.mcp.tool.ToolDefinition;
+import dev.mcdevmcp.mcp.tool.api.ToolBinding;
 import dev.mcdevmcp.mcp.transport.McpSdkAdapter;
 import dev.mcdevmcp.mcp.transport.StdioServer;
 import dev.mcdevmcp.storage.PlatformPaths;
 import dev.mcdevmcp.support.AppEnvironment;
 import dev.mcdevmcp.support.AppVersion;
-import dev.mcdevmcp.tools.runtime.RuntimeToolModule;
 import dev.mcdevmcp.tools.runtime.RuntimeBindingDeclaration;
 import dev.mcdevmcp.tools.runtime.RuntimeContext;
+import dev.mcdevmcp.tools.runtime.RuntimeToolModule;
 import dev.mcdevmcp.tools.statictool.StaticToolModule;
 import io.modelcontextprotocol.json.McpJsonDefaults;
 import io.modelcontextprotocol.json.McpJsonMapper;
@@ -29,7 +29,6 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 public final class McpServerFactory implements AutoCloseable {
@@ -118,10 +117,6 @@ public final class McpServerFactory implements AutoCloseable {
         }
     }
 
-    private static ScheduledExecutorService newScheduler() {
-        return Executors.newSingleThreadScheduledExecutor(runnable -> Thread.ofPlatform().daemon(true).name("mcdev-session-poll").unstarted(runnable));
-    }
-
     static RuntimeResourceFactory productionResourceFactory() {
         return new RuntimeResourceFactory() {
             @Override
@@ -135,13 +130,8 @@ public final class McpServerFactory implements AutoCloseable {
             }
 
             @Override
-            public ScheduledExecutorService createScheduler() {
-                return newScheduler();
-            }
-
-            @Override
-            public RuntimeContext createContext(BridgeSession session, McpJsonMapper mapper, AppEnvironment environment, ScheduledExecutorService scheduler) {
-                return RuntimeToolModule.context(session, mapper, environment, scheduler);
+            public RuntimeContext createContext(BridgeSession session, McpJsonMapper mapper, AppEnvironment environment) {
+                return RuntimeToolModule.context(session, mapper, environment);
             }
         };
     }
@@ -253,7 +243,7 @@ public final class McpServerFactory implements AutoCloseable {
     private record DefaultComposition(Map<String, ToolBinding<?>> bindings, List<ToolDefinition> definitions, ResourceCatalog resourceCatalog, McpJsonMapper mapper, AutoCloseable ownedRuntime) {
     }
 
-    private record RuntimeResources(BridgeSession session, HttpClient client, ScheduledExecutorService scheduler, RuntimeResourceFactory resourceFactory) implements AutoCloseable {
+    private record RuntimeResources(BridgeSession session, HttpClient client, RuntimeResourceFactory resourceFactory) implements AutoCloseable {
         @Override
         public void close() {
             Throwable failure = null;
@@ -264,16 +254,6 @@ public final class McpServerFactory implements AutoCloseable {
             }
             try {
                 resourceFactory.closeClient(client);
-            } catch (Throwable exception) {
-                if (failure == null) {
-                    failure = exception;
-                }
-                else {
-                    failure.addSuppressed(exception);
-                }
-            }
-            try {
-                resourceFactory.closeScheduler(scheduler);
             } catch (Throwable exception) {
                 if (failure == null) {
                     failure = exception;
@@ -296,9 +276,7 @@ public final class McpServerFactory implements AutoCloseable {
 
         BridgeSession createSession(HttpClient client, McpJsonMapper mapper, AppEnvironment environment);
 
-        ScheduledExecutorService createScheduler();
-
-        RuntimeContext createContext(BridgeSession session, McpJsonMapper mapper, AppEnvironment environment, ScheduledExecutorService scheduler);
+        RuntimeContext createContext(BridgeSession session, McpJsonMapper mapper, AppEnvironment environment);
 
         default void closeSession(BridgeSession session) {
             session.close();
@@ -306,10 +284,6 @@ public final class McpServerFactory implements AutoCloseable {
 
         default void closeClient(HttpClient client) {
             client.close();
-        }
-
-        default void closeScheduler(ScheduledExecutorService scheduler) {
-            scheduler.shutdownNow();
         }
     }
 
@@ -356,7 +330,7 @@ public final class McpServerFactory implements AutoCloseable {
             }
             RuntimeResources owned = acquireResources();
             try {
-                RuntimeContext activated = resourceFactory.createContext(owned.session(), mapper, environment, owned.scheduler());
+                RuntimeContext activated = resourceFactory.createContext(owned.session(), mapper, environment);
                 for (RuntimeBindingDeclaration<?> declaration : declarations) {
                     declaration.activate(activated);
                 }
@@ -375,20 +349,18 @@ public final class McpServerFactory implements AutoCloseable {
         private RuntimeResources acquireResources() {
             HttpClient client = null;
             BridgeSession session = null;
-            ScheduledExecutorService scheduler = null;
             try {
                 client = resourceFactory.createClient();
                 session = resourceFactory.createSession(client, mapper, environment);
-                scheduler = resourceFactory.createScheduler();
-                return new RuntimeResources(Objects.requireNonNull(session, "runtime session"), Objects.requireNonNull(client, "runtime client"), Objects.requireNonNull(scheduler, "runtime scheduler"), resourceFactory);
+                return new RuntimeResources(Objects.requireNonNull(session, "runtime session"), Objects.requireNonNull(client, "runtime client"), resourceFactory);
             } catch (RuntimeException | Error exception) {
-                closePartialResources(resourceFactory, session, client, scheduler, exception);
+                closePartialResources(resourceFactory, session, client, exception);
                 closed = true;
                 throw exception;
             }
         }
 
-        private static void closePartialResources(RuntimeResourceFactory resourceFactory, BridgeSession session, HttpClient client, ScheduledExecutorService scheduler, Throwable failure) {
+        private static void closePartialResources(RuntimeResourceFactory resourceFactory, BridgeSession session, HttpClient client, Throwable failure) {
             if (session != null) {
                 try {
                     resourceFactory.closeSession(session);
@@ -399,13 +371,6 @@ public final class McpServerFactory implements AutoCloseable {
             if (client != null) {
                 try {
                     resourceFactory.closeClient(client);
-                } catch (Throwable closeFailure) {
-                    failure.addSuppressed(closeFailure);
-                }
-            }
-            if (scheduler != null) {
-                try {
-                    resourceFactory.closeScheduler(scheduler);
                 } catch (Throwable closeFailure) {
                     failure.addSuppressed(closeFailure);
                 }

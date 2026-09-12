@@ -12,8 +12,7 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.Executors;
+import java.util.concurrent.StructuredTaskScope;
 import java.util.concurrent.TimeUnit;
 
 public final class McpbBundleSmokeMain {
@@ -79,15 +78,17 @@ public final class McpbBundleSmokeMain {
         return MAPPER.readValue(line, MAP_TYPE);
     }
 
+    @SuppressWarnings("preview")
     private static Map<String, Object> readWithinTimeout(BufferedReader input) throws IOException {
-        try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
-            return executor.submit(() -> read(input)).get(TIMEOUT.toMillis(), TimeUnit.MILLISECONDS);
-        } catch (java.util.concurrent.TimeoutException exception) {
+        try (var scope = StructuredTaskScope.open(StructuredTaskScope.Joiner.<Map<String, Object>>anySuccessfulOrThrow(), config -> config.withName("mcpb-smoke-read").withTimeout(TIMEOUT))) {
+            scope.fork(() -> read(input));
+            return scope.join();
+        } catch (StructuredTaskScope.TimeoutException exception) {
             throw new IOException("MCPB launcher timed out waiting for a response", exception);
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
             throw new IOException("Interrupted while reading MCPB launcher output", exception);
-        } catch (ExecutionException exception) {
+        } catch (StructuredTaskScope.FailedException exception) {
             Throwable cause = exception.getCause();
             if (cause instanceof IOException ioException) {
                 throw ioException;

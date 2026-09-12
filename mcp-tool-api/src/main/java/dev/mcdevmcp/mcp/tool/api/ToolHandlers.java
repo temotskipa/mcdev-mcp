@@ -1,10 +1,7 @@
 package dev.mcdevmcp.mcp.tool.api;
 
 import java.util.Objects;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionStage;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Future;
+import java.util.concurrent.*;
 
 public final class ToolHandlers {
     private ToolHandlers() {
@@ -17,59 +14,49 @@ public final class ToolHandlers {
     public static <A> ToolHandler<A> blocking(ExecutorService executor, BlockingToolHandler<A> handler) {
         Objects.requireNonNull(executor, "executor");
         Objects.requireNonNull(handler, "handler");
-        return (arguments, cancellation) -> {
-            var result = new CompletableFuture<ContentToolResult<Void>>();
-            Future<?> task;
-            try {
-                task = executor.submit(() -> {
-                    try {
-                        result.complete(Objects.requireNonNull(handler.handle(arguments, cancellation), "Blocking tool handler result"));
-                    } catch (Throwable exception) {
-                        result.completeExceptionally(exception);
-                        if (exception instanceof Error error) {
-                            throw error;
-                        }
-                    }
-                });
-            } catch (RuntimeException exception) {
-                return CompletableFuture.failedFuture(exception);
-            }
-            result.whenComplete((_, _) -> {
-                if (result.isCancelled()) {
-                    task.cancel(true);
-                }
-            });
-            return result;
-        };
+        return (arguments, cancellation) -> submit(executor, () -> Objects.requireNonNull(handler.handle(arguments, cancellation), "Blocking tool handler result"));
     }
 
     @SuppressWarnings("overloads")
     public static <A, O> ToolOutputHandler<A, O> blocking(ExecutorService executor, BlockingToolOutputHandler<A, O> handler) {
         Objects.requireNonNull(executor, "executor");
         Objects.requireNonNull(handler, "handler");
-        return (arguments, cancellation) -> {
-            var result = new CompletableFuture<ToolResult<O>>();
-            Future<?> task;
-            try {
-                task = executor.submit(() -> {
-                    try {
-                        result.complete(Objects.requireNonNull(handler.handle(arguments, cancellation), "Blocking tool output handler result"));
-                    } catch (Throwable exception) {
-                        result.completeExceptionally(exception);
-                        if (exception instanceof Error error) {
-                            throw error;
-                        }
+        return (arguments, cancellation) -> submit(executor, () -> Objects.requireNonNull(handler.handle(arguments, cancellation), "Blocking tool output handler result"));
+    }
+
+    @SuppressWarnings("preview")
+    private static <T> CompletionStage<T> submit(ExecutorService executor, Callable<T> work) {
+        var result = new CompletableFuture<T>();
+        Future<?> task;
+        try {
+            task = executor.submit(() -> {
+                try (var scope = StructuredTaskScope.open(StructuredTaskScope.Joiner.<T>anySuccessfulOrThrow(), config -> config.withName("mcp-tool-blocking"))) {
+                    scope.fork(work);
+                    result.complete(scope.join());
+                } catch (StructuredTaskScope.FailedException exception) {
+                    Throwable cause = exception.getCause() == null ? exception : exception.getCause();
+                    result.completeExceptionally(cause);
+                    if (cause instanceof Error error) {
+                        throw error;
                     }
-                });
-            } catch (RuntimeException exception) {
-                return CompletableFuture.failedFuture(exception);
-            }
-            result.whenComplete((_, _) -> {
-                if (result.isCancelled()) {
-                    task.cancel(true);
+                } catch (InterruptedException exception) {
+                    Thread.currentThread().interrupt();
+                    result.cancel(false);
+                } catch (Throwable exception) {
+                    result.completeExceptionally(exception);
+                    if (exception instanceof Error error) {
+                        throw error;
+                    }
                 }
             });
-            return result;
-        };
+        } catch (RuntimeException exception) {
+            return CompletableFuture.failedFuture(exception);
+        }
+        result.whenComplete((_, _) -> {
+            if (result.isCancelled()) {
+                task.cancel(true);
+            }
+        });
+        return result;
     }
 }

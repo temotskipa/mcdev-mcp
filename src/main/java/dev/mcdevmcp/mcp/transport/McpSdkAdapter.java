@@ -141,24 +141,20 @@ public final class McpSdkAdapter {
         }
     }
 
+    @SuppressWarnings("preview")
     private static void closeWithinTimeout(String description, Runnable closeAction) {
-        var closeTask = new FutureTask<Void>(() -> {
-            closeAction.run();
-            return null;
-        });
-        Thread closeThread = Thread.ofVirtual().name("mcp-transport-close").start(closeTask);
-        try {
-            closeTask.get(STREAMABLE_CLOSE_TIMEOUT.toNanos(), TimeUnit.NANOSECONDS);
-        } catch (TimeoutException exception) {
-            closeTask.cancel(true);
-            closeThread.interrupt();
+        try (var scope = StructuredTaskScope.open(StructuredTaskScope.Joiner.awaitAllSuccessfulOrThrow(), config -> config.withName("mcp-transport-close").withTimeout(STREAMABLE_CLOSE_TIMEOUT))) {
+            scope.fork(() -> {
+                closeAction.run();
+                return null;
+            });
+            scope.join();
+        } catch (StructuredTaskScope.TimeoutException exception) {
             throw new IllegalStateException(description + " did not close within " + STREAMABLE_CLOSE_TIMEOUT, exception);
         } catch (InterruptedException exception) {
-            closeTask.cancel(true);
-            closeThread.interrupt();
             Thread.currentThread().interrupt();
             throw new IllegalStateException("Interrupted while closing " + description, exception);
-        } catch (ExecutionException exception) {
+        } catch (StructuredTaskScope.FailedException exception) {
             Throwable cause = exception.getCause();
             if (cause instanceof Error error) {
                 throw error;
@@ -190,16 +186,29 @@ public final class McpSdkAdapter {
         return (_, request) -> invoke(definition, binding, request);
     }
 
+    @SuppressWarnings("preview")
     private Mono<McpSchema.ReadResourceResult> readResource(ResourceCatalog catalog, URI uri) {
         return Mono.defer(() -> {
             var result = new CompletableFuture<McpSchema.ReadResourceResult>();
             Future<?> task;
             try {
                 task = blockingExecutor.submit(() -> {
-                    try {
-                        ResourceRead read = catalog.read(uri);
-                        var contents = McpSchema.TextResourceContents.builder(read.uri().toString(), read.text()).mimeType(read.mimeType()).build();
-                        result.complete(McpSchema.ReadResourceResult.builder(List.of(contents)).build());
+                    try (var scope = StructuredTaskScope.open(StructuredTaskScope.Joiner.<McpSchema.ReadResourceResult>anySuccessfulOrThrow(), config -> config.withName("mcp-resource-read"))) {
+                        scope.fork(() -> {
+                            ResourceRead read = catalog.read(uri);
+                            var contents = McpSchema.TextResourceContents.builder(read.uri().toString(), read.text()).mimeType(read.mimeType()).build();
+                            return McpSchema.ReadResourceResult.builder(List.of(contents)).build();
+                        });
+                        result.complete(scope.join());
+                    } catch (StructuredTaskScope.FailedException exception) {
+                        Throwable cause = exception.getCause() == null ? exception : exception.getCause();
+                        result.completeExceptionally(cause);
+                        if (cause instanceof Error error) {
+                            throw error;
+                        }
+                    } catch (InterruptedException exception) {
+                        Thread.currentThread().interrupt();
+                        result.cancel(false);
                     } catch (Throwable exception) {
                         result.completeExceptionally(exception);
                         if (exception instanceof Error error) {

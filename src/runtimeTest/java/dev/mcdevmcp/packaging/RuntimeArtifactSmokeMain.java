@@ -11,7 +11,10 @@ import io.modelcontextprotocol.json.TypeRef;
 
 import javax.tools.JavaCompiler;
 import javax.tools.ToolProvider;
-import java.io.*;
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.io.OutputStreamWriter;
 import java.lang.management.ManagementFactory;
 import java.net.URL;
 import java.net.URLClassLoader;
@@ -25,7 +28,8 @@ import java.sql.Driver;
 import java.sql.DriverManager;
 import java.time.Duration;
 import java.util.*;
-import java.util.concurrent.*;
+import java.util.concurrent.StructuredTaskScope;
+import java.util.concurrent.TimeUnit;
 import java.util.jar.*;
 
 /**
@@ -223,20 +227,25 @@ public final class RuntimeArtifactSmokeMain {
         output.closeEntry();
     }
 
+    @SuppressWarnings("preview")
     private static void verifyJarCli(Path jar, String version) throws Exception {
         Process process = new ProcessBuilder(javaExecutable(), "--enable-preview", "-jar", jar.toString(), "--version").start();
-        try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
-            Future<String> output = readAll(executor, process.getInputStream());
-            Future<String> errors = readAll(executor, process.getErrorStream());
-            require(process.waitFor(PROCESS_TIMEOUT.toNanos(), TimeUnit.NANOSECONDS), "Exact JAR CLI did not stop before its deadline");
-            require(process.exitValue() == 0, "Exact JAR CLI exited with " + process.exitValue());
-            require(version.equals(await(output, "CLI STDOUT").strip()), "Exact JAR CLI version differs from its manifest");
-            require(await(errors, "CLI STDERR").isBlank(), "Exact JAR CLI emitted diagnostics");
+        try (var scope = StructuredTaskScope.open(StructuredTaskScope.Joiner.awaitAllSuccessfulOrThrow(), config -> config.withName("runtime-artifact-cli").withTimeout(PROCESS_TIMEOUT))) {
+            var output = scope.fork(() -> new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8));
+            var errors = scope.fork(() -> new String(process.getErrorStream().readAllBytes(), StandardCharsets.UTF_8));
+            var exit = scope.fork(() -> process.waitFor());
+            scope.join();
+            require(exit.get() == 0, "Exact JAR CLI exited with " + exit.get());
+            require(version.equals(output.get().strip()), "Exact JAR CLI version differs from its manifest");
+            require(errors.get().isBlank(), "Exact JAR CLI emitted diagnostics");
+        } catch (StructuredTaskScope.TimeoutException exception) {
+            throw new IllegalStateException("Exact JAR CLI did not stop before its deadline", exception);
         } finally {
             stopProcess(process);
         }
     }
 
+    @SuppressWarnings("preview")
     private static void verifyStdio(Path jar, String version) throws Exception {
         Path runtimeHome = Files.createTempDirectory("mcdev-mcp-runtime-stdio");
         ProcessBuilder builder = new ProcessBuilder(javaExecutable(), "--enable-preview", "-Duser.home=" + runtimeHome, "-jar", jar.toString(), "serve");
@@ -245,34 +254,37 @@ public final class RuntimeArtifactSmokeMain {
         builder.environment().put("MCDEV_SESSION_LOG_DIR", runtimeHome.resolve("logs").toString());
         builder.environment().put("MCDEV_RUN_COMMAND", "true");
         Process process = builder.start();
-        try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
+        try (var scope = StructuredTaskScope.open(StructuredTaskScope.Joiner.awaitAllSuccessfulOrThrow(), config -> config.withName("runtime-artifact-stdio"));
              var output = new BufferedReader(new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8));
              var input = new OutputStreamWriter(process.getOutputStream(), StandardCharsets.UTF_8)) {
-            Future<String> errors = readAll(executor, process.getErrorStream());
+            var errors = scope.fork(() -> new String(process.getErrorStream().readAllBytes(), StandardCharsets.UTF_8));
+            try {
+                write(input, request(1, "initialize", Map.of("protocolVersion", "2024-11-05", "capabilities", Map.of(), "clientInfo", Map.of("name", "runtime-artifact-smoke", "version", "1"))));
+                Map<String, Object> initialize = readResponse(output, "initialize");
+                verifyResponseEnvelope(initialize, 1);
+                Map<String, Object> initializeResult = requiredMap(initialize, "result");
+                require("2024-11-05".equals(initializeResult.get("protocolVersion")), "Exact JAR negotiated an unexpected MCP protocol version");
+                Map<String, Object> serverInfo = requiredMap(initializeResult, "serverInfo");
+                require("mcdev-mcp".equals(serverInfo.get("name")), "Exact JAR initialize returned the wrong server name");
+                require(version.equals(serverInfo.get("version")), "Exact JAR initialize version differs from its manifest");
 
-            write(input, request(1, "initialize", Map.of("protocolVersion", "2024-11-05", "capabilities", Map.of(), "clientInfo", Map.of("name", "runtime-artifact-smoke", "version", "1"))));
-            Map<String, Object> initialize = readResponse(executor, output, "initialize");
-            verifyResponseEnvelope(initialize, 1);
-            Map<String, Object> initializeResult = requiredMap(initialize, "result");
-            require("2024-11-05".equals(initializeResult.get("protocolVersion")), "Exact JAR negotiated an unexpected MCP protocol version");
-            Map<String, Object> serverInfo = requiredMap(initializeResult, "serverInfo");
-            require("mcdev-mcp".equals(serverInfo.get("name")), "Exact JAR initialize returned the wrong server name");
-            require(version.equals(serverInfo.get("version")), "Exact JAR initialize version differs from its manifest");
+                write(input, Map.of("jsonrpc", "2.0", "method", "notifications/initialized", "params", Map.of()));
+                write(input, request(2, "tools/list", Map.of()));
+                Map<String, Object> toolsResponse = readResponse(output, "tools/list");
+                verifyResponseEnvelope(toolsResponse, 2);
+                List<Map<String, Object>> actualTools = requiredTools(requiredMap(toolsResponse, "result"));
+                try (var composition = McpServerFactory.declarativeComposition(new AppEnvironment(Map.of()), McpJsonDefaults.getMapper())) {
+                    verifyToolCatalog(actualTools, composition.definitions());
+                }
 
-            write(input, Map.of("jsonrpc", "2.0", "method", "notifications/initialized", "params", Map.of()));
-            write(input, request(2, "tools/list", Map.of()));
-            Map<String, Object> toolsResponse = readResponse(executor, output, "tools/list");
-            verifyResponseEnvelope(toolsResponse, 2);
-            List<Map<String, Object>> actualTools = requiredTools(requiredMap(toolsResponse, "result"));
-            try (var composition = McpServerFactory.declarativeComposition(new AppEnvironment(Map.of()), McpJsonDefaults.getMapper())) {
-                verifyToolCatalog(actualTools, composition.definitions());
+                process.getOutputStream().close();
+                require(process.waitFor(PROCESS_TIMEOUT.toNanos(), TimeUnit.NANOSECONDS), "Exact JAR STDIO server did not stop after stdin closed");
+                require(process.exitValue() == 0, "Exact JAR STDIO server exited with " + process.exitValue());
+                require(output.lines().toList().isEmpty(), "Exact JAR STDIO server emitted trailing protocol output");
+            } finally {
+                scope.join();
             }
-
-            process.getOutputStream().close();
-            require(process.waitFor(PROCESS_TIMEOUT.toNanos(), TimeUnit.NANOSECONDS), "Exact JAR STDIO server did not stop after stdin closed");
-            require(process.exitValue() == 0, "Exact JAR STDIO server exited with " + process.exitValue());
-            require(output.lines().toList().isEmpty(), "Exact JAR STDIO server emitted trailing protocol output");
-            require(await(errors, "STDIO STDERR").isBlank(), "Exact JAR STDIO server emitted diagnostics");
+            require(errors.get().isBlank(), "Exact JAR STDIO server emitted diagnostics");
         } finally {
             stopProcess(process);
             deleteTree(runtimeHome);
@@ -305,17 +317,16 @@ public final class RuntimeArtifactSmokeMain {
         writer.flush();
     }
 
-    private static Map<String, Object> readResponse(ExecutorService executor, BufferedReader output, String operation) throws Exception {
-        Future<String> line = executor.submit(output::readLine);
-        String response;
-        try {
-            response = line.get(PROCESS_TIMEOUT.toNanos(), TimeUnit.NANOSECONDS);
-        } catch (TimeoutException exception) {
-            line.cancel(true);
+    @SuppressWarnings("preview")
+    private static Map<String, Object> readResponse(BufferedReader output, String operation) throws Exception {
+        try (var scope = StructuredTaskScope.open(StructuredTaskScope.Joiner.<String>anySuccessfulOrThrow(), config -> config.withName("runtime-artifact-read").withTimeout(PROCESS_TIMEOUT))) {
+            scope.fork(output::readLine);
+            String response = scope.join();
+            require(response != null, "Exact JAR STDIO server closed before answering " + operation);
+            return McpJsonDefaults.getMapper().readValue(response, MAP_TYPE);
+        } catch (StructuredTaskScope.TimeoutException exception) {
             throw new IllegalStateException("Exact JAR did not answer " + operation + " before its deadline", exception);
         }
-        require(response != null, "Exact JAR STDIO server closed before answering " + operation);
-        return McpJsonDefaults.getMapper().readValue(response, MAP_TYPE);
     }
 
     private static void verifyResponseEnvelope(Map<String, Object> response, int id) {
@@ -334,19 +345,6 @@ public final class RuntimeArtifactSmokeMain {
         Object value = source.get("tools");
         require(value instanceof List<?>, "MCP response does not contain tools array");
         return McpJsonDefaults.getMapper().convertValue(value, LIST_OF_MAPS_TYPE);
-    }
-
-    private static Future<String> readAll(ExecutorService executor, InputStream stream) {
-        return executor.submit(() -> new String(stream.readAllBytes(), StandardCharsets.UTF_8));
-    }
-
-    private static String await(Future<String> future, String description) throws Exception {
-        try {
-            return future.get(PROCESS_TIMEOUT.toNanos(), TimeUnit.NANOSECONDS);
-        } catch (TimeoutException exception) {
-            future.cancel(true);
-            throw new IllegalStateException("Timed out reading " + description, exception);
-        }
     }
 
     private static void stopProcess(Process process) throws InterruptedException {

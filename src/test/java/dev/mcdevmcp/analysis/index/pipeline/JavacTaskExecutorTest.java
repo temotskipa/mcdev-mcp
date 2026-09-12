@@ -214,6 +214,28 @@ class JavacTaskExecutorTest {
     }
 
     @Test
+    void singleTaskCancellationInterruptsTheWorker() throws Exception {
+        CountDownLatch started = new CountDownLatch(1);
+        CountDownLatch terminated = new CountDownLatch(1);
+        AtomicBoolean cancelled = new AtomicBoolean();
+        ExecutorService coordinator = Executors.newSingleThreadExecutor();
+        try {
+            Future<?> execution = coordinator.submit(() -> {
+                JavacTaskExecutor.executeSingle(request(cancelled::get), blockingWorker(started, terminated));
+                return null;
+            });
+            await(started);
+            cancelled.set(true);
+            ExecutionException failure = assertThrows(ExecutionException.class, () -> execution.get(5, TimeUnit.SECONDS));
+            assertInstanceOf(InterruptedException.class, failure.getCause());
+            assertEquals(0, terminated.getCount());
+        } finally {
+            cancelled.set(true);
+            terminate(coordinator);
+        }
+    }
+
+    @Test
     void emptyTasksDoNotConsumeAndInvalidWorkerCountDoesNotDrainTasks() throws Exception {
         JavacTaskExecutor.executeAll(request(Cancellation.none()), 1, Collections.<Callable<Integer>>emptyIterator(), _ -> fail("Empty input was consumed"));
         Deque<Callable<Integer>> tasks = new ArrayDeque<>(List.of(() -> 0));
