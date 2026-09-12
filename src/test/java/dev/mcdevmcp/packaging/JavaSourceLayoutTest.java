@@ -485,7 +485,7 @@ class JavaSourceLayoutTest {
         assertProductionSourceLayout(Path.of("src/main/java"));
         assertProductionSourceLayout(Path.of("storage-model/src/main/java"));
         Path testRoot = Path.of("src/test/java");
-        var sourceRoots = List.of(testRoot, Path.of("mcp-tool-api/src/main/java"), Path.of("mcp-tool-api/src/test/java"), Path.of("mcp-tool-api/src/jpmsSmoke/java"), Path.of("storage-model/src/test/java"), Path.of("benchmark/src/main/java"), Path.of("benchmark/src/test/java"), Path.of("conformance/src/main/java"));
+        var sourceRoots = List.of(testRoot, Path.of("src/runtimeTest/java"), Path.of("mcp-tool-api/src/main/java"), Path.of("mcp-tool-api/src/test/java"), Path.of("mcp-tool-api/src/jpmsSmoke/java"), Path.of("storage-model/src/test/java"), Path.of("benchmark/src/main/java"), Path.of("benchmark/src/test/java"), Path.of("conformance/src/main/java"));
         for (Path sourceRoot : sourceRoots) {
             assertSourceLayout(sourceRoot);
         }

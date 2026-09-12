@@ -406,7 +406,7 @@ final class SessionControlSupport {
     }
 
     private static <T> CompletionStage<T> async(Callable<T> work, Runnable cancelDependency) {
-        var result = new AsyncOperation<T>(work, cancelDependency);
+        var result = new AsyncOperation<>(work, cancelDependency);
         result.worker.start();
         return result;
     }
@@ -539,7 +539,6 @@ final class SessionControlSupport {
                 } catch (InterruptedException failure) {
                     interrupted = true;
                     destroyQuietly(process);
-                    Thread.interrupted();
                     throw failure;
                 } catch (RuntimeException failure) {
                     destroyQuietly(process);
