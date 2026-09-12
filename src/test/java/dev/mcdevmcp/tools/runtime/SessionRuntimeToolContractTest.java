@@ -141,7 +141,7 @@ class SessionRuntimeToolContractTest {
             ToolResult<?> result = dispatch(catalog, "mc_join_server", Map.of("address", "localhost", "wait", false));
 
             assertTrue(result.isError());
-            assertEquals("Session control is disabled in DebugBridge (session_control_enabled=false, the default).\nTo enable it: edit " + RuntimeContractFixtures.fixturePath("C:\\Game\\config\\debugbridge.json") + ", set \"session_control_enabled\": true, then restart the Minecraft client — the flag is only read at startup.", contentText(result));
+            assertEquals("Session control is disabled in DebugBridge (session_control_enabled=false, the default).\nTo enable it: edit " + Path.of(RuntimeContractFixtures.gameDirectory(), "config", "debugbridge.json") + ", set \"session_control_enabled\": true, then restart the Minecraft client — the flag is only read at startup.", contentText(result));
             assertEquals(List.of("status"), harness.requests().stream().map(request -> request.endpoint().wireName()).toList());
         }
     }
