@@ -31,20 +31,11 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.Delayed;
 import java.util.concurrent.ExecutionException;
-import java.util.concurrent.Executors;
-import java.util.concurrent.FutureTask;
-import java.util.concurrent.LinkedBlockingQueue;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.ScheduledFuture;
-import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
@@ -86,13 +77,13 @@ class SessionControlSupportTest {
     void matchesGameDirectoryFirstThenVersionAndNeverGuessesWithoutComparableIdentity() {
         SessionInfo matchingDirectory = sessionInfo("1.19", GAME_DIRECTORY);
         SessionInfo noDirectory = sessionInfo("1.21.11", null);
-        var expected = new SessionControlSupport.ExpectedInstance(Optional.of(new MinecraftVersion("1.21.11")), Optional.of(GAME_DIRECTORY));
+        var expected = new ExpectedInstance(Optional.of(new MinecraftVersion("1.21.11")), Optional.of(GAME_DIRECTORY));
 
         assertTrue(SessionControlSupport.instanceMatches(matchingDirectory, expected));
         assertTrue(SessionControlSupport.instanceMatches(noDirectory, expected));
         assertFalse(SessionControlSupport.instanceMatches(sessionInfo("1.19", null), expected));
-        assertFalse(SessionControlSupport.instanceMatches(sessionInfo("1.21.11", null), new SessionControlSupport.ExpectedInstance(Optional.empty(), Optional.of(GAME_DIRECTORY))));
-        assertTrue(SessionControlSupport.instanceMatches(sessionInfo("anything", null), SessionControlSupport.ExpectedInstance.none()));
+        assertFalse(SessionControlSupport.instanceMatches(sessionInfo("1.21.11", null), new ExpectedInstance(Optional.empty(), Optional.of(GAME_DIRECTORY))));
+        assertTrue(SessionControlSupport.instanceMatches(sessionInfo("anything", null), ExpectedInstance.none()));
         ToolInput<WaitForBridgeArguments> input = ToolInput.of(WaitForBridgeArguments.class, RecordInputSchemaFactory.standard());
         assertNull(input.decode(McpJsonDefaults.getMapper(), Map.of()).expectedVersion());
         assertEquals(new MinecraftVersion("1.21.11"), input.decode(McpJsonDefaults.getMapper(), Map.of("expectedVersion", "1.21.11")).expectedVersion());
@@ -229,10 +220,10 @@ class SessionControlSupportTest {
                     CompletableFuture.completedFuture(new BridgeResponse(request.id(), true, true, Map.of("type", "ChatScreen"), null, null));
             default ->
                     CompletableFuture.failedFuture(new AssertionError("Unexpected endpoint: " + request.endpoint().wireName()));
-        }); var scheduler = new CapturingScheduler()) {
+        })) {
             harness.session().connect(null).toCompletableFuture().get(5, TimeUnit.SECONDS);
             var ticker = new SequenceTicker(Long.MAX_VALUE - 5, Long.MIN_VALUE + 5);
-            var support = new SessionControlSupport(harness.session(), new AppEnvironment(Map.of()), scheduler, ticker, _ -> CompletableFuture.completedFuture(false), _ -> CompletableFuture.completedFuture(null));
+            var support = new SessionControlSupport(harness.session(), new AppEnvironment(Map.of()), ticker, _ -> CompletableFuture.completedFuture(false), _ -> CompletableFuture.completedFuture(null));
 
             InWorldWaitResult result = support.waitUntilInWorld(Duration.ofNanos(10), false, Cancellation.none()).toCompletableFuture().get(5, TimeUnit.SECONDS);
 
@@ -244,8 +235,8 @@ class SessionControlSupportTest {
     @Test
     void asynchronousPidProbeReadsOutputBeforeClosingTheProcess() throws Exception {
         ProbeProcess process = new ProbeProcess("4242\n");
-        try (ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor()) {
-            SessionControlSupport.ListeningPidResolver resolver = SessionControlSupport.listeningPidResolver(scheduler, _ -> process);
+        {
+            SessionControlSupport.ListeningPidResolver resolver = SessionControlSupport.listeningPidResolver(_ -> process);
             CompletionStage<Long> pid = resolver.resolve(9876);
             process.exited.complete(process);
 
@@ -260,12 +251,17 @@ class SessionControlSupportTest {
     @SuppressWarnings("resource")
     void cancellingPidProbeDestroysAndClosesTheProcessOnce() throws Exception {
         ProbeProcess process = new ProbeProcess("4242\n");
-        try (ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor()) {
-            SessionControlSupport.ListeningPidResolver resolver = SessionControlSupport.listeningPidResolver(scheduler, _ -> process);
+        {
+            SessionControlSupport.ListeningPidResolver resolver = SessionControlSupport.listeningPidResolver(command -> {
+                process.started.countDown();
+                return process;
+            });
             CompletableFuture<Long> pid = resolver.resolve(9876).toCompletableFuture();
 
+            assertTrue(process.started.await(1, TimeUnit.SECONDS));
+            assertTrue(process.probeEntered.await(1, TimeUnit.SECONDS));
             assertTrue(pid.cancel(true));
-            assertTrue(process.destroyed.get());
+            assertTrue(process.destroyedLatch.await(1, TimeUnit.SECONDS));
             assertTrue(process.closeEntered.await(1, TimeUnit.SECONDS));
             assertEquals(1, process.closeCount.get());
         }
@@ -275,74 +271,160 @@ class SessionControlSupportTest {
     @SuppressWarnings("resource")
     void cancellationReturnsPromptlyWhenProcessCloseBlocks() throws Exception {
         ProbeProcess process = ProbeProcess.blocking();
-        try (ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor()) {
-            SessionControlSupport.ListeningPidResolver resolver = SessionControlSupport.listeningPidResolver(scheduler, _ -> process);
+        {
+            SessionControlSupport.ListeningPidResolver resolver = SessionControlSupport.listeningPidResolver(command -> {
+                process.started.countDown();
+                return process;
+            });
             CompletableFuture<Long> pid = resolver.resolve(9876).toCompletableFuture();
 
+            assertTrue(process.started.await(1, TimeUnit.SECONDS));
+            assertTrue(process.probeEntered.await(1, TimeUnit.SECONDS));
             assertTrue(pid.cancel(true));
-            assertTrue(process.destroyed.get());
+            assertTrue(process.destroyedLatch.await(1, TimeUnit.SECONDS));
             assertTrue(process.closeEntered.await(1, TimeUnit.SECONDS));
             assertTrue(pid.isCancelled());
             assertEquals(1, process.closeCount.get());
+            assertFalse(SessionControlSupport.ownerStopped(pid));
             process.releaseClose.countDown();
             assertTrue(process.closeFinished.await(1, TimeUnit.SECONDS));
+            long ownerDeadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(1);
+            while (!SessionControlSupport.ownerStopped(pid) && System.nanoTime() < ownerDeadline) {
+                Thread.sleep(10);
+            }
+            assertTrue(SessionControlSupport.ownerStopped(pid));
         }
     }
 
     @Test
-    @SuppressWarnings("resource")
-    void scheduledTimeoutReturnsPromptlyAndCancelsNoSharedSchedulerThread() throws Exception {
-        ProbeProcess process = ProbeProcess.blocking();
-        try (var scheduler = new CapturingScheduler()) {
-            SessionControlSupport.ListeningPidResolver resolver = SessionControlSupport.listeningPidResolver(scheduler, _ -> process);
-            CompletableFuture<Long> pid = resolver.resolve(9876).toCompletableFuture();
-            ScheduledFuture<?> scheduled = scheduler.scheduled.poll(1, TimeUnit.SECONDS);
-            assertNotNull(scheduled);
-            ManualScheduledFuture timeout = (ManualScheduledFuture) scheduled;
+    void cancellationInterruptsAStarterOwnedByTheStructuredScope() throws Exception {
+        CountDownLatch starterEntered = new CountDownLatch(1);
+        CountDownLatch starterCaughtInterrupt = new CountDownLatch(1);
+        CountDownLatch releaseStarter = new CountDownLatch(1);
+        SessionControlSupport.ListeningPidResolver resolver = SessionControlSupport.listeningPidResolver(command -> {
+            starterEntered.countDown();
+            try {
+                releaseStarter.await();
+            } catch (InterruptedException interrupted) {
+                starterCaughtInterrupt.countDown();
+                Thread.currentThread().interrupt();
+                throw new IOException("starter interrupted", interrupted);
+            }
+            throw new IOException("starter released for cancellation test");
+        });
 
-            Thread timeoutThread = Thread.ofPlatform().start(timeout);
-            assertTrue(process.closeEntered.await(1, TimeUnit.SECONDS));
-            timeoutThread.join(1_000);
-            assertFalse(timeoutThread.isAlive(), "timeout callback must not wait for Process.close()");
-            assertNull(pid.get(1, TimeUnit.SECONDS));
-            process.releaseClose.countDown();
-            assertTrue(process.closeFinished.await(1, TimeUnit.SECONDS));
-            assertEquals(1, process.closeCount.get());
+        CompletableFuture<Long> pid = resolver.resolve(9876).toCompletableFuture();
+        assertTrue(starterEntered.await(1, TimeUnit.SECONDS));
+        assertTrue(pid.cancel(true));
+        assertTrue(pid.isCancelled());
+        releaseStarter.countDown();
+        long ownerDeadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(1);
+        while (!SessionControlSupport.ownerStopped(pid) && System.nanoTime() < ownerDeadline) {
+            Thread.sleep(10);
         }
+        assertTrue(SessionControlSupport.ownerStopped(pid));
+    }
+
+    @Test
+    void lateReturningStarterIsDestroyedAfterCancellation() throws Exception {
+        ProbeProcess process = new ProbeProcess("4242\n");
+        CountDownLatch starterEntered = new CountDownLatch(1);
+        CountDownLatch starterCaughtInterrupt = new CountDownLatch(1);
+        CountDownLatch releaseStarter = new CountDownLatch(1);
+        SessionControlSupport.ListeningPidResolver resolver = SessionControlSupport.listeningPidResolver(command -> {
+            starterEntered.countDown();
+            try {
+                releaseStarter.await();
+            } catch (InterruptedException interrupted) {
+                starterCaughtInterrupt.countDown();
+                boolean wasInterrupted = true;
+                Thread.interrupted();
+                while (true) {
+                    try {
+                        releaseStarter.await();
+                        break;
+                    } catch (InterruptedException ignored) {
+                        wasInterrupted = true;
+                        Thread.interrupted();
+                    }
+                }
+                if (wasInterrupted) {
+                    Thread.currentThread().interrupt();
+                }
+            }
+            return process;
+        });
+
+        CompletableFuture<Long> pid = resolver.resolve(9876).toCompletableFuture();
+        assertTrue(starterEntered.await(1, TimeUnit.SECONDS));
+        assertTrue(pid.cancel(true));
+        assertTrue(starterCaughtInterrupt.await(1, TimeUnit.SECONDS));
+        releaseStarter.countDown();
+        assertTrue(process.destroyedLatch.await(1, TimeUnit.SECONDS));
+        assertTrue(process.closeEntered.await(1, TimeUnit.SECONDS));
+        assertEquals(1, process.probeEntered.getCount());
+        long ownerDeadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(1);
+        while (!SessionControlSupport.ownerStopped(pid) && System.nanoTime() < ownerDeadline) {
+            Thread.sleep(10);
+        }
+        assertTrue(SessionControlSupport.ownerStopped(pid));
+    }
+
+    @Test
+    void pidProbeHonorsItsRealFourSecondDeadlineAndDrainsBothPipes() throws Exception {
+        TimeoutProcess process = new TimeoutProcess();
+        SessionControlSupport.ListeningPidResolver resolver = SessionControlSupport.listeningPidResolver(_ -> process);
+        long started = System.nanoTime();
+        Long pid = resolver.resolve(9876).toCompletableFuture().get(6, TimeUnit.SECONDS);
+        long elapsed = System.nanoTime() - started;
+
+        assertNull(pid);
+        assertTrue(elapsed >= Duration.ofSeconds(3).toNanos(), "probe completed before its bounded deadline");
+        assertTrue(process.destroyed.await(1, TimeUnit.SECONDS));
+        assertTrue(process.stdoutRead.await(1, TimeUnit.SECONDS));
+        assertTrue(process.stderrRead.await(1, TimeUnit.SECONDS));
+    }
+
+    @Test
+    void composeCancellationBeforeResolverInvocationPreventsStarterAndOwnerStops() throws Exception {
+        AtomicBoolean starterInvoked = new AtomicBoolean();
+        SessionControlSupport.ListeningPidResolver resolver = SessionControlSupport.listeningPidResolver(command -> {
+            starterInvoked.set(true);
+            throw new IOException("starter must not run");
+        });
+        CompletableFuture<Integer> cancelledInput = new CompletableFuture<>();
+        cancelledInput.cancel(false);
+
+        CompletableFuture<Long> composed = SessionControlSupport.composeCancellable(cancelledInput, ignored -> resolver.resolve(9876)).toCompletableFuture();
+
+        assertFalse(starterInvoked.get());
+        long ownerDeadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(1);
+        while (!SessionControlSupport.ownerStopped(composed) && System.nanoTime() < ownerDeadline) {
+            Thread.sleep(10);
+        }
+        assertTrue(SessionControlSupport.ownerStopped(composed));
+        assertTrue(composed.isCancelled());
     }
 
     @Test
     @SuppressWarnings("resource")
-    void normalCompletionCancelsTheProbeTimerAndRegistrationFailureStillCleansUp() throws Exception {
+    void successfulPidProbeClosesProcessExactlyOnce() throws Exception {
         ProbeProcess success = new ProbeProcess("4242\n");
-        try (var scheduler = new CapturingScheduler()) {
-            SessionControlSupport.ListeningPidResolver resolver = SessionControlSupport.listeningPidResolver(scheduler, _ -> success);
+        {
+            SessionControlSupport.ListeningPidResolver resolver = SessionControlSupport.listeningPidResolver(_ -> success);
             CompletableFuture<Long> pid = resolver.resolve(9876).toCompletableFuture();
             success.exited.complete(success);
             assertEquals(4242L, pid.get(1, TimeUnit.SECONDS));
-            ScheduledFuture<?> scheduled = scheduler.scheduled.poll(1, TimeUnit.SECONDS);
-            assertNotNull(scheduled);
-            ManualScheduledFuture timeout = (ManualScheduledFuture) scheduled;
-            assertTrue(timeout.isCancelled());
             assertEquals(1, success.closeCount.get());
         }
 
-        ProbeProcess registrationFailure = ProbeProcess.registrationFailure();
-        try (var scheduler = new CapturingScheduler()) {
-            SessionControlSupport.ListeningPidResolver resolver = SessionControlSupport.listeningPidResolver(scheduler, _ -> registrationFailure);
-            assertNull(resolver.resolve(9876).toCompletableFuture().get(1, TimeUnit.SECONDS));
-            assertTrue(registrationFailure.destroyed.get());
-            assertTrue(scheduler.scheduled.isEmpty());
-            assertTrue(registrationFailure.closeEntered.await(1, TimeUnit.SECONDS));
-            assertEquals(1, registrationFailure.closeCount.get());
-        }
     }
 
     @Test
     void nonzeroExitAndStdoutReadFailureStillCloseExactlyOnce() throws Exception {
         for (ProbeProcess process : List.of(ProbeProcess.nonzero(), ProbeProcess.readFailure())) {
-            try (var scheduler = new CapturingScheduler()) {
-                SessionControlSupport.ListeningPidResolver resolver = SessionControlSupport.listeningPidResolver(scheduler, _ -> process);
+            {
+                SessionControlSupport.ListeningPidResolver resolver = SessionControlSupport.listeningPidResolver(_ -> process);
                 CompletableFuture<Long> pid = resolver.resolve(9876).toCompletableFuture();
                 process.exited.complete(process);
 
@@ -355,9 +437,8 @@ class SessionControlSupportTest {
 
     @Test
     void portCloseFallbackAndProcessClassificationAreConservative() throws Exception {
-        try (var harness = new BridgeTestHarness(McpJsonDefaults.getMapper(), new AppEnvironment(Map.of()), (_, request) -> CompletableFuture.completedFuture(RuntimeContractFixtures.status(request.id())));
-             ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor()) {
-            var support = new SessionControlSupport(harness.session(), new AppEnvironment(Map.of()), scheduler, MonotonicTicker.system(), _ -> CompletableFuture.completedFuture(false), _ -> CompletableFuture.completedFuture(null));
+        try (var harness = new BridgeTestHarness(McpJsonDefaults.getMapper(), new AppEnvironment(Map.of()), (_, request) -> CompletableFuture.completedFuture(RuntimeContractFixtures.status(request.id())))) {
+            var support = new SessionControlSupport(harness.session(), new AppEnvironment(Map.of()), MonotonicTicker.system(), _ -> CompletableFuture.completedFuture(false), _ -> CompletableFuture.completedFuture(null));
             ClientExitResult result = support.waitForClientExit(9876, null, Duration.ofSeconds(2), Cancellation.none()).toCompletableFuture().get(2, TimeUnit.SECONDS);
             assertEquals(new ClientExitResult.Exited(false), result);
         }
@@ -366,34 +447,29 @@ class SessionControlSupportTest {
     }
 
     @Test
-    void bridgeDeadlineWaitsForMismatchRecordingBeforePublishingTheTimeout() throws Exception {
+    void structuredBridgeDeadlinePublishesRecordedMismatches() throws Exception {
         AtomicReference<CompletableFuture<BridgeResponse>> response = new AtomicReference<>();
         var notes = new BlockingNoteList();
         try (var harness = new BridgeTestHarness(McpJsonDefaults.getMapper(), new AppEnvironment(Map.of()), (_, _) -> {
             CompletableFuture<BridgeResponse> pending = new CompletableFuture<>();
             response.set(pending);
             return pending;
-        }); var scheduler = new CapturingScheduler()) {
-            var support = new SessionControlSupport(harness.session(), new AppEnvironment(Map.of()), scheduler, MonotonicTicker.system(), _ -> CompletableFuture.completedFuture(false), _ -> CompletableFuture.completedFuture(null));
-            var expected = new SessionControlSupport.ExpectedInstance(Optional.of(new MinecraftVersion("different")), Optional.empty());
-            CompletableFuture<SessionControlSupport.FoundBridge> wait = support.waitForBridge(expected, Duration.ofSeconds(10), notes, Cancellation.none()).toCompletableFuture();
+        })) {
+            var support = new SessionControlSupport(harness.session(), new AppEnvironment(Map.of()), MonotonicTicker.system(), _ -> CompletableFuture.completedFuture(false), _ -> CompletableFuture.completedFuture(null));
+            var expected = new ExpectedInstance(Optional.of(new MinecraftVersion("different")), Optional.empty());
+            CompletableFuture<FoundBridge> wait = support.waitForBridge(expected, Duration.ofMillis(250), notes, Cancellation.none()).toCompletableFuture();
 
-            CompletableFuture<BridgeResponse> pending = response.get();
+            long responseDeadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(1);
+            CompletableFuture<BridgeResponse> pending;
+            while ((pending = response.get()) == null && System.nanoTime() < responseDeadline) {
+                Thread.sleep(10);
+            }
             assertNotNull(pending);
-            Thread mismatch = Thread.ofPlatform().start(() -> pending.complete(RuntimeContractFixtures.status("req_1")));
+            CompletableFuture<BridgeResponse> ready = pending;
+            Thread mismatch = Thread.ofPlatform().start(() -> ready.complete(RuntimeContractFixtures.status("req_1")));
             assertTrue(notes.addEntered.await(1, TimeUnit.SECONDS));
-
-            ScheduledFuture<?> scheduledDeadline = scheduler.scheduled.poll(1, TimeUnit.SECONDS);
-            assertNotNull(scheduledDeadline);
-            ManualScheduledFuture deadline = assertInstanceOf(ManualScheduledFuture.class, scheduledDeadline);
-            Thread deadlineThread = Thread.ofPlatform().start(deadline);
-            assertTrue(deadline.runStarted.await(1, TimeUnit.SECONDS));
-            assertThrows(TimeoutException.class, () -> deadline.get(100, TimeUnit.MILLISECONDS));
-            assertFalse(wait.isDone());
-
             notes.releaseAdd.countDown();
             mismatch.join();
-            deadlineThread.join();
             ExecutionException failure = assertThrows(ExecutionException.class, () -> wait.get(1, TimeUnit.SECONDS));
             assertTrue(failure.getCause().getMessage().contains("Other instances answered: port 9876"));
             assertEquals(1, notes.size());
@@ -443,9 +519,8 @@ class SessionControlSupportTest {
     }
 
     private static List<Integer> bridgePorts(Map<String, String> environment) {
-        try (var harness = new BridgeTestHarness(McpJsonDefaults.getMapper(), new AppEnvironment(environment), (_, request) -> CompletableFuture.completedFuture(RuntimeContractFixtures.status(request.id())));
-             ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor()) {
-            return new SessionControlSupport(harness.session(), new AppEnvironment(environment), scheduler).bridgePortRange();
+        try (var harness = new BridgeTestHarness(McpJsonDefaults.getMapper(), new AppEnvironment(environment), (_, request) -> CompletableFuture.completedFuture(RuntimeContractFixtures.status(request.id())))) {
+            return new SessionControlSupport(harness.session(), new AppEnvironment(environment)).bridgePortRange();
         }
     }
 
@@ -483,47 +558,6 @@ class SessionControlSupportTest {
         }
     }
 
-    @SuppressWarnings("NullableProblems")
-    private static final class CapturingScheduler extends ScheduledThreadPoolExecutor {
-        private final BlockingQueue<ScheduledFuture<?>> scheduled = new LinkedBlockingQueue<>();
-
-        private CapturingScheduler() {
-            super(1);
-        }
-
-        @Override
-        public ScheduledFuture<?> schedule(Runnable command, long delay, TimeUnit unit) {
-            var future = new ManualScheduledFuture(command);
-            scheduled.add(future);
-            return future;
-        }
-    }
-
-    @SuppressWarnings("NullableProblems")
-    private static final class ManualScheduledFuture extends FutureTask<Void> implements ScheduledFuture<Void> {
-        private final CountDownLatch runStarted = new CountDownLatch(1);
-
-        private ManualScheduledFuture(Runnable command) {
-            super(command, null);
-        }
-
-        @Override
-        public void run() {
-            runStarted.countDown();
-            super.run();
-        }
-
-        @Override
-        public long getDelay(TimeUnit unit) {
-            return 0;
-        }
-
-        @Override
-        public int compareTo(Delayed other) {
-            return other == this ? 0 : Integer.compare(System.identityHashCode(this), System.identityHashCode(other));
-        }
-    }
-
     private static final class SequenceTicker implements MonotonicTicker {
         private final long[] values;
         private int index;
@@ -542,29 +576,24 @@ class SessionControlSupportTest {
         private final CompletableFuture<Process> exited = new CompletableFuture<>();
         private final AtomicBoolean stdoutConsumed = new AtomicBoolean();
         private final AtomicBoolean destroyed = new AtomicBoolean();
+        private final CountDownLatch destroyedLatch = new CountDownLatch(1);
         private final AtomicInteger closeCount = new AtomicInteger();
         private final CountDownLatch closeEntered = new CountDownLatch(1);
+        private final CountDownLatch started = new CountDownLatch(1);
+        private final CountDownLatch probeEntered = new CountDownLatch(1);
         private final CountDownLatch closeFinished = new CountDownLatch(1);
         private final CountDownLatch releaseClose = new CountDownLatch(1);
         private final int exitCode;
         private final boolean blockClose;
-        private final boolean completeOnDestroy;
-        private final boolean registrationFailure;
         private final InputStream stdout;
 
         private ProbeProcess(String output) {
-            this(output, 0, false, true, false);
+            this(output, 0, false, false);
         }
 
-        private ProbeProcess(String output, int exitCode, boolean blockClose, boolean completeOnDestroy, boolean registrationFailure) {
-            this(output, exitCode, blockClose, completeOnDestroy, registrationFailure, false);
-        }
-
-        private ProbeProcess(String output, int exitCode, boolean blockClose, boolean completeOnDestroy, boolean registrationFailure, boolean readFailure) {
+        private ProbeProcess(String output, int exitCode, boolean blockClose, boolean readFailure) {
             this.exitCode = exitCode;
             this.blockClose = blockClose;
-            this.completeOnDestroy = completeOnDestroy;
-            this.registrationFailure = registrationFailure;
             stdout = readFailure ? new InputStream() {
                 @Override
                 public int read() throws IOException {
@@ -574,19 +603,15 @@ class SessionControlSupportTest {
         }
 
         private static ProbeProcess blocking() {
-            return new ProbeProcess("4242\n", 0, true, false, false);
-        }
-
-        private static ProbeProcess registrationFailure() {
-            return new ProbeProcess("", 0, false, false, true);
+            return new ProbeProcess("4242\n", 0, true, false);
         }
 
         private static ProbeProcess nonzero() {
-            return new ProbeProcess("4242\n", 1, false, true, false);
+            return new ProbeProcess("4242\n", 1, false, false);
         }
 
         private static ProbeProcess readFailure() {
-            return new ProbeProcess("", 0, false, true, false, true);
+            return new ProbeProcess("", 0, false, true);
         }
 
         @Override
@@ -596,6 +621,7 @@ class SessionControlSupportTest {
 
         @Override
         public InputStream getInputStream() {
+            probeEntered.countDown();
             return stdout;
         }
 
@@ -605,26 +631,33 @@ class SessionControlSupportTest {
         }
 
         @Override
-        public int waitFor() {
+        public int waitFor() throws InterruptedException {
+            try {
+                exited.get();
+            } catch (ExecutionException exception) {
+                throw new IllegalStateException(exception.getCause());
+            }
             return exitCode;
         }
 
         @Override
         public int exitValue() {
+            if (isAlive()) {
+                throw new IllegalThreadStateException("process is still running");
+            }
             return exitCode;
         }
 
         @Override
         public void destroy() {
-            destroyed.set(true);
+            destroyForcibly();
         }
 
         @Override
         public Process destroyForcibly() {
             destroyed.set(true);
-            if (completeOnDestroy) {
-                exited.complete(this);
-            }
+            destroyedLatch.countDown();
+            exited.complete(this);
             return this;
         }
 
@@ -634,25 +667,29 @@ class SessionControlSupportTest {
         }
 
         @Override
-        public CompletableFuture<Process> onExit() {
-            if (registrationFailure) {
-                throw new IllegalStateException("onExit registration failed");
-            }
-            return exited;
-        }
-
-        @Override
         public void close() throws IOException {
             closeCount.incrementAndGet();
             closeEntered.countDown();
             if (blockClose) {
+                boolean interrupted = false;
                 try {
-                    if (!releaseClose.await(5, TimeUnit.SECONDS)) {
-                        throw new IOException("Timed out waiting to release close");
+                    while (!releaseClose.await(100, TimeUnit.MILLISECONDS)) {
+                        // Deliberately keep ownership until the test releases
+                        // the close latch, even when the owner is interrupted.
                     }
                 } catch (InterruptedException exception) {
+                    interrupted = true;
+                    while (true) {
+                        try {
+                            releaseClose.await();
+                            break;
+                        } catch (InterruptedException ignored) {
+                            interrupted = true;
+                        }
+                    }
+                }
+                if (interrupted) {
                     Thread.currentThread().interrupt();
-                    throw new IOException(exception);
                 }
             }
             stdoutConsumed.set(stdout.available() == 0);
@@ -660,6 +697,65 @@ class SessionControlSupportTest {
             if (!blockClose && !stdoutConsumed.get()) {
                 throw new IOException("stdout was not consumed before close");
             }
+        }
+    }
+
+    private static final class TimeoutProcess extends Process {
+        private final CountDownLatch finished = new CountDownLatch(1);
+        private final CountDownLatch destroyed = new CountDownLatch(1);
+        private final CountDownLatch stdoutRead = new CountDownLatch(1);
+        private final CountDownLatch stderrRead = new CountDownLatch(1);
+
+        @Override
+        public OutputStream getOutputStream() {
+            return OutputStream.nullOutputStream();
+        }
+
+        @Override
+        public InputStream getInputStream() {
+            stdoutRead.countDown();
+            return new ByteArrayInputStream("4242\n".getBytes(StandardCharsets.UTF_8));
+        }
+
+        @Override
+        public InputStream getErrorStream() {
+            stderrRead.countDown();
+            return InputStream.nullInputStream();
+        }
+
+        @Override
+        public int waitFor() {
+            try {
+                finished.await();
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+            }
+            return 1;
+        }
+
+        @Override
+        public int exitValue() {
+            if (finished.getCount() != 0) {
+                throw new IllegalThreadStateException();
+            }
+            return 1;
+        }
+
+        @Override
+        public void destroy() {
+            destroyForcibly();
+        }
+
+        @Override
+        public Process destroyForcibly() {
+            destroyed.countDown();
+            finished.countDown();
+            return this;
+        }
+
+        @Override
+        public boolean isAlive() {
+            return finished.getCount() != 0;
         }
     }
 }

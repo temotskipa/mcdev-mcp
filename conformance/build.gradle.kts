@@ -49,7 +49,7 @@ application {
 tasks.withType<JavaCompile>().configureEach {
     options.release.set(26)
     options.encoding = "UTF-8"
-    options.compilerArgs.addAll(listOf("-Xlint:all", "-Werror"))
+    options.compilerArgs.addAll(listOf("-Xlint:all", "-Xlint:-preview", "-Werror", "--enable-preview"))
 }
 
 val generateConformanceVersionProperties = tasks.register<WriteProperties>("generateConformanceVersionProperties") {

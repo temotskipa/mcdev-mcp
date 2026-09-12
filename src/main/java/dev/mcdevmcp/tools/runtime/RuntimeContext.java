@@ -26,7 +26,7 @@ public final class RuntimeContext {
         runtime = new RuntimeToolSupport(session, mapper);
         Optional<Path> sessionLogDirectory = environment.value("MCDEV_SESSION_LOG_DIR").filter(value -> !value.isBlank()).map(Path::of).or(() -> environment.isTruthy("MCDEV_SCRIPT_LOGS") ? Optional.of(ScriptLogger.dataDirectory(System.getProperty("os.name"), environment, Path.of(System.getProperty("user.home")))) : Optional.empty());
         scriptLogger = sessionLogDirectory.map(directory -> new ScriptLogger(directory, mapper, System.err::println)).orElse(null);
-        sessionControl = new SessionControlSupport(session, environment, scheduler);
+        sessionControl = new SessionControlSupport(session, environment);
         media = new MediaToolSupport(runtime);
     }
 

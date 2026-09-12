@@ -11,8 +11,8 @@ DebugBridge mod.
 - No Maven, Gradle, npm, or IDE subscription is required to run a release.
 
 Java 26 corpus qualification and index/callgraph benchmarking are required
-release gates. Preview bytecode is specific to Java 26: Java 25, Java 27, and
-later runtimes cannot run this release. The MCPB launcher enables preview
+release gates. Preview bytecode is specific to Java 26; other JDK feature
+versions cannot run this release. The MCPB launcher enables preview
 automatically; direct JAR launches must include the flag.
 
 See [corpus qualification and benchmark inputs](benchmark/README.md) for the

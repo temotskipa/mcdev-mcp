@@ -145,7 +145,7 @@ class JavaSourceLayoutTest {
             throw new AssertionError("A system Java compiler is required to inspect closed-result source guards.");
         }
         DiagnosticCollector<JavaFileObject> diagnostics = new DiagnosticCollector<>();
-        List<String> options = List.of("--source", Integer.toString(Runtime.version().feature()), "-proc:none", "-classpath", System.getProperty("java.class.path", ""));
+        List<String> options = List.of("--source", Integer.toString(Runtime.version().feature()), "--enable-preview", "-proc:none", "-classpath", System.getProperty("java.class.path", ""));
         try (StandardJavaFileManager fileManager = compiler.getStandardFileManager(diagnostics, Locale.ROOT, StandardCharsets.UTF_8)) {
             JavacTask task = (JavacTask) compiler.getTask(null, fileManager, diagnostics, options, null, fileManager.getJavaFileObjectsFromPaths(sources));
             List<CompilationUnitTree> units = new ArrayList<>();

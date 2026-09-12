@@ -153,7 +153,7 @@ application {
 tasks.withType<JavaCompile>().configureEach {
     options.release.set(26)
     options.encoding = "UTF-8"
-    options.compilerArgs.addAll(listOf("-Xlint:all", "-Werror"))
+    options.compilerArgs.addAll(listOf("-Xlint:all", "-Xlint:-preview", "-Werror", "--enable-preview"))
 }
 
 sourceSets {
@@ -177,13 +177,13 @@ dependencies {
 tasks.named<JavaCompile>(sourceSets.test.get().compileJavaTaskName) {
     options.release.set(26)
     options.encoding = "UTF-8"
-    options.compilerArgs.addAll(listOf("-Xlint:all", "-Werror"))
+    options.compilerArgs.addAll(listOf("-Xlint:all", "-Xlint:-preview", "-Werror", "--enable-preview"))
 }
 
 tasks.named<JavaCompile>(runtimeTest.compileJavaTaskName) {
     options.release.set(26)
     options.encoding = "UTF-8"
-    options.compilerArgs.addAll(listOf("-Xlint:all", "-Werror"))
+    options.compilerArgs.addAll(listOf("-Xlint:all", "-Xlint:-preview", "-Werror", "--enable-preview"))
 }
 
 val benchmarkClasses = tasks.register("benchmarkClasses") {
@@ -218,6 +218,7 @@ tasks.withType<Test>().configureEach {
     useJUnitPlatform()
     dependsOn(tasks.named("shadowJar"))
     javaLauncher.set(testJavaLauncher)
+    jvmArgs("--enable-preview")
     testLogging.showStandardStreams = true
     systemProperty("dev.mcdevmcp.test.versionFallback", "true")
     systemProperty("dev.mcdevmcp.test.javaFeature", testJavaFeature.get())

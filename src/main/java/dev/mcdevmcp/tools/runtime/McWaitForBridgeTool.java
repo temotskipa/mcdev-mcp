@@ -19,8 +19,8 @@ final class McWaitForBridgeTool {
     static ContentToolBinding<WaitForBridgeArguments> binding(SessionControlSupport support) {
         return DECLARATION.bind((arguments, cancellation) -> {
             List<String> notes = new CopyOnWriteArrayList<>();
-            SessionControlSupport.ExpectedInstance expected = expectedInstance(support, arguments);
-            CompletionStage<SessionControlSupport.FoundBridge> wait = support.waitForBridge(expected, arguments.timeoutSeconds(), notes, cancellation);
+            ExpectedInstance expected = expectedInstance(support, arguments);
+            CompletionStage<FoundBridge> wait = support.waitForBridge(expected, arguments.timeoutSeconds(), notes, cancellation);
             CompletionStage<WaitAttempt> attempted = SessionControlSupport.handleCancellable(wait, WaitAttempt::new);
             return SessionControlSupport.composeCancellable(attempted, attempt -> {
                 if (attempt.failure() != null) {
@@ -31,11 +31,11 @@ final class McWaitForBridgeTool {
         });
     }
 
-    private static SessionControlSupport.ExpectedInstance expectedInstance(SessionControlSupport support, WaitForBridgeArguments arguments) {
+    private static ExpectedInstance expectedInstance(SessionControlSupport support, WaitForBridgeArguments arguments) {
         if (arguments.expectedVersion() != null) {
-            return new SessionControlSupport.ExpectedInstance(Optional.of(arguments.expectedVersion()), Optional.empty());
+            return new ExpectedInstance(Optional.of(arguments.expectedVersion()), Optional.empty());
         }
-        return support.sessionInfo().map(info -> new SessionControlSupport.ExpectedInstance(Optional.of(info.version()), info.gameDir())).orElseGet(SessionControlSupport.ExpectedInstance::none);
+        return support.sessionInfo().map(info -> new ExpectedInstance(Optional.of(info.version()), info.gameDir())).orElseGet(ExpectedInstance::none);
     }
 
     private static ContentToolResult<Void> renderSuccess(SessionInfo info, int port, List<String> notes) {
@@ -58,6 +58,6 @@ final class McWaitForBridgeTool {
         return noteSnapshot.isEmpty() ? message : message + "\n" + String.join("\n", noteSnapshot.stream().map(note -> "Note: " + note).toList());
     }
 
-    private record WaitAttempt(SessionControlSupport.FoundBridge found, Throwable failure) {
+    private record WaitAttempt(FoundBridge found, Throwable failure) {
     }
 }

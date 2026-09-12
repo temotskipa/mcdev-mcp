@@ -27,7 +27,6 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class Java26PortGuardTest {
-    private static final String PREVIEW_FLAG = "--enable" + "-preview";
     private static final Pattern PREVIOUS_RELEASE_PATTERN = Pattern.compile("Java\\s+(?:25|28)|JavaLanguageVersion\\.of\\((?:25|28)\\)|" + "options\\.release\\.set\\((?:25|28)\\)|java-version:\\s*['\"](?:25|28)['\"]|" + "(?:java|JAVA_HOME|artifacts|build|release)[_-]?(?:25|28)\\b", Pattern.CASE_INSENSITIVE);
     private static final List<Path> ACTIVE_JAVA_ROOTS = List.of(Path.of("src/main/java"), Path.of("src/test/java"), Path.of("src/runtimeTest/java"), Path.of("src/test/resources"), Path.of("mcp-tool-api/src/main/java"), Path.of("mcp-tool-api/src/test/java"), Path.of("mcp-tool-api/src/jpmsSmoke/java"), Path.of("benchmark/src/main/java"), Path.of("benchmark/src/test/java"), Path.of("conformance/src/main/java"));
     private static final List<Path> BUILD_FILES = List.of(Path.of("build.gradle.kts"), Path.of("mcp-tool-api/build.gradle.kts"), Path.of("benchmark/build.gradle.kts"), Path.of("conformance/build.gradle.kts"));
@@ -37,7 +36,7 @@ class Java26PortGuardTest {
     Path temporaryDirectory;
 
     @Test
-    void activeSourcesAndReleaseSurfacesRequireJava26WithoutPreview() throws IOException {
+    void activeSourcesAndReleaseSurfacesRequireJava26() throws IOException {
         List<String> violations = new ArrayList<>();
         for (Path root : ACTIVE_JAVA_ROOTS) {
             assertTrue(Files.isDirectory(root), () -> "Missing active Java source root: " + root);
@@ -54,6 +53,7 @@ class Java26PortGuardTest {
         }
         for (Path path : BUILD_FILES) {
             inspectReleaseText(path, violations);
+            assertPreviewFlags(path, Files.readString(path));
             assertBuildTargets(path, Files.readString(path));
         }
         assertTrue(violations.isEmpty(), () -> String.join(System.lineSeparator(), violations));
@@ -68,6 +68,23 @@ class Java26PortGuardTest {
         assertThrows(AssertionError.class, () -> assertBuildTargets(rootBuild, changedRelease));
         assertThrows(AssertionError.class, () -> assertBuildTargets(rootBuild, source.replace("orElse(\"26\")", "orElse(\"27\")")));
         assertThrows(AssertionError.class, () -> assertBuildTargets(rootBuild, source.replace("require(feature == 26)", "require(feature == 27)")));
+    }
+
+    @Test
+    void previewCompilationAndTestLaunchFlagsAreRequired() throws IOException {
+        for (Path path : BUILD_FILES) {
+            assertPreviewFlags(path, Files.readString(path));
+        }
+        Path root = Path.of("build.gradle.kts");
+        assertThrows(AssertionError.class, () -> assertPreviewFlags(root, Files.readString(root).replace("--enable-preview", "--preview-removed")));
+        assertThrows(AssertionError.class, () -> assertPreviewFlags(root, Files.readString(root).replace("jvmArgs(\"--enable-preview\")", "jvmArgs(\"--preview-removed\")")));
+    }
+
+    private static void assertPreviewFlags(Path path, String source) {
+        assertTrue(source.lines().anyMatch(line -> line.contains("compilerArgs") && line.contains("--enable-preview")), () -> path + " must enable Java 26 preview compilation");
+        if (!path.equals(Path.of("conformance/build.gradle.kts"))) {
+            assertTrue(source.lines().anyMatch(line -> line.contains("jvmArgs") && line.contains("--enable-preview")), () -> path + " must enable Java 26 preview test execution");
+        }
     }
 
     private static void assertBuildTargets(Path path, String source) {
@@ -110,7 +127,7 @@ class Java26PortGuardTest {
                 }
             }
         }
-        assertEquals(Map.of("src/main/java/dev/mcdevmcp/analysis/index/pipeline/CompilerConfiguration.java", List.of("25"), "src/test/java/dev/mcdevmcp/analysis/callgraph/CallgraphTestSupport.java", List.of("25", "25"), "src/test/java/dev/mcdevmcp/analysis/index/pipeline/IndexerTestSupport.java", List.of("25"), "src/test/java/dev/mcdevmcp/app/AnalysisPipelineIntegrationTest.java", List.of("21"), "src/test/java/dev/mcdevmcp/analysis/decompile/EmbeddedDecompilerTest.java", List.of("21"), "src/test/java/dev/mcdevmcp/analysis/decompile/EmbeddedRemapperTest.java", List.of("21"), "src/runtimeTest/java/dev/mcdevmcp/packaging/RuntimeArtifactSmokeMain.java", List.of("21", "21")), actual);
+        assertEquals(Map.of("src/main/java/dev/mcdevmcp/analysis/index/pipeline/CompilerConfiguration.java", List.of("25"), "src/main/java/dev/mcdevmcp/storage/migration/SourceCacheValidator.java", List.of("25"), "src/test/java/dev/mcdevmcp/storage/migration/SourceCacheValidatorTest.java", List.of("21"), "src/test/java/dev/mcdevmcp/storage/migration/SourceProducerIdentityTest.java", List.of("21"), "src/test/java/dev/mcdevmcp/analysis/callgraph/CallgraphTestSupport.java", List.of("25", "25"), "src/test/java/dev/mcdevmcp/analysis/index/pipeline/IndexerTestSupport.java", List.of("25"), "src/test/java/dev/mcdevmcp/app/AnalysisPipelineIntegrationTest.java", List.of("21"), "src/test/java/dev/mcdevmcp/analysis/decompile/EmbeddedDecompilerTest.java", List.of("21"), "src/test/java/dev/mcdevmcp/analysis/decompile/EmbeddedRemapperTest.java", List.of("21"), "src/runtimeTest/java/dev/mcdevmcp/packaging/RuntimeArtifactSmokeMain.java", List.of("21", "21")), actual);
     }
 
     @Test
@@ -122,9 +139,6 @@ class Java26PortGuardTest {
 
     private static void inspectReleaseText(Path path, List<String> violations) throws IOException {
         String source = Files.readString(path, StandardCharsets.UTF_8);
-        if (source.contains(PREVIEW_FLAG)) {
-            violations.add(path + ": preview launcher/compiler flag");
-        }
         if (PREVIOUS_RELEASE_PATTERN.matcher(source).find()) {
             violations.add(path + ": unsupported release dependency");
         }

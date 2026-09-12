@@ -75,19 +75,20 @@ dependencies {
 tasks.withType<JavaCompile>().configureEach {
     options.release.set(26)
     options.encoding = "UTF-8"
-    options.compilerArgs.addAll(listOf("-Xlint:all", "-Werror"))
+    options.compilerArgs.addAll(listOf("-Xlint:all", "-Xlint:-preview", "-Werror", "--enable-preview"))
 }
 
 tasks.withType<Test>().configureEach {
     useJUnitPlatform()
     javaLauncher.set(testJavaLauncher)
+    jvmArgs("--enable-preview")
     filter.isFailOnNoMatchingTests = false
 }
 
 tasks.named<JavaCompile>(jpmsSmoke.compileJavaTaskName) {
     options.release.set(26)
     options.encoding = "UTF-8"
-    options.compilerArgs.addAll(listOf("-Xlint:all", "-Werror"))
+    options.compilerArgs.addAll(listOf("-Xlint:all", "-Xlint:-preview", "-Werror", "--enable-preview"))
 }
 
 val jpmsSmokeTest = tasks.register<JavaExec>("jpmsSmokeTest") {
