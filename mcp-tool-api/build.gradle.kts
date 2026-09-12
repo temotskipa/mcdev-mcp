@@ -1,6 +1,6 @@
 plugins {
     `java-library`
-    id("org.gradlex.extra-java-module-info") version "1.14.2"
+    id("org.gradlex.extra-java-module-info")
 }
 
 val testJavaFeature = providers.gradleProperty("testJavaVersion").orElse("26").map { configuredVersion ->

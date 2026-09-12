@@ -106,7 +106,8 @@ abstract class McpSdkSnapshotCheck : DefaultTask() {
 
 plugins {
     application
-    id("com.gradleup.shadow") version "9.6.1"
+    id("org.gradlex.extra-java-module-info")
+    id("com.gradleup.shadow")
 }
 
 val applicationVersion = providers.gradleProperty("version").get()
@@ -126,6 +127,7 @@ val generateTestVersionProperties = tasks.register<WriteProperties>("generateTes
 }
 
 java {
+    modularity.inferModulePath.set(true)
     toolchain {
         languageVersion.set(JavaLanguageVersion.of(26))
     }
@@ -145,7 +147,42 @@ dependencies {
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
 
+extraJavaModuleInfo {
+    failOnMissingModuleInfo.set(false)
+    failOnAutomaticModules.set(false)
+
+    module("io.modelcontextprotocol.sdk:mcp-core", "io.modelcontextprotocol.sdk.mcp.core") {
+        overrideModuleName()
+        exportAllPackages()
+        requiresTransitive("com.fasterxml.jackson.annotation")
+        requiresStatic("jakarta.servlet")
+        requiresTransitive("java.net.http")
+        requiresTransitive("org.reactivestreams")
+        requiresTransitive("org.slf4j")
+        requiresTransitive("reactor.core")
+        uses("io.modelcontextprotocol.json.McpJsonMapperSupplier")
+        uses("io.modelcontextprotocol.json.schema.JsonSchemaValidatorSupplier")
+    }
+
+    module(
+        "io.modelcontextprotocol.sdk:mcp-json-jackson3",
+        "io.modelcontextprotocol.sdk.mcp.json.jackson3"
+    ) {
+        overrideModuleName()
+        exports("io.modelcontextprotocol.json.jackson3")
+        exports("io.modelcontextprotocol.json.schema.jackson3")
+        requires("com.networknt.schema")
+        requiresTransitive("io.modelcontextprotocol.sdk.mcp.core")
+        requires("org.slf4j")
+        requires("tools.jackson.core")
+        requiresTransitive("tools.jackson.databind")
+    }
+
+    automaticModule("net.fabricmc:tiny-remapper", "net.fabricmc.tinyremapper")
+}
+
 application {
+    mainModule.set("dev.mcdevmcp")
     mainClass.set("dev.mcdevmcp.app.Main")
     applicationDefaultJvmArgs = listOf("--enable-preview")
 }
@@ -153,7 +190,7 @@ application {
 tasks.withType<JavaCompile>().configureEach {
     options.release.set(26)
     options.encoding = "UTF-8"
-    options.compilerArgs.addAll(listOf("-Xlint:all", "-Xlint:-preview", "-Werror", "--enable-preview"))
+    options.compilerArgs.addAll(listOf("-Xlint:all", "-Xlint:-preview", "-Xlint:-requires-automatic", "-Xlint:-requires-transitive-automatic", "-Werror", "--enable-preview"))
 }
 
 sourceSets {
@@ -177,13 +214,13 @@ dependencies {
 tasks.named<JavaCompile>(sourceSets.test.get().compileJavaTaskName) {
     options.release.set(26)
     options.encoding = "UTF-8"
-    options.compilerArgs.addAll(listOf("-Xlint:all", "-Xlint:-preview", "-Werror", "--enable-preview"))
+    options.compilerArgs.addAll(listOf("-Xlint:all", "-Xlint:-preview", "-Xlint:-requires-automatic", "-Xlint:-requires-transitive-automatic", "-Werror", "--enable-preview"))
 }
 
 tasks.named<JavaCompile>(runtimeTest.compileJavaTaskName) {
     options.release.set(26)
     options.encoding = "UTF-8"
-    options.compilerArgs.addAll(listOf("-Xlint:all", "-Xlint:-preview", "-Werror", "--enable-preview"))
+    options.compilerArgs.addAll(listOf("-Xlint:all", "-Xlint:-preview", "-Xlint:-requires-automatic", "-Xlint:-requires-transitive-automatic", "-Werror", "--enable-preview"))
 }
 
 val benchmarkClasses = tasks.register("benchmarkClasses") {
