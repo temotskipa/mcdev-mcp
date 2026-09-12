@@ -6,6 +6,7 @@ notes/
 /build/
 /mcp-tool-binding/build/
 /mcp-tool-api/build/
+/storage-model/build/
 /benchmark/build/
 /conformance/build/
 node_modules

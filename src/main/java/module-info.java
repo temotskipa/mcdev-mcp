@@ -1,5 +1,6 @@
 open module dev.mcdevmcp {
     requires dev.mcdevmcp.mcp.tool.api;
+    requires dev.mcdevmcp.storage.model;
     requires io.modelcontextprotocol.sdk.mcp.core;
     requires io.modelcontextprotocol.sdk.mcp.json.jackson3;
     requires info.picocli;

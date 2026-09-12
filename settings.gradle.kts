@@ -34,5 +34,6 @@ dependencyResolutionManagement {
 rootProject.name = "mcdev-mcp"
 
 include("mcp-tool-api")
+include("storage-model")
 include("benchmark")
 include("conformance")

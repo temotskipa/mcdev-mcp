@@ -29,37 +29,7 @@ dependencies {
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
 
-extraJavaModuleInfo {
-    failOnMissingModuleInfo.set(false)
-    failOnAutomaticModules.set(false)
-
-    module("io.modelcontextprotocol.sdk:mcp-core", "io.modelcontextprotocol.sdk.mcp.core") {
-        overrideModuleName()
-        exportAllPackages()
-        requiresTransitive("com.fasterxml.jackson.annotation")
-        requiresStaticTransitive("jakarta.servlet")
-        requiresTransitive("java.net.http")
-        requiresTransitive("org.reactivestreams")
-        requiresTransitive("org.slf4j")
-        requiresTransitive("reactor.core")
-        uses("io.modelcontextprotocol.json.McpJsonMapperSupplier")
-        uses("io.modelcontextprotocol.json.schema.JsonSchemaValidatorSupplier")
-    }
-
-    module(
-        "io.modelcontextprotocol.sdk:mcp-json-jackson3",
-        "io.modelcontextprotocol.sdk.mcp.json.jackson3"
-    ) {
-        overrideModuleName()
-        exports("io.modelcontextprotocol.json.jackson3")
-        exports("io.modelcontextprotocol.json.schema.jackson3")
-        requires("com.networknt.schema")
-        requiresTransitive("io.modelcontextprotocol.sdk.mcp.core")
-        requires("org.slf4j")
-        requires("tools.jackson.core")
-        requiresTransitive("tools.jackson.databind")
-    }
-}
+apply(from = rootProject.file("gradle/mcp-sdk-modules.gradle"))
 
 val jpmsSmoke = sourceSets.create("jpmsSmoke")
 

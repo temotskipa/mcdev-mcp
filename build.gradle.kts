@@ -134,6 +134,7 @@ java {
 }
 dependencies {
     implementation(project(":mcp-tool-api"))
+    implementation(project(":storage-model"))
     implementation("io.modelcontextprotocol.sdk:mcp:2.0.1")
     implementation("info.picocli:picocli:4.7.7")
     implementation("com.h2database:h2:2.4.240")
@@ -147,37 +148,9 @@ dependencies {
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
 
+apply(from = "gradle/mcp-sdk-modules.gradle")
+
 extraJavaModuleInfo {
-    failOnMissingModuleInfo.set(false)
-    failOnAutomaticModules.set(false)
-
-    module("io.modelcontextprotocol.sdk:mcp-core", "io.modelcontextprotocol.sdk.mcp.core") {
-        overrideModuleName()
-        exportAllPackages()
-        requiresTransitive("com.fasterxml.jackson.annotation")
-        requiresStatic("jakarta.servlet")
-        requiresTransitive("java.net.http")
-        requiresTransitive("org.reactivestreams")
-        requiresTransitive("org.slf4j")
-        requiresTransitive("reactor.core")
-        uses("io.modelcontextprotocol.json.McpJsonMapperSupplier")
-        uses("io.modelcontextprotocol.json.schema.JsonSchemaValidatorSupplier")
-    }
-
-    module(
-        "io.modelcontextprotocol.sdk:mcp-json-jackson3",
-        "io.modelcontextprotocol.sdk.mcp.json.jackson3"
-    ) {
-        overrideModuleName()
-        exports("io.modelcontextprotocol.json.jackson3")
-        exports("io.modelcontextprotocol.json.schema.jackson3")
-        requires("com.networknt.schema")
-        requiresTransitive("io.modelcontextprotocol.sdk.mcp.core")
-        requires("org.slf4j")
-        requires("tools.jackson.core")
-        requiresTransitive("tools.jackson.databind")
-    }
-
     automaticModule("net.fabricmc:tiny-remapper", "net.fabricmc.tinyremapper")
 }
 

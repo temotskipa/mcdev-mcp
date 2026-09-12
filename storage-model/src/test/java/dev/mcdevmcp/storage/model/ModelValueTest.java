@@ -1,4 +1,4 @@
-package dev.mcdevmcp.storage;
+package dev.mcdevmcp.storage.model;
 
 import dev.mcdevmcp.storage.model.*;
 import org.junit.jupiter.api.Test;
