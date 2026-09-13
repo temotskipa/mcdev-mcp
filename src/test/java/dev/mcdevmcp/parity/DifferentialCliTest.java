@@ -13,6 +13,12 @@ import org.junit.jupiter.api.parallel.ResourceLock;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.UncheckedIOException;
+import java.lang.classfile.ClassFile;
+import java.lang.classfile.attribute.SourceFileAttribute;
+import java.lang.constant.ClassDesc;
+import java.lang.constant.ConstantDescs;
+import java.lang.constant.MethodTypeDesc;
+import java.lang.reflect.AccessFlag;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
@@ -653,7 +659,7 @@ final class DifferentialCliTest {
 
         private static boolean isPersistentJavaLock(Path relative) {
             int names = relative.getNameCount();
-            return names == 3 && relative.getName(0).toString().equals("index") && relative.getName(2).toString().equals("symbols.mv.db.lock") || names == 5 && relative.getName(0).toString().equals("cache") && relative.getName(2).toString().equals("indexes") && relative.getName(3).toString().equals("callgraph") && relative.getName(4).toString().equals("publication.lock");
+            return names == 3 && relative.getName(0).toString().equals("index") && relative.getName(2).toString().equals("symbols.mv.db.lock") || names == 5 && relative.getName(0).toString().equals("cache") && relative.getName(2).toString().equals("indexes") && relative.getName(3).toString().equals("callgraph") && relative.getName(4).toString().equals("publication.lock") || names == 4 && relative.getName(0).toString().equals("locks") && relative.getName(1).toString().equals("analysis") && relative.getName(3).toString().equals("operation.lock");
         }
 
         private static String portable(Path path) {
@@ -861,14 +867,16 @@ final class DifferentialCliTest {
 
         static void writeClassJar(Path path) throws IOException {
             Files.createDirectories(path.getParent());
-            String entry = DifferentialCliTest.class.getName().replace('.', '/') + ".class";
-            try (InputStream input = DifferentialCliTest.class.getClassLoader().getResourceAsStream(entry);
-                 JarOutputStream output = new JarOutputStream(Files.newOutputStream(path))) {
-                if (input == null) {
-                    throw new IOException("Missing compiled parity fixture class: " + entry);
-                }
-                output.putNextEntry(new JarEntry(entry));
-                input.transferTo(output);
+            ClassDesc type = ClassDesc.of("fixture.Example");
+            MethodTypeDesc initializer = MethodTypeDesc.of(ConstantDescs.CD_void);
+            byte[] classFile = ClassFile.of().build(type, classBuilder -> classBuilder.withFlags(AccessFlag.PUBLIC, AccessFlag.FINAL, AccessFlag.SUPER).with(SourceFileAttribute.of("Example.java")).withMethodBody("<init>", initializer, ClassFile.ACC_PUBLIC, code -> {
+                code.aload(0);
+                code.invokespecial(ConstantDescs.CD_Object, "<init>", initializer);
+                code.return_();
+            }));
+            try (JarOutputStream output = new JarOutputStream(Files.newOutputStream(path))) {
+                output.putNextEntry(new JarEntry("fixture/Example.class"));
+                output.write(classFile);
                 output.closeEntry();
             }
         }

@@ -302,7 +302,7 @@ public final class AnalysisPipeline implements AnalysisOperations {
             Path source = boundary.require(paths.sourceRoot(version));
             SourceTreeInventory sourceInventory = SourceTreeInventory.capture(source, boundary, cancellation);
             if (!sourceInventory.present()) {
-                throw new IllegalStateException("No prepared Java source cache for " + version.value() + "; run init first");
+                throw new IllegalStateException("Minecraft %s not decompiled. Run 'init -v %s' first.".formatted(version.value(), version.value()));
             }
             Path remapped = cachedRemappedJar(paths, boundary, version, cancellation);
             SourceValidation validation = sourceValidator.validate(source, remapped, cancellation);
@@ -368,7 +368,7 @@ public final class AnalysisPipeline implements AnalysisOperations {
         Path source = boundary.require(paths.sourceRoot(version));
         SourceTreeInventory.capture(source, boundary, cancellation);
         if (javaSourceCacheMissing(source, cancellation)) {
-            throw new IllegalStateException("No prepared Java source cache for " + version.value() + "; run init first");
+            throw new IllegalStateException("Minecraft %s not decompiled. Run 'init -v %s' first.".formatted(version.value(), version.value()));
         }
     }
 

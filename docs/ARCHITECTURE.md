@@ -56,15 +56,16 @@ compile and run with `--add-exports` for the indexer, storage, MCP, and
 support packages they consume.
 
 `mcp-tool-api` is an explicit JPMS module named
-`dev.mcdevmcp.mcp.tool.api`. Its public descriptor exports whole-value JSON and
-argument decoders, explicit Java JSON type tokens, protocol content values,
-ordinary results, and generic `StructuredToolResult<T>` values. A `TypedJson<T>`
-keeps raw JSON beside the `Class<T>` or `TypeRef<T>` it is meant to become.
-Structured payloads remain Java records or objects until `McpSdkAdapter` places
-only their value in MCP `structuredContent`; Java class names never enter wire
-JSON. Execution, cancellation, catalogs, transport, and Minecraft policy stay
-in the root application. The module requires the official MCP core API
-transitively. The reviewed MCP SDK
+`dev.mcdevmcp.mcp.tool.api`. Its public descriptor exports generated JSON object
+schemas, `ToolInput<A>` decode tokens, the logical JSON type registry, generic
+`ToolBinding`/`ToolHandlers` execution, SDK `McpSchema.Content` results, and
+`StructuredToolResult<T>` values. Java type metadata stays server-side; JSON
+Schema describes semantic shape only. Catalogs, availability, transport, and
+Minecraft-domain values stay in the root application. `tools.json` retains names
+and descriptions; generated `ToolInput` schemas are the sole advertised input
+schema. Structured payloads remain Java records or objects until
+`McpSdkAdapter` places only their value in MCP `structuredContent`. The module
+requires the official MCP core API transitively. The reviewed MCP SDK
 snapshot publishes invalid automatic module names, so this subproject uses a
 build-scoped Gradle artifact transform to supply complete descriptors for
 `mcp-core` and the test-only Jackson 3 provider. A named-module smoke test
@@ -124,7 +125,7 @@ contains no server command or Node runtime selector.
 
 MCPB is the sole packaging exception. `packaging/mcpb/` owns a minimal
 `bootstrap.cjs`, package metadata, and its packaging dependency. The launcher
-requires Java 26 and starts the bundled JAR without preview features. All npm commands
+requires Java 26 and starts the bundled JAR with `--enable-preview`. All npm commands
 in `scripts/build-mcpb.ps1` run with that directory as their working directory;
 nothing there is part of direct JAR execution.
 

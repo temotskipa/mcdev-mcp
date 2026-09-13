@@ -19,6 +19,13 @@ DebugBridge JSON while schema-invalid compatibility cases become boundary reject
 **Runtime type audit:**
 `.superpowers/sdd/2026-09-01-typed-mcp-tool-api/minecraft-runtime-argument-audit.md`
 
+> **Status (2026-09-13):** Tasks 1–8 source slices are implemented on
+> `codex/java26-indexer-callgraph` (Java 26 + `--enable-preview`). Java records
+> are the input-schema authority; `tools.json` keeps names and descriptions.
+> Remaining outside this plan: complete corpus qualification / reviewed
+> expectations, and a final whole-branch review of the PR. The optional
+> `debugbridge-protocol` extraction is not a prerequisite.
+
 ## Global Constraints
 
 - Use `McpJsonMapper` as the sole JSON implementation; do not use direct `ObjectMapper`, `JsonNode`, Gson, or another
@@ -92,11 +99,11 @@ DebugBridge JSON while schema-invalid compatibility cases become boundary reject
   ordinary constructor consumes `ToolInput<A>`.
 - Keeps `ArgumentDecoder<A>` only as an explicitly named compatibility factory until all tools migrate.
 
-- [ ] Write failing library tests for direct typed invocation and blocking cancellation.
-- [ ] Move the generic contracts without importing any root package.
-- [ ] Adapt root catalogs and transports without changing their public MCP behavior.
-- [ ] Run IntelliJ reformat/diagnostics, `:mcp-tool-api:check`, root focused binding/adapter tests, and Java 26 repeats.
-- [ ] Commit with message `refactor(api): extract typed tool binding execution`.
+- [x] Write failing library tests for direct typed invocation and blocking cancellation.
+- [x] Move the generic contracts without importing any root package.
+- [x] Adapt root catalogs and transports without changing their public MCP behavior.
+- [x] Run IntelliJ reformat/diagnostics, `:mcp-tool-api:check`, root focused binding/adapter tests, and Java 26 repeats.
+- [x] Commit with message `refactor(api): extract typed tool binding execution`.
 
 ### Task 3: Add The Catalog Schema Drift Gate
 
@@ -112,11 +119,11 @@ DebugBridge JSON while schema-invalid compatibility cases become boundary reject
 - Consumes: `ToolBinding.input()` and `ToolInput.schema()`.
 - Produces: catalog construction that fails when checked-in metadata schema differs from the generated typed schema.
 
-- [ ] Write a failing catalog test with a mismatched property type and required list.
-- [ ] Make the binding's generated schema authoritative in `ToolDefinition` while comparing it to `tools.json` during
+- [x] Write a failing catalog test with a mismatched property type and required list.
+- [x] Make the binding's generated schema authoritative in `ToolDefinition` while comparing it to `tools.json` during
   transition.
-- [ ] Run catalog, adapter, tools/list, manifest, IntelliJ, and Java 26 tests.
-- [ ] Commit with message `feat(mcp): enforce typed schema drift checks`.
+- [x] Run catalog, adapter, tools/list, manifest, IntelliJ, and Java 26 tests.
+- [x] Commit with message `feat(mcp): enforce typed schema drift checks`.
 
 ### Task 4: Migrate Simple Runtime Tool Inputs
 
@@ -133,14 +140,14 @@ DebugBridge JSON while schema-invalid compatibility cases become boundary reject
 - Preserves DebugBridge endpoint and payload shape plus semantic values; canonical scalar spellings are permitted when
   they preserve provider behavior.
 
-- [ ] Replace invalid-wire compatibility assertions with schema rejection tests while retaining valid request/result
+- [x] Replace invalid-wire compatibility assertions with schema rejection tests while retaining valid request/result
   fixtures.
-- [ ] Replace `BigDecimal` expectations for IDs, coordinates, slots, counts, limits, radii, and media parameters with
+- [x] Replace `BigDecimal` expectations for IDs, coordinates, slots, counts, limits, radii, and media parameters with
   source-backed integer/double/domain expectations before migrating more handlers.
-- [ ] Add bridge fixture assertions for every migrated payload.
-- [ ] Migrate one tool family at a time, running its focused tests and IntelliJ reformat after each edit batch.
-- [ ] Run all runtime contract, bridge, MCP STDIO, Java 26, and differential valid-request parity tests.
-- [ ] Commit with message `refactor(runtime): deserialize typed tool inputs directly`.
+- [x] Add bridge fixture assertions for every migrated payload.
+- [x] Migrate one tool family at a time, running its focused tests and IntelliJ reformat after each edit batch.
+- [x] Run all runtime contract, bridge, MCP STDIO, Java 26, and differential valid-request parity tests.
+- [x] Commit with message `refactor(runtime): deserialize typed tool inputs directly`.
 
 ### Task 5: Migrate Defaulted Runtime Inputs
 
@@ -157,10 +164,10 @@ DebugBridge JSON while schema-invalid compatibility cases become boundary reject
 - Uses `MinecraftServerAddress`, exact integer limits, and primitives except for fields whose omitted value differs from
   explicit false/zero.
 
-- [ ] Add failing tests separating missing, explicit null, wrong type, lower/upper bounds, and defaults.
-- [ ] Implement direct typed records and unchanged bridge serialization.
-- [ ] Run focused, runtime, STDIO, IntelliJ, Java 26, and parity gates.
-- [ ] Commit with message `refactor(runtime): type defaulted MCP inputs`.
+- [x] Add failing tests separating missing, explicit null, wrong type, lower/upper bounds, and defaults.
+- [x] Implement direct typed records and unchanged bridge serialization.
+- [x] Run focused, runtime, STDIO, IntelliJ, Java 26, and parity gates.
+- [x] Commit with message `refactor(runtime): type defaulted MCP inputs`.
 
 ### Task 6: Migrate Static Tool Inputs And Domain Values
 
@@ -175,10 +182,10 @@ DebugBridge JSON while schema-invalid compatibility cases become boundary reject
 - Uses nullable `MinecraftVersion`, direct enums, integer limits, and required strings.
 - Preserves all valid static outputs and complete `mc_find_refs` caller/callee behavior.
 
-- [ ] Add scalar `MinecraftVersion` mapper tests and typed enum/limit schema tests.
-- [ ] Migrate each static tool with valid-result parity and schema-rejection coverage.
-- [ ] Run static contracts, full differential parity, index/callgraph suites, IntelliJ, and Java 26.
-- [ ] Commit with message `refactor(static): deserialize typed tool inputs directly`.
+- [x] Add scalar `MinecraftVersion` mapper tests and typed enum/limit schema tests.
+- [x] Migrate each static tool with valid-result parity and schema-rejection coverage.
+- [x] Run static contracts, full differential parity, index/callgraph suites, IntelliJ, and Java 26.
+- [x] Commit with message `refactor(static): deserialize typed tool inputs directly`.
 
 ### Task 7: Replace The Record-Video Union
 
@@ -193,10 +200,10 @@ DebugBridge JSON while schema-invalid compatibility cases become boundary reject
   variant contains `Duration intervalSeconds` and accepts numeric seconds at least `0.001`.
 - Serializes the same DebugBridge interval value expected by the mod.
 
-- [ ] Write failing schema and decode tests for both variants and unknown discriminators.
-- [ ] Implement semantic polymorphism without class-name metadata.
-- [ ] Run record-video, bridge, MCP, IntelliJ, Java 26, and parity gates.
-- [ ] Commit with message `refactor(runtime): type record video intervals`.
+- [x] Write failing schema and decode tests for both variants and unknown discriminators.
+- [x] Implement semantic polymorphism without class-name metadata.
+- [x] Run record-video, bridge, MCP, IntelliJ, Java 26, and parity gates.
+- [x] Commit with message `refactor(runtime): type record video intervals`.
 
 ### Task 8: Remove Transitional Schema, Decoder, Payload, And Content Scaffolding
 
@@ -220,13 +227,13 @@ DebugBridge JSON while schema-invalid compatibility cases become boundary reject
 - `ToolResult` carries SDK content values directly; image data remains protocol-required base64 plus MIME type.
 - `tools.json` retains names and long descriptions only unless those also move into typed definitions during review.
 
-- [ ] Add a whole-catalog test proving every enabled tool has a generated schema and direct typed binding.
-- [ ] Add a source-layout test rejecting production `*WireArguments`, raw `Object` argument components, and
+- [x] Add a whole-catalog test proving every enabled tool has a generated schema and direct typed binding.
+- [x] Add a source-layout test rejecting production `*WireArguments`, raw `Object` argument components, and
   `ArgumentDecoder.map` calls.
-- [ ] Add source-layout and payload tests rejecting runtime `BigDecimal`/`BigInteger` inputs and raw request-map
+- [x] Add source-layout and payload tests rejecting runtime `BigDecimal`/`BigInteger` inputs and raw request-map
   assembly.
-- [ ] Remove transitional metadata and compatibility types.
-- [ ] Run independent module builds, JPMS smoke, full Java 26 checks, differential parity, conformance, MCPB,
+- [x] Remove transitional metadata and compatibility types.
+- [x] Run independent module builds, JPMS smoke, full Java 26 checks, differential parity, conformance, MCPB,
   exact-JAR runtime, release verifier, IntelliJ whole-project build/inspection, and cutover checks.
-- [ ] Commit with message `refactor(api): make Java tool inputs authoritative`.
+- [x] Commit with message `refactor(api): make Java tool inputs authoritative`.
 - [ ] Dispatch an independent whole-branch review and address every Critical or Important finding before push.

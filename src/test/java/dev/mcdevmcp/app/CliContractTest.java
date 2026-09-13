@@ -164,6 +164,17 @@ final class CliContractTest {
     }
 
     @Test
+    void rebuildWithoutASourceDirectoryMatchesThePinnedNodeWording() {
+        PlatformPaths paths = new PlatformPaths(temporaryDirectory.resolve("missing-rebuild"));
+        Path source = paths.sourceRoot(new MinecraftVersion("1.21.11"));
+        CliResult result = execute(new RecordingOperations(temporaryDirectory), paths, "rebuild", "-v", "1.21.11");
+
+        assertEquals(1, result.exitCode());
+        assertEquals("", result.stdout());
+        assertEquals(lines("Source directory not found: " + source.toAbsolutePath().normalize(), "Run `init` first to download and decompile sources."), result.stderr());
+    }
+
+    @Test
     void rootHelpIgnoresTrailingArgumentsAndUnknownHelpUsesRootUsageOnStderr() {
         RecordingOperations operations = new RecordingOperations(temporaryDirectory);
         CliResult rootHelp = execute(operations, "--help");

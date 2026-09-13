@@ -1,5 +1,12 @@
 # Pure Java MCP Server Implementation Plan
 
+> **Status (2026-09-13):** The rewrite shipped on `codex/java26-indexer-callgraph` as
+> Java 26 with `--enable-preview`, not the original Java 25 dual-runtime. Tasks 1–16
+> are implemented in that later form. Remaining: complete 1.21.11 / 26.1 corpus
+> qualification and reviewed expectations; CachyOS self-hosted benchmark (deferred).
+> npm deprecation, merge to master, and a GitHub Release are out of this repository's
+> workflow. Historical checkboxes below were not backfilled.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Replace mcdev-mcp's TypeScript/Node server and Java worker processes with one Java 25 shaded executable JAR while preserving the complete MCP, CLI, static-analysis, DebugBridge, packaging, and release behavior.

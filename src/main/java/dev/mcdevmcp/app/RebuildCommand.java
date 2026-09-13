@@ -8,6 +8,9 @@ import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
 import picocli.CommandLine.Spec;
 
+import java.nio.file.Files;
+import java.nio.file.LinkOption;
+import java.nio.file.Path;
 import java.util.Objects;
 import java.util.concurrent.Callable;
 
@@ -15,6 +18,7 @@ import java.util.concurrent.Callable;
 @SuppressWarnings("unused")
 public final class RebuildCommand implements Callable<Integer> {
     private final AnalysisOperations operations;
+    private final PlatformPaths paths;
 
     @Option(names = {"-v", "--version"}, required = true, description = "Minecraft version")
     private String version;
@@ -27,12 +31,18 @@ public final class RebuildCommand implements Callable<Integer> {
 
     public RebuildCommand(AnalysisOperations operations, PlatformPaths paths) {
         this.operations = Objects.requireNonNull(operations, "operations");
-        Objects.requireNonNull(paths, "paths");
+        this.paths = Objects.requireNonNull(paths, "paths");
     }
 
     @Override
     public Integer call() {
         MinecraftVersion minecraft = new MinecraftVersion(MinecraftVersionValidator.requireSupported(version));
+        Path source = paths.sourceRoot(minecraft);
+        if (!Files.isDirectory(source, LinkOption.NOFOLLOW_LINKS)) {
+            spec.commandLine().getErr().println("Source directory not found: " + source.toAbsolutePath().normalize());
+            spec.commandLine().getErr().println("Run `init` first to download and decompile sources.");
+            return 1;
+        }
         spec.commandLine().getOut().printf("Rebuilding index for Minecraft %s...%n", minecraft.value());
         var progress = CliProgressSink.forWriter(spec.commandLine().getOut());
         var index = operations.rebuildIndex(minecraft, progress, Cancellation.none());
