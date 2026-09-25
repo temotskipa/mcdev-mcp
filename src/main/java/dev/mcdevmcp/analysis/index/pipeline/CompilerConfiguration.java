@@ -8,6 +8,7 @@ import javax.tools.ToolProvider;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.Locale;
 
 final class CompilerConfiguration {
     private CompilerConfiguration() {
@@ -22,7 +23,7 @@ final class CompilerConfiguration {
     }
 
     static StandardJavaFileManager fileManager(JavaCompiler compiler) throws IOException {
-        return compiler.getStandardFileManager(null, java.util.Locale.ROOT, StandardCharsets.UTF_8);
+        return compiler.getStandardFileManager(null, Locale.ROOT, StandardCharsets.UTF_8);
     }
 
     static List<String> options() {

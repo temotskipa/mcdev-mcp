@@ -22,6 +22,7 @@ import java.nio.file.Path;
 import java.sql.DriverManager;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
@@ -30,10 +31,6 @@ import java.util.concurrent.Executors;
 import static org.junit.jupiter.api.Assertions.*;
 
 class McFindRefsContractTest {
-    private static String contentText(ToolResult<?> result) {
-        return assertInstanceOf(McpSchema.TextContent.class, result.content().getFirst()).text();
-    }
-
     private static final MinecraftVersion PRIMARY = new MinecraftVersion("1.21.5");
     private static final MinecraftVersion SECONDARY = new MinecraftVersion("1.21.6");
     private static final MinecraftVersion NO_GRAPH = new MinecraftVersion("1.21.nocg");
@@ -42,8 +39,12 @@ class McFindRefsContractTest {
     @TempDir
     Path temporaryDirectory;
 
+    private static String contentText(ToolResult<?> result) {
+        return assertInstanceOf(McpSchema.TextContent.class, result.content().getFirst()).text();
+    }
+
     private static Map<String, Object> withLimit(Map<String, Object> base, Number limit) {
-        var copy = new java.util.HashMap<>(base);
+        var copy = new HashMap<>(base);
         copy.put("limit", limit);
         return Map.copyOf(copy);
     }

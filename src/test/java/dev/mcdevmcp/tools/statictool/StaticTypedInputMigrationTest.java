@@ -1,48 +1,115 @@
 package dev.mcdevmcp.tools.statictool;
 
-import dev.mcdevmcp.mcp.tool.CountingMcpJsonMapper;
 import dev.mcdevmcp.mcp.tool.CompleteToolBindings;
+import dev.mcdevmcp.mcp.tool.CountingMcpJsonMapper;
 import dev.mcdevmcp.mcp.tool.ToolCatalog;
-import dev.mcdevmcp.mcp.tool.api.ToolBinding;
-import dev.mcdevmcp.mcp.tool.api.ToolInput;
-import dev.mcdevmcp.mcp.tool.api.ToolResult;
-import dev.mcdevmcp.support.AppEnvironment;
-import dev.mcdevmcp.support.Cancellation;
+import dev.mcdevmcp.mcp.tool.api.*;
 import dev.mcdevmcp.storage.PlatformPaths;
 import dev.mcdevmcp.storage.model.MinecraftVersion;
 import dev.mcdevmcp.storage.model.SourceNamespace;
+import dev.mcdevmcp.support.AppEnvironment;
+import dev.mcdevmcp.support.Cancellation;
 import io.modelcontextprotocol.json.McpJsonDefaults;
+import io.modelcontextprotocol.json.TypeRef;
 import io.modelcontextprotocol.spec.McpSchema;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
-import java.math.BigDecimal;
+import java.io.IOException;
 import java.lang.reflect.Modifier;
+import java.math.BigDecimal;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertInstanceOf;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.*;
 
 class StaticTypedInputMigrationTest {
-    private static String contentText(ToolResult<?> result) {
-        return assertInstanceOf(McpSchema.TextContent.class, result.content().getFirst()).text();
-    }
-
     private static final List<Expectation> EXPECTATIONS = List.of(expectation("mc_version", VersionArguments.class, "McVersionTool", Map.of("action", "string", "version", "string"), List.of("action"), Map.of("action", "list")), expectation("mc_search", SearchArguments.class, "McSearchTool", Map.of("query", "string", "type", "string", "limit", "integer", "version", "string"), List.of("query"), Map.of("query", "needle")), expectation("mc_get_class", GetClassArguments.class, "McGetClassTool", Map.of("className", "string", "view", "string", "version", "string"), List.of("className"), Map.of("className", "alpha.Alpha")), expectation("mc_get_method", GetMethodArguments.class, "McGetMethodTool", Map.of("className", "string", "methodName", "string", "version", "string"), List.of("className", "methodName"), Map.of("className", "alpha.Alpha", "methodName", "needle")), expectation("mc_list_classes", ListClassesArguments.class, "McListClassesTool", Map.of("packagePath", "string", "limit", "integer", "version", "string"), List.of("packagePath"), Map.of("packagePath", "alpha")), expectation("mc_list_packages", ListPackagesArguments.class, "McListPackagesTool", Map.of("namespace", "string", "limit", "integer", "version", "string"), List.of(), Map.of()), expectation("mc_find_hierarchy", FindHierarchyArguments.class, "McFindHierarchyTool", Map.of("className", "string", "direction", "string", "limit", "integer", "version", "string"), List.of("className", "direction"), Map.of("className", "alpha.Alpha", "direction", "subclasses")), expectation("mc_find_refs", FindRefsArguments.class, "McFindRefsTool", Map.of("className", "string", "methodName", "string", "direction", "string", "limit", "integer", "version", "string"), List.of("className", "methodName", "direction"), Map.of("className", "alpha.Alpha", "methodName", "needle", "direction", "callers")));
     private static final Map<Class<?>, Map<String, Class<?>>> EXPECTED_COMPONENT_TYPES = Map.of(VersionArguments.class, Map.of("action", VersionAction.class, "version", MinecraftVersion.class), SearchArguments.class, Map.of("query", String.class, "type", SearchType.class, "limit", Integer.class, "version", MinecraftVersion.class), GetClassArguments.class, Map.of("className", String.class, "view", ClassView.class, "version", MinecraftVersion.class), GetMethodArguments.class, Map.of("className", String.class, "methodName", String.class, "version", MinecraftVersion.class), ListClassesArguments.class, Map.of("packageName", String.class, "limit", Integer.class, "version", MinecraftVersion.class), ListPackagesArguments.class, Map.of("namespace", SourceNamespace.class, "limit", Integer.class, "version", MinecraftVersion.class), FindHierarchyArguments.class, Map.of("className", String.class, "direction", HierarchyDirection.class, "limit", Integer.class, "version", MinecraftVersion.class), FindRefsArguments.class, Map.of("className", String.class, "methodName", String.class, "direction", ReferenceDirection.class, "limit", Integer.class, "version", MinecraftVersion.class));
     private static final List<String> LEGACY_TYPES = List.of("TextArgument.java", "ArgumentShape.java", "LimitInput.java", "SourceNamespaceArgument.java", "VersionWireArguments.java", "SearchWireArguments.java", "GetClassWireArguments.java", "GetMethodWireArguments.java", "ListClassesWireArguments.java", "ListPackagesWireArguments.java", "FindHierarchyWireArguments.java", "FindRefsWireArguments.java");
     @TempDir
     Path temporaryDirectory;
+
+    private static String contentText(ToolResult<?> result) {
+        return assertInstanceOf(McpSchema.TextContent.class, result.content().getFirst()).text();
+    }
+
+    @SuppressWarnings("unchecked")
+    private static <A> ToolInput<A> typed(String name, Class<A> type) {
+        ToolBinding<?> binding = StaticToolModule.handlers(new PlatformPaths(Path.of("build", "static-typed-input-test"))).get(name);
+        assertNotNull(binding);
+        ToolInput<?> input = binding.input();
+        assertEquals(type, input.type().rawClass());
+        return (ToolInput<A>) input;
+    }
+
+    private static Expectation expectation(String name, Class<?> argumentType, String toolClassName, Map<String, String> propertyTypes, List<String> requiredProperties, Map<String, Object> arguments) {
+        return new Expectation(name, argumentType, toolClassName, propertyTypes, requiredProperties, arguments);
+    }
+
+    private static Map<String, Class<?>> componentTypes(Class<?> argumentType) {
+        Map<String, Class<?>> componentTypes = new LinkedHashMap<>();
+        for (var component : argumentType.getRecordComponents()) {
+            componentTypes.put(component.getName(), component.getType());
+        }
+        return componentTypes;
+    }
+
+    private static void assertSchema(ToolInput<?> input, Expectation expectation) {
+        Map<String, Object> schema = input.schema().value();
+        assertEquals("object", schema.get("type"), expectation.name());
+        assertEquals(false, schema.get("additionalProperties"), expectation.name() + " must be closed");
+        Map<?, ?> properties = assertInstanceOf(Map.class, schema.get("properties"), expectation.name());
+        assertEquals(expectation.propertyTypes().keySet(), properties.keySet(), expectation.name() + " property names");
+        expectation.propertyTypes().forEach((name, type) -> assertEquals(type, assertInstanceOf(Map.class, properties.get(name)).get("type"), expectation.name() + '.' + name));
+        switch (expectation.name()) {
+            case "mc_version" ->
+                    assertEquals(List.of("set", "list"), assertInstanceOf(Map.class, properties.get("action")).get("enum"));
+            case "mc_search" -> {
+                assertEquals(List.of("class", "method", "field"), assertInstanceOf(Map.class, properties.get("type")).get("enum"));
+                assertEquals(BigDecimal.ONE, assertInstanceOf(Map.class, properties.get("limit")).get("minimum"));
+            }
+            case "mc_get_class" ->
+                    assertEquals(List.of("summary", "methods", "fields", "full"), assertInstanceOf(Map.class, properties.get("view")).get("enum"));
+            case "mc_find_refs" -> {
+                assertEquals(List.of("callers", "callees"), assertInstanceOf(Map.class, properties.get("direction")).get("enum"));
+                assertEquals(BigDecimal.ONE, assertInstanceOf(Map.class, properties.get("limit")).get("minimum"));
+            }
+            case "mc_list_packages" -> {
+                assertEquals(List.of("minecraft", "fabric"), assertInstanceOf(Map.class, properties.get("namespace")).get("enum"));
+                assertEquals(BigDecimal.ONE, assertInstanceOf(Map.class, properties.get("limit")).get("minimum"));
+            }
+            case "mc_list_classes", "mc_find_hierarchy" ->
+                    assertEquals(BigDecimal.ONE, assertInstanceOf(Map.class, properties.get("limit")).get("minimum"));
+            case "mc_get_method" -> {
+            }
+            default -> throw new AssertionError(expectation.name());
+        }
+        if (expectation.requiredProperties().isEmpty()) {
+            assertFalse(schema.containsKey("required"), expectation.name() + " required properties");
+        }
+        else {
+            assertEquals(expectation.requiredProperties(), schema.get("required"), expectation.name() + " required properties");
+        }
+    }
+
+    private static Path sourcePath(String fileName) {
+        return Path.of("src", "main", "java", "dev", "mcdevmcp", "tools", "statictool", fileName);
+    }
+
+    private static String source(String fileName) {
+        try {
+            return Files.readString(sourcePath(fileName));
+        } catch (IOException exception) {
+            throw new AssertionError(exception);
+        }
+    }
 
     @Test
     void exposesDirectTypedInputsAndGeneratedSchemasForEveryStaticTool() {
@@ -139,43 +206,43 @@ class StaticTypedInputMigrationTest {
     void decodesRealJsonIntegerFormsOnceAndDispatchesOnlyRepresentableValues() throws Exception {
         ToolInput<SearchArguments> input = typed("mc_search", SearchArguments.class);
         for (String json : List.of("{\"query\":\"needle\",\"limit\":3.0}", "{\"query\":\"needle\",\"limit\":1e3}", "{\"query\":\"needle\",\"limit\":2147483647}")) {
-            Map<String, Object> arguments = McpJsonDefaults.getMapper().readValue(json, new io.modelcontextprotocol.json.TypeRef<>() {
+            Map<String, Object> arguments = McpJsonDefaults.getMapper().readValue(json, new TypeRef<>() {
             });
             var mapper = new CountingMcpJsonMapper(McpJsonDefaults.getMapper());
-            var dispatched = new java.util.concurrent.atomic.AtomicReference<SearchArguments>();
+            var dispatched = new AtomicReference<SearchArguments>();
             ToolBinding<SearchArguments> binding = ToolBinding.content(input, (decoded, _) -> {
                 dispatched.set(decoded);
-                return dev.mcdevmcp.mcp.tool.api.ToolHandlers.completed(ToolResult.text("ok"));
+                return ToolHandlers.completed(ToolResult.text("ok"));
             });
 
-            binding.invoke(mapper, arguments, dev.mcdevmcp.mcp.tool.api.ToolCancellation.none()).toCompletableFuture().join();
+            binding.invoke(mapper, arguments, ToolCancellation.none()).toCompletableFuture().join();
 
             assertNotNull(dispatched.get(), json);
             assertEquals(json.contains("1e3") ? 1000 : json.contains("2147483647") ? Integer.MAX_VALUE : 3, dispatched.get().limit(), json);
             assertEquals(1, mapper.convertValueCalls(), json);
         }
 
-        Map<String, Object> positiveOverflow = McpJsonDefaults.getMapper().readValue("{\"query\":\"needle\",\"limit\":2147483648}", new io.modelcontextprotocol.json.TypeRef<>() {
+        Map<String, Object> positiveOverflow = McpJsonDefaults.getMapper().readValue("{\"query\":\"needle\",\"limit\":2147483648}", new TypeRef<>() {
         });
         var overflowMapper = new CountingMcpJsonMapper(McpJsonDefaults.getMapper());
-        var overflowDispatches = new java.util.concurrent.atomic.AtomicInteger();
+        var overflowDispatches = new AtomicInteger();
         ToolBinding<SearchArguments> overflowBinding = ToolBinding.content(input, (_, _) -> {
             overflowDispatches.incrementAndGet();
-            return dev.mcdevmcp.mcp.tool.api.ToolHandlers.completed(ToolResult.text("unexpected"));
+            return ToolHandlers.completed(ToolResult.text("unexpected"));
         });
-        assertThrows(IllegalArgumentException.class, () -> overflowBinding.invoke(overflowMapper, positiveOverflow, dev.mcdevmcp.mcp.tool.api.ToolCancellation.none()));
+        assertThrows(IllegalArgumentException.class, () -> overflowBinding.invoke(overflowMapper, positiveOverflow, ToolCancellation.none()));
         assertEquals(1, overflowMapper.convertValueCalls());
         assertEquals(0, overflowDispatches.get());
 
-        Map<String, Object> belowMinimum = McpJsonDefaults.getMapper().readValue("{\"query\":\"needle\",\"limit\":-2147483649}", new io.modelcontextprotocol.json.TypeRef<>() {
+        Map<String, Object> belowMinimum = McpJsonDefaults.getMapper().readValue("{\"query\":\"needle\",\"limit\":-2147483649}", new TypeRef<>() {
         });
         var belowMapper = new CountingMcpJsonMapper(McpJsonDefaults.getMapper());
-        var belowDispatches = new java.util.concurrent.atomic.AtomicInteger();
+        var belowDispatches = new AtomicInteger();
         ToolBinding<SearchArguments> belowBinding = ToolBinding.content(input, (_, _) -> {
             belowDispatches.incrementAndGet();
-            return dev.mcdevmcp.mcp.tool.api.ToolHandlers.completed(ToolResult.text("unexpected"));
+            return ToolHandlers.completed(ToolResult.text("unexpected"));
         });
-        assertThrows(IllegalArgumentException.class, () -> belowBinding.invoke(belowMapper, belowMinimum, dev.mcdevmcp.mcp.tool.api.ToolCancellation.none()));
+        assertThrows(IllegalArgumentException.class, () -> belowBinding.invoke(belowMapper, belowMinimum, ToolCancellation.none()));
         assertEquals(0, belowMapper.convertValueCalls());
         assertEquals(0, belowDispatches.get());
     }
@@ -187,12 +254,12 @@ class StaticTypedInputMigrationTest {
             Map<String, Object> arguments = new LinkedHashMap<>(Map.of("query", "needle"));
             arguments.put("limit", value);
             var mapper = new CountingMcpJsonMapper(McpJsonDefaults.getMapper());
-            var dispatches = new java.util.concurrent.atomic.AtomicInteger();
+            var dispatches = new AtomicInteger();
             ToolBinding<SearchArguments> binding = ToolBinding.content(input, (_, _) -> {
                 dispatches.incrementAndGet();
-                return dev.mcdevmcp.mcp.tool.api.ToolHandlers.completed(ToolResult.text("unexpected"));
+                return ToolHandlers.completed(ToolResult.text("unexpected"));
             });
-            assertThrows(IllegalArgumentException.class, () -> binding.invoke(mapper, arguments, dev.mcdevmcp.mcp.tool.api.ToolCancellation.none()), String.valueOf(value));
+            assertThrows(IllegalArgumentException.class, () -> binding.invoke(mapper, arguments, ToolCancellation.none()), String.valueOf(value));
             assertEquals(0, mapper.convertValueCalls(), String.valueOf(value));
             assertEquals(0, dispatches.get(), String.valueOf(value));
         }
@@ -255,77 +322,6 @@ class StaticTypedInputMigrationTest {
         ToolInput<GetMethodArguments> input = typed("mc_get_method", GetMethodArguments.class);
         assertThrows(IllegalArgumentException.class, () -> input.decode(McpJsonDefaults.getMapper(), Map.of("className", "alpha.Alpha")));
         assertThrows(IllegalArgumentException.class, () -> input.decode(McpJsonDefaults.getMapper(), Map.of("methodName", "needle")));
-    }
-
-    @SuppressWarnings("unchecked")
-    private static <A> ToolInput<A> typed(String name, Class<A> type) {
-        ToolBinding<?> binding = StaticToolModule.handlers(new PlatformPaths(Path.of("build", "static-typed-input-test"))).get(name);
-        assertNotNull(binding);
-        ToolInput<?> input = binding.input();
-        assertEquals(type, input.type().rawClass());
-        return (ToolInput<A>) input;
-    }
-
-    private static Expectation expectation(String name, Class<?> argumentType, String toolClassName, Map<String, String> propertyTypes, List<String> requiredProperties, Map<String, Object> arguments) {
-        return new Expectation(name, argumentType, toolClassName, propertyTypes, requiredProperties, arguments);
-    }
-
-    private static Map<String, Class<?>> componentTypes(Class<?> argumentType) {
-        Map<String, Class<?>> componentTypes = new LinkedHashMap<>();
-        for (var component : argumentType.getRecordComponents()) {
-            componentTypes.put(component.getName(), component.getType());
-        }
-        return componentTypes;
-    }
-
-    private static void assertSchema(ToolInput<?> input, Expectation expectation) {
-        Map<String, Object> schema = input.schema().value();
-        assertEquals("object", schema.get("type"), expectation.name());
-        assertEquals(false, schema.get("additionalProperties"), expectation.name() + " must be closed");
-        Map<?, ?> properties = assertInstanceOf(Map.class, schema.get("properties"), expectation.name());
-        assertEquals(expectation.propertyTypes().keySet(), properties.keySet(), expectation.name() + " property names");
-        expectation.propertyTypes().forEach((name, type) -> assertEquals(type, assertInstanceOf(Map.class, properties.get(name)).get("type"), expectation.name() + '.' + name));
-        switch (expectation.name()) {
-            case "mc_version" ->
-                    assertEquals(List.of("set", "list"), assertInstanceOf(Map.class, properties.get("action")).get("enum"));
-            case "mc_search" -> {
-                assertEquals(List.of("class", "method", "field"), assertInstanceOf(Map.class, properties.get("type")).get("enum"));
-                assertEquals(BigDecimal.ONE, assertInstanceOf(Map.class, properties.get("limit")).get("minimum"));
-            }
-            case "mc_get_class" ->
-                    assertEquals(List.of("summary", "methods", "fields", "full"), assertInstanceOf(Map.class, properties.get("view")).get("enum"));
-            case "mc_find_refs" -> {
-                assertEquals(List.of("callers", "callees"), assertInstanceOf(Map.class, properties.get("direction")).get("enum"));
-                assertEquals(BigDecimal.ONE, assertInstanceOf(Map.class, properties.get("limit")).get("minimum"));
-            }
-            case "mc_list_packages" -> {
-                assertEquals(List.of("minecraft", "fabric"), assertInstanceOf(Map.class, properties.get("namespace")).get("enum"));
-                assertEquals(BigDecimal.ONE, assertInstanceOf(Map.class, properties.get("limit")).get("minimum"));
-            }
-            case "mc_list_classes", "mc_find_hierarchy" ->
-                    assertEquals(BigDecimal.ONE, assertInstanceOf(Map.class, properties.get("limit")).get("minimum"));
-            case "mc_get_method" -> {
-            }
-            default -> throw new AssertionError(expectation.name());
-        }
-        if (expectation.requiredProperties().isEmpty()) {
-            assertFalse(schema.containsKey("required"), expectation.name() + " required properties");
-        }
-        else {
-            assertEquals(expectation.requiredProperties(), schema.get("required"), expectation.name() + " required properties");
-        }
-    }
-
-    private static Path sourcePath(String fileName) {
-        return Path.of("src", "main", "java", "dev", "mcdevmcp", "tools", "statictool", fileName);
-    }
-
-    private static String source(String fileName) {
-        try {
-            return Files.readString(sourcePath(fileName));
-        } catch (java.io.IOException exception) {
-            throw new AssertionError(exception);
-        }
     }
 
     private record Expectation(String name, Class<?> argumentType, String toolClassName, Map<String, String> propertyTypes, List<String> requiredProperties, Map<String, Object> arguments) {

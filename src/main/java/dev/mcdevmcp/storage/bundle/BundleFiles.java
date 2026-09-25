@@ -1,6 +1,7 @@
 package dev.mcdevmcp.storage.bundle;
 
 import java.io.IOException;
+import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.file.*;
 import java.nio.file.attribute.BasicFileAttributes;
@@ -26,14 +27,14 @@ public final class BundleFiles {
 
     public static void requireRegularFile(Path root, Path file) throws IOException {
         requireContained(root, file);
-        if (Files.isSymbolicLink(file) || !Files.isRegularFile(file, java.nio.file.LinkOption.NOFOLLOW_LINKS)) {
+        if (Files.isSymbolicLink(file) || !Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS)) {
             throw new IOException("Bundle artifact is not a regular file: " + file);
         }
     }
 
     public static void requireDirectory(Path root, Path directory) throws IOException {
         requireContained(root, directory);
-        if (Files.isSymbolicLink(directory) || !Files.isDirectory(directory, java.nio.file.LinkOption.NOFOLLOW_LINKS)) {
+        if (Files.isSymbolicLink(directory) || !Files.isDirectory(directory, LinkOption.NOFOLLOW_LINKS)) {
             throw new IOException("Bundle path is not a directory: " + directory);
         }
     }
@@ -45,12 +46,12 @@ public final class BundleFiles {
             throw new IOException("Bundle path escapes its root: " + normalizedPath);
         }
         Path current = normalizedRoot;
-        if (Files.exists(current, java.nio.file.LinkOption.NOFOLLOW_LINKS) && Files.isSymbolicLink(current)) {
+        if (Files.exists(current, LinkOption.NOFOLLOW_LINKS) && Files.isSymbolicLink(current)) {
             throw new IOException("Bundle path contains a symbolic link: " + current);
         }
         for (Path component : normalizedRoot.relativize(normalizedPath)) {
             current = current.resolve(component);
-            if (Files.exists(current, java.nio.file.LinkOption.NOFOLLOW_LINKS) && Files.isSymbolicLink(current)) {
+            if (Files.exists(current, LinkOption.NOFOLLOW_LINKS) && Files.isSymbolicLink(current)) {
                 throw new IOException("Bundle path contains a symbolic link: " + current);
             }
         }
@@ -59,7 +60,7 @@ public final class BundleFiles {
     public static void writeForced(Path file, byte[] bytes) throws IOException {
         Objects.requireNonNull(bytes, "bytes");
         try (FileChannel channel = FileChannel.open(file, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE)) {
-            java.nio.ByteBuffer buffer = java.nio.ByteBuffer.wrap(bytes);
+            ByteBuffer buffer = ByteBuffer.wrap(bytes);
             while (buffer.hasRemaining()) {
                 int written = channel.write(buffer);
                 if (written < 0) {
@@ -91,7 +92,7 @@ public final class BundleFiles {
 
     @SuppressWarnings("NullableProblems")
     public static void deleteTree(Path root) throws IOException {
-        if (!Files.exists(root, java.nio.file.LinkOption.NOFOLLOW_LINKS)) {
+        if (!Files.exists(root, LinkOption.NOFOLLOW_LINKS)) {
             return;
         }
         Files.walkFileTree(root, new SimpleFileVisitor<>() {

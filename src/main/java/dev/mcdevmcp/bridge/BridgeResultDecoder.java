@@ -26,6 +26,12 @@ public final class BridgeResultDecoder {
         this.validator = Objects.requireNonNull(validator, "validator");
     }
 
+    private static IllegalArgumentException invalid(BridgeEndpoint endpoint, JsonLogicalType<?> resultType, String detail, Throwable cause) {
+        String boundedDetail = BridgePayloadValidator.safeDisplay(detail == null || detail.isBlank() ? "result does not conform to its trusted schema" : detail);
+        String message = "DebugBridge " + endpoint.wireName() + " response has invalid result for " + resultType.id() + ": " + boundedDetail;
+        return cause == null ? new IllegalArgumentException(message) : new IllegalArgumentException(message, cause);
+    }
+
     public <T> T decode(BridgeEndpoint endpoint, Object presentResult, JsonLogicalType<T> resultType) {
         Objects.requireNonNull(endpoint, "endpoint");
         Objects.requireNonNull(resultType, "resultType");
@@ -48,11 +54,5 @@ public final class BridgeResultDecoder {
         } catch (RuntimeException exception) {
             throw invalid(endpoint, resultType, "result could not be materialized", exception);
         }
-    }
-
-    private static IllegalArgumentException invalid(BridgeEndpoint endpoint, JsonLogicalType<?> resultType, String detail, Throwable cause) {
-        String boundedDetail = BridgePayloadValidator.safeDisplay(detail == null || detail.isBlank() ? "result does not conform to its trusted schema" : detail);
-        String message = "DebugBridge " + endpoint.wireName() + " response has invalid result for " + resultType.id() + ": " + boundedDetail;
-        return cause == null ? new IllegalArgumentException(message) : new IllegalArgumentException(message, cause);
     }
 }

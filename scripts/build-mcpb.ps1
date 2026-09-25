@@ -28,10 +28,10 @@ if (-not $SkipBuild) {
 }
 if ($SkipBuild) {
     if ([string]::IsNullOrWhiteSpace($Manifest)) {
-        throw "-SkipBuild requires -Manifest from the Java 26 build artifact"
+        throw "-SkipBuild requires -Manifest from the release build artifact"
     }
     if ([string]::IsNullOrWhiteSpace($Checksum)) {
-        throw "-SkipBuild requires -Checksum from the Java 26 build artifact"
+        throw "-SkipBuild requires -Checksum from the release build artifact"
     }
     $stagingManifest = (Resolve-Path -LiteralPath $Manifest).Path
 }

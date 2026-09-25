@@ -33,6 +33,11 @@ public final class VersionStateRepository {
         }
     }
 
+    private static boolean hasLegacyIndex(MinecraftVersion version, VersionOperationLease lease) throws IOException {
+        Path root = lease.resolvedPaths().indexRoot(version);
+        return Files.isRegularFile(lease.boundary().require(root.resolve("manifest.json"))) || Files.isDirectory(lease.boundary().require(root.resolve("minecraft"))) || Files.isDirectory(lease.boundary().require(root.resolve("fabric")));
+    }
+
     public VersionState state(MinecraftVersion version) throws IOException {
         try (var lease = VersionOperationLease.read(paths, version)) {
             return state(version, lease);
@@ -70,10 +75,5 @@ public final class VersionStateRepository {
 
     public boolean isAbsent(MinecraftVersion version) throws IOException {
         return state(version) == VersionState.ABSENT;
-    }
-
-    private static boolean hasLegacyIndex(MinecraftVersion version, VersionOperationLease lease) throws IOException {
-        Path root = lease.resolvedPaths().indexRoot(version);
-        return Files.isRegularFile(lease.boundary().require(root.resolve("manifest.json"))) || Files.isDirectory(lease.boundary().require(root.resolve("minecraft"))) || Files.isDirectory(lease.boundary().require(root.resolve("fabric")));
     }
 }

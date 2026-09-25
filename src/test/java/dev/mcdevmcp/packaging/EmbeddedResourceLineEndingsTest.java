@@ -14,10 +14,7 @@ import java.util.Locale;
 import java.util.Objects;
 import java.util.concurrent.TimeUnit;
 
-import static org.junit.jupiter.api.Assertions.assertArrayEquals;
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.*;
 
 class EmbeddedResourceLineEndingsTest {
     private static final List<String> RESOURCES = List.of("guides/dev-loop.txt", "guides/python-scripting.txt", "mcp/tools.json");
@@ -26,6 +23,21 @@ class EmbeddedResourceLineEndingsTest {
 
     @TempDir
     Path temporaryDirectory;
+
+    private static byte[] resourceBytes(String resource) throws IOException {
+        try (var input = Objects.requireNonNull(EmbeddedResourceLineEndingsTest.class.getResourceAsStream("/" + resource), resource)) {
+            return input.readAllBytes();
+        }
+    }
+
+    private static boolean containsCarriageReturn(byte[] bytes) {
+        for (byte value : bytes) {
+            if (value == '\r') {
+                return true;
+            }
+        }
+        return false;
+    }
 
     @Test
     void actualShippedResourcesAreLfAndCopiedWithoutTransformation() throws Exception {
@@ -133,20 +145,5 @@ class EmbeddedResourceLineEndingsTest {
         if (failure instanceof Error error) {
             throw error;
         }
-    }
-
-    private static byte[] resourceBytes(String resource) throws IOException {
-        try (var input = Objects.requireNonNull(EmbeddedResourceLineEndingsTest.class.getResourceAsStream("/" + resource), resource)) {
-            return input.readAllBytes();
-        }
-    }
-
-    private static boolean containsCarriageReturn(byte[] bytes) {
-        for (byte value : bytes) {
-            if (value == '\r') {
-                return true;
-            }
-        }
-        return false;
     }
 }

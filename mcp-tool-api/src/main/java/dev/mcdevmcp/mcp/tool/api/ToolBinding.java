@@ -8,14 +8,6 @@ import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ExecutorService;
 
 public sealed interface ToolBinding<A> permits ContentToolBinding, ToolOutputBinding {
-    ToolInput<A> input();
-
-    Optional<ToolOutput<?>> output();
-
-    CompletionStage<? extends ToolResult<?>> invoke(McpJsonMapper mapper, Map<String, Object> arguments, ToolCancellation cancellation);
-
-    ToolBinding<A> withBlockingExecutor(ExecutorService executor);
-
     static <A> ContentToolBinding<A> content(ToolInput<A> input, ToolHandler<A> handler) {
         return new ContentToolBinding<>(input, handler);
     }
@@ -31,4 +23,12 @@ public sealed interface ToolBinding<A> permits ContentToolBinding, ToolOutputBin
     static <A, O> ToolOutputBinding<A, O> blocking(ToolInput<A> input, ToolOutput<O> output, BlockingToolOutputHandler<A, O> handler) {
         return ToolOutputBinding.blocking(input, output, handler);
     }
+
+    ToolInput<A> input();
+
+    Optional<ToolOutput<?>> output();
+
+    CompletionStage<? extends ToolResult<?>> invoke(McpJsonMapper mapper, Map<String, Object> arguments, ToolCancellation cancellation);
+
+    ToolBinding<A> withBlockingExecutor(ExecutorService executor);
 }

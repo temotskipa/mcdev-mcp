@@ -1,8 +1,8 @@
 package dev.mcdevmcp.bridge;
 
-import dev.mcdevmcp.support.JsonResourceReader;
 import dev.mcdevmcp.bridge.payload.EmptyBridgePayload;
 import dev.mcdevmcp.bridge.payload.ScreenInspectPayload;
+import dev.mcdevmcp.support.JsonResourceReader;
 import io.modelcontextprotocol.json.McpJsonDefaults;
 import org.junit.jupiter.api.Test;
 

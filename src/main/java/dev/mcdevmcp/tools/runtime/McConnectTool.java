@@ -1,7 +1,7 @@
 package dev.mcdevmcp.tools.runtime;
 
-import dev.mcdevmcp.mcp.tool.api.ContentToolBinding;
 import dev.mcdevmcp.mcp.tool.ToolDeclaration;
+import dev.mcdevmcp.mcp.tool.api.ContentToolBinding;
 
 final class McConnectTool {
     static final ToolDeclaration<ConnectArguments> DECLARATION = ToolDeclaration.of("mc_connect", ConnectArguments.class);

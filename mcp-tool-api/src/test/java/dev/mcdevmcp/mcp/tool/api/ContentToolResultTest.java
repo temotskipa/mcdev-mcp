@@ -4,6 +4,7 @@ import io.modelcontextprotocol.spec.McpSchema;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -43,7 +44,7 @@ class ContentToolResultTest {
         assertThrows(UnsupportedOperationException.class, () -> result.content().clear());
         assertThrows(NullPointerException.class, () -> ToolResult.content(null, false));
         assertThrows(NullPointerException.class, () -> new ContentToolResult<Void>(null, false));
-        assertThrows(NullPointerException.class, () -> ToolResult.content(java.util.Arrays.asList(text, null), false));
-        assertThrows(NullPointerException.class, () -> new ContentToolResult<Void>(java.util.Arrays.asList(text, null), false));
+        assertThrows(NullPointerException.class, () -> ToolResult.content(Arrays.asList(text, null), false));
+        assertThrows(NullPointerException.class, () -> new ContentToolResult<Void>(Arrays.asList(text, null), false));
     }
 }

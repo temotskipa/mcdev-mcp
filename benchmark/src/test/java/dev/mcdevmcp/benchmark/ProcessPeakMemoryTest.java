@@ -13,6 +13,12 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.*;
 
 class ProcessPeakMemoryTest {
+    private static List<String> probe(String mode) throws Exception {
+        String executable = System.getProperty("os.name").startsWith("Windows") ? "java.exe" : "java";
+        String classes = Path.of(QueryProbe.class.getProtectionDomain().getCodeSource().getLocation().toURI()).toString();
+        return List.of(Path.of(System.getProperty("java.home"), "bin", executable).toString(), "--enable-preview", "-cp", classes, QueryProbe.class.getName(), mode);
+    }
+
     @Test
     void linuxRequiresSinglePositiveKilobyteHighWaterMark() throws Exception {
         assertEquals(123 * 1024L, ProcessPeakMemory.linuxPeakBytes(List.of("Name: java", "VmHWM:\t123 kB")));
@@ -72,12 +78,6 @@ class ProcessPeakMemoryTest {
         assertEquals(1, touched[touched.length - 4096]);
         assertTrue(AnalysisBenchmarkMain.peakRssBytes() > 0);
         assertTrue(CorpusQualificationMain.peakRssBytes() > 0);
-    }
-
-    private static List<String> probe(String mode) throws Exception {
-        String executable = System.getProperty("os.name").startsWith("Windows") ? "java.exe" : "java";
-        String classes = Path.of(QueryProbe.class.getProtectionDomain().getCodeSource().getLocation().toURI()).toString();
-        return List.of(Path.of(System.getProperty("java.home"), "bin", executable).toString(), "--enable-preview", "-cp", classes, QueryProbe.class.getName(), mode);
     }
 
     public static final class QueryProbe {

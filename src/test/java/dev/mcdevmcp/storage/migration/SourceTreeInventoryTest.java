@@ -5,19 +5,28 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
+import java.security.MessageDigest;
+import java.util.HexFormat;
 import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.TimeUnit;
-import java.security.MessageDigest;
-import java.util.HexFormat;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 class SourceTreeInventoryTest {
     @TempDir
     Path temporary;
+
+    private static void assertGolden(Path root, String frameHex, String expectedHash) throws Exception {
+        // Literal framing bytes and hashes were independently evaluated using .NET SHA256.HashData.
+        byte[] frame = HexFormat.of().parseHex(frameHex);
+        assertEquals(expectedHash, HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(frame)));
+        assertEquals(expectedHash, SourceTreeInventory.capture(root, Cancellation.none()).sha256());
+    }
 
     @Test
     void coversEmptyDirectoriesMarkersAndMissingRoot() throws Exception {
@@ -77,13 +86,6 @@ class SourceTreeInventoryTest {
         assertGolden(temporary, "6d636465762d736f757263652d696e76656e746f72792d763144000000004400000005656d7074794600000017736f757263652d7072657061726174696f6e2e6a736f6e0000000000000003ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad", "30e78082687cb67626009125ae119d3748f4b20fc6efaf8e877a85ceb239cd9f");
     }
 
-    private static void assertGolden(Path root, String frameHex, String expectedHash) throws Exception {
-        // Literal framing bytes and hashes were independently evaluated using .NET SHA256.HashData.
-        byte[] frame = HexFormat.of().parseHex(frameHex);
-        assertEquals(expectedHash, HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(frame)));
-        assertEquals(expectedHash, SourceTreeInventory.capture(root, Cancellation.none()).sha256());
-    }
-
     @Test
     @SuppressWarnings("resource")
         // Explicit finally cleanup verifies subprocess termination.
@@ -97,7 +99,7 @@ class SourceTreeInventoryTest {
                 Process process = new ProcessBuilder("cmd.exe", "/d", "/c", "mklink", "/J", link.toString(), destination.toString()).redirectErrorStream(true).start();
                 try {
                     assertTrue(process.waitFor(10, TimeUnit.SECONDS), "Junction fixture creation timed out");
-                    assertEquals(0, process.exitValue(), new String(process.getInputStream().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8));
+                    assertEquals(0, process.exitValue(), new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8));
                 } finally {
                     if (process.isAlive()) {
                         process.destroyForcibly();
@@ -112,7 +114,7 @@ class SourceTreeInventoryTest {
             assertThrows(IOException.class, () -> SourceTreeInventory.capture(link.resolve("sentinel.txt"), Cancellation.none()));
             assertEquals("destination bytes", Files.readString(sentinel));
         } finally {
-            if (Files.exists(link, java.nio.file.LinkOption.NOFOLLOW_LINKS)) Files.delete(link);
+            if (Files.exists(link, LinkOption.NOFOLLOW_LINKS)) Files.delete(link);
         }
         assertEquals("destination bytes", Files.readString(sentinel));
     }

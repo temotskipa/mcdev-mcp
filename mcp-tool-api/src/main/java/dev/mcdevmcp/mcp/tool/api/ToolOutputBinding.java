@@ -18,10 +18,6 @@ public final class ToolOutputBinding<A, O> implements ToolBinding<A> {
         this(input, output, Objects.requireNonNull(handler, "handler"), null);
     }
 
-    public static <A, O> ToolOutputBinding<A, O> blocking(ToolInput<A> input, ToolOutput<O> output, BlockingToolOutputHandler<A, O> handler) {
-        return new ToolOutputBinding<>(input, output, null, Objects.requireNonNull(handler, "handler"));
-    }
-
     private ToolOutputBinding(ToolInput<A> input, ToolOutput<O> output, ToolOutputHandler<A, O> handler, BlockingToolOutputHandler<A, O> blockingHandler) {
         this.input = Objects.requireNonNull(input, "input");
         this.output = Objects.requireNonNull(output, "output");
@@ -30,6 +26,10 @@ public final class ToolOutputBinding<A, O> implements ToolBinding<A> {
         if ((handler == null) == (blockingHandler == null)) {
             throw new IllegalArgumentException("A structured tool binding must have exactly one handler");
         }
+    }
+
+    public static <A, O> ToolOutputBinding<A, O> blocking(ToolInput<A> input, ToolOutput<O> output, BlockingToolOutputHandler<A, O> handler) {
+        return new ToolOutputBinding<>(input, output, null, Objects.requireNonNull(handler, "handler"));
     }
 
     public ToolOutput<O> declaredOutput() {

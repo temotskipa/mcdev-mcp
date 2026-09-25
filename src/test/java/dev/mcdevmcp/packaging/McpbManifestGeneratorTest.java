@@ -1,10 +1,12 @@
 package dev.mcdevmcp.packaging;
 
-import dev.mcdevmcp.mcp.McpServerFactory;
 import dev.mcdevmcp.mcp.McpContractTestSupport;
+import dev.mcdevmcp.mcp.McpServerFactory;
 import dev.mcdevmcp.mcp.tool.ToolDefinition;
+import dev.mcdevmcp.support.AppEnvironment;
 import dev.mcdevmcp.support.AppVersion;
 import dev.mcdevmcp.support.JsonResourceReader;
+import dev.mcdevmcp.support.RequiredRuntime;
 import io.modelcontextprotocol.json.McpJsonDefaults;
 import io.modelcontextprotocol.json.TypeRef;
 import org.junit.jupiter.api.Test;
@@ -17,6 +19,26 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.*;
 
 class McpbManifestGeneratorTest {
+    private static void assertLfTerminatedJson(byte[] bytes) {
+        assertTrue(bytes.length >= 2);
+        assertEquals('}', bytes[bytes.length - 2]);
+        assertEquals('\n', bytes[bytes.length - 1]);
+        for (byte value : bytes) {
+            assertNotEquals('\r', value, "Manifest JSON must use platform-independent LF line endings");
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> map(Object value) {
+        assertInstanceOf(Map.class, value);
+        return (Map<String, Object>) value;
+    }
+
+    private static List<Map<String, Object>> maps(Object value) {
+        assertInstanceOf(List.class, value);
+        return ((List<?>) value).stream().map(McpbManifestGeneratorTest::map).toList();
+    }
+
     @Test
     void generatedCatalogUsesTheJavaToolMetadataAndConfiguredVersion() throws Exception {
         var mapper = McpJsonDefaults.getMapper();
@@ -24,15 +46,15 @@ class McpbManifestGeneratorTest {
         });
         Map<String, Object> manifest;
         List<ToolDefinition> definitions;
-        try (var composition = McpServerFactory.declarativeComposition(new dev.mcdevmcp.support.AppEnvironment(Map.of()), mapper)) {
+        try (var composition = McpServerFactory.declarativeComposition(new AppEnvironment(Map.of()), mapper)) {
             definitions = composition.definitions();
             manifest = McpbManifestGenerator.generatedRootManifest(template, "3.0.0", definitions);
         }
 
         assertEquals("0.3", manifest.get("manifest_version"));
         assertEquals("3.0.0", manifest.get("version"));
-        assertTrue(manifest.get("description").toString().contains("released Java 26 JDK"));
-        assertTrue(manifest.get("description").toString().contains("Java 26 preview features"));
+        assertTrue(manifest.get("description").toString().contains("released Java " + RequiredRuntime.FEATURE + " JDK"));
+        assertTrue(manifest.get("description").toString().contains("Java " + RequiredRuntime.FEATURE + " preview features"));
         assertNull(manifest.get("server"));
         List<Map<String, Object>> tools = maps(manifest.get("tools"));
         assertEquals(definitions.size(), tools.size());
@@ -75,7 +97,7 @@ class McpbManifestGeneratorTest {
         assertFalse(generatedRoot.containsKey("server"));
         assertTrue(generatedStaging.containsKey("server"));
 
-        try (var composition = McpServerFactory.declarativeComposition(new dev.mcdevmcp.support.AppEnvironment(Map.of()), mapper)) {
+        try (var composition = McpServerFactory.declarativeComposition(new AppEnvironment(Map.of()), mapper)) {
             List<ToolDefinition> definitions = composition.definitions();
             List<Map<String, Object>> rootTools = maps(generatedRoot.get("tools"));
             List<Map<String, Object>> stagingTools = maps(generatedStaging.get("tools"));
@@ -139,25 +161,5 @@ class McpbManifestGeneratorTest {
         Map<String, Object> generated = McpJsonDefaults.getMapper().readValue(Files.readString(generatedRoot), new TypeRef<>() {
         });
         assertEquals(AppVersion.current(), generated.get("version"));
-    }
-
-    private static void assertLfTerminatedJson(byte[] bytes) {
-        assertTrue(bytes.length >= 2);
-        assertEquals('}', bytes[bytes.length - 2]);
-        assertEquals('\n', bytes[bytes.length - 1]);
-        for (byte value : bytes) {
-            assertNotEquals('\r', value, "Manifest JSON must use platform-independent LF line endings");
-        }
-    }
-
-    @SuppressWarnings("unchecked")
-    private static Map<String, Object> map(Object value) {
-        assertInstanceOf(Map.class, value);
-        return (Map<String, Object>) value;
-    }
-
-    private static List<Map<String, Object>> maps(Object value) {
-        assertInstanceOf(List.class, value);
-        return ((List<?>) value).stream().map(McpbManifestGeneratorTest::map).toList();
     }
 }

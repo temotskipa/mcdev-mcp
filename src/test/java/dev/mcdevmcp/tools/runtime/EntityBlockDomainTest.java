@@ -1,5 +1,6 @@
 package dev.mcdevmcp.tools.runtime;
 
+import dev.mcdevmcp.bridge.BridgeResponse;
 import dev.mcdevmcp.bridge.BridgeTestHarness;
 import dev.mcdevmcp.bridge.payload.SetBlockGlowPayload;
 import dev.mcdevmcp.bridge.payload.SetEntityGlowPayload;
@@ -10,13 +11,11 @@ import dev.mcdevmcp.support.AppEnvironment;
 import dev.mcdevmcp.support.Cancellation;
 import io.modelcontextprotocol.json.McpJsonDefaults;
 import io.modelcontextprotocol.json.McpJsonMapper;
+import io.modelcontextprotocol.json.TypeRef;
 import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Method;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
+import java.util.*;
 import java.util.concurrent.CompletableFuture;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -24,6 +23,46 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class EntityBlockDomainTest {
     private static final McpJsonMapper MAPPER = McpJsonDefaults.getMapper();
+
+    private static BridgeTestHarness harness() {
+        return new BridgeTestHarness(MAPPER, new AppEnvironment(Map.of()), (_, request) -> {
+            if (request.endpoint().wireName().equals("status")) {
+                return CompletableFuture.completedFuture(RuntimeContractFixtures.status(request.id()));
+            }
+            Map<String, Object> payload = MAPPER.convertValue(request.payload(), new TypeRef<>() {
+            });
+            return CompletableFuture.completedFuture(new BridgeResponse(request.id(), true, true, payload, null, null));
+        });
+    }
+
+    private static List<Class<?>> componentTypes(ToolInput<?> input) {
+        var types = new ArrayList<Class<?>>();
+        for (var component : Objects.requireNonNull(input.type().rawClass()).getRecordComponents()) {
+            types.add(component.getType());
+        }
+        return List.copyOf(types);
+    }
+
+    private static Map<String, Object> position() {
+        return Map.of("x", 1, "y", 64, "z", -2);
+    }
+
+    private static Map<String, Object> positionSchema() {
+        return Map.of("type", "object", "properties", Map.of("x", Map.of("type", "integer"), "y", Map.of("type", "integer"), "z", Map.of("type", "integer")), "required", List.of("x", "y", "z"), "additionalProperties", false);
+    }
+
+    private static Object accessor(Object value, String name) throws Exception {
+        Method accessor = value.getClass().getMethod(name);
+        return accessor.invoke(value);
+    }
+
+    private static Map<String, Object> map(Object... fields) {
+        var result = new LinkedHashMap<String, Object>();
+        for (int index = 0; index < fields.length; index += 2) {
+            result.put((String) fields[index], fields[index + 1]);
+        }
+        return result;
+    }
 
     @Test
     void exposesSourceExactEntityPrimitivesAndNestedBlockPositionSchema() throws Exception {
@@ -88,45 +127,5 @@ class EntityBlockDomainTest {
             }
             assertEquals(List.of(), harness.requests());
         }
-    }
-
-    private static BridgeTestHarness harness() {
-        return new BridgeTestHarness(MAPPER, new AppEnvironment(Map.of()), (_, request) -> {
-            if (request.endpoint().wireName().equals("status")) {
-                return CompletableFuture.completedFuture(RuntimeContractFixtures.status(request.id()));
-            }
-            Map<String, Object> payload = MAPPER.convertValue(request.payload(), new io.modelcontextprotocol.json.TypeRef<>() {
-            });
-            return CompletableFuture.completedFuture(new dev.mcdevmcp.bridge.BridgeResponse(request.id(), true, true, payload, null, null));
-        });
-    }
-
-    private static List<Class<?>> componentTypes(ToolInput<?> input) {
-        var types = new java.util.ArrayList<Class<?>>();
-        for (var component : Objects.requireNonNull(input.type().rawClass()).getRecordComponents()) {
-            types.add(component.getType());
-        }
-        return List.copyOf(types);
-    }
-
-    private static Map<String, Object> position() {
-        return Map.of("x", 1, "y", 64, "z", -2);
-    }
-
-    private static Map<String, Object> positionSchema() {
-        return Map.of("type", "object", "properties", Map.of("x", Map.of("type", "integer"), "y", Map.of("type", "integer"), "z", Map.of("type", "integer")), "required", List.of("x", "y", "z"), "additionalProperties", false);
-    }
-
-    private static Object accessor(Object value, String name) throws Exception {
-        Method accessor = value.getClass().getMethod(name);
-        return accessor.invoke(value);
-    }
-
-    private static Map<String, Object> map(Object... fields) {
-        var result = new LinkedHashMap<String, Object>();
-        for (int index = 0; index < fields.length; index += 2) {
-            result.put((String) fields[index], fields[index + 1]);
-        }
-        return result;
     }
 }

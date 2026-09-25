@@ -1,16 +1,13 @@
 package dev.mcdevmcp.mcp.tool;
 
-import dev.mcdevmcp.mcp.tool.api.RecordInputSchemaFactory;
-import dev.mcdevmcp.mcp.tool.api.ToolBinding;
-import dev.mcdevmcp.mcp.tool.api.ToolHandlers;
-import dev.mcdevmcp.mcp.tool.api.ToolInput;
-import dev.mcdevmcp.mcp.tool.api.ToolResult;
+import dev.mcdevmcp.mcp.tool.api.*;
 import dev.mcdevmcp.mcp.transport.SdkJsonMode;
 import dev.mcdevmcp.support.Cancellation;
 import io.modelcontextprotocol.json.McpJsonDefaults;
 import io.modelcontextprotocol.json.McpJsonMapper;
 import org.junit.jupiter.api.Test;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.Map;
 import java.util.concurrent.*;
@@ -77,7 +74,7 @@ class ToolBindingTest {
             virtualThread.set(Thread.currentThread().isVirtual());
             started.countDown();
             try {
-                Thread.sleep(java.time.Duration.ofMinutes(1));
+                Thread.sleep(Duration.ofMinutes(1));
                 return ToolResult.text("unexpected");
             } catch (InterruptedException exception) {
                 interrupted.countDown();

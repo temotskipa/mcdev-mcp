@@ -3,11 +3,7 @@ package dev.mcdevmcp.mcp;
 import dev.mcdevmcp.bridge.BridgeSession;
 import dev.mcdevmcp.mcp.resource.ResourceCatalog;
 import dev.mcdevmcp.mcp.tool.*;
-import dev.mcdevmcp.mcp.tool.api.RecordInputSchemaFactory;
-import dev.mcdevmcp.mcp.tool.api.ToolBinding;
-import dev.mcdevmcp.mcp.tool.api.ToolHandlers;
-import dev.mcdevmcp.mcp.tool.api.ToolInput;
-import dev.mcdevmcp.mcp.tool.api.ToolResult;
+import dev.mcdevmcp.mcp.tool.api.*;
 import dev.mcdevmcp.support.AppEnvironment;
 import dev.mcdevmcp.support.Cancellation;
 import dev.mcdevmcp.tools.runtime.RuntimeContext;
@@ -18,6 +14,7 @@ import org.junit.jupiter.api.Test;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.net.http.HttpClient;
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -36,6 +33,80 @@ class McpServerFactoryTest {
         return CompleteToolBindings.including(MAPPER, snapshotBinding == null ? Map.of() : Map.of("mc_snapshot", snapshotBinding));
     }
 
+    private static McpServerFactory.RuntimeResourceFactory countingFactory(McpServerFactory.RuntimeResourceFactory delegate, AtomicInteger activations) {
+        return new McpServerFactory.RuntimeResourceFactory() {
+            @Override
+            public HttpClient createClient() {
+                return delegate.createClient();
+            }
+
+            @Override
+            public BridgeSession createSession(HttpClient client, McpJsonMapper mapper, AppEnvironment environment) {
+                return delegate.createSession(client, mapper, environment);
+            }
+
+            @Override
+            public RuntimeContext createContext(BridgeSession session, McpJsonMapper mapper, AppEnvironment environment) {
+                activations.incrementAndGet();
+                return delegate.createContext(session, mapper, environment);
+            }
+        };
+    }
+
+    private static boolean hasSuppressedMessage(Throwable failure, String message) {
+        if (message.equals(failure.getMessage())) {
+            return true;
+        }
+        for (Throwable suppressed : failure.getSuppressed()) {
+            if (hasSuppressedMessage(suppressed, message)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static McpServerFactory.RuntimeResourceFactory blockingFactory(CountDownLatch entered, CountDownLatch release) {
+        McpServerFactory.RuntimeResourceFactory delegate = McpServerFactory.productionResourceFactory();
+        return new McpServerFactory.RuntimeResourceFactory() {
+            @Override
+            public HttpClient createClient() {
+                return delegate.createClient();
+            }
+
+            @Override
+            public BridgeSession createSession(HttpClient client, McpJsonMapper mapper, AppEnvironment environment) {
+                return delegate.createSession(client, mapper, environment);
+            }
+
+            @Override
+            public RuntimeContext createContext(BridgeSession session, McpJsonMapper mapper, AppEnvironment environment) {
+                entered.countDown();
+                try {
+                    if (!release.await(5, TimeUnit.SECONDS)) {
+                        throw new IllegalStateException("activation release timed out");
+                    }
+                } catch (InterruptedException exception) {
+                    Thread.currentThread().interrupt();
+                    throw new IllegalStateException("activation interrupted", exception);
+                }
+                return delegate.createContext(session, mapper, environment);
+            }
+        };
+    }
+
+    private static IllegalStateException failure(FailurePoint failurePoint) {
+        return new IllegalStateException(failurePoint.name() + " failure");
+    }
+
+    private static long pollThreadCount() {
+        return Thread.getAllStackTraces().keySet().stream().filter(thread -> thread.getName().equals("mcdev-session-poll")).count();
+    }
+
+    @SuppressWarnings("unchecked")
+    private static <A> ToolInput<A> declaredInput() {
+        return (ToolInput<A>) ToolDeclarations.all().stream().filter(declaration -> declaration.name().equals("mc_snapshot")).findFirst().orElseThrow().input();
+    }
+
     @Test
     void factoryAdaptsABlockingTypedBindingForItsToolCatalog() throws Exception {
         var started = new CountDownLatch(1);
@@ -46,7 +117,7 @@ class McpServerFactoryTest {
             virtualThread.set(Thread.currentThread());
             started.countDown();
             try {
-                Thread.sleep(java.time.Duration.ofMinutes(1));
+                Thread.sleep(Duration.ofMinutes(1));
                 return ToolResult.text("unexpected");
             } catch (InterruptedException exception) {
                 interrupted.countDown();
@@ -149,7 +220,7 @@ class McpServerFactoryTest {
         McpServerFactory.DeclarativeComposition composition = McpServerFactory.declarativeComposition(new AppEnvironment(Map.of()), mapper);
         ToolDefinition scriptLogs = composition.definitions().stream().filter(definition -> definition.name().equals("mc_script_logs")).findFirst().orElseThrow();
         assertFalse(composition.runtimeActivated());
-        assertInstanceOf(dev.mcdevmcp.mcp.tool.api.ContentToolBinding.class, scriptLogs.binding(), "runtime declarations must retain their typed content binding");
+        assertInstanceOf(ContentToolBinding.class, scriptLogs.binding(), "runtime declarations must retain their typed content binding");
 
         ToolResult<?> result = scriptLogs.binding().invoke(mapper, Map.of(), Cancellation.none()).toCompletableFuture().join();
 
@@ -254,36 +325,8 @@ class McpServerFactoryTest {
         }
     }
 
-    private static McpServerFactory.RuntimeResourceFactory countingFactory(McpServerFactory.RuntimeResourceFactory delegate, AtomicInteger activations) {
-        return new McpServerFactory.RuntimeResourceFactory() {
-            @Override
-            public HttpClient createClient() {
-                return delegate.createClient();
-            }
-
-            @Override
-            public BridgeSession createSession(HttpClient client, McpJsonMapper mapper, AppEnvironment environment) {
-                return delegate.createSession(client, mapper, environment);
-            }
-
-            @Override
-            public RuntimeContext createContext(BridgeSession session, McpJsonMapper mapper, AppEnvironment environment) {
-                activations.incrementAndGet();
-                return delegate.createContext(session, mapper, environment);
-            }
-        };
-    }
-
-    private static boolean hasSuppressedMessage(Throwable failure, String message) {
-        if (message.equals(failure.getMessage())) {
-            return true;
-        }
-        for (Throwable suppressed : failure.getSuppressed()) {
-            if (hasSuppressedMessage(suppressed, message)) {
-                return true;
-            }
-        }
-        return false;
+    private enum FailurePoint {
+        CLIENT, SESSION, BINDINGS
     }
 
     private static final class TrackingRuntimeResourceFactory implements McpServerFactory.RuntimeResourceFactory {
@@ -366,51 +409,5 @@ class McpServerFactoryTest {
         private int sessionCloseCount() {
             return sessionCloseCount.get();
         }
-    }
-
-    private static McpServerFactory.RuntimeResourceFactory blockingFactory(CountDownLatch entered, CountDownLatch release) {
-        McpServerFactory.RuntimeResourceFactory delegate = McpServerFactory.productionResourceFactory();
-        return new McpServerFactory.RuntimeResourceFactory() {
-            @Override
-            public HttpClient createClient() {
-                return delegate.createClient();
-            }
-
-            @Override
-            public BridgeSession createSession(HttpClient client, McpJsonMapper mapper, AppEnvironment environment) {
-                return delegate.createSession(client, mapper, environment);
-            }
-
-            @Override
-            public RuntimeContext createContext(BridgeSession session, McpJsonMapper mapper, AppEnvironment environment) {
-                entered.countDown();
-                try {
-                    if (!release.await(5, TimeUnit.SECONDS)) {
-                        throw new IllegalStateException("activation release timed out");
-                    }
-                } catch (InterruptedException exception) {
-                    Thread.currentThread().interrupt();
-                    throw new IllegalStateException("activation interrupted", exception);
-                }
-                return delegate.createContext(session, mapper, environment);
-            }
-        };
-    }
-
-    private static IllegalStateException failure(FailurePoint failurePoint) {
-        return new IllegalStateException(failurePoint.name() + " failure");
-    }
-
-    private enum FailurePoint {
-        CLIENT, SESSION, BINDINGS
-    }
-
-    private static long pollThreadCount() {
-        return Thread.getAllStackTraces().keySet().stream().filter(thread -> thread.getName().equals("mcdev-session-poll")).count();
-    }
-
-    @SuppressWarnings("unchecked")
-    private static <A> ToolInput<A> declaredInput() {
-        return (ToolInput<A>) ToolDeclarations.all().stream().filter(declaration -> declaration.name().equals("mc_snapshot")).findFirst().orElseThrow().input();
     }
 }

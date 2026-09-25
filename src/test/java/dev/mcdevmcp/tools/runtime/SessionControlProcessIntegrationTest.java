@@ -9,12 +9,26 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.*;
 
 class SessionControlProcessIntegrationTest {
+    private static SessionControlSupport.ListeningPidResolver realChild(AtomicReference<Process> captured, String mode) {
+        return SessionControlSupport.listeningPidResolver(command -> {
+            List<String> childCommand = List.of(javaExecutable(), "-cp", System.getProperty("java.class.path"), SessionControlProcessFixture.class.getName(), mode);
+            Process process = new ProcessBuilder(childCommand).start();
+            captured.set(process);
+            return process;
+        });
+    }
+
+    private static String javaExecutable() {
+        return Path.of(System.getProperty("java.home"), "bin", "java").toString();
+    }
+
+    private static void assertNotNullProcess(Process process) {
+        assertNotNull(process, "child process was never started");
+    }
+
     @Test
     void drainsLargeStdoutAndStderrFromARealChild() throws Exception {
         AtomicReference<Process> captured = new AtomicReference<>();
@@ -62,22 +76,5 @@ class SessionControlProcessIntegrationTest {
             Thread.sleep(10);
         }
         assertTrue(SessionControlSupport.ownerStopped(result));
-    }
-
-    private static SessionControlSupport.ListeningPidResolver realChild(AtomicReference<Process> captured, String mode) {
-        return SessionControlSupport.listeningPidResolver(command -> {
-            List<String> childCommand = List.of(javaExecutable(), "-cp", System.getProperty("java.class.path"), SessionControlProcessFixture.class.getName(), mode);
-            Process process = new ProcessBuilder(childCommand).start();
-            captured.set(process);
-            return process;
-        });
-    }
-
-    private static String javaExecutable() {
-        return Path.of(System.getProperty("java.home"), "bin", "java").toString();
-    }
-
-    private static void assertNotNullProcess(Process process) {
-        assertTrue(process != null, "child process was never started");
     }
 }

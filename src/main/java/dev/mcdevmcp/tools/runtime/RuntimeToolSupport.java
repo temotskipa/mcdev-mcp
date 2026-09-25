@@ -1,18 +1,11 @@
 package dev.mcdevmcp.tools.runtime;
 
-import dev.mcdevmcp.bridge.BridgeEndpoint;
-import dev.mcdevmcp.bridge.BridgePayload;
-import dev.mcdevmcp.bridge.BridgeResultDecoder;
-import dev.mcdevmcp.bridge.BridgeResultTypes;
-import dev.mcdevmcp.bridge.BridgeResponse;
-import dev.mcdevmcp.bridge.BridgeSession;
-import dev.mcdevmcp.bridge.LookedAtEntityWireResult;
-import dev.mcdevmcp.bridge.SessionInfo;
+import dev.mcdevmcp.bridge.*;
 import dev.mcdevmcp.bridge.payload.EmptyBridgePayload;
 import dev.mcdevmcp.bridge.payload.ExecutePayload;
 import dev.mcdevmcp.bridge.payload.LookedAtEntityPayload;
-import dev.mcdevmcp.mcp.tool.api.JsonLogicalType;
 import dev.mcdevmcp.mcp.tool.api.ContentToolResult;
+import dev.mcdevmcp.mcp.tool.api.JsonLogicalType;
 import dev.mcdevmcp.mcp.tool.api.ToolResult;
 import io.modelcontextprotocol.json.McpJsonMapper;
 
@@ -22,7 +15,9 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.CompletionStage;
+import java.util.concurrent.ExecutionException;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.IntStream;
@@ -131,7 +126,7 @@ final class RuntimeToolSupport {
 
     private static String message(Throwable failure) {
         Throwable unwrapped = failure;
-        while ((unwrapped instanceof java.util.concurrent.CompletionException || unwrapped instanceof java.util.concurrent.ExecutionException) && unwrapped.getCause() != null) {
+        while ((unwrapped instanceof CompletionException || unwrapped instanceof ExecutionException) && unwrapped.getCause() != null) {
             unwrapped = unwrapped.getCause();
         }
         return unwrapped.getMessage() == null ? unwrapped.toString() : unwrapped.getMessage();

@@ -4,10 +4,14 @@ import com.sun.net.httpserver.HttpServer;
 import dev.mcdevmcp.storage.PlatformPaths;
 import dev.mcdevmcp.storage.h2.SymbolRepository;
 import dev.mcdevmcp.storage.h2.VersionStateRepository;
-import dev.mcdevmcp.storage.migration.*;
+import dev.mcdevmcp.storage.migration.SourceOwnership;
+import dev.mcdevmcp.storage.migration.SourcePreparationStamp;
+import dev.mcdevmcp.storage.migration.SourceProvenance;
+import dev.mcdevmcp.storage.migration.SourceTreeInventory;
 import dev.mcdevmcp.storage.model.MinecraftVersion;
 import dev.mcdevmcp.storage.model.VersionState;
 import dev.mcdevmcp.support.Cancellation;
+import dev.mcdevmcp.support.RequiredRuntime;
 import io.modelcontextprotocol.json.McpJsonDefaults;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -20,6 +24,7 @@ import java.io.StringWriter;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
@@ -37,6 +42,34 @@ final class SourceCacheMigrationRegressionTest {
 
     @TempDir
     Path temporaryDirectory;
+
+    private static void await(CountDownLatch latch) {
+        try {
+            if (!latch.await(10, TimeUnit.SECONDS)) throw new IllegalStateException("Fixture release timed out");
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException(exception);
+        }
+    }
+
+    private static void awaitLockWait(Thread thread) throws InterruptedException {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
+        while (System.nanoTime() < deadline) {
+            if (thread.getState() == Thread.State.TIMED_WAITING && Arrays.stream(thread.getStackTrace()).anyMatch(frame -> frame.getClassName().equals("dev.mcdevmcp.storage.h2.DatabaseLock") && frame.getMethodName().equals("acquire"))) {
+                return;
+            }
+            //noinspection BusyWait
+            Thread.sleep(10);
+        }
+        fail("Initializer did not queue on the fair version-operation lock");
+    }
+
+    private static CliResult execute(Fixture fixture, String... arguments) {
+        StringWriter output = new StringWriter();
+        StringWriter error = new StringWriter();
+        int exitCode = Main.execute(arguments, RequiredRuntime.FEATURE, new PrintWriter(output), new PrintWriter(error), new CommandContext(fixture.pipeline(), fixture.paths()));
+        return new CliResult(exitCode, output.toString(), error.toString());
+    }
 
     private Fixture fixture() throws Exception {
         byte[] jar = AnalysisPipelineIntegrationTest.compileJar(temporaryDirectory.resolve("fixture"), "sample.Example", SOURCE);
@@ -268,7 +301,7 @@ final class SourceCacheMigrationRegressionTest {
             if (mode.equals("skip")) arguments.add("--skip-callgraph");
             int exitCode;
             try {
-                exitCode = Main.execute(arguments.toArray(String[]::new), 26, writer, new PrintWriter(error), new CommandContext(fixture.pipeline(), fixture.paths()));
+                exitCode = Main.execute(arguments.toArray(String[]::new), RequiredRuntime.FEATURE, writer, new PrintWriter(error), new CommandContext(fixture.pipeline(), fixture.paths()));
             } finally {
                 //noinspection ResultOfMethodCallIgnored
                 Thread.interrupted();
@@ -294,34 +327,6 @@ final class SourceCacheMigrationRegressionTest {
                 assertArrayEquals(oldIndex, Files.readAllBytes(old.resolve("index/symbols.mv.db")));
             }
         }
-    }
-
-    private static void await(CountDownLatch latch) {
-        try {
-            if (!latch.await(10, TimeUnit.SECONDS)) throw new IllegalStateException("Fixture release timed out");
-        } catch (InterruptedException exception) {
-            Thread.currentThread().interrupt();
-            throw new IllegalStateException(exception);
-        }
-    }
-
-    private static void awaitLockWait(Thread thread) throws InterruptedException {
-        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
-        while (System.nanoTime() < deadline) {
-            if (thread.getState() == Thread.State.TIMED_WAITING && java.util.Arrays.stream(thread.getStackTrace()).anyMatch(frame -> frame.getClassName().equals("dev.mcdevmcp.storage.h2.DatabaseLock") && frame.getMethodName().equals("acquire"))) {
-                return;
-            }
-            //noinspection BusyWait
-            Thread.sleep(10);
-        }
-        fail("Initializer did not queue on the fair version-operation lock");
-    }
-
-    private static CliResult execute(Fixture fixture, String... arguments) {
-        StringWriter output = new StringWriter();
-        StringWriter error = new StringWriter();
-        int exitCode = Main.execute(arguments, 26, new PrintWriter(output), new PrintWriter(error), new CommandContext(fixture.pipeline(), fixture.paths()));
-        return new CliResult(exitCode, output.toString(), error.toString());
     }
 
     private record CliResult(int exitCode, String stdout, String stderr) {

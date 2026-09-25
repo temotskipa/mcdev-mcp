@@ -22,9 +22,7 @@ import java.lang.constant.ClassDesc;
 import java.lang.reflect.AccessFlag;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
+import java.util.*;
 import java.util.concurrent.Executors;
 import java.util.jar.JarEntry;
 import java.util.jar.JarOutputStream;
@@ -51,6 +49,17 @@ class InterfaceSuperclassTest {
     private static final List<String> INTERFACES = List.of("Parent", "Extra", "ChildInterface", "Mark");
     @TempDir
     Path temporaryDirectory;
+
+    private static String hierarchy(ToolCatalog catalog, String name, String direction, int limit) {
+        return text(catalog, "mc_find_hierarchy", Map.of("className", name, "direction", direction, "limit", limit));
+    }
+
+    private static String text(ToolCatalog catalog, String tool, Map<String, Object> arguments) {
+        var values = new HashMap<>(arguments);
+        values.put("version", VERSION.value());
+        var result = catalog.dispatch(tool, values, Cancellation.none()).toCompletableFuture().join();
+        return assertInstanceOf(McpSchema.TextContent.class, result.content().getFirst()).text();
+    }
 
     @Test
     void rawCatalogRetainsVmInterfaceSlotsAndObjectHasNoSuperclass() throws Exception {
@@ -101,13 +110,13 @@ class InterfaceSuperclassTest {
                 return null;
             });
         }
-        assertEquals(List.of(), repository.classByName("hierarchy.Parent").interfaceBinaryNames());
-        assertEquals(List.of(), repository.classByName("hierarchy.Extra").interfaceBinaryNames());
-        assertEquals(List.of("hierarchy.Parent", "hierarchy.Extra"), repository.classByName("hierarchy.ChildInterface").interfaceBinaryNames());
-        assertEquals(List.of("java.lang.annotation.Annotation"), repository.classByName("hierarchy.Mark").interfaceBinaryNames());
-        assertEquals(List.of("hierarchy.ChildInterface"), repository.classByName("hierarchy.Implementation").interfaceBinaryNames());
+        assertEquals(List.of(), Objects.requireNonNull(repository.classByName("hierarchy.Parent")).interfaceBinaryNames());
+        assertEquals(List.of(), Objects.requireNonNull(repository.classByName("hierarchy.Extra")).interfaceBinaryNames());
+        assertEquals(List.of("hierarchy.Parent", "hierarchy.Extra"), Objects.requireNonNull(repository.classByName("hierarchy.ChildInterface")).interfaceBinaryNames());
+        assertEquals(List.of("java.lang.annotation.Annotation"), Objects.requireNonNull(repository.classByName("hierarchy.Mark")).interfaceBinaryNames());
+        assertEquals(List.of("hierarchy.ChildInterface"), Objects.requireNonNull(repository.classByName("hierarchy.Implementation")).interfaceBinaryNames());
         for (var control : Map.of("Plain", "java.lang.Object", "Child", "hierarchy.Plain", "Choice", "java.lang.Enum", "Value", "java.lang.Record", "Implementation", "java.lang.Object").entrySet()) {
-            assertEquals(Optional.of(control.getValue()), repository.classByName("hierarchy." + control.getKey()).superclassBinaryName(), control.getKey());
+            assertEquals(Optional.of(control.getValue()), Objects.requireNonNull(repository.classByName("hierarchy." + control.getKey())).superclassBinaryName(), control.getKey());
         }
     }
 
@@ -158,16 +167,5 @@ class InterfaceSuperclassTest {
         Path jar = IndexerTestSupport.createJar(temporaryDirectory.resolve("catalog.jar"), catalogBacked ? SOURCES : Map.of());
         new SourceIndexer().build(IndexerTestSupport.request(sourceRoot, jar, paths.symbolDatabase(VERSION), 1));
         return paths;
-    }
-
-    private static String hierarchy(ToolCatalog catalog, String name, String direction, int limit) {
-        return text(catalog, "mc_find_hierarchy", Map.of("className", name, "direction", direction, "limit", limit));
-    }
-
-    private static String text(ToolCatalog catalog, String tool, Map<String, Object> arguments) {
-        var values = new java.util.HashMap<>(arguments);
-        values.put("version", VERSION.value());
-        var result = catalog.dispatch(tool, values, Cancellation.none()).toCompletableFuture().join();
-        return assertInstanceOf(McpSchema.TextContent.class, result.content().getFirst()).text();
     }
 }

@@ -6,6 +6,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.sql.SQLException;
+import java.util.List;
+import java.util.regex.Pattern;
 
 final class H2DatabaseArtifacts {
     final Path target;
@@ -61,8 +63,8 @@ final class H2DatabaseArtifacts {
         }
     }
 
-    private static java.util.List<Path> numberedCompanions(Path base) throws IOException {
-        String pattern = java.util.regex.Pattern.quote(base.getFileName().toString()) + "\\.\\d+\\.temp\\.db";
+    private static List<Path> numberedCompanions(Path base) throws IOException {
+        String pattern = Pattern.quote(base.getFileName().toString()) + "\\.\\d+\\.temp\\.db";
         try (var siblings = Files.list(base.getParent())) {
             return siblings.filter(path -> path.getFileName().toString().matches(pattern)).toList();
         }

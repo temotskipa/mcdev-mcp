@@ -56,6 +56,18 @@ public final class JsonLogicalType<T> {
         return of(id, type, schema, schema);
     }
 
+    private static <T> JsonLogicalType<T> create(String id, JsonType<T> targetType, JsonValueSchema inputSchema, JsonValueSchema outputSchema) {
+        return new JsonLogicalType<>(id, targetType, inputSchema, outputSchema);
+    }
+
+    private static String requireId(String id) {
+        Objects.requireNonNull(id, "id");
+        if (id.isBlank()) {
+            throw new IllegalArgumentException("Logical JSON type ID must not be blank");
+        }
+        return id;
+    }
+
     public String id() {
         return id;
     }
@@ -70,17 +82,5 @@ public final class JsonLogicalType<T> {
 
     public Optional<JsonValueSchema> outputSchema() {
         return Optional.ofNullable(outputSchema);
-    }
-
-    private static <T> JsonLogicalType<T> create(String id, JsonType<T> targetType, JsonValueSchema inputSchema, JsonValueSchema outputSchema) {
-        return new JsonLogicalType<>(id, targetType, inputSchema, outputSchema);
-    }
-
-    private static String requireId(String id) {
-        Objects.requireNonNull(id, "id");
-        if (id.isBlank()) {
-            throw new IllegalArgumentException("Logical JSON type ID must not be blank");
-        }
-        return id;
     }
 }

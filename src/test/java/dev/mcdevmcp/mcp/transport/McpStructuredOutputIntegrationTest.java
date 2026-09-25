@@ -5,24 +5,15 @@ import dev.mcdevmcp.mcp.resource.ResourceCatalog;
 import dev.mcdevmcp.mcp.tool.CompleteToolBindings;
 import dev.mcdevmcp.mcp.tool.ToolCatalog;
 import dev.mcdevmcp.mcp.tool.ToolDeclarations;
-import dev.mcdevmcp.mcp.tool.api.JsonValueSchema;
-import dev.mcdevmcp.mcp.tool.api.ToolBinding;
-import dev.mcdevmcp.mcp.tool.api.ToolHandlers;
-import dev.mcdevmcp.mcp.tool.api.ToolInput;
-import dev.mcdevmcp.mcp.tool.api.ToolOutput;
-import dev.mcdevmcp.mcp.tool.api.ToolResult;
+import dev.mcdevmcp.mcp.tool.api.*;
 import dev.mcdevmcp.support.AppEnvironment;
 import io.modelcontextprotocol.json.McpJsonDefaults;
 import io.modelcontextprotocol.json.McpJsonMapper;
 import io.modelcontextprotocol.json.TypeRef;
+import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 
-import java.io.BufferedReader;
-import java.io.IOException;
-import java.io.InputStreamReader;
-import java.io.OutputStreamWriter;
-import java.io.PipedInputStream;
-import java.io.PipedOutputStream;
+import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.LinkedHashMap;
@@ -35,10 +26,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.junit.jupiter.api.Assertions.fail;
+import static org.junit.jupiter.api.Assertions.*;
 
 class McpStructuredOutputIntegrationTest {
     private static final Duration RESPONSE_TIMEOUT = Duration.ofSeconds(2);
@@ -47,57 +35,6 @@ class McpStructuredOutputIntegrationTest {
     };
     private static final TypeRef<List<Map<String, Object>>> LIST_OF_MAPS_TYPE = new TypeRef<>() {
     };
-
-    @Test
-    void responseDeadlineClosesThePipeAndFailsWithAReadableDiagnostic() throws IOException {
-        try (var writer = new PipedOutputStream(); var input = new PipedInputStream(writer)) {
-            var cleanupCalled = new AtomicBoolean();
-            AutoCloseable cleanup = () -> cleanupCalled.set(true);
-            long started = System.nanoTime();
-
-            try (var responses = new ResponseReader(input, input, writer)) {
-                AssertionError failure = org.junit.jupiter.api.Assertions.assertThrows(AssertionError.class, () -> responses.read("missing response", input, writer, cleanup));
-
-                assertTrue(cleanupCalled.get());
-                assertTrue(failure.getMessage().contains("missing response"));
-                assertTrue(System.nanoTime() - started < RESPONSE_TIMEOUT.plusSeconds(2).toNanos());
-            }
-        }
-    }
-
-    @Test
-    void sdkOwnsMissingStructuredContentValidationAtTheStdioBoundary() throws Exception {
-        var output = ToolOutput.of(String.class, JsonValueSchema.of(Map.of("type", "string")));
-        var definition = definition(output, ToolResult.text("plain result"));
-
-        Map<String, Object> result = call(definition);
-
-        assertTrue((Boolean) result.get("isError"));
-        assertEquals("Response missing structured content which is expected when calling tool with non-empty outputSchema", firstText(result));
-    }
-
-    @Test
-    void sdkOwnsStructuredOutputSchemaValidationAtTheStdioBoundary() throws Exception {
-        var schema = JsonValueSchema.of(Map.of("type", "object", "properties", Map.of("expected", Map.of("type", "integer")), "required", List.of("expected")));
-        var output = ToolOutput.of(String.class, schema);
-        var definition = definition(output, ToolResult.structured("not an object", "invalid"));
-
-        Map<String, Object> result = call(definition);
-
-        assertTrue((Boolean) result.get("isError"));
-        assertTrue(firstText(result).startsWith("Tool (mc_snapshot) output validation failed:"));
-    }
-
-    @Test
-    void sdkBypassesOutputValidationForAnErrorResult() throws Exception {
-        var output = ToolOutput.of(String.class, JsonValueSchema.of(Map.of("type", "object")));
-        var definition = definition(output, ToolResult.error("expected tool failure"));
-
-        Map<String, Object> result = call(definition);
-
-        assertTrue((Boolean) result.get("isError"));
-        assertEquals("expected tool failure", firstText(result));
-    }
 
     private static <O> ServerDefinition definition(ToolOutput<O> output, ToolResult<O> result) {
         ToolInput<Object> input = declaredInput();
@@ -147,6 +84,72 @@ class McpStructuredOutputIntegrationTest {
             }
         }
         return failure;
+    }
+
+    private static void write(OutputStreamWriter writer, Map<String, Object> message) throws Exception {
+        writer.write(MAPPER.writeValueAsString(message));
+        writer.write(System.lineSeparator());
+        writer.flush();
+    }
+
+    private static Map<String, Object> request(int id, String method, Map<String, Object> params) {
+        var request = new LinkedHashMap<String, Object>();
+        request.put("jsonrpc", "2.0");
+        request.put("id", id);
+        request.put("method", method);
+        request.put("params", params);
+        return request;
+    }
+
+    @Test
+    void responseDeadlineClosesThePipeAndFailsWithAReadableDiagnostic() throws IOException {
+        try (var writer = new PipedOutputStream(); var input = new PipedInputStream(writer)) {
+            var cleanupCalled = new AtomicBoolean();
+            AutoCloseable cleanup = () -> cleanupCalled.set(true);
+            long started = System.nanoTime();
+
+            try (var responses = new ResponseReader(input, input, writer)) {
+                AssertionError failure = Assertions.assertThrows(AssertionError.class, () -> responses.read("missing response", input, writer, cleanup));
+
+                assertTrue(cleanupCalled.get());
+                assertTrue(failure.getMessage().contains("missing response"));
+                assertTrue(System.nanoTime() - started < RESPONSE_TIMEOUT.plusSeconds(2).toNanos());
+            }
+        }
+    }
+
+    @Test
+    void sdkOwnsMissingStructuredContentValidationAtTheStdioBoundary() throws Exception {
+        var output = ToolOutput.of(String.class, JsonValueSchema.of(Map.of("type", "string")));
+        var definition = definition(output, ToolResult.text("plain result"));
+
+        Map<String, Object> result = call(definition);
+
+        assertTrue((Boolean) result.get("isError"));
+        assertEquals("Response missing structured content which is expected when calling tool with non-empty outputSchema", firstText(result));
+    }
+
+    @Test
+    void sdkOwnsStructuredOutputSchemaValidationAtTheStdioBoundary() throws Exception {
+        var schema = JsonValueSchema.of(Map.of("type", "object", "properties", Map.of("expected", Map.of("type", "integer")), "required", List.of("expected")));
+        var output = ToolOutput.of(String.class, schema);
+        var definition = definition(output, ToolResult.structured("not an object", "invalid"));
+
+        Map<String, Object> result = call(definition);
+
+        assertTrue((Boolean) result.get("isError"));
+        assertTrue(firstText(result).startsWith("Tool (mc_snapshot) output validation failed:"));
+    }
+
+    @Test
+    void sdkBypassesOutputValidationForAnErrorResult() throws Exception {
+        var output = ToolOutput.of(String.class, JsonValueSchema.of(Map.of("type", "object")));
+        var definition = definition(output, ToolResult.error("expected tool failure"));
+
+        Map<String, Object> result = call(definition);
+
+        assertTrue((Boolean) result.get("isError"));
+        assertEquals("expected tool failure", firstText(result));
     }
 
     private static final class ResponseReader implements AutoCloseable {
@@ -220,20 +223,5 @@ class McpStructuredOutputIntegrationTest {
                 throw new IOException(closeFailure.getMessage(), closeFailure);
             }
         }
-    }
-
-    private static void write(OutputStreamWriter writer, Map<String, Object> message) throws Exception {
-        writer.write(MAPPER.writeValueAsString(message));
-        writer.write(System.lineSeparator());
-        writer.flush();
-    }
-
-    private static Map<String, Object> request(int id, String method, Map<String, Object> params) {
-        var request = new LinkedHashMap<String, Object>();
-        request.put("jsonrpc", "2.0");
-        request.put("id", id);
-        request.put("method", method);
-        request.put("params", params);
-        return request;
     }
 }

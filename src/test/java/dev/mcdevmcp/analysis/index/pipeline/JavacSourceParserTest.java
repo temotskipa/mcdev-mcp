@@ -4,6 +4,7 @@ import dev.mcdevmcp.analysis.index.IndexRequest;
 import dev.mcdevmcp.analysis.index.IndexSummary;
 import dev.mcdevmcp.analysis.index.SourceIndexer;
 import dev.mcdevmcp.analysis.index.SourceRoot;
+import dev.mcdevmcp.storage.model.SourceNamespace;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -55,7 +56,7 @@ class JavacSourceParserTest {
         Path dependency = IndexerTestSupport.fixtureDependency(temporaryDirectory.resolve("dependency.jar"));
         Path database = temporaryDirectory.resolve("symbols.mv.db");
 
-        IndexRequest request = IndexerTestSupport.request(List.of(new SourceRoot(dev.mcdevmcp.storage.model.SourceNamespace.MINECRAFT, Optional.empty(), sources)), jar, List.of(dependency), database, 1);
+        IndexRequest request = IndexerTestSupport.request(List.of(new SourceRoot(SourceNamespace.MINECRAFT, Optional.empty(), sources)), jar, List.of(dependency), database, 1);
         IndexSummary summary = new SourceIndexer().build(request);
         List<String> dump = IndexerTestSupport.dump(database);
 
@@ -100,10 +101,10 @@ class JavacSourceParserTest {
     @Test
     void preservesUtf16ExclusiveOffsetsAndEndLines() throws Exception {
         Path sources = temporaryDirectory.resolve("unicode");
-        java.nio.file.Files.createDirectories(sources.resolve("unicode"));
+        Files.createDirectories(sources.resolve("unicode"));
         String source = "package unicode;\npublic class Ranges {\n    String value = \"\uD83D\uDE00\";\n    void first() {\n    }\n    void second() {}\n}\n";
-        java.nio.file.Files.writeString(sources.resolve("unicode/Ranges.java"), source, java.nio.charset.StandardCharsets.UTF_8);
-        Path jar = IndexerTestSupport.createJar(temporaryDirectory.resolve("empty.jar"), java.util.Map.of());
+        Files.writeString(sources.resolve("unicode/Ranges.java"), source, StandardCharsets.UTF_8);
+        Path jar = IndexerTestSupport.createJar(temporaryDirectory.resolve("empty.jar"), Map.of());
         Path database = temporaryDirectory.resolve("ranges.mv.db");
 
         new SourceIndexer().build(IndexerTestSupport.request(sources, jar, database, 1));

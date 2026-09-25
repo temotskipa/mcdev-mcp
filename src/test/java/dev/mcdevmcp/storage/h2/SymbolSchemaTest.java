@@ -1,16 +1,21 @@
 package dev.mcdevmcp.storage.h2;
 
 import dev.mcdevmcp.storage.PlatformPaths;
-
 import dev.mcdevmcp.storage.model.MinecraftVersion;
+import dev.mcdevmcp.storage.model.VersionState;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
 import java.time.Instant;
+import java.time.OffsetDateTime;
+import java.util.HashSet;
+import java.util.Locale;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -25,7 +30,7 @@ class SymbolSchemaTest {
     @TempDir
     Path temporaryDirectory;
 
-    private static void assertRejectedByValidationAndState(PlatformPaths paths) throws java.io.IOException {
+    private static void assertRejectedByValidationAndState(PlatformPaths paths) throws IOException {
         Path database = paths.symbolDatabase(VERSION);
         assertThrows(SQLException.class, () -> new SymbolRepository(database).query(connection -> {
             SymbolSchema.validate(connection);
@@ -38,7 +43,7 @@ class SymbolSchemaTest {
         try (var statement = connection.createStatement();
              var results = statement.executeQuery(sql("SELECT tc.constraint_name, cc.check_clause FROM information_schema.table_constraints tc JOIN information_schema.check_constraints cc ON cc.constraint_schema = tc.constraint_schema AND cc.constraint_name = tc.constraint_name WHERE tc.table_schema = 'PUBLIC' AND tc.table_name = 'PACKAGES' AND tc.constraint_type = 'CHECK'"))) {
             while (results.next()) {
-                if (results.getString("check_clause").toUpperCase(java.util.Locale.ROOT).contains("FABRIC_API_VERSION")) {
+                if (results.getString("check_clause").toUpperCase(Locale.ROOT).contains("FABRIC_API_VERSION")) {
                     return results.getString("constraint_name");
                 }
             }
@@ -49,7 +54,7 @@ class SymbolSchemaTest {
     private static Set<String> tableNames(Connection connection) throws Exception {
         try (var statement = connection.createStatement();
              var results = statement.executeQuery(sql("SELECT table_name FROM information_schema.tables WHERE table_schema = 'PUBLIC'"))) {
-            var names = new java.util.HashSet<String>();
+            var names = new HashSet<String>();
             while (results.next()) {
                 names.add(results.getString(1));
             }
@@ -60,7 +65,7 @@ class SymbolSchemaTest {
     private static Set<String> columnSignatures(Connection connection) throws Exception {
         try (var statement = connection.createStatement();
              var results = statement.executeQuery(sql("SELECT table_name, column_name, data_type, is_nullable FROM information_schema.columns WHERE table_schema = 'PUBLIC' ORDER BY table_name, ordinal_position"))) {
-            var signatures = new java.util.HashSet<String>();
+            var signatures = new HashSet<String>();
             while (results.next()) {
                 signatures.add(results.getString("table_name") + "|" + results.getString("column_name") + "|" + results.getString("data_type") + "|" + results.getString("is_nullable"));
             }
@@ -71,7 +76,7 @@ class SymbolSchemaTest {
     private static Set<String> constraintNames(Connection connection) throws Exception {
         try (var statement = connection.createStatement();
              var results = statement.executeQuery(sql("SELECT constraint_name FROM information_schema.table_constraints WHERE table_schema = 'PUBLIC'"))) {
-            var names = new java.util.HashSet<String>();
+            var names = new HashSet<String>();
             while (results.next()) {
                 names.add(results.getString(1));
             }
@@ -82,7 +87,7 @@ class SymbolSchemaTest {
     private static Set<String> secondaryIndexNames(Connection connection) throws Exception {
         try (var statement = connection.createStatement();
              var results = statement.executeQuery(sql("SELECT index_name FROM information_schema.indexes WHERE table_schema = 'PUBLIC' AND index_name LIKE 'IDX_%'"))) {
-            var names = new java.util.HashSet<String>();
+            var names = new HashSet<String>();
             while (results.next()) {
                 names.add(results.getString(1));
             }
@@ -99,7 +104,7 @@ class SymbolSchemaTest {
     }
 
     private static void assertFails(Connection connection, String sql) {
-        assertThrows(java.sql.SQLException.class, () -> {
+        assertThrows(SQLException.class, () -> {
             try (var statement = connection.createStatement()) {
                 statement.executeUpdate(sql);
             }
@@ -130,7 +135,7 @@ class SymbolSchemaTest {
                 assertEquals("1.21.5", results.getString("minecraft_version"));
                 assertEquals(sourceRoot.toString(), results.getString("source_root"));
                 assertEquals("a".repeat(64), results.getString("remapped_jar_sha256"));
-                assertEquals(Instant.parse("2026-07-12T12:00:00Z"), results.getObject("built_at", java.time.OffsetDateTime.class).toInstant());
+                assertEquals(Instant.parse("2026-07-12T12:00:00Z"), results.getObject("built_at", OffsetDateTime.class).toInstant());
             }
         }
     }
@@ -193,12 +198,12 @@ class SymbolSchemaTest {
     private PlatformPaths createReadyDatabase() throws Exception {
         var paths = new PlatformPaths(temporaryDirectory);
         Path database = paths.symbolDatabase(VERSION);
-        java.nio.file.Files.createDirectories(database.getParent());
+        Files.createDirectories(database.getParent());
         try (Connection connection = DriverManager.getConnection(H2DatabaseUrls.writer(database))) {
             SymbolSchema.create(connection, VERSION, paths.sourceRoot(VERSION), "c".repeat(64), Instant.now());
             SymbolSchema.createIndexes(connection);
         }
-        assertEquals(dev.mcdevmcp.storage.model.VersionState.READY, new VersionStateRepository(paths).state(VERSION));
+        assertEquals(VersionState.READY, new VersionStateRepository(paths).state(VERSION));
         return paths;
     }
 }

@@ -12,6 +12,7 @@ import java.lang.reflect.Modifier;
 import java.math.BigDecimal;
 import java.time.Duration;
 import java.util.Arrays;
+import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -44,7 +45,7 @@ class ToolInputTest {
         ScalarInput result = input.decode(McpJsonDefaults.getMapper(), Map.of("version", "1.21.1", "mode", "deep"));
 
         assertEquals(new ScalarInput(new WireVersion("1.21.1"), WireMode.THOROUGH), result);
-        assertEquals(Map.of("type", "object", "properties", Map.of("version", Map.of("type", "string"), "mode", Map.of("type", "string", "enum", java.util.List.of("quick", "deep"))), "required", java.util.List.of("version", "mode"), "additionalProperties", false), input.schema().value());
+        assertEquals(Map.of("type", "object", "properties", Map.of("version", Map.of("type", "string"), "mode", Map.of("type", "string", "enum", List.of("quick", "deep"))), "required", List.of("version", "mode"), "additionalProperties", false), input.schema().value());
     }
 
     @Test
@@ -75,7 +76,7 @@ class ToolInputTest {
         DurationInput result = input.decode(McpJsonDefaults.getMapper(), Map.of("timeoutSeconds", new BigDecimal("1.25")));
 
         assertEquals(new DurationInput(Duration.ofMillis(1250)), result);
-        assertEquals(Map.of("type", "object", "properties", Map.of("timeoutSeconds", Map.of("type", "number")), "required", java.util.List.of("timeoutSeconds"), "additionalProperties", false), input.schema().value());
+        assertEquals(Map.of("type", "object", "properties", Map.of("timeoutSeconds", Map.of("type", "number")), "required", List.of("timeoutSeconds"), "additionalProperties", false), input.schema().value());
     }
 
     @Test
@@ -98,7 +99,7 @@ class ToolInputTest {
 
         assertEquals(new UnionInput(new TestUnion.Numeric(new BigDecimal("2.5"))), result);
         assertEquals(new UnionInput(new TestUnion.Numeric(new BigDecimal("3.5"))), aliasResult);
-        assertEquals(Map.of("type", "object", "properties", Map.of("interval", Map.of("oneOf", java.util.List.of(Map.of("type", "object", "properties", Map.of("kind", Map.of("type", "string", "const", "numeric"), "value", Map.of("type", "number")), "required", java.util.List.of("kind", "value"), "additionalProperties", false), Map.of("type", "object", "properties", Map.of("kind", Map.of("type", "string", "const", "number"), "value", Map.of("type", "number")), "required", java.util.List.of("kind", "value"), "additionalProperties", false), Map.of("type", "object", "properties", Map.of("kind", Map.of("type", "string", "const", "text"), "value", Map.of("type", "string")), "required", java.util.List.of("kind", "value"), "additionalProperties", false)))), "required", java.util.List.of("interval"), "additionalProperties", false), input.schema().value());
+        assertEquals(Map.of("type", "object", "properties", Map.of("interval", Map.of("oneOf", List.of(Map.of("type", "object", "properties", Map.of("kind", Map.of("type", "string", "const", "numeric"), "value", Map.of("type", "number")), "required", List.of("kind", "value"), "additionalProperties", false), Map.of("type", "object", "properties", Map.of("kind", Map.of("type", "string", "const", "number"), "value", Map.of("type", "number")), "required", List.of("kind", "value"), "additionalProperties", false), Map.of("type", "object", "properties", Map.of("kind", Map.of("type", "string", "const", "text"), "value", Map.of("type", "string")), "required", List.of("kind", "value"), "additionalProperties", false)))), "required", List.of("interval"), "additionalProperties", false), input.schema().value());
         assertThrows(IllegalArgumentException.class, () -> input.decode(McpJsonDefaults.getMapper(), Map.of("interval", Map.of("kind", "unknown", "value", "frame"))));
     }
 
@@ -110,7 +111,7 @@ class ToolInputTest {
 
         assertEquals(new BodyEnumInput(BodyEnum.ACTIVE), result);
         assertTrue(result.state().active());
-        assertEquals(Map.of("type", "object", "properties", Map.of("state", Map.of("type", "string", "enum", java.util.List.of("active"))), "required", java.util.List.of("state"), "additionalProperties", false), input.schema().value());
+        assertEquals(Map.of("type", "object", "properties", Map.of("state", Map.of("type", "string", "enum", List.of("active"))), "required", List.of("state"), "additionalProperties", false), input.schema().value());
     }
 
     @Test
@@ -158,7 +159,7 @@ class ToolInputTest {
     void sanitizesNullAndBlankMarkedFailureMessages() {
         ToolInput<InvalidMarkedFailureInput> input = ToolInput.of(InvalidMarkedFailureInput.class, RecordInputSchemaFactory.standard());
 
-        for (String value : java.util.List.of("null", "blank")) {
+        for (String value : List.of("null", "blank")) {
             IllegalArgumentException exception = assertThrows(IllegalArgumentException.class, () -> input.decode(McpJsonDefaults.getMapper(), Map.of("value", value)));
             assertEquals("Unable to deserialize tool input", exception.getMessage());
             assertFalse(exception.getMessage().contains("InvalidMarkedFailureInput"));

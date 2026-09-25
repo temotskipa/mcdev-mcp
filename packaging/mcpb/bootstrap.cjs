@@ -5,6 +5,7 @@ const path = require("node:path");
 
 const jar = path.join(__dirname, "mcdev-mcp.jar");
 const javaCommand = "java";
+const requiredJavaFeature = 27;
 
 function javaArguments(commandArguments) {
     return commandArguments;
@@ -48,8 +49,8 @@ if (version.error !== undefined) {
     const outcome = version.signal === null ? `status ${version.status}` : `signal ${version.signal}`;
     process.stderr.write(`Unable to determine Java version: java -version exited with ${outcome}.\n`);
     process.exitCode = 1;
-} else if (feature !== 26) {
-    process.stderr.write(`Java 26 with preview enabled is required; detected ${Number.isInteger(feature) ? `Java ${feature}` : "an unknown Java version"}.\n`);
+} else if (feature !== requiredJavaFeature) {
+    process.stderr.write(`Java ${requiredJavaFeature} with preview enabled is required; detected ${Number.isInteger(feature) ? `Java ${feature}` : "an unknown Java version"}.\n`);
     process.exitCode = 1;
 } else {
     const child = spawn(javaCommand, javaArguments(["--enable-preview", "-jar", jar, "serve"]), {

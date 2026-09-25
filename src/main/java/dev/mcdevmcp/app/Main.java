@@ -1,6 +1,7 @@
 package dev.mcdevmcp.app;
 
 import dev.mcdevmcp.support.AppVersion;
+import dev.mcdevmcp.support.RequiredRuntime;
 import picocli.CommandLine;
 
 import java.io.FileDescriptor;
@@ -13,7 +14,7 @@ import java.util.Objects;
 
 public final class Main {
     public static int execute(String[] arguments, int javaFeature, PrintWriter output, PrintWriter error) {
-        if (javaFeature != 26) {
+        if (javaFeature != RequiredRuntime.FEATURE) {
             return rejectUnsupportedJava(javaFeature, error);
         }
         return execute(arguments, javaFeature, output, error, CommandContext.production());
@@ -25,7 +26,7 @@ public final class Main {
         Objects.requireNonNull(output, "output");
         Objects.requireNonNull(error, "error");
         Objects.requireNonNull(context, "context");
-        if (javaFeature != 26) {
+        if (javaFeature != RequiredRuntime.FEATURE) {
             return rejectUnsupportedJava(javaFeature, error);
         }
 
@@ -58,7 +59,7 @@ public final class Main {
     @SuppressWarnings("SameReturnValue")
     private static int rejectUnsupportedJava(int javaFeature, PrintWriter error) {
         Objects.requireNonNull(error, "error");
-        error.printf("Java 26 with --enable-preview is required; detected Java %d.%n", javaFeature);
+        error.printf("%s; detected Java %d.%n", RequiredRuntime.previewRequirement(), javaFeature);
         error.flush();
         return 1;
     }
@@ -73,7 +74,7 @@ public final class Main {
         var output = new PrintWriter(new OutputStreamWriter(new FileOutputStream(FileDescriptor.out), StandardCharsets.UTF_8), true);
         var error = new PrintWriter(new OutputStreamWriter(new FileOutputStream(FileDescriptor.err), StandardCharsets.UTF_8), true);
         if (!ManagementFactory.getRuntimeMXBean().getInputArguments().contains("--enable-preview")) {
-            error.println("Java 26 with --enable-preview is required. Launch with java --enable-preview -jar " + AppVersion.executableJarName() + ".");
+            error.println(RequiredRuntime.previewRequirement() + ". Launch with java --enable-preview -jar " + AppVersion.executableJarName() + ".");
             System.exit(1);
             return;
         }

@@ -1,14 +1,6 @@
 package dev.mcdevmcp.packaging;
 
-import com.sun.source.tree.ClassTree;
-import com.sun.source.tree.CompilationUnitTree;
-import com.sun.source.tree.ExpressionTree;
-import com.sun.source.tree.ImportTree;
-import com.sun.source.tree.IdentifierTree;
-import com.sun.source.tree.MemberSelectTree;
-import com.sun.source.tree.MethodInvocationTree;
-import com.sun.source.tree.NewClassTree;
-import com.sun.source.tree.Tree;
+import com.sun.source.tree.*;
 import com.sun.source.util.JavacTask;
 import com.sun.source.util.TreePath;
 import com.sun.source.util.TreePathScanner;
@@ -32,20 +24,11 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.LinkedHashSet;
-import java.util.List;
-import java.util.Locale;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertInstanceOf;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.*;
 
 class JavaSourceLayoutTest {
     @TempDir
@@ -168,176 +151,6 @@ class JavaSourceLayoutTest {
         }
     }
 
-    private static final class ClosedResultScanner extends TreePathScanner<Void, Path> {
-        private static final Set<String> FORBIDDEN_TYPE_NAMES = Set.of("dev.mcdevmcp.mcp.tool.api.TypedJson", "com.google.gson.Gson", "com.google.gson.GsonBuilder");
-        private static final String DEBUGBRIDGE_PACKAGE = "com.debugbridge.";
-        private static final String JSON_TYPE = "dev.mcdevmcp.mcp.tool.api.JsonType";
-        private static final String APPROVED_DECODER = "dev.mcdevmcp.bridge.BridgeResultDecoder";
-        private static final String MAP_TYPE = "java.util.Map";
-        private static final String NUMBER_TYPE = "java.lang.Number";
-        private static final Set<String> MAPPER_TYPES = Set.of("io.modelcontextprotocol.json.McpJsonMapper", "tools.jackson.databind.ObjectMapper", "com.fasterxml.jackson.databind.ObjectMapper");
-        private final Trees trees;
-        private final Types types;
-        private final Elements elements;
-        private int approvedDecodeCalls;
-
-        private ClosedResultScanner(Trees trees, Types types, Elements elements) {
-            this.trees = trees;
-            this.types = types;
-            this.elements = elements;
-        }
-
-        @Override
-        public Void visitCompilationUnit(CompilationUnitTree unit, Path source) {
-            String packageName = unit.getPackageName() == null ? "" : unit.getPackageName().toString();
-            if (packageName.equals("com.debugbridge") || packageName.startsWith(DEBUGBRIDGE_PACKAGE)) {
-                reject(source, unit, "forbidden DebugBridge implementation package: " + packageName);
-            }
-            return super.visitCompilationUnit(unit, source);
-        }
-
-        @Override
-        public Void visitImport(ImportTree importTree, Path source) {
-            String imported = importTree.getQualifiedIdentifier().toString();
-            if (imported.equals("com.google.gson") || imported.startsWith("com.google.gson.")) {
-                reject(source, importTree, "forbidden Gson type reference: " + imported);
-            }
-            if (imported.equals("com.debugbridge") || imported.startsWith(DEBUGBRIDGE_PACKAGE)) {
-                reject(source, importTree, "forbidden DebugBridge implementation type reference: " + imported);
-            }
-            return super.visitImport(importTree, source);
-        }
-
-        @Override
-        public Void visitNewClass(NewClassTree newClass, Path source) {
-            rejectForbiddenType(new TreePath(getCurrentPath(), newClass.getIdentifier()), source, newClass);
-            return super.visitNewClass(newClass, source);
-        }
-
-        @Override
-        public Void visitIdentifier(IdentifierTree identifier, Path source) {
-            rejectForbiddenType(getCurrentPath(), source, identifier);
-            return super.visitIdentifier(identifier, source);
-        }
-
-        @Override
-        public Void visitMemberSelect(MemberSelectTree select, Path source) {
-            rejectForbiddenType(getCurrentPath(), source, select);
-            Element member = trees.getElement(getCurrentPath());
-            if (member instanceof VariableElement variable && variable.getSimpleName().contentEquals("CLASS") && isJsonTypeInfoId(variable.getEnclosingElement())) {
-                reject(source, select, "forbidden Jackson class-name discriminator");
-            }
-            return super.visitMemberSelect(select, source);
-        }
-
-        @Override
-        public Void visitMethodInvocation(MethodInvocationTree invocation, Path source) {
-            String name = methodName(invocation.getMethodSelect());
-            if (name.equals("get") || name.equals("intValue") || name.equals("longValue") || name.equals("convertValue") || name.equals("enableDefaultTyping") || name.equals("decode")) {
-                rejectForbiddenInvocation(invocation, source, name);
-            }
-            return super.visitMethodInvocation(invocation, source);
-        }
-
-        private void rejectForbiddenInvocation(MethodInvocationTree invocation, Path source, String name) {
-            TreePath methodPath = new TreePath(getCurrentPath(), invocation.getMethodSelect());
-            Element element = trees.getElement(methodPath);
-            if (!(element instanceof ExecutableElement)) {
-                reject(source, invocation, "unable to attribute closed-result member invocation " + name);
-            }
-            ExecutableElement executable = (ExecutableElement) element;
-            TypeMirror receiver = receiverType(invocation.getMethodSelect());
-            TypeElement owner = executable.getEnclosingElement() instanceof TypeElement typeElement ? typeElement : null;
-            if (name.equals("decode") && isTypeOrSubtype(receiver, owner, JSON_TYPE)) {
-                if (!APPROVED_DECODER.equals(enclosingTypeName())) {
-                    reject(source, invocation, "unauthorized JsonType.decode invocation");
-                }
-                if (++approvedDecodeCalls > 1) {
-                    reject(source, invocation, "second JsonType.decode invocation");
-                }
-                return;
-            }
-            boolean forbidden = switch (name) {
-                case "get" -> isTypeOrSubtype(receiver, owner, MAP_TYPE);
-                case "intValue", "longValue" -> isTypeOrSubtype(receiver, owner, NUMBER_TYPE);
-                case "convertValue" -> isMapperType(receiver, owner);
-                case "enableDefaultTyping" -> true;
-                default -> false;
-            };
-            if (forbidden) {
-                reject(source, invocation, "forbidden closed-result member invocation " + name);
-            }
-        }
-
-        private TypeMirror receiverType(ExpressionTree methodSelect) {
-            if (!(methodSelect instanceof MemberSelectTree memberSelect)) {
-                return null;
-            }
-            TypeMirror receiver = trees.getTypeMirror(new TreePath(getCurrentPath(), memberSelect.getExpression()));
-            if (receiver == null || receiver.getKind() == TypeKind.ERROR || receiver.getKind() == TypeKind.NONE) {
-                throw new AssertionError("Unable to attribute closed-result invocation receiver: " + memberSelect);
-            }
-            return receiver;
-        }
-
-        private boolean isTypeOrSubtype(TypeMirror receiver, TypeElement owner, String targetName) {
-            TypeElement target = elements.getTypeElement(targetName);
-            if (target == null) {
-                throw new AssertionError("Unable to resolve closed-result guard target type: " + targetName);
-            }
-            if (receiver != null && receiver.getKind() != TypeKind.NONE && receiver.getKind() != TypeKind.ERROR) {
-                return types.isSubtype(types.erasure(receiver), types.erasure(target.asType()));
-            }
-            return owner != null && types.isSubtype(types.erasure(owner.asType()), types.erasure(target.asType()));
-        }
-
-        private boolean isMapperType(TypeMirror receiver, TypeElement owner) {
-            for (String targetName : MAPPER_TYPES) {
-                if (elements.getTypeElement(targetName) != null && isTypeOrSubtype(receiver, owner, targetName)) {
-                    return true;
-                }
-            }
-            return false;
-        }
-
-        private String enclosingTypeName() {
-            for (TreePath path = getCurrentPath(); path != null; path = path.getParentPath()) {
-                if (path.getLeaf() instanceof ClassTree && trees.getElement(path) instanceof TypeElement typeElement) {
-                    return typeElement.getQualifiedName().toString();
-                }
-            }
-            throw new AssertionError("Unable to attribute closed-result enclosing type");
-        }
-
-        private void assertExactlyOneApprovedDecode() {
-            if (approvedDecodeCalls != 1) {
-                throw new AssertionError("Expected exactly one approved JsonType.decode invocation in " + APPROVED_DECODER + ", found " + approvedDecodeCalls);
-            }
-        }
-
-        private void rejectForbiddenType(TreePath path, Path source, Tree tree) {
-            Element element = trees.getElement(path);
-            if (element instanceof TypeElement typeElement) {
-                String name = typeElement.getQualifiedName().toString();
-                if (FORBIDDEN_TYPE_NAMES.contains(name) || name.startsWith("com.google.gson.") || name.startsWith(DEBUGBRIDGE_PACKAGE)) {
-                    reject(source, tree, "forbidden closed-result type reference: " + name);
-                }
-            }
-        }
-
-        private static boolean isJsonTypeInfoId(Element element) {
-            return element instanceof TypeElement typeElement && typeElement.getQualifiedName().contentEquals("com.fasterxml.jackson.annotation.JsonTypeInfo.Id");
-        }
-
-        private static String methodName(ExpressionTree methodSelect) {
-            return methodSelect instanceof MemberSelectTree memberSelect ? memberSelect.getIdentifier().toString() : ((IdentifierTree) methodSelect).getName().toString();
-        }
-
-        private static void reject(Path source, Tree tree, String message) {
-            throw new AssertionError(source + ": " + message + " at " + tree);
-        }
-    }
-
     private static boolean isNamedTopLevelDeclaration(Tree.Kind kind) {
         return kind == Tree.Kind.CLASS || kind == Tree.Kind.INTERFACE || kind == Tree.Kind.ENUM || kind == Tree.Kind.RECORD || kind == Tree.Kind.ANNOTATION_TYPE;
     }
@@ -377,7 +190,7 @@ class JavaSourceLayoutTest {
         if (diagnostics.isEmpty()) {
             return "<none>";
         }
-        return diagnostics.stream().map(diagnostic -> diagnostic.getKind() + " " + diagnosticSource(diagnostic) + ":" + diagnostic.getLineNumber() + ":" + diagnostic.getColumnNumber() + " " + diagnostic.getMessage(Locale.ROOT)).collect(java.util.stream.Collectors.joining(System.lineSeparator()));
+        return diagnostics.stream().map(diagnostic -> diagnostic.getKind() + " " + diagnosticSource(diagnostic) + ":" + diagnostic.getLineNumber() + ":" + diagnostic.getColumnNumber() + " " + diagnostic.getMessage(Locale.ROOT)).collect(Collectors.joining(System.lineSeparator()));
     }
 
     private static String diagnosticSource(Diagnostic<? extends JavaFileObject> diagnostic) {
@@ -541,9 +354,6 @@ class JavaSourceLayoutTest {
         assertNoClosedResultHazards(List.of(allowed));
     }
 
-    private record ForbiddenCase(String expectedMessage, String source, List<Path> sources) {
-    }
-
     @Test
     void toolMetadataResourceContainsOnlyItsOrderedDescriptiveFields() throws Exception {
         var mapper = McpJsonDefaults.getMapper();
@@ -559,5 +369,178 @@ class JavaSourceLayoutTest {
             assertTrue(names.add((String) tool.get("name")));
         }
         assertEquals(33, names.size());
+    }
+
+    private static final class ClosedResultScanner extends TreePathScanner<Void, Path> {
+        private static final Set<String> FORBIDDEN_TYPE_NAMES = Set.of("dev.mcdevmcp.mcp.tool.api.TypedJson", "com.google.gson.Gson", "com.google.gson.GsonBuilder");
+        private static final String DEBUGBRIDGE_PACKAGE = "com.debugbridge.";
+        private static final String JSON_TYPE = "dev.mcdevmcp.mcp.tool.api.JsonType";
+        private static final String APPROVED_DECODER = "dev.mcdevmcp.bridge.BridgeResultDecoder";
+        private static final String MAP_TYPE = "java.util.Map";
+        private static final String NUMBER_TYPE = "java.lang.Number";
+        private static final Set<String> MAPPER_TYPES = Set.of("io.modelcontextprotocol.json.McpJsonMapper", "tools.jackson.databind.ObjectMapper", "com.fasterxml.jackson.databind.ObjectMapper");
+        private final Trees trees;
+        private final Types types;
+        private final Elements elements;
+        private int approvedDecodeCalls;
+
+        private ClosedResultScanner(Trees trees, Types types, Elements elements) {
+            this.trees = trees;
+            this.types = types;
+            this.elements = elements;
+        }
+
+        private static boolean isJsonTypeInfoId(Element element) {
+            return element instanceof TypeElement typeElement && typeElement.getQualifiedName().contentEquals("com.fasterxml.jackson.annotation.JsonTypeInfo.Id");
+        }
+
+        private static String methodName(ExpressionTree methodSelect) {
+            return methodSelect instanceof MemberSelectTree memberSelect ? memberSelect.getIdentifier().toString() : ((IdentifierTree) methodSelect).getName().toString();
+        }
+
+        private static void reject(Path source, Tree tree, String message) {
+            throw new AssertionError(source + ": " + message + " at " + tree);
+        }
+
+        @Override
+        public Void visitCompilationUnit(CompilationUnitTree unit, Path source) {
+            String packageName = unit.getPackageName() == null ? "" : unit.getPackageName().toString();
+            if (packageName.equals("com.debugbridge") || packageName.startsWith(DEBUGBRIDGE_PACKAGE)) {
+                reject(source, unit, "forbidden DebugBridge implementation package: " + packageName);
+            }
+            return super.visitCompilationUnit(unit, source);
+        }
+
+        @Override
+        public Void visitImport(ImportTree importTree, Path source) {
+            String imported = importTree.getQualifiedIdentifier().toString();
+            if (imported.equals("com.google.gson") || imported.startsWith("com.google.gson.")) {
+                reject(source, importTree, "forbidden Gson type reference: " + imported);
+            }
+            if (imported.equals("com.debugbridge") || imported.startsWith(DEBUGBRIDGE_PACKAGE)) {
+                reject(source, importTree, "forbidden DebugBridge implementation type reference: " + imported);
+            }
+            return super.visitImport(importTree, source);
+        }
+
+        @Override
+        public Void visitNewClass(NewClassTree newClass, Path source) {
+            rejectForbiddenType(new TreePath(getCurrentPath(), newClass.getIdentifier()), source, newClass);
+            return super.visitNewClass(newClass, source);
+        }
+
+        @Override
+        public Void visitIdentifier(IdentifierTree identifier, Path source) {
+            rejectForbiddenType(getCurrentPath(), source, identifier);
+            return super.visitIdentifier(identifier, source);
+        }
+
+        @Override
+        public Void visitMemberSelect(MemberSelectTree select, Path source) {
+            rejectForbiddenType(getCurrentPath(), source, select);
+            Element member = trees.getElement(getCurrentPath());
+            if (member instanceof VariableElement variable && variable.getSimpleName().contentEquals("CLASS") && isJsonTypeInfoId(variable.getEnclosingElement())) {
+                reject(source, select, "forbidden Jackson class-name discriminator");
+            }
+            return super.visitMemberSelect(select, source);
+        }
+
+        @Override
+        public Void visitMethodInvocation(MethodInvocationTree invocation, Path source) {
+            String name = methodName(invocation.getMethodSelect());
+            if (name.equals("get") || name.equals("intValue") || name.equals("longValue") || name.equals("convertValue") || name.equals("enableDefaultTyping") || name.equals("decode")) {
+                rejectForbiddenInvocation(invocation, source, name);
+            }
+            return super.visitMethodInvocation(invocation, source);
+        }
+
+        private void rejectForbiddenInvocation(MethodInvocationTree invocation, Path source, String name) {
+            TreePath methodPath = new TreePath(getCurrentPath(), invocation.getMethodSelect());
+            Element element = trees.getElement(methodPath);
+            if (!(element instanceof ExecutableElement)) {
+                reject(source, invocation, "unable to attribute closed-result member invocation " + name);
+            }
+            ExecutableElement executable = (ExecutableElement) element;
+            TypeMirror receiver = receiverType(invocation.getMethodSelect());
+            TypeElement owner = executable.getEnclosingElement() instanceof TypeElement typeElement ? typeElement : null;
+            if (name.equals("decode") && isTypeOrSubtype(receiver, owner, JSON_TYPE)) {
+                if (!APPROVED_DECODER.equals(enclosingTypeName())) {
+                    reject(source, invocation, "unauthorized JsonType.decode invocation");
+                }
+                if (++approvedDecodeCalls > 1) {
+                    reject(source, invocation, "second JsonType.decode invocation");
+                }
+                return;
+            }
+            boolean forbidden = switch (name) {
+                case "get" -> isTypeOrSubtype(receiver, owner, MAP_TYPE);
+                case "intValue", "longValue" -> isTypeOrSubtype(receiver, owner, NUMBER_TYPE);
+                case "convertValue" -> isMapperType(receiver, owner);
+                case "enableDefaultTyping" -> true;
+                default -> false;
+            };
+            if (forbidden) {
+                reject(source, invocation, "forbidden closed-result member invocation " + name);
+            }
+        }
+
+        private TypeMirror receiverType(ExpressionTree methodSelect) {
+            if (!(methodSelect instanceof MemberSelectTree memberSelect)) {
+                return null;
+            }
+            TypeMirror receiver = trees.getTypeMirror(new TreePath(getCurrentPath(), memberSelect.getExpression()));
+            if (receiver == null || receiver.getKind() == TypeKind.ERROR || receiver.getKind() == TypeKind.NONE) {
+                throw new AssertionError("Unable to attribute closed-result invocation receiver: " + memberSelect);
+            }
+            return receiver;
+        }
+
+        private boolean isTypeOrSubtype(TypeMirror receiver, TypeElement owner, String targetName) {
+            TypeElement target = elements.getTypeElement(targetName);
+            if (target == null) {
+                throw new AssertionError("Unable to resolve closed-result guard target type: " + targetName);
+            }
+            if (receiver != null && receiver.getKind() != TypeKind.NONE && receiver.getKind() != TypeKind.ERROR) {
+                return types.isSubtype(types.erasure(receiver), types.erasure(target.asType()));
+            }
+            return owner != null && types.isSubtype(types.erasure(owner.asType()), types.erasure(target.asType()));
+        }
+
+        private boolean isMapperType(TypeMirror receiver, TypeElement owner) {
+            for (String targetName : MAPPER_TYPES) {
+                if (elements.getTypeElement(targetName) != null && isTypeOrSubtype(receiver, owner, targetName)) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        private String enclosingTypeName() {
+            for (TreePath path = getCurrentPath(); path != null; path = path.getParentPath()) {
+                if (path.getLeaf() instanceof ClassTree && trees.getElement(path) instanceof TypeElement typeElement) {
+                    return typeElement.getQualifiedName().toString();
+                }
+            }
+            throw new AssertionError("Unable to attribute closed-result enclosing type");
+        }
+
+        private void assertExactlyOneApprovedDecode() {
+            if (approvedDecodeCalls != 1) {
+                throw new AssertionError("Expected exactly one approved JsonType.decode invocation in " + APPROVED_DECODER + ", found " + approvedDecodeCalls);
+            }
+        }
+
+        private void rejectForbiddenType(TreePath path, Path source, Tree tree) {
+            Element element = trees.getElement(path);
+            if (element instanceof TypeElement typeElement) {
+                String name = typeElement.getQualifiedName().toString();
+                if (FORBIDDEN_TYPE_NAMES.contains(name) || name.startsWith("com.google.gson.") || name.startsWith(DEBUGBRIDGE_PACKAGE)) {
+                    reject(source, tree, "forbidden closed-result type reference: " + name);
+                }
+            }
+        }
+    }
+
+    private record ForbiddenCase(String expectedMessage, String source, List<Path> sources) {
     }
 }

@@ -2,7 +2,7 @@ package dev.mcdevmcp.analysis.index.pipeline;
 
 import dev.mcdevmcp.analysis.index.IndexRequest;
 import dev.mcdevmcp.analysis.index.PublishedSourceRoot;
-
+import dev.mcdevmcp.storage.h2.SymbolSchema;
 import dev.mcdevmcp.storage.model.ElementKindCodec;
 import dev.mcdevmcp.storage.model.FabricApiVersion;
 import dev.mcdevmcp.storage.model.MinecraftVersion;
@@ -32,7 +32,7 @@ record SymbolIndexSnapshot(SymbolIndexMetadata metadata, List<IndexedPackageSnap
     }
 
     static SymbolIndexSnapshot expected(IndexRequest request, String remappedJarSha256, Instant builtAt, List<IndexedPackage> packages, List<ParsedType> parsedTypes, PublishedSourceRoot publishedSourceRoot) {
-        SymbolIndexMetadata metadata = new SymbolIndexMetadata(true, dev.mcdevmcp.storage.h2.SymbolSchema.VERSION, request.minecraftVersion(), publishedSourceRoot.path(), remappedJarSha256, builtAt);
+        SymbolIndexMetadata metadata = new SymbolIndexMetadata(true, SymbolSchema.VERSION, request.minecraftVersion(), publishedSourceRoot.path(), remappedJarSha256, builtAt);
         List<IndexedPackageSnapshot> expectedPackages = packages.stream().map(indexedPackage -> new IndexedPackageSnapshot(indexedPackage.id(), indexedPackage.namespace(), indexedPackage.fabricApiVersion(), indexedPackage.fabricApiVersion().map(FabricApiVersion::value).orElse(""), indexedPackage.name())).toList();
         List<IndexedTypeSnapshot> expectedTypes = new ArrayList<>();
         List<IndexedInterfaceSnapshot> expectedInterfaces = new ArrayList<>();
@@ -129,7 +129,7 @@ record SymbolIndexSnapshot(SymbolIndexMetadata metadata, List<IndexedPackageSnap
         return Optional.ofNullable(value).map(ClassDesc::of);
     }
 
-    private static List<Modifier> modifiers(java.util.Set<Modifier> modifiers) {
+    private static List<Modifier> modifiers(Set<Modifier> modifiers) {
         return Arrays.stream(Modifier.values()).filter(modifiers::contains).toList();
     }
 

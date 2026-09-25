@@ -10,6 +10,7 @@ import java.nio.channels.FileLock;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.time.Duration;
+import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -19,7 +20,7 @@ class DatabaseLockTest {
     Path temporaryDirectory;
 
     private static DatabaseLock exclusiveLock(ReentrantLock localLock, FileChannel channel, FileLock fileLock) throws Exception {
-        var constructor = DatabaseLock.class.getDeclaredConstructor(java.util.concurrent.locks.Lock.class, DatabaseLockState.class, boolean.class, FileChannel.class, FileLock.class);
+        var constructor = DatabaseLock.class.getDeclaredConstructor(Lock.class, DatabaseLockState.class, boolean.class, FileChannel.class, FileLock.class);
         constructor.setAccessible(true);
         return constructor.newInstance(localLock, new DatabaseLockState(), false, channel, fileLock);
     }

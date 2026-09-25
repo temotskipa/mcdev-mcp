@@ -1,7 +1,7 @@
 package dev.mcdevmcp.tools.runtime;
 
-import dev.mcdevmcp.minecraft.BlockPosition;
 import dev.mcdevmcp.mcp.tool.api.InputProperty;
+import dev.mcdevmcp.minecraft.BlockPosition;
 
 import java.util.Objects;
 

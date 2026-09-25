@@ -7,24 +7,21 @@ import dev.mcdevmcp.storage.callgraph.CallgraphRepository;
 import dev.mcdevmcp.storage.h2.SymbolRepository;
 import dev.mcdevmcp.storage.h2.VersionStateRepository;
 import dev.mcdevmcp.storage.migration.VersionOperationLease;
-import dev.mcdevmcp.storage.model.VersionState;
 import dev.mcdevmcp.storage.model.ClassSymbol;
 import dev.mcdevmcp.storage.model.MinecraftVersion;
 import dev.mcdevmcp.storage.model.SourceNamespace;
+import dev.mcdevmcp.storage.model.VersionState;
 import dev.mcdevmcp.support.AppVersion;
 
 import javax.lang.model.element.Modifier;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
-import java.nio.file.Path;
 import java.nio.file.LinkOption;
+import java.nio.file.Path;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.sql.SQLException;
-import java.util.Comparator;
-import java.util.Locale;
-import java.util.Optional;
-import java.util.Set;
+import java.util.*;
 import java.util.stream.Collectors;
 
 final class StaticToolSupport {
@@ -40,7 +37,7 @@ final class StaticToolSupport {
 
     StaticToolSupport(PlatformPaths paths, Runnable beforeSourceRead) {
         this.paths = paths;
-        this.beforeSourceRead = java.util.Objects.requireNonNull(beforeSourceRead, "beforeSourceRead");
+        this.beforeSourceRead = Objects.requireNonNull(beforeSourceRead, "beforeSourceRead");
         states = new VersionStateRepository(paths);
     }
 

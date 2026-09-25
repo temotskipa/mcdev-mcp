@@ -1,14 +1,14 @@
 # Corpus Qualification And Benchmarks
 
 The release gate uses complete, reviewed Minecraft `1.21.11` and `26.1` inputs
-on released Java 26 with `--enable-preview`. Java 27 and later cannot run this
-Java 26 preview build. Qualification runs with one worker and with `min(4, available CPUs)`
+on released Java 27 with `--enable-preview`. Other JDK feature versions cannot
+run this preview build. Qualification runs with one worker and with `min(4, available CPUs)`
 workers. The blocking benchmark uses G1; manually requested Parallel GC runs
 are advisory. Synthetic fixtures validate the harness and cannot qualify a
 real corpus.
 
 Direct harness launches must pass `--enable-preview` before `-cp`. Benchmark
-child JVMs inherit the Java 26 executable and explicitly enable preview too.
+child JVMs inherit the Java 27 executable and explicitly enable preview too.
 These flags apply to the MCP server and its harnesses, not the Minecraft JVM.
 
 ## Immutable Compiler Dependencies

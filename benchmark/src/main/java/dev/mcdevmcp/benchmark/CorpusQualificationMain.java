@@ -3,22 +3,13 @@ package dev.mcdevmcp.benchmark;
 import dev.mcdevmcp.analysis.callgraph.CallgraphRequest;
 import dev.mcdevmcp.analysis.callgraph.CallgraphScanner;
 import dev.mcdevmcp.analysis.callgraph.CallgraphSummary;
-import dev.mcdevmcp.analysis.index.IndexBuildEvidence;
-import dev.mcdevmcp.analysis.index.IndexRequest;
-import dev.mcdevmcp.analysis.index.IndexSummary;
-import dev.mcdevmcp.analysis.index.SourceIndexer;
-import dev.mcdevmcp.analysis.index.SourceRoot;
+import dev.mcdevmcp.analysis.index.*;
 import dev.mcdevmcp.storage.callgraph.CallgraphBundleValidator;
 import dev.mcdevmcp.storage.callgraph.CallgraphManifest;
 import dev.mcdevmcp.storage.callgraph.CallgraphPointer;
 import dev.mcdevmcp.storage.callgraph.CallgraphRepository;
 import dev.mcdevmcp.storage.h2.SymbolRepository;
-import dev.mcdevmcp.storage.model.ClassSymbol;
-import dev.mcdevmcp.storage.model.FieldSymbol;
-import dev.mcdevmcp.storage.model.MethodReference;
-import dev.mcdevmcp.storage.model.MethodSymbol;
-import dev.mcdevmcp.storage.model.MinecraftVersion;
-import dev.mcdevmcp.storage.model.SourceNamespace;
+import dev.mcdevmcp.storage.model.*;
 import dev.mcdevmcp.support.Cancellation;
 import io.modelcontextprotocol.json.McpJsonDefaults;
 
@@ -32,20 +23,12 @@ import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.sql.Connection;
 import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.sql.Statement;
-import java.util.ArrayList;
-import java.util.EnumSet;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.HexFormat;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Optional;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -386,7 +369,7 @@ public final class CorpusQualificationMain {
                 yield new ProbeResult(CorpusProbeProjectionV1.methodProbe(probe.key(), methods, method -> {
                     try {
                         return symbols.parameters(method.id());
-                    } catch (IOException | java.sql.SQLException exception) {
+                    } catch (IOException | SQLException exception) {
                         throw new ProbeParameterException(exception);
                     }
                 }).signature(), !methods.isEmpty());
@@ -533,13 +516,18 @@ public final class CorpusQualificationMain {
         }
     }
 
+    @FunctionalInterface
+    interface RssProbe {
+        long peakRssBytes() throws IOException;
+    }
+
     static final class LogicalDigest {
         private final MessageDigest digest;
 
         LogicalDigest() {
             try {
                 digest = MessageDigest.getInstance("SHA-256");
-            } catch (java.security.NoSuchAlgorithmException exception) {
+            } catch (NoSuchAlgorithmException exception) {
                 throw new AssertionError(exception);
             }
         }
@@ -606,11 +594,6 @@ public final class CorpusQualificationMain {
     }
 
     record CallgraphHashes(String identity, String logicalHash) {
-    }
-
-    @FunctionalInterface
-    interface RssProbe {
-        long peakRssBytes() throws IOException;
     }
 
     private record InputSnapshot(String sourceHash, String jarHash, String nodeBaselineHash, String expectationHash, VerifiedCorpusClasspath classpath) {

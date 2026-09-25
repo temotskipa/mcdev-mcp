@@ -2,7 +2,7 @@
 
 ## Runtime Shape
 
-mcdev-mcp ships as one Java 26 shaded executable JAR. The same artifact runs
+mcdev-mcp ships as one Java 27 shaded executable JAR. The same artifact runs
 the human-facing CLI and the STDIO MCP server:
 
 ```text
@@ -125,12 +125,12 @@ contains no server command or Node runtime selector.
 
 MCPB is the sole packaging exception. `packaging/mcpb/` owns a minimal
 `bootstrap.cjs`, package metadata, and its packaging dependency. The launcher
-requires Java 26 and starts the bundled JAR with `--enable-preview`. All npm commands
+requires Java 27 and starts the bundled JAR with `--enable-preview`. All npm commands
 in `scripts/build-mcpb.ps1` run with that directory as their working directory;
 nothing there is part of direct JAR execution.
 
-The release workflow builds the JAR once on Java 26, records its hash, and
-runs that exact artifact on Java 26. The MCPB is packed around the same bytes. A
+The release workflow builds the JAR once on Java 27, records its hash, and
+runs that exact artifact on Java 27. The MCPB is packed around the same bytes. A
 read-only verification job admits exactly three publishable assets: JAR,
 checksum, and MCPB. Only the final publishing job receives release write
 permission.

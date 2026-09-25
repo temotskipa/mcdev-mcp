@@ -113,7 +113,7 @@ public final class ToolCatalog {
             validateDeclarations(declarations);
         }
 
-        Set<String> metadataNames = new java.util.HashSet<>();
+        Set<String> metadataNames = new HashSet<>();
         for (ToolMetadata tool : metadata) {
             if (tool == null) {
                 throw new IllegalArgumentException("Malformed tool metadata entry");

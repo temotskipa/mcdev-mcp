@@ -1,6 +1,7 @@
 package dev.mcdevmcp.tools.runtime;
 
 import dev.mcdevmcp.bridge.BridgeEndpoint;
+import dev.mcdevmcp.bridge.BridgeResponse;
 import dev.mcdevmcp.mcp.tool.ToolDeclaration;
 import dev.mcdevmcp.mcp.tool.api.ContentToolBinding;
 import dev.mcdevmcp.mcp.tool.api.ContentToolResult;
@@ -28,7 +29,7 @@ final class McLeaveServerTool {
         })));
     }
 
-    static String safeResult(RuntimeToolSupport runtime, dev.mcdevmcp.bridge.BridgeResponse response) {
+    static String safeResult(RuntimeToolSupport runtime, BridgeResponse response) {
         return response.resultPresent() ? runtime.prettyJson(response.result()) : "undefined";
     }
 }

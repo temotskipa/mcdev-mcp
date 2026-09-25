@@ -67,16 +67,6 @@ public record CorpusProbeProjectionV1(String schema, CorpusProbeKind kind, Strin
         return new CorpusProbeProjectionV1(SCHEMA, kind, key, rows);
     }
 
-    public String signature() throws Exception {
-        ByteArrayOutputStream output = new ByteArrayOutputStream();
-        output.write(6);
-        string(output, schema);
-        string(output, kind.name());
-        string(output, key);
-        list(output, results, CorpusProbeProjectionV1::row);
-        return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(output.toByteArray()));
-    }
-
     private static void row(ByteArrayOutputStream output, CorpusProbeProjectionRowV1 value) {
         output.write(4);
         string(output, value.symbolKind());
@@ -130,6 +120,16 @@ public record CorpusProbeProjectionV1(String schema, CorpusProbeKind kind, Strin
 
     private static byte[] int32(int value) {
         return ByteBuffer.allocate(Integer.BYTES).putInt(value).array();
+    }
+
+    public String signature() throws Exception {
+        ByteArrayOutputStream output = new ByteArrayOutputStream();
+        output.write(6);
+        string(output, schema);
+        string(output, kind.name());
+        string(output, key);
+        list(output, results, CorpusProbeProjectionV1::row);
+        return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(output.toByteArray()));
     }
 
     @FunctionalInterface

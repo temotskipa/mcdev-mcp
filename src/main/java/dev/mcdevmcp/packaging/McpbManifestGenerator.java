@@ -2,6 +2,7 @@ package dev.mcdevmcp.packaging;
 
 import dev.mcdevmcp.mcp.McpServerFactory;
 import dev.mcdevmcp.mcp.tool.ToolDefinition;
+import dev.mcdevmcp.support.AppEnvironment;
 import dev.mcdevmcp.support.AppVersion;
 import io.modelcontextprotocol.json.McpJsonDefaults;
 import io.modelcontextprotocol.json.McpJsonMapper;
@@ -11,12 +12,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
+import java.util.*;
 
 /**
  * Generates the Java-owned MCPB catalog manifest and the packer-only staging manifest.
@@ -43,7 +39,7 @@ public final class McpbManifestGenerator {
         Objects.requireNonNull(rootManifest, "rootManifest");
         Objects.requireNonNull(stagingManifest, "stagingManifest");
         McpJsonMapper mapper = McpJsonDefaults.getMapper();
-        try (var composition = McpServerFactory.declarativeComposition(new dev.mcdevmcp.support.AppEnvironment(Map.of()), mapper)) {
+        try (var composition = McpServerFactory.declarativeComposition(new AppEnvironment(Map.of()), mapper)) {
             Map<String, Object> root = generatedRootManifest(readTemplate(mapper, template), version, composition.definitions());
             write(mapper, rootManifest, root);
             write(mapper, stagingManifest, stagingManifest(root));

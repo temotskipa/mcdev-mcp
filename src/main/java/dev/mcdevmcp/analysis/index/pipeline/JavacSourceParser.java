@@ -10,13 +10,7 @@ import dev.mcdevmcp.analysis.index.IndexRequest;
 
 import java.net.URI;
 import java.nio.file.Path;
-import java.util.ArrayDeque;
-import java.util.ArrayList;
-import java.util.Deque;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
+import java.util.*;
 import java.util.concurrent.Callable;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -33,6 +27,31 @@ final class JavacSourceParser {
 
     JavacSourceParser(Runnable compilerStarted) {
         this.compilerStarted = Objects.requireNonNull(compilerStarted, "compilerStarted");
+    }
+
+    static List<List<DecodedSource>> partition(List<DecodedSource> sources) {
+        if (sources.isEmpty()) {
+            return List.of();
+        }
+        boolean hasModuleDescriptor = sources.stream().map(DecodedSource::relativePath).map(Path::getFileName).anyMatch(Path.of("module-info.java")::equals);
+        if (hasModuleDescriptor) {
+            return List.of(List.copyOf(sources));
+        }
+        List<List<DecodedSource>> batches = new ArrayList<>();
+        List<DecodedSource> batch = new ArrayList<>();
+        long characters = 0;
+        for (DecodedSource source : sources) {
+            int length = source.content().length();
+            if (!batch.isEmpty() && (batch.size() == MAXIMUM_BATCH_UNITS || characters + length > MAXIMUM_BATCH_CHARACTERS)) {
+                batches.add(List.copyOf(batch));
+                batch.clear();
+                characters = 0;
+            }
+            batch.add(source);
+            characters += length;
+        }
+        batches.add(List.copyOf(batch));
+        return List.copyOf(batches);
     }
 
     ParsedIndex parse(IndexRequest request, ClassFileTypeCatalog catalog, CompilerClasspath classpath, SourceCorpus discovered) throws IndexBuildException, InterruptedException {
@@ -63,31 +82,6 @@ final class JavacSourceParser {
             diagnostics.addAll(batch.diagnostics());
         });
         return new ParsedIndex(types, units, diagnostics);
-    }
-
-    static List<List<DecodedSource>> partition(List<DecodedSource> sources) {
-        if (sources.isEmpty()) {
-            return List.of();
-        }
-        boolean hasModuleDescriptor = sources.stream().map(DecodedSource::relativePath).map(Path::getFileName).anyMatch(Path.of("module-info.java")::equals);
-        if (hasModuleDescriptor) {
-            return List.of(List.copyOf(sources));
-        }
-        List<List<DecodedSource>> batches = new ArrayList<>();
-        List<DecodedSource> batch = new ArrayList<>();
-        long characters = 0;
-        for (DecodedSource source : sources) {
-            int length = source.content().length();
-            if (!batch.isEmpty() && (batch.size() == MAXIMUM_BATCH_UNITS || characters + length > MAXIMUM_BATCH_CHARACTERS)) {
-                batches.add(List.copyOf(batch));
-                batch.clear();
-                characters = 0;
-            }
-            batch.add(source);
-            characters += length;
-        }
-        batches.add(List.copyOf(batch));
-        return List.copyOf(batches);
     }
 
     private SourceCorpus preflight(IndexRequest request, CompilerClasspath classpath, SourceCorpus discovered) throws IndexBuildException, InterruptedException {

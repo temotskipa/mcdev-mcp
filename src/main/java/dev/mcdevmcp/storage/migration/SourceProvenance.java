@@ -3,6 +3,7 @@ package dev.mcdevmcp.storage.migration;
 import io.modelcontextprotocol.json.McpJsonDefaults;
 
 import java.io.IOException;
+import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
@@ -33,7 +34,7 @@ public final class SourceProvenance {
     public static void write(Path target, SourcePreparationStamp stamp) throws IOException {
         byte[] bytes = McpJsonDefaults.getMapper().writeValueAsBytes(stamp);
         try (var channel = FileChannel.open(target, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE)) {
-            var buffer = java.nio.ByteBuffer.wrap(bytes);
+            var buffer = ByteBuffer.wrap(bytes);
             while (buffer.hasRemaining()) {
                 //noinspection ResultOfMethodCallIgnored
                 channel.write(buffer);

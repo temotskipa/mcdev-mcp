@@ -12,7 +12,7 @@ final class SessionControlProcessFixture {
     private SessionControlProcessFixture() {
     }
 
-    public static void main(String[] arguments) throws Exception {
+    static void main(String[] arguments) throws Exception {
         switch (arguments[0]) {
             case "success" -> success();
             case "hang" -> Thread.sleep(Long.MAX_VALUE);

@@ -24,13 +24,13 @@ import java.util.concurrent.TimeUnit;
 import static org.junit.jupiter.api.Assertions.*;
 
 class CoreRuntimeToolContractTest {
-    private static String contentText(ToolResult<?> result) {
-        return assertInstanceOf(McpSchema.TextContent.class, result.content().getFirst()).text();
-    }
-
     private static final McpJsonMapper MAPPER = McpJsonDefaults.getMapper();
     private static final AppEnvironment ENVIRONMENT = new AppEnvironment(Map.of());
     private static final List<String> CORE_FIXTURE_LABELS = List.of("connect-success", "connect-declared-error", "connect-missing-result", "execute-success", "execute-number-formatting", "execute-declared-error", "execute-timeout", "snapshot-success", "snapshot-declared-error", "snapshot-missing-result", "snapshot-wrong-primitive", "nearby-entities-success", "nearby-entities-declared-error", "nearby-entities-missing-result", "entity-details-success", "entity-details-declared-error", "entity-details-missing-result", "nearby-blocks-success", "nearby-blocks-declared-error", "nearby-blocks-missing-result", "block-details-success", "block-details-declared-error", "block-details-missing-result", "looked-at-entity-success", "looked-at-entity-null", "looked-at-entity-declared-error", "looked-at-entity-missing-result", "looked-at-entity-wrong-primitive", "chat-history-success", "chat-history-declared-error", "chat-history-missing-result", "screen-inspect-success", "screen-inspect-declared-error", "screen-inspect-missing-result", "snapshot-declared-error-without-message");
+
+    private static String contentText(ToolResult<?> result) {
+        return assertInstanceOf(McpSchema.TextContent.class, result.content().getFirst()).text();
+    }
 
     private static ToolResult<?> dispatch(ToolCatalog catalog, String tool, Map<String, Object> arguments) throws Exception {
         return catalog.dispatch(tool, arguments, Cancellation.none()).toCompletableFuture().get(5, TimeUnit.SECONDS);

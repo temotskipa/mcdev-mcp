@@ -16,6 +16,13 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class McpSdkAdapterVisibilityTest {
+    private static void assertPublicStaticMethod(String name, Class<?> returnType, Class<?>... parameterTypes) throws NoSuchMethodException {
+        Method method = McpSdkAdapter.class.getDeclaredMethod(name, parameterTypes);
+        assertEquals(returnType, method.getReturnType());
+        assertTrue(Modifier.isPublic(method.getModifiers()));
+        assertTrue(Modifier.isStatic(method.getModifiers()));
+    }
+
     @Test
     void exposesOnlyTheDeliberateTransportFacade() throws NoSuchMethodException {
         assertTrue(Arrays.stream(McpSdkAdapter.class.getDeclaredConstructors()).noneMatch(constructor -> Modifier.isPublic(constructor.getModifiers())));
@@ -32,12 +39,5 @@ class McpSdkAdapterVisibilityTest {
         assertEquals("close", streamablePublicMethods.getFirst().getName());
         assertEquals(void.class, streamablePublicMethods.getFirst().getReturnType());
         assertEquals(0, streamablePublicMethods.getFirst().getParameterCount());
-    }
-
-    private static void assertPublicStaticMethod(String name, Class<?> returnType, Class<?>... parameterTypes) throws NoSuchMethodException {
-        Method method = McpSdkAdapter.class.getDeclaredMethod(name, parameterTypes);
-        assertEquals(returnType, method.getReturnType());
-        assertTrue(Modifier.isPublic(method.getModifiers()));
-        assertTrue(Modifier.isStatic(method.getModifiers()));
     }
 }

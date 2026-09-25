@@ -14,6 +14,7 @@ import java.nio.channels.FileChannel;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
 import java.nio.file.attribute.BasicFileAttributes;
+import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
 
@@ -85,7 +86,7 @@ public final class MappingConverter {
             try (var inputReader = Files.newBufferedReader(temporary)) {
                 MappingReader.read(inputReader, validated);
             }
-            if (!"official".equals(validated.getSrcNamespace()) || !validated.getDstNamespaces().equals(java.util.List.of("named")) || validated.getClasses().isEmpty() || validated.getClasses().stream().anyMatch(mapping -> mapping.getDstName(0) == null)) {
+            if (!"official".equals(validated.getSrcNamespace()) || !validated.getDstNamespaces().equals(List.of("named")) || validated.getClasses().isEmpty() || validated.getClasses().stream().anyMatch(mapping -> mapping.getDstName(0) == null)) {
                 throw new IOException("Generated Tiny mapping is invalid: " + temporary);
             }
             checkCancelled(cancellation);

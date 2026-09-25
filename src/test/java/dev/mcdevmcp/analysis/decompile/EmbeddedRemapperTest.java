@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Test;
 
 import javax.tools.ToolProvider;
 import java.io.IOException;
+import java.net.URL;
 import java.net.URLClassLoader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -80,7 +81,7 @@ final class EmbeddedRemapperTest {
         List<Integer> progress = new ArrayList<>();
         Path output = new MinecraftRemapper(2).remap(fixture.input(), fixture.mappings(), root.resolve("output.jar"), (_, percent, _) -> progress.add(percent), Cancellation.none());
         try (JarFile jar = new JarFile(output.toFile());
-             URLClassLoader loader = new URLClassLoader(new java.net.URL[]{output.toUri().toURL()})) {
+             URLClassLoader loader = new URLClassLoader(new URL[]{output.toUri().toURL()})) {
             assertEquals("resource", entryText(jar, "data/example.txt"));
             assertNotNull(jar.getEntry("fixture/Named.class"));
             assertEquals("fixture.Named", jar.getManifest().getMainAttributes().getValue(Attributes.Name.MAIN_CLASS));

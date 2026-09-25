@@ -3,7 +3,9 @@ package dev.mcdevmcp.storage.callgraph;
 import dev.mcdevmcp.storage.bundle.BundleLock;
 import dev.mcdevmcp.storage.model.MethodReference;
 import dev.mcdevmcp.storage.model.MinecraftVersion;
+import dev.mcdevmcp.support.Cancellation;
 import io.modelcontextprotocol.json.McpJsonDefaults;
+import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -11,10 +13,10 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
-import java.util.ArrayList;
-import java.util.List;
+import java.util.*;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executors;
+import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -45,9 +47,9 @@ class CallgraphRepositoryTest {
         return bundle.resolve("generations").resolve(pointer.generation());
     }
 
-    private static java.util.Set<String> generationNames(Path bundle) throws IOException {
+    private static Set<String> generationNames(Path bundle) throws IOException {
         try (var generations = Files.list(bundle.resolve("generations"))) {
-            return generations.map(path -> path.getFileName().toString()).collect(java.util.stream.Collectors.toUnmodifiableSet());
+            return generations.map(path -> path.getFileName().toString()).collect(Collectors.toUnmodifiableSet());
         }
     }
 
@@ -64,8 +66,8 @@ class CallgraphRepositoryTest {
         var repository = new CallgraphRepository(bundle, VERSION);
         List<MethodReference> callers = repository.callers("target.Target", "hit", 20);
 
-        assertEquals(java.util.Arrays.asList(null, "", "()V", "()V", "(I)V"), callers.stream().map(MethodReference::descriptor).toList());
-        assertEquals(java.util.Arrays.asList(null, 0, 11, 11, 7), callers.stream().map(MethodReference::lineNumber).toList());
+        assertEquals(Arrays.asList(null, "", "()V", "()V", "(I)V"), callers.stream().map(MethodReference::descriptor).toList());
+        assertEquals(Arrays.asList(null, 0, 11, 11, 7), callers.stream().map(MethodReference::lineNumber).toList());
         assertEquals(List.of(2L, 3L, 4L, 5L, 1L), callers.stream().map(MethodReference::edgeId).toList());
         assertEquals("caller.Alpha.entry", callers.getFirst().displayName());
         assertEquals("caller.Alpha.entry", callers.get(1).displayName());
@@ -148,7 +150,7 @@ class CallgraphRepositoryTest {
     @Test
     void generatedWriterRejectsLegacyDescriptorsAtItsBoundary() throws Exception {
         Path bundle = temporaryDirectory.resolve("generated-validation");
-        try (var writer = new CallgraphBundleWriter(bundle, VERSION, "0".repeat(64), dev.mcdevmcp.support.Cancellation.none())) {
+        try (var writer = new CallgraphBundleWriter(bundle, VERSION, "0".repeat(64), Cancellation.none())) {
             assertThrows(NullPointerException.class, () -> writer.accept(edge(1, "caller.First", "run", null, "target.Target", "hit", "()V", 1)));
             assertThrows(IllegalArgumentException.class, () -> writer.accept(edge(2, "caller.First", "run", "", "target.Target", "hit", "()V", 1)));
         }
@@ -164,7 +166,7 @@ class CallgraphRepositoryTest {
 
         String third = CallgraphBundleTestSupport.publish(bundle, VERSION, List.of(edge(1, "three.Caller", "run", "()V", "three.Target", "hit", "()V", 3)));
 
-        assertEquals(java.util.Set.of(second, third), generationNames(bundle));
+        assertEquals(Set.of(second, third), generationNames(bundle));
         assertFalse(Files.exists(bundle.resolve("generations").resolve(first)));
     }
 
@@ -179,12 +181,12 @@ class CallgraphRepositoryTest {
         try {
             Files.createSymbolicLink(bundle.resolve("generations"), outside);
         } catch (IOException | UnsupportedOperationException | SecurityException exception) {
-            org.junit.jupiter.api.Assumptions.assumeTrue(false, "Symbolic links are unavailable: " + exception.getMessage());
+            Assumptions.assumeTrue(false, "Symbolic links are unavailable: " + exception.getMessage());
             return;
         }
 
         assertThrows(IOException.class, () -> {
-            try (var writer = new CallgraphBundleWriter(bundle, VERSION, "0".repeat(64), dev.mcdevmcp.support.Cancellation.none())) {
+            try (var writer = new CallgraphBundleWriter(bundle, VERSION, "0".repeat(64), Cancellation.none())) {
                 writer.publish(0, 0, 0);
             }
         });
@@ -195,7 +197,7 @@ class CallgraphRepositoryTest {
     void cleansCrashOrphanedStagingWithoutDeletingAConcurrentWritersStaging() throws Exception {
         Path bundle = temporaryDirectory.resolve("staging-recovery");
         Files.createDirectories(bundle);
-        String orphanName = ".staging-" + java.util.UUID.randomUUID();
+        String orphanName = ".staging-" + UUID.randomUUID();
         Path orphan = bundle.resolve(orphanName);
         Path orphanMarker = bundle.resolve(orphanName + ".lock");
         Files.createDirectories(orphan.resolve("work"));
@@ -203,7 +205,7 @@ class CallgraphRepositoryTest {
         Files.write(orphanMarker, new byte[0]);
 
         Path activeStaging;
-        try (var active = new CallgraphBundleWriter(bundle, VERSION, "0".repeat(64), dev.mcdevmcp.support.Cancellation.none())) {
+        try (var active = new CallgraphBundleWriter(bundle, VERSION, "0".repeat(64), Cancellation.none())) {
             active.accept(edge(1, "active.Caller", "run", "()V", "active.Target", "hit", "()V", 1));
             try (var children = Files.list(bundle)) {
                 activeStaging = children.filter(path -> path.getFileName().toString().startsWith(".staging-")).filter(path -> !path.getFileName().toString().endsWith(".lock")).filter(path -> !path.equals(orphan)).findFirst().orElseThrow();
@@ -270,7 +272,7 @@ class CallgraphRepositoryTest {
         String priorPointer = Files.readString(bundle.resolve("current.json"));
 
         IOException failure;
-        try (var writer = new CallgraphBundleWriter(bundle, VERSION, "0".repeat(64), dev.mcdevmcp.support.Cancellation.none(), 1, 2, (_, _) -> {
+        try (var writer = new CallgraphBundleWriter(bundle, VERSION, "0".repeat(64), Cancellation.none(), 1, 2, (_, _) -> {
             throw new IOException("injected pointer replacement failure");
         })) {
             writer.accept(edge(1, "fresh.Caller", "run", "()V", "fresh.Target", "hit", "()V", 1));

@@ -7,6 +7,7 @@ import org.junit.jupiter.params.provider.ValueSource;
 import javax.lang.model.element.ElementKind;
 import javax.lang.model.element.Modifier;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -25,7 +26,7 @@ class ModelValueTest {
 
     @Test
     void classSymbolsKeepStructuredValuesAndImmutableCollections() {
-        var interfaces = new java.util.ArrayList<>(List.of("java.io.Closeable"));
+        var interfaces = new ArrayList<>(List.of("java.io.Closeable"));
         var symbol = new ClassSymbol(1L, SourceNamespace.FABRIC, Optional.of(new FabricApiVersion("0.120.0")), "net.fabricmc.Test", "net.fabricmc", "Test", ElementKind.CLASS, Optional.empty(), interfaces, Path.of("Test.java"), 0, 10, 1, 2);
 
         interfaces.add("java.lang.Runnable");

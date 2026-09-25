@@ -19,15 +19,6 @@ public record JsonObjectSchema(Map<String, Object> value) {
         return new JsonObjectSchema(value);
     }
 
-    @SuppressWarnings("unused")
-    public boolean semanticallyEquals(Map<String, Object> other) {
-        return JsonSchemaSupport.jsonEquals(value, Objects.requireNonNull(other, "other"));
-    }
-
-    void validateInputTypes(Map<String, Object> input) {
-        validateType(value, Objects.requireNonNull(input, "input"), JsonInputLocation.root());
-    }
-
     private static void validateType(Map<String, Object> schema, Object candidate, JsonInputLocation inputLocation) {
         if (schema.containsKey("oneOf")) {
             validateOneOf(schema, candidate, inputLocation);
@@ -166,6 +157,15 @@ public record JsonObjectSchema(Map<String, Object> value) {
 
     private static JsonInputLocation propertyLocation(JsonInputLocation inputLocation, String name) {
         return inputLocation.property(name);
+    }
+
+    @SuppressWarnings("unused")
+    public boolean semanticallyEquals(Map<String, Object> other) {
+        return JsonSchemaSupport.jsonEquals(value, Objects.requireNonNull(other, "other"));
+    }
+
+    void validateInputTypes(Map<String, Object> input) {
+        validateType(value, Objects.requireNonNull(input, "input"), JsonInputLocation.root());
     }
 
     private static final class UnknownPropertyException extends IllegalArgumentException {

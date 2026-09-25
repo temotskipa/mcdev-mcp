@@ -2,8 +2,8 @@ package dev.mcdevmcp.analysis.decompile;
 
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
-import dev.mcdevmcp.support.Cancellation;
 import dev.mcdevmcp.support.AppVersion;
+import dev.mcdevmcp.support.Cancellation;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -16,7 +16,9 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
+import java.util.Arrays;
 import java.util.HexFormat;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -106,7 +108,7 @@ final class DownloadServiceTest {
         }
         byte[] corrupt = bytes.toByteArray();
         for (int index = 0; index <= corrupt.length - content.length; index++) {
-            if (java.util.Arrays.equals(corrupt, index, index + content.length, content, 0, content.length)) {
+            if (Arrays.equals(corrupt, index, index + content.length, content, 0, content.length)) {
                 corrupt[index] ^= 1;
                 return corrupt;
             }
@@ -117,7 +119,7 @@ final class DownloadServiceTest {
     private static String sha1(byte[] body) {
         try {
             return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-1").digest(body));
-        } catch (java.security.NoSuchAlgorithmException exception) {
+        } catch (NoSuchAlgorithmException exception) {
             throw new AssertionError(exception);
         }
     }

@@ -3,13 +3,16 @@ package dev.mcdevmcp.packaging;
 import org.junit.jupiter.api.Test;
 
 import java.io.BufferedReader;
+import java.io.File;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.List;
 import java.util.jar.JarFile;
+import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -24,7 +27,7 @@ class ShadedJarSmokeTest {
         command.add("-Duser.home=" + localAppData);
         command.add("-jar");
         command.add(JAR.toString());
-        command.addAll(java.util.List.of(arguments));
+        command.addAll(List.of(arguments));
         var builder = new ProcessBuilder(command);
         builder.environment().put("LOCALAPPDATA", localAppData.toString());
         builder.environment().put("XDG_CACHE_HOME", localAppData.toString());
@@ -51,14 +54,14 @@ class ShadedJarSmokeTest {
     void shadedJarDiscoversH2ServiceUnderNativeAccessDenial() throws Exception {
         Path testClasses = Path.of(H2ServiceLoaderProbeMain.class.getProtectionDomain().getCodeSource().getLocation().toURI());
         Path database = Files.createTempDirectory("h2-service-loader-smoke").resolve("smoke");
-        String classpath = testClasses + java.io.File.pathSeparator + JAR;
+        String classpath = testClasses + File.pathSeparator + JAR;
         String stdout;
         String stderr;
         try (var process = new ProcessBuilder(JAVA.toString(), "--enable-preview", "--illegal-native-access=deny", "-cp", classpath, H2ServiceLoaderProbeMain.class.getName(), database.toString(), JAR.toString()).start();
              var output = new BufferedReader(new InputStreamReader(process.getInputStream()));
              var errors = new BufferedReader(new InputStreamReader(process.getErrorStream()))) {
-            stdout = output.lines().collect(java.util.stream.Collectors.joining("\n"));
-            stderr = errors.lines().collect(java.util.stream.Collectors.joining("\n"));
+            stdout = output.lines().collect(Collectors.joining("\n"));
+            stderr = errors.lines().collect(Collectors.joining("\n"));
             assertEquals(0, process.waitFor());
         }
 
@@ -81,7 +84,7 @@ class ShadedJarSmokeTest {
     @Test
     void shadedJarRejectsMissingPreviewFlagWithoutProtocolOutput() throws Exception {
         var builder = new ProcessBuilder(JAVA.toString(), "-jar", JAR.toString(), "--version");
-        for (String variable : java.util.List.of("JAVA_TOOL_OPTIONS", "JDK_JAVA_OPTIONS", "_JAVA_OPTIONS")) {
+        for (String variable : List.of("JAVA_TOOL_OPTIONS", "JDK_JAVA_OPTIONS", "_JAVA_OPTIONS")) {
             builder.environment().remove(variable);
         }
         try (var process = builder.start()) {
@@ -102,7 +105,7 @@ class ShadedJarSmokeTest {
              var output = new BufferedReader(new InputStreamReader(process.getInputStream()));
              var errors = new BufferedReader(new InputStreamReader(process.getErrorStream()))) {
             stdout = output.readLine();
-            stderr = errors.lines().collect(java.util.stream.Collectors.joining("\n"));
+            stderr = errors.lines().collect(Collectors.joining("\n"));
             assertEquals(0, process.waitFor());
         }
 

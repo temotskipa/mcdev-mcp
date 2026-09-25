@@ -31,7 +31,7 @@ final class JavacTaskExecutor {
                 return null;
             });
             return scope.join();
-        } catch (StructuredTaskScope.FailedException exception) {
+        } catch (ExecutionException exception) {
             throw mappedWorker(exception.getCause());
         }
     }
@@ -83,7 +83,7 @@ final class JavacTaskExecutor {
             }
             try {
                 scope.join();
-            } catch (StructuredTaskScope.FailedException exception) {
+            } catch (ExecutionException exception) {
                 if (failure == null) {
                     throw mappedWorker(exception.getCause());
                 }
@@ -98,13 +98,11 @@ final class JavacTaskExecutor {
             if (failure != null) {
                 rethrowCoordinator(failure);
             }
-        } catch (StructuredTaskScope.FailedException exception) {
-            throw mappedWorker(exception.getCause());
         }
     }
 
     @SuppressWarnings("preview")
-    private static <T> CompletableFuture<T> fork(StructuredTaskScope<Object, Void> scope, Callable<T> task) {
+    private static <T> CompletableFuture<T> fork(StructuredTaskScope<Object, Void, ExecutionException> scope, Callable<T> task) {
         var done = new CompletableFuture<T>();
         scope.fork(() -> {
             try {
@@ -170,10 +168,7 @@ final class JavacTaskExecutor {
     }
 
     @SuppressWarnings("preview")
-    private static final class FirstCompleted<T> implements StructuredTaskScope.Joiner<T, T> {
-        private record Outcome<T>(T value, Throwable failure) {
-        }
-
+    private static final class FirstCompleted<T> implements StructuredTaskScope.Joiner<T, T, ExecutionException> {
         private final AtomicReference<Outcome<T>> first = new AtomicReference<>();
 
         @Override
@@ -187,12 +182,20 @@ final class JavacTaskExecutor {
         }
 
         @Override
-        public T result() throws Throwable {
+        public T result() throws ExecutionException {
             var outcome = Objects.requireNonNull(first.get(), "No subtask completed");
             if (outcome.failure() != null) {
-                throw outcome.failure();
+                throw new ExecutionException(outcome.failure());
             }
             return outcome.value();
+        }
+
+        @Override
+        public T timeout() throws ExecutionException {
+            throw new ExecutionException(new StructuredTaskScope.CancelledByTimeoutException());
+        }
+
+        private record Outcome<T>(T value, Throwable failure) {
         }
     }
 }

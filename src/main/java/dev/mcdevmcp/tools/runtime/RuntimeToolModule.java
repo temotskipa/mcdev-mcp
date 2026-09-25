@@ -6,6 +6,7 @@ import dev.mcdevmcp.mcp.tool.api.ToolBinding;
 import dev.mcdevmcp.support.AppEnvironment;
 import io.modelcontextprotocol.json.McpJsonMapper;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -15,7 +16,7 @@ public final class RuntimeToolModule {
     }
 
     public static List<ToolDeclaration<?>> declarations() {
-        var declarations = new java.util.ArrayList<ToolDeclaration<?>>();
+        var declarations = new ArrayList<ToolDeclaration<?>>();
         for (RuntimeBindingDeclaration<?> binding : bindingDeclarations()) {
             addDeclaration(declarations, binding);
         }

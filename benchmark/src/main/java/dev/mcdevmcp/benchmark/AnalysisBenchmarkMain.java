@@ -292,37 +292,6 @@ public final class AnalysisBenchmarkMain {
         }
     }
 
-    interface ChildProcessRunner {
-        BenchmarkChildMeasurement run(ChildCommand command) throws Exception;
-    }
-
-    static final class JvmChildProcessRunner implements ChildProcessRunner {
-        private final Duration deadline;
-
-        JvmChildProcessRunner(Duration deadline) {
-            this.deadline = Objects.requireNonNull(deadline, "deadline");
-            if (deadline.isZero() || deadline.isNegative()) {
-                throw new IllegalArgumentException("deadline must be positive");
-            }
-        }
-
-        @Override
-        public BenchmarkChildMeasurement run(ChildCommand command) throws Exception {
-            BenchmarkProcessOutput output = executeProcess(command.asProcessCommand(), deadline);
-            if (output.standardOutputOverflowed() || output.standardErrorOverflowed()) {
-                throw new IOException("Benchmark child output exceeded " + MAXIMUM_CHILD_OUTPUT_BYTES + " bytes: " + command.phase());
-            }
-            if (output.exitCode() != 0) {
-                throw new IOException("Benchmark child failed for " + command.phase() + " with exit " + output.exitCode() + ": " + output.standardError());
-            }
-            try {
-                return McpJsonDefaults.getMapper().readValue(output.standardOutput(), BenchmarkChildMeasurement.class);
-            } catch (IOException exception) {
-                throw new IOException("Benchmark child returned invalid JSON for " + command.phase() + ": " + output.standardOutput(), exception);
-            }
-        }
-    }
-
     static BenchmarkProcessOutput executeProcess(List<String> command, Duration deadline) throws IOException, InterruptedException {
         Objects.requireNonNull(command, "command");
         Objects.requireNonNull(deadline, "deadline");
@@ -379,6 +348,56 @@ public final class AnalysisBenchmarkMain {
             input.transferTo(output);
         } catch (IOException exception) {
             failure.compareAndSet(null, exception);
+        }
+    }
+
+    private static int positiveWorkers(String value) {
+        int parsed = Integer.parseInt(value);
+        if (parsed < 1) {
+            throw new IllegalArgumentException("--workers must be positive");
+        }
+        return parsed;
+    }
+
+    private static Path normalize(Path path, String label) {
+        return Objects.requireNonNull(path, label).toAbsolutePath().normalize();
+    }
+
+    private static String requireText(String value, String label) {
+        if (value == null || value.isBlank()) {
+            throw new IllegalArgumentException(label);
+        }
+        return value;
+    }
+
+    interface ChildProcessRunner {
+        BenchmarkChildMeasurement run(ChildCommand command) throws Exception;
+    }
+
+    static final class JvmChildProcessRunner implements ChildProcessRunner {
+        private final Duration deadline;
+
+        JvmChildProcessRunner(Duration deadline) {
+            this.deadline = Objects.requireNonNull(deadline, "deadline");
+            if (deadline.isZero() || deadline.isNegative()) {
+                throw new IllegalArgumentException("deadline must be positive");
+            }
+        }
+
+        @Override
+        public BenchmarkChildMeasurement run(ChildCommand command) throws Exception {
+            BenchmarkProcessOutput output = executeProcess(command.asProcessCommand(), deadline);
+            if (output.standardOutputOverflowed() || output.standardErrorOverflowed()) {
+                throw new IOException("Benchmark child output exceeded " + MAXIMUM_CHILD_OUTPUT_BYTES + " bytes: " + command.phase());
+            }
+            if (output.exitCode() != 0) {
+                throw new IOException("Benchmark child failed for " + command.phase() + " with exit " + output.exitCode() + ": " + output.standardError());
+            }
+            try {
+                return McpJsonDefaults.getMapper().readValue(output.standardOutput(), BenchmarkChildMeasurement.class);
+            } catch (IOException exception) {
+                throw new IOException("Benchmark child returned invalid JSON for " + command.phase() + ": " + output.standardOutput(), exception);
+            }
         }
     }
 
@@ -467,25 +486,6 @@ public final class AnalysisBenchmarkMain {
                 required(name);
             }
         }
-    }
-
-    private static int positiveWorkers(String value) {
-        int parsed = Integer.parseInt(value);
-        if (parsed < 1) {
-            throw new IllegalArgumentException("--workers must be positive");
-        }
-        return parsed;
-    }
-
-    private static Path normalize(Path path, String label) {
-        return Objects.requireNonNull(path, label).toAbsolutePath().normalize();
-    }
-
-    private static String requireText(String value, String label) {
-        if (value == null || value.isBlank()) {
-            throw new IllegalArgumentException(label);
-        }
-        return value;
     }
 
     private static final class BoundedOutput extends OutputStream {

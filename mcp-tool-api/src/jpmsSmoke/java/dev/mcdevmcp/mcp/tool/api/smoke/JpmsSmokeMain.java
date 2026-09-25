@@ -1,15 +1,6 @@
 package dev.mcdevmcp.mcp.tool.api.smoke;
 
-import dev.mcdevmcp.mcp.tool.api.RecordInputSchemaFactory;
-import dev.mcdevmcp.mcp.tool.api.StructuredToolResult;
-import dev.mcdevmcp.mcp.tool.api.ToolBinding;
-import dev.mcdevmcp.mcp.tool.api.ToolCancellation;
-import dev.mcdevmcp.mcp.tool.api.ToolHandlers;
-import dev.mcdevmcp.mcp.tool.api.ToolInput;
-import dev.mcdevmcp.mcp.tool.api.ToolOutput;
-import dev.mcdevmcp.mcp.tool.api.ToolResult;
-import dev.mcdevmcp.mcp.tool.api.JsonValueSchema;
-import dev.mcdevmcp.mcp.tool.api.JsonType;
+import dev.mcdevmcp.mcp.tool.api.*;
 import io.modelcontextprotocol.json.McpJsonDefaults;
 import io.modelcontextprotocol.spec.McpSchema;
 

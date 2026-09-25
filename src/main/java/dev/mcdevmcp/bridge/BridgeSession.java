@@ -96,6 +96,29 @@ public final class BridgeSession implements AutoCloseable {
         return "port " + info.port() + ", game " + BridgePayloadValidator.safeDisplay(info.gameDir().map(Path::toString).orElse(info.version().value()));
     }
 
+    private static <T> T await(CompletionStage<T> stage) throws InterruptedException, ExecutionException {
+        CompletableFuture<T> future = stage.toCompletableFuture();
+        try {
+            return future.get();
+        } catch (InterruptedException exception) {
+            future.cancel(true);
+            throw exception;
+        }
+    }
+
+    private static <T> T awaitWithoutCancel(CompletionStage<T> stage) throws InterruptedException, ExecutionException {
+        return stage.toCompletableFuture().get();
+    }
+
+    @SuppressWarnings("preview")
+    private static Throwable unwrap(Throwable failure) {
+        Throwable current = failure;
+        while ((current instanceof CompletionException || current instanceof ExecutionException) && current.getCause() != null) {
+            current = current.getCause();
+        }
+        return current;
+    }
+
     public synchronized CompletionStage<SessionInfo> connect(Integer explicitPort) {
         ensureOpen();
         if (explicitPort != null) {
@@ -369,24 +392,6 @@ public final class BridgeSession implements AutoCloseable {
         }
     }
 
-    @FunctionalInterface
-    interface Connector {
-        CompletionStage<BridgeClient> open(int port);
-    }
-
-    private record Connected(BridgeClient client, SessionInfo info) {
-    }
-
-    private static <T> T await(CompletionStage<T> stage) throws InterruptedException, ExecutionException {
-        CompletableFuture<T> future = stage.toCompletableFuture();
-        try {
-            return future.get();
-        } catch (InterruptedException exception) {
-            future.cancel(true);
-            throw exception;
-        }
-    }
-
     private BridgeClient awaitOpening(CompletionStage<BridgeClient> stage) throws InterruptedException, ExecutionException {
         CompletableFuture<BridgeClient> future = stage.toCompletableFuture();
         synchronized (this) {
@@ -404,17 +409,12 @@ public final class BridgeSession implements AutoCloseable {
         }
     }
 
-    private static <T> T awaitWithoutCancel(CompletionStage<T> stage) throws InterruptedException, ExecutionException {
-        return stage.toCompletableFuture().get();
+    @FunctionalInterface
+    interface Connector {
+        CompletionStage<BridgeClient> open(int port);
     }
 
-    @SuppressWarnings("preview")
-    private static Throwable unwrap(Throwable failure) {
-        Throwable current = failure;
-        while ((current instanceof CompletionException || current instanceof ExecutionException || current instanceof StructuredTaskScope.FailedException) && current.getCause() != null) {
-            current = current.getCause();
-        }
-        return current;
+    private record Connected(BridgeClient client, SessionInfo info) {
     }
 
     /**

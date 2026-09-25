@@ -13,11 +13,14 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -33,7 +36,7 @@ class IndexerFailureAtomicityTest {
 
     @Test
     void syntaxMalformedUtf8DuplicateAndCancellationPreservePriorDatabase() throws Exception {
-        Path jar = IndexerTestSupport.createJar(temporaryDirectory.resolve("empty.jar"), java.util.Map.of());
+        Path jar = IndexerTestSupport.createJar(temporaryDirectory.resolve("empty.jar"), Map.of());
         Path valid = Files.createDirectories(temporaryDirectory.resolve("valid/ok"));
         Files.writeString(valid.resolve("Valid.java"), "package ok; public class Valid {}", StandardCharsets.UTF_8);
         Path database = temporaryDirectory.resolve("symbols.mv.db");
@@ -71,7 +74,7 @@ class IndexerFailureAtomicityTest {
         for (int index = 0; index < 30; index++) {
             Files.writeString(many.resolve("Type" + index + ".java"), "class Type" + index + " {}", StandardCharsets.UTF_8);
         }
-        var checks = new java.util.concurrent.atomic.AtomicInteger();
+        var checks = new AtomicInteger();
         IndexRequest midBuildBase = IndexerTestSupport.request(many, jar, database, 4);
         IndexRequest midBuildCancellation = new IndexRequest(midBuildBase.minecraftVersion(), midBuildBase.sourceRoots(), midBuildBase.remappedJar(), midBuildBase.classpath(), midBuildBase.outputDatabase(), midBuildBase.threads(), midBuildBase.progress(), () -> checks.incrementAndGet() > 8);
         IndexBuildException midBuildFailure = assertPreserved(original, database, midBuildCancellation);
@@ -87,7 +90,7 @@ class IndexerFailureAtomicityTest {
 
     @Test
     void unresolvedPackageAnnotationPreservesPriorDatabase() throws Exception {
-        Path jar = IndexerTestSupport.createJar(temporaryDirectory.resolve("package-error-empty.jar"), java.util.Map.of());
+        Path jar = IndexerTestSupport.createJar(temporaryDirectory.resolve("package-error-empty.jar"), Map.of());
         Path valid = Files.createDirectories(temporaryDirectory.resolve("package-error-valid/ok"));
         Files.writeString(valid.resolve("Valid.java"), "package ok; public class Valid {}", StandardCharsets.UTF_8);
         Path database = temporaryDirectory.resolve("package-error.mv.db");
@@ -103,7 +106,7 @@ class IndexerFailureAtomicityTest {
 
     @Test
     void unresolvedRequiredModulePreservesPriorDatabase() throws Exception {
-        Path jar = IndexerTestSupport.createJar(temporaryDirectory.resolve("module-error-empty.jar"), java.util.Map.of());
+        Path jar = IndexerTestSupport.createJar(temporaryDirectory.resolve("module-error-empty.jar"), Map.of());
         Path valid = Files.createDirectories(temporaryDirectory.resolve("module-error-valid/ok"));
         Files.writeString(valid.resolve("Valid.java"), "package ok; public class Valid {}", StandardCharsets.UTF_8);
         Path database = temporaryDirectory.resolve("module-error.mv.db");
@@ -119,7 +122,7 @@ class IndexerFailureAtomicityTest {
 
     @Test
     void cancellationAfterCompilerWorkStartsTerminatesPromptlyAndPreservesPriorDatabase() throws Exception {
-        Path jar = IndexerTestSupport.createJar(temporaryDirectory.resolve("compiler-cancel-empty.jar"), java.util.Map.of());
+        Path jar = IndexerTestSupport.createJar(temporaryDirectory.resolve("compiler-cancel-empty.jar"), Map.of());
         Path sourceRoot = Files.createDirectories(temporaryDirectory.resolve("compiler-cancel/source"));
         Files.writeString(sourceRoot.resolve("Current.java"), "class Current {}", StandardCharsets.UTF_8);
         Path database = temporaryDirectory.resolve("compiler-cancel.mv.db");
@@ -146,7 +149,7 @@ class IndexerFailureAtomicityTest {
                 assertTrue(compilerStarted.await(2, TimeUnit.SECONDS));
                 long cancellationStarted = System.nanoTime();
                 cancelled.set(true);
-                var execution = assertThrows(java.util.concurrent.ExecutionException.class, () -> build.get(2, TimeUnit.SECONDS));
+                var execution = assertThrows(ExecutionException.class, () -> build.get(2, TimeUnit.SECONDS));
                 assertInstanceOf(IndexBuildException.class, execution.getCause());
                 assertTrue(System.nanoTime() - cancellationStarted < TimeUnit.SECONDS.toNanos(2));
             } finally {

@@ -3,12 +3,7 @@ package dev.mcdevmcp.mcp.tool;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
-import javax.tools.Diagnostic;
-import javax.tools.DiagnosticCollector;
-import javax.tools.JavaCompiler;
-import javax.tools.JavaFileObject;
-import javax.tools.StandardJavaFileManager;
-import javax.tools.ToolProvider;
+import javax.tools.*;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
@@ -18,6 +13,8 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -28,6 +25,30 @@ class TypedOutputBindingCompileTest {
 
     @TempDir
     Path temporaryDirectory;
+
+    private static String correctedSource(String fixture, String source) {
+        if (fixture.endsWith("IncorrectStructuredOutputBinding.java")) {
+            return source.replace("new Wrong()", "new Expected()");
+        }
+        if (fixture.endsWith("IncorrectParameterizedOutputBinding.java")) {
+            return source.replace("List<Integer>", "List<String>").replace("List.of(1)", "List.of(\"ok\")");
+        }
+        if (fixture.endsWith("StructuredResultFromContentBinding.java")) {
+            return source.replace("ToolResult.structured(new Summary(), \"structured\")", "ToolResult.text(\"content\")");
+        }
+        throw new AssertionError("No corrected compiler control for " + fixture);
+    }
+
+    private static List<String> sourceLines(Path source) throws IOException {
+        return Files.readAllLines(source, StandardCharsets.UTF_8);
+    }
+
+    private static void assertFixtureHasNoUnsafeShortcuts(Path source) throws IOException {
+        List<String> lines = sourceLines(source);
+        assertTrue(lines.stream().noneMatch(line -> line.contains("@SuppressWarnings")), () -> source + " uses warning suppression");
+        assertTrue(lines.stream().noneMatch(line -> line.matches(".*\\bTool(OutputBinding|Binding|Result)\\s+[^<].*")), () -> source + " uses a raw typed binding/result");
+        assertTrue(lines.stream().noneMatch(line -> line.matches(".*\\(\\s*(ToolResult|ToolOutputBinding|ToolBinding)(\\s*<|\\s*\\)).*")), () -> source + " uses a cast to bypass the binding relationship");
+    }
 
     @Test
     void positiveFixtureCompilesWithEverySupportedOutputBindingShape() throws IOException {
@@ -57,7 +78,7 @@ class TypedOutputBindingCompileTest {
             assertFalse(result.success(), () -> fixture + " unexpectedly compiled");
             assertTrue(result.diagnostics().stream().anyMatch(diagnostic -> diagnostic.getKind() == Diagnostic.Kind.ERROR), () -> fixture + " did not report a compiler error:\n" + result.renderDiagnostics());
             List<String> lines = sourceLines(source);
-            int expressionLine = java.util.stream.IntStream.range(0, lines.size()).filter(index -> lines.get(index).contains("ToolResult.structured")).map(index -> index + 1).findFirst().orElseThrow(() -> new AssertionError("fixture has no intentionally incompatible handler expression: " + fixture));
+            int expressionLine = IntStream.range(0, lines.size()).filter(index -> lines.get(index).contains("ToolResult.structured")).map(index -> index + 1).findFirst().orElseThrow(() -> new AssertionError("fixture has no intentionally incompatible handler expression: " + fixture));
             assertTrue(result.diagnostics().stream().anyMatch(diagnostic -> diagnostic.getKind() == Diagnostic.Kind.ERROR && diagnostic.getLineNumber() >= expressionLine - 1 && diagnostic.getLineNumber() <= expressionLine + 1), () -> fixture + " compiler error did not point at its incompatible handler expression:\n" + result.renderDiagnostics());
             assertFixtureHasNoUnsafeShortcuts(source);
         }
@@ -84,36 +105,12 @@ class TypedOutputBindingCompileTest {
         return source;
     }
 
-    private static String correctedSource(String fixture, String source) {
-        if (fixture.endsWith("IncorrectStructuredOutputBinding.java")) {
-            return source.replace("new Wrong()", "new Expected()");
-        }
-        if (fixture.endsWith("IncorrectParameterizedOutputBinding.java")) {
-            return source.replace("List<Integer>", "List<String>").replace("List.of(1)", "List.of(\"ok\")");
-        }
-        if (fixture.endsWith("StructuredResultFromContentBinding.java")) {
-            return source.replace("ToolResult.structured(new Summary(), \"structured\")", "ToolResult.text(\"content\")");
-        }
-        throw new AssertionError("No corrected compiler control for " + fixture);
-    }
-
-    private static List<String> sourceLines(Path source) throws IOException {
-        return Files.readAllLines(source, StandardCharsets.UTF_8);
-    }
-
-    private static void assertFixtureHasNoUnsafeShortcuts(Path source) throws IOException {
-        List<String> lines = sourceLines(source);
-        assertTrue(lines.stream().noneMatch(line -> line.contains("@SuppressWarnings")), () -> source + " uses warning suppression");
-        assertTrue(lines.stream().noneMatch(line -> line.matches(".*\\bTool(OutputBinding|Binding|Result)\\s+[^<].*")), () -> source + " uses a raw typed binding/result");
-        assertTrue(lines.stream().noneMatch(line -> line.matches(".*\\(\\s*(ToolResult|ToolOutputBinding|ToolBinding)(\\s*<|\\s*\\)).*")), () -> source + " uses a cast to bypass the binding relationship");
-    }
-
     private record CompilationResult(boolean success, List<Diagnostic<? extends JavaFileObject>> diagnostics) {
         private String renderDiagnostics() {
             if (diagnostics.isEmpty()) {
                 return "<none>";
             }
-            return diagnostics.stream().sorted(Comparator.comparingLong(Diagnostic::getLineNumber)).map(diagnostic -> diagnostic.getKind() + " " + diagnostic.getLineNumber() + ":" + diagnostic.getColumnNumber() + " " + diagnostic.getMessage(Locale.ROOT)).collect(java.util.stream.Collectors.joining(System.lineSeparator()));
+            return diagnostics.stream().sorted(Comparator.comparingLong(Diagnostic::getLineNumber)).map(diagnostic -> diagnostic.getKind() + " " + diagnostic.getLineNumber() + ":" + diagnostic.getColumnNumber() + " " + diagnostic.getMessage(Locale.ROOT)).collect(Collectors.joining(System.lineSeparator()));
         }
     }
 }

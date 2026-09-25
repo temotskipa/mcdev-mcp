@@ -9,6 +9,10 @@ import dev.mcdevmcp.storage.model.ElementKindCodec;
 import dev.mcdevmcp.storage.model.FieldSymbol;
 import dev.mcdevmcp.storage.model.MethodSymbol;
 
+import java.io.IOException;
+import java.nio.file.NoSuchFileException;
+import java.sql.SQLException;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -30,7 +34,7 @@ final class McGetClassTool {
                 String source;
                 try {
                     source = support.fullSource(lease, type);
-                } catch (java.nio.file.NoSuchFileException exception) {
+                } catch (NoSuchFileException exception) {
                     return ToolResult.text("Class not found: " + className);
                 }
                 if (source.isEmpty()) {
@@ -64,11 +68,11 @@ final class McGetClassTool {
         return "// Fields:\n" + declarations + "\n";
     }
 
-    private static String methods(SymbolRepository repository, List<MethodSymbol> methods) throws java.io.IOException, java.sql.SQLException {
+    private static String methods(SymbolRepository repository, List<MethodSymbol> methods) throws IOException, SQLException {
         if (methods.isEmpty()) {
             return "// (no methods)\n";
         }
-        var lines = new java.util.ArrayList<String>();
+        var lines = new ArrayList<String>();
         for (var method : methods) {
             String parameters = repository.parameters(method.id()).stream().map(parameter -> parameter.type() + " " + parameter.name()).collect(Collectors.joining(", "));
             lines.add(StaticToolSupport.modifiers(method.modifiers()) + StaticToolSupport.returnType(method.returnType().orElse(null)) + " " + method.name() + "(" + parameters + ");");

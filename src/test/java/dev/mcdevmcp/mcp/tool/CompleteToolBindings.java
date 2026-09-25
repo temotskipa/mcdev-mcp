@@ -1,7 +1,7 @@
 package dev.mcdevmcp.mcp.tool;
 
-import dev.mcdevmcp.mcp.tool.api.ToolBinding;
 import dev.mcdevmcp.bridge.BridgeTestHarness;
+import dev.mcdevmcp.mcp.tool.api.ToolBinding;
 import dev.mcdevmcp.storage.PlatformPaths;
 import dev.mcdevmcp.support.AppEnvironment;
 import dev.mcdevmcp.tools.runtime.RuntimeToolModule;
@@ -9,10 +9,10 @@ import dev.mcdevmcp.tools.statictool.StaticToolModule;
 import io.modelcontextprotocol.json.McpJsonMapper;
 
 import java.nio.file.Path;
-import java.util.concurrent.CompletableFuture;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.CompletableFuture;
 
 public final class CompleteToolBindings {
     private CompleteToolBindings() {

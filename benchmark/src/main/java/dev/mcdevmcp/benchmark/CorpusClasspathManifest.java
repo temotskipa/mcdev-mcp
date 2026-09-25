@@ -9,10 +9,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.MessageDigest;
-import java.util.ArrayList;
-import java.util.HexFormat;
-import java.util.List;
-import java.util.Objects;
+import java.util.*;
 
 /**
  * Explicit compiler inputs; artifact order is the selected official metadata library order.
@@ -34,19 +31,6 @@ public record CorpusClasspathManifest(int schemaVersion, CorpusClasspathKind kin
         if (kind == CorpusClasspathKind.SYNTHETIC && (metadata != null || !SYNTHETIC_METADATA_SHA256.equals(metadataSha256))) {
             throw new IllegalArgumentException("SYNTHETIC manifests must explicitly omit official metadata");
         }
-    }
-
-    public String identity() throws Exception {
-        MessageDigest digest = MessageDigest.getInstance("SHA-256");
-        for (String field : List.of("mcdev-corpus-classpath-v1", kind.name(), minecraftVersion.value(), metadataSha256)) {
-            add(digest, field);
-        }
-        for (CorpusClasspathArtifact artifact : artifacts) {
-            add(digest, artifact.relativePath());
-            add(digest, Long.toString(artifact.size()));
-            add(digest, artifact.sha256());
-        }
-        return HexFormat.of().formatHex(digest.digest());
     }
 
     public static VerifiedCorpusClasspath verify(Path manifestPath, MinecraftVersion version, List<Path> outputRoots) throws Exception {
@@ -80,51 +64,6 @@ public record CorpusClasspathManifest(int schemaVersion, CorpusClasspathKind kin
         }
         String rawHash = HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes));
         return new VerifiedCorpusClasspath(manifest, version, libraries, new CorpusClasspathEvidence(decoded.kind(), decoded.identity(), rawHash, decoded.metadataSha256(), decoded.artifacts()));
-    }
-
-    private void verifyOfficial(Path root, List<Path> paths, List<Path> immutable) throws Exception {
-        Path global = resolve(root, metadata.globalManifestPath());
-        Path detail = resolve(root, metadata.versionManifestPath());
-        addDistinct(immutable, global);
-        addDistinct(immutable, detail);
-        if (!AnalysisBenchmarkMain.sha256(global).equals(metadata.globalManifestSha256()) || !AnalysisBenchmarkMain.sha256(detail).equals(metadataSha256) || !sha1(detail).equals(metadata.versionManifestSha1())) {
-            throw new IOException("Official metadata integrity mismatch");
-        }
-        CorpusGlobalMetadata globalMetadata = McpJsonDefaults.getMapper().readValue(Files.readAllBytes(global), CorpusGlobalMetadata.class);
-        List<CorpusOfficialVersion> matches = globalMetadata.versions().stream().filter(entry -> minecraftVersion.equals(entry.id())).toList();
-        if (matches.size() != 1 || !metadata.versionManifestUrl().equals(matches.getFirst().url()) || !metadata.versionManifestSha1().equals(matches.getFirst().sha1())) {
-            throw new IOException("Official global manifest version/URL/SHA-1 linkage mismatch");
-        }
-        CorpusVersionMetadata versionMetadata = McpJsonDefaults.getMapper().readValue(Files.readAllBytes(detail), CorpusVersionMetadata.class);
-        if (!minecraftVersion.equals(versionMetadata.id()) || versionMetadata.libraries() == null) {
-            throw new IOException("Requested version metadata mismatch");
-        }
-        List<CorpusOfficialArtifact> selected = new ArrayList<>();
-        for (CorpusOfficialLibrary library : versionMetadata.libraries()) {
-            if (library.name() == null) throw new IOException("Malformed library coordinate");
-            String[] coordinate = library.name().split(":", -1);
-            if (coordinate.length >= 4 && coordinate[3].startsWith("natives-")) continue;
-            if (coordinate.length < 3 || java.util.Arrays.stream(coordinate).anyMatch(String::isBlank) || library.downloads() == null || library.downloads().artifact() == null) {
-                throw new IOException("Malformed selected library: " + library.name());
-            }
-            CorpusOfficialArtifact artifact = library.downloads().artifact();
-            portablePath(artifact.path());
-            requireSha1(artifact.sha1());
-            if (artifact.size() == null || artifact.size() <= 0 || artifact.url() == null || !"https".equals(artifact.url().getScheme()) || artifact.url().getHost() == null || artifact.url().getUserInfo() != null || artifact.url().getFragment() != null) {
-                throw new IOException("Malformed selected artifact: " + library.name());
-            }
-            selected.add(artifact);
-        }
-        if (selected.size() != artifacts.size()) {
-            throw new IOException("Classpath does not enumerate the complete official selected dependency set");
-        }
-        for (int i = 0; i < selected.size(); i++) {
-            CorpusOfficialArtifact selectedArtifact = selected.get(i);
-            CorpusClasspathArtifact listed = artifacts.get(i);
-            if (!selectedArtifact.path().equals(listed.relativePath()) || selectedArtifact.size() != listed.size() || !selectedArtifact.sha1().equals(sha1(paths.get(i)))) {
-                throw new IOException("Classpath differs from official metadata selection/order/integrity at " + i);
-            }
-        }
     }
 
     static Path portablePath(String value) {
@@ -186,6 +125,64 @@ public record CorpusClasspathManifest(int schemaVersion, CorpusClasspathKind kin
     private static void add(MessageDigest digest, String value) {
         digest.update(value.getBytes(StandardCharsets.UTF_8));
         digest.update((byte) 0);
+    }
+
+    public String identity() throws Exception {
+        MessageDigest digest = MessageDigest.getInstance("SHA-256");
+        for (String field : List.of("mcdev-corpus-classpath-v1", kind.name(), minecraftVersion.value(), metadataSha256)) {
+            add(digest, field);
+        }
+        for (CorpusClasspathArtifact artifact : artifacts) {
+            add(digest, artifact.relativePath());
+            add(digest, Long.toString(artifact.size()));
+            add(digest, artifact.sha256());
+        }
+        return HexFormat.of().formatHex(digest.digest());
+    }
+
+    private void verifyOfficial(Path root, List<Path> paths, List<Path> immutable) throws Exception {
+        Path global = resolve(root, metadata.globalManifestPath());
+        Path detail = resolve(root, metadata.versionManifestPath());
+        addDistinct(immutable, global);
+        addDistinct(immutable, detail);
+        if (!AnalysisBenchmarkMain.sha256(global).equals(metadata.globalManifestSha256()) || !AnalysisBenchmarkMain.sha256(detail).equals(metadataSha256) || !sha1(detail).equals(metadata.versionManifestSha1())) {
+            throw new IOException("Official metadata integrity mismatch");
+        }
+        CorpusGlobalMetadata globalMetadata = McpJsonDefaults.getMapper().readValue(Files.readAllBytes(global), CorpusGlobalMetadata.class);
+        List<CorpusOfficialVersion> matches = globalMetadata.versions().stream().filter(entry -> minecraftVersion.equals(entry.id())).toList();
+        if (matches.size() != 1 || !metadata.versionManifestUrl().equals(matches.getFirst().url()) || !metadata.versionManifestSha1().equals(matches.getFirst().sha1())) {
+            throw new IOException("Official global manifest version/URL/SHA-1 linkage mismatch");
+        }
+        CorpusVersionMetadata versionMetadata = McpJsonDefaults.getMapper().readValue(Files.readAllBytes(detail), CorpusVersionMetadata.class);
+        if (!minecraftVersion.equals(versionMetadata.id()) || versionMetadata.libraries() == null) {
+            throw new IOException("Requested version metadata mismatch");
+        }
+        List<CorpusOfficialArtifact> selected = new ArrayList<>();
+        for (CorpusOfficialLibrary library : versionMetadata.libraries()) {
+            if (library.name() == null) throw new IOException("Malformed library coordinate");
+            String[] coordinate = library.name().split(":", -1);
+            if (coordinate.length >= 4 && coordinate[3].startsWith("natives-")) continue;
+            if (coordinate.length < 3 || Arrays.stream(coordinate).anyMatch(String::isBlank) || library.downloads() == null || library.downloads().artifact() == null) {
+                throw new IOException("Malformed selected library: " + library.name());
+            }
+            CorpusOfficialArtifact artifact = library.downloads().artifact();
+            portablePath(artifact.path());
+            requireSha1(artifact.sha1());
+            if (artifact.size() == null || artifact.size() <= 0 || artifact.url() == null || !"https".equals(artifact.url().getScheme()) || artifact.url().getHost() == null || artifact.url().getUserInfo() != null || artifact.url().getFragment() != null) {
+                throw new IOException("Malformed selected artifact: " + library.name());
+            }
+            selected.add(artifact);
+        }
+        if (selected.size() != artifacts.size()) {
+            throw new IOException("Classpath does not enumerate the complete official selected dependency set");
+        }
+        for (int i = 0; i < selected.size(); i++) {
+            CorpusOfficialArtifact selectedArtifact = selected.get(i);
+            CorpusClasspathArtifact listed = artifacts.get(i);
+            if (!selectedArtifact.path().equals(listed.relativePath()) || selectedArtifact.size() != listed.size() || !selectedArtifact.sha1().equals(sha1(paths.get(i)))) {
+                throw new IOException("Classpath differs from official metadata selection/order/integrity at " + i);
+            }
+        }
     }
 
 }

@@ -1,11 +1,11 @@
 package dev.mcdevmcp.bridge;
 
+import dev.mcdevmcp.bridge.payload.EmptyBridgePayload;
+
 import java.util.Objects;
 import java.util.Optional;
 import java.util.OptionalInt;
 import java.util.concurrent.CompletionStage;
-
-import dev.mcdevmcp.bridge.payload.EmptyBridgePayload;
 
 public final class BridgeProbe {
     private static final BridgeEndpoint STATUS = new BridgeEndpoint("status");

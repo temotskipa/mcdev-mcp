@@ -19,6 +19,21 @@ public final class ToolInput<A> {
         return new ToolInput<>(jsonType, Objects.requireNonNull(factory, "factory").generate(jsonType));
     }
 
+    private static String deserializationMessage(Throwable exception) {
+        Throwable current = exception;
+        while (current != null) {
+            if (current instanceof ToolInputValidationException validation) {
+                String message = validation.getMessage();
+                if (message != null && !message.isBlank()) {
+                    return message;
+                }
+                break;
+            }
+            current = current.getCause();
+        }
+        return "Unable to deserialize tool input";
+    }
+
     public JsonType<A> type() {
         return type;
     }
@@ -36,20 +51,5 @@ public final class ToolInput<A> {
         } catch (RuntimeException exception) {
             throw new IllegalArgumentException(deserializationMessage(exception), exception);
         }
-    }
-
-    private static String deserializationMessage(Throwable exception) {
-        Throwable current = exception;
-        while (current != null) {
-            if (current instanceof ToolInputValidationException validation) {
-                String message = validation.getMessage();
-                if (message != null && !message.isBlank()) {
-                    return message;
-                }
-                break;
-            }
-            current = current.getCause();
-        }
-        return "Unable to deserialize tool input";
     }
 }

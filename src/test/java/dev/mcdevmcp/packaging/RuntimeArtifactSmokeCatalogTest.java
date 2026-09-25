@@ -4,12 +4,7 @@ import dev.mcdevmcp.bridge.payload.EmptyBridgePayload;
 import dev.mcdevmcp.mcp.McpServerFactory;
 import dev.mcdevmcp.mcp.tool.ToolAvailability;
 import dev.mcdevmcp.mcp.tool.ToolDefinition;
-import dev.mcdevmcp.mcp.tool.api.JsonValueSchema;
-import dev.mcdevmcp.mcp.tool.api.RecordInputSchemaFactory;
-import dev.mcdevmcp.mcp.tool.api.ToolBinding;
-import dev.mcdevmcp.mcp.tool.api.ToolInput;
-import dev.mcdevmcp.mcp.tool.api.ToolOutput;
-import dev.mcdevmcp.mcp.tool.api.ToolResult;
+import dev.mcdevmcp.mcp.tool.api.*;
 import dev.mcdevmcp.support.AppEnvironment;
 import io.modelcontextprotocol.json.McpJsonDefaults;
 import io.modelcontextprotocol.json.TypeRef;
@@ -27,6 +22,36 @@ import static org.junit.jupiter.api.Assertions.*;
 class RuntimeArtifactSmokeCatalogTest {
     private static final TypeRef<List<Map<String, Object>>> TOOLS_TYPE = new TypeRef<>() {
     };
+
+    private static void assertRejected(List<Map<String, Object>> tools, List<ToolDefinition> definitions) {
+        IllegalStateException exception = assertThrows(IllegalStateException.class, () -> RuntimeArtifactSmokeMain.verifyToolCatalog(tools, definitions));
+        assertEquals("Exact JAR tools/list differs from Java-owned tools metadata", exception.getMessage());
+    }
+
+    private static List<ToolDefinition> definitions() {
+        try (var composition = McpServerFactory.declarativeComposition(new AppEnvironment(Map.of()), McpJsonDefaults.getMapper())) {
+            return composition.definitions();
+        }
+    }
+
+    private static List<ToolDefinition> definitionsWithOutput() {
+        var input = ToolInput.of(EmptyBridgePayload.class, RecordInputSchemaFactory.standard());
+        var output = ToolOutput.of(EmptyBridgePayload.class, JsonValueSchema.of(Map.of("type", "object", "additionalProperties", false)));
+        var binding = ToolBinding.blocking(input, output, (_, _) -> ToolResult.text("unused"));
+        List<ToolDefinition> definitions = new ArrayList<>(definitions());
+        definitions.add(new ToolDefinition("output_fixture", "Declared output fixture", binding, ToolAvailability.ALWAYS));
+        return definitions;
+    }
+
+    private static List<Map<String, Object>> sdkWireCatalog(List<ToolDefinition> definitions) throws IOException {
+        List<McpSchema.Tool> tools = definitions.stream().map(definition -> {
+            var builder = McpSchema.Tool.builder(definition.name(), definition.inputSchema()).description(definition.description());
+            definition.output().ifPresent(output -> builder.outputSchema(output.schema().value()));
+            return builder.build();
+        }).toList();
+        var mapper = McpJsonDefaults.getMapper();
+        return mapper.readValue(mapper.writeValueAsString(tools), TOOLS_TYPE);
+    }
 
     @Test
     void acceptsTheCompleteSdkWireCatalogWithNormalizedNumbers() throws Exception {
@@ -97,35 +122,5 @@ class RuntimeArtifactSmokeCatalogTest {
             tools.getFirst().put(field, "changed");
             assertRejected(tools, definitions);
         }
-    }
-
-    private static void assertRejected(List<Map<String, Object>> tools, List<ToolDefinition> definitions) {
-        IllegalStateException exception = assertThrows(IllegalStateException.class, () -> RuntimeArtifactSmokeMain.verifyToolCatalog(tools, definitions));
-        assertEquals("Exact JAR tools/list differs from Java-owned tools metadata", exception.getMessage());
-    }
-
-    private static List<ToolDefinition> definitions() {
-        try (var composition = McpServerFactory.declarativeComposition(new AppEnvironment(Map.of()), McpJsonDefaults.getMapper())) {
-            return composition.definitions();
-        }
-    }
-
-    private static List<ToolDefinition> definitionsWithOutput() {
-        var input = ToolInput.of(EmptyBridgePayload.class, RecordInputSchemaFactory.standard());
-        var output = ToolOutput.of(EmptyBridgePayload.class, JsonValueSchema.of(Map.of("type", "object", "additionalProperties", false)));
-        var binding = ToolBinding.blocking(input, output, (_, _) -> ToolResult.text("unused"));
-        List<ToolDefinition> definitions = new ArrayList<>(definitions());
-        definitions.add(new ToolDefinition("output_fixture", "Declared output fixture", binding, ToolAvailability.ALWAYS));
-        return definitions;
-    }
-
-    private static List<Map<String, Object>> sdkWireCatalog(List<ToolDefinition> definitions) throws IOException {
-        List<McpSchema.Tool> tools = definitions.stream().map(definition -> {
-            var builder = McpSchema.Tool.builder(definition.name(), definition.inputSchema()).description(definition.description());
-            definition.output().ifPresent(output -> builder.outputSchema(output.schema().value()));
-            return builder.build();
-        }).toList();
-        var mapper = McpJsonDefaults.getMapper();
-        return mapper.readValue(mapper.writeValueAsString(tools), TOOLS_TYPE);
     }
 }

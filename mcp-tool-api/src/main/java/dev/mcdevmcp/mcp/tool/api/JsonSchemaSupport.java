@@ -1,6 +1,7 @@
 package dev.mcdevmcp.mcp.tool.api;
 
 import java.math.BigDecimal;
+import java.math.BigInteger;
 import java.util.*;
 
 /**
@@ -244,7 +245,7 @@ final class JsonSchemaSupport {
     }
 
     static boolean isJsonNumber(Object value) {
-        return value instanceof Byte || value instanceof Short || value instanceof Integer || value instanceof Long || value instanceof java.math.BigInteger || value instanceof java.math.BigDecimal || value instanceof Float fFloatingPoint && Float.isFinite(fFloatingPoint) || value instanceof Double dFloatingPoint && Double.isFinite(dFloatingPoint);
+        return value instanceof Byte || value instanceof Short || value instanceof Integer || value instanceof Long || value instanceof BigInteger || value instanceof BigDecimal || value instanceof Float fFloatingPoint && Float.isFinite(fFloatingPoint) || value instanceof Double dFloatingPoint && Double.isFinite(dFloatingPoint);
     }
 
     static boolean jsonEquals(Object left, Object right) {
@@ -276,8 +277,8 @@ final class JsonSchemaSupport {
             return false;
         }
         return switch (value) {
-            case Byte _, Short _, Integer _, Long _, java.math.BigInteger _ -> true;
-            case java.math.BigDecimal decimal -> decimal.stripTrailingZeros().scale() <= 0;
+            case Byte _, Short _, Integer _, Long _, BigInteger _ -> true;
+            case BigDecimal decimal -> decimal.stripTrailingZeros().scale() <= 0;
             case Float floatingPoint -> Float.isFinite(floatingPoint) && floatingPoint == Math.rint(floatingPoint);
             case Double floatingPoint -> Double.isFinite(floatingPoint) && floatingPoint == Math.rint(floatingPoint);
             default -> false;

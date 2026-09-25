@@ -46,9 +46,9 @@ abstract class DependencyPolicyCheck : DefaultTask() {
     fun verifyDependencyPolicy() {
         val dynamic = declaredExternalSelectors.get().filter { selector ->
             val version = selector.substringAfterLast(':')
-            version.contains('+') || version.startsWith("latest.") ||
-                    version.startsWith('[') || version.startsWith('(') ||
-                    version.endsWith(']') || version.endsWith(')')
+            version.contains('+') || version.startsWith("latest.") || version.startsWith('[') || version.startsWith('(') || version.endsWith(
+                ']'
+            ) || version.endsWith(')')
         }
         check(dynamic.isEmpty()) {
             "Dynamic or ranged dependency selectors are forbidden: ${dynamic.joinToString()}"
@@ -88,8 +88,9 @@ abstract class McpSdkSnapshotCheck : DefaultTask() {
             }
         }
         val gsonModules = runtimeModules.filter { (module, _) ->
-            module.substringBefore(':').equals("com.google.code.$gsonModuleName", ignoreCase = true) ||
-                    module.substringAfter(':').equals(gsonModuleName, ignoreCase = true)
+            module.substringBefore(':')
+                .equals("com.google.code.$gsonModuleName", ignoreCase = true) || module.substringAfter(':')
+                .equals(gsonModuleName, ignoreCase = true)
         }
 
         check(mismatches.isEmpty() && gsonModules.isEmpty()) {
@@ -110,15 +111,9 @@ plugins {
     id("com.gradleup.shadow")
 }
 
+apply(from = "gradle/java-preview.gradle.kts")
+
 val applicationVersion = providers.gradleProperty("version").get()
-val testJavaFeature = providers.gradleProperty("testJavaVersion").orElse("26").map { configuredVersion ->
-    configuredVersion.toInt().also { feature ->
-        require(feature == 26) { "Java 26 is required for testJavaVersion, got $feature" }
-    }
-}
-val testJavaLauncher = javaToolchains.launcherFor {
-    languageVersion.set(testJavaFeature.map(JavaLanguageVersion::of))
-}
 
 val generateTestVersionProperties = tasks.register<WriteProperties>("generateTestVersionProperties") {
     description = "Generates version metadata for Java tests."
@@ -126,18 +121,12 @@ val generateTestVersionProperties = tasks.register<WriteProperties>("generateTes
     property("version", applicationVersion)
 }
 
-java {
-    modularity.inferModulePath.set(true)
-    toolchain {
-        languageVersion.set(JavaLanguageVersion.of(26))
-    }
-}
 dependencies {
     implementation(project(":mcp-tool-api"))
     implementation(project(":storage-model"))
     implementation("io.modelcontextprotocol.sdk:mcp:2.0.1")
     implementation("info.picocli:picocli:4.7.7")
-    implementation("com.h2database:h2:2.4.240")
+    implementation("com.h2database:h2:2.5.250")
     implementation("org.vineflower:vineflower:1.12.0")
     implementation("net.fabricmc:tiny-remapper:0.14.1")
     implementation("net.fabricmc:mapping-io:0.9.1")
@@ -160,12 +149,6 @@ application {
     applicationDefaultJvmArgs = listOf("--enable-preview")
 }
 
-tasks.withType<JavaCompile>().configureEach {
-    options.release.set(26)
-    options.encoding = "UTF-8"
-    options.compilerArgs.addAll(listOf("-Xlint:all", "-Xlint:-preview", "-Xlint:-requires-automatic", "-Xlint:-requires-transitive-automatic", "-Werror", "--enable-preview"))
-}
-
 sourceSets {
     test {
         resources.srcDir(layout.buildDirectory.dir("generated-test-resources"))
@@ -182,18 +165,6 @@ val runtimeTest = sourceSets.create("runtimeTest") {
 dependencies {
     add(runtimeTest.implementationConfigurationName, sourceSets.main.get().output)
     testImplementation(runtimeTest.output)
-}
-
-tasks.named<JavaCompile>(sourceSets.test.get().compileJavaTaskName) {
-    options.release.set(26)
-    options.encoding = "UTF-8"
-    options.compilerArgs.addAll(listOf("-Xlint:all", "-Xlint:-preview", "-Xlint:-requires-automatic", "-Xlint:-requires-transitive-automatic", "-Werror", "--enable-preview"))
-}
-
-tasks.named<JavaCompile>(runtimeTest.compileJavaTaskName) {
-    options.release.set(26)
-    options.encoding = "UTF-8"
-    options.compilerArgs.addAll(listOf("-Xlint:all", "-Xlint:-preview", "-Xlint:-requires-automatic", "-Xlint:-requires-transitive-automatic", "-Werror", "--enable-preview"))
 }
 
 val benchmarkClasses = tasks.register("benchmarkClasses") {
@@ -227,17 +198,12 @@ tasks.processTestResources {
 tasks.withType<Test>().configureEach {
     useJUnitPlatform()
     dependsOn(tasks.named("shadowJar"))
-    javaLauncher.set(testJavaLauncher)
-    jvmArgs("--enable-preview")
     testLogging.showStandardStreams = true
     systemProperty("dev.mcdevmcp.test.versionFallback", "true")
-    systemProperty("dev.mcdevmcp.test.javaFeature", testJavaFeature.get())
     systemProperty("mcdevMcpVersion", applicationVersion)
     systemProperty(
-        "mcdevMcpJar",
-        layout.buildDirectory.file("libs/mcdev-mcp-$applicationVersion.jar").get().asFile.absolutePath
+        "mcdevMcpJar", layout.buildDirectory.file("libs/mcdev-mcp-$applicationVersion.jar").get().asFile.absolutePath
     )
-    systemProperty("mcdevMcpJava", testJavaLauncher.get().executablePath.asFile.absolutePath)
 }
 
 tasks.named<Test>("test") {
@@ -277,9 +243,7 @@ tasks.named<ShadowJar>("shadowJar") {
         "META-INF/services/reactor.blockhound.integration.BlockHoundIntegration"
     )
     manifest {
-        attributes[
-            "Main-Class"
-        ] = application.mainClass.get()
+        attributes["Main-Class"] = application.mainClass.get()
         attributes["Implementation-Version"] = applicationVersion
     }
 }
@@ -294,7 +258,6 @@ val generateMcpbManifest = tasks.register<JavaExec>("generateMcpbManifest") {
     dependsOn(tasks.named("classes"))
     classpath = sourceSets.main.get().runtimeClasspath
     mainClass.set("dev.mcdevmcp.packaging.McpbManifestGenerator")
-    jvmArgs("--enable-preview")
     args(
         layout.projectDirectory.file("packaging/mcpb/manifest.template.json").asFile.absolutePath,
         layout.projectDirectory.file("manifest.json").asFile.absolutePath,
@@ -316,7 +279,6 @@ tasks.register<JavaExec>("mcpbBundleSmoke") {
     dependsOn(tasks.named("classes"))
     classpath = sourceSets.main.get().runtimeClasspath
     mainClass.set("dev.mcdevmcp.packaging.McpbBundleSmokeMain")
-    jvmArgs("--enable-preview")
     argumentProviders.add(CommandLineArgumentProvider {
         listOf(mcpbBundleDirectory.get())
     })
@@ -349,7 +311,7 @@ val generateJarChecksum = tasks.register<Sha256FileTask>("generateJarChecksum") 
 
 val runtimeTestBundle = tasks.register<Zip>("runtimeTestBundle") {
     group = "distribution"
-    description = "Packages the Java-26-built JAR, checksum, manifest, and compiled runtime smoke harness."
+    description = "Packages the preview-built JAR, checksum, manifest, and compiled runtime smoke harness."
     dependsOn(tasks.named(runtimeTest.classesTaskName), generateJarChecksum, generateMcpbManifest)
     archiveBaseName.set("mcdev-mcp-runtime-test")
     archiveVersion.set(applicationVersion)
@@ -368,7 +330,7 @@ val runtimeTestBundle = tasks.register<Zip>("runtimeTestBundle") {
 
 val benchmarkBundle = tasks.register<Zip>("benchmarkBundle") {
     group = "distribution"
-    description = "Packages the Java-26-built JAR, checksum, and compiled benchmark harness."
+    description = "Packages the preview-built JAR, checksum, and compiled benchmark harness."
     dependsOn(benchmarkClasses, generateJarChecksum)
     archiveBaseName.set("mcdev-mcp-benchmark")
     archiveVersion.set(applicationVersion)
@@ -383,11 +345,11 @@ val benchmarkBundle = tasks.register<Zip>("benchmarkBundle") {
     duplicatesStrategy = DuplicatesStrategy.FAIL
 }
 
-tasks.register<Sync>("java26ArtifactBundle") {
+tasks.register<Sync>("releaseArtifactBundle") {
     group = "distribution"
-    description = "Stages the complete Java-26 build-once provenance payload for CI consumers."
+    description = "Stages the complete build-once provenance payload for CI consumers."
     dependsOn(runtimeTestBundle, benchmarkBundle, generateMcpbManifest)
-    into(layout.buildDirectory.dir("artifacts/java26"))
+    into(layout.buildDirectory.dir("artifacts/release"))
     from(releaseJar)
     from(jarChecksum)
     from(generatedMcpbManifest) {
@@ -404,7 +366,6 @@ tasks.register<JavaExec>("runtimeArtifactSmoke") {
     dependsOn(tasks.named(runtimeTest.classesTaskName), generateJarChecksum)
     classpath = files(runtimeTest.output, releaseJar)
     mainClass.set("dev.mcdevmcp.packaging.RuntimeArtifactSmokeMain")
-    jvmArgs("--enable-preview")
     args(releaseJar.get().asFile.absolutePath)
 }
 
@@ -433,8 +394,7 @@ tasks.named("startScripts") {
 }
 
 val runtimeModuleVersions = configurations.named("runtimeClasspath").map { configuration ->
-    configuration.incoming.resolutionResult.allComponents
-        .mapNotNull { component -> component.moduleVersion }
+    configuration.incoming.resolutionResult.allComponents.mapNotNull { component -> component.moduleVersion }
         .associate { module -> "${module.group}:${module.name}" to module.version }
 }
 
@@ -470,13 +430,10 @@ fun registerCutoverScan(
     val repositoryRoot = project.layout.projectDirectory.asFile
     val allowedScriptFiles = setOf("packaging/mcpb/bootstrap.cjs")
     val allowedPackageMetadata = setOf(
-        "packaging/mcpb/package.json",
-        "packaging/mcpb/package-lock.json"
+        "packaging/mcpb/package.json", "packaging/mcpb/package-lock.json"
     )
     val forbiddenMetadataFiles = setOf(
-        "tsconfig.json",
-        "jest.config.js",
-        "eslint.config.js"
+        "tsconfig.json", "jest.config.js", "eslint.config.js"
     )
     val forbiddenReferences = Regex(
         listOf(
@@ -507,22 +464,17 @@ fun registerCutoverScan(
             "\\bMCDEV_MCP_REMAPPER_" + "HEAP\\b",
             "\\bMCDEV_ARGV_" + "CAPTURE\\b",
             "package[._-]?json[._-]?(?:index(?:er|ers|es)?|readers?|writers?)"
-        ).joinToString("|"),
-        RegexOption.IGNORE_CASE
+        ).joinToString("|"), RegexOption.IGNORE_CASE
     )
     doLast {
         val trackedFiles = if (syntheticFiles.isEmpty()) {
-            val git = ProcessBuilder("git", "ls-files", "-z")
-                .directory(repositoryRoot)
-                .redirectErrorStream(true)
-                .start()
+            val git =
+                ProcessBuilder("git", "ls-files", "-z").directory(repositoryRoot).redirectErrorStream(true).start()
             val trackedOutput = git.inputStream.readBytes()
             check(git.waitFor() == 0) {
                 "Unable to list tracked files for cutoverCheck: ${trackedOutput.toString(StandardCharsets.UTF_8)}"
             }
-            trackedOutput.toString(StandardCharsets.UTF_8)
-                .split('\u0000')
-                .filter(String::isNotEmpty)
+            trackedOutput.toString(StandardCharsets.UTF_8).split('\u0000').filter(String::isNotEmpty)
         } else {
             syntheticFiles.keys.toList()
         }
@@ -532,38 +484,26 @@ fun registerCutoverScan(
             val normalizedPath = path.replace('\\', '/')
             val lowercasePath = normalizedPath.lowercase()
             val fileName = lowercasePath.substringAfterLast('/')
-            if (
-                lowercasePath.endsWith(".ts") ||
-                lowercasePath.endsWith(".tsx") ||
-                ((lowercasePath.endsWith(".js") ||
-                        lowercasePath.endsWith(".mjs") ||
-                        lowercasePath.endsWith(".cjs")) &&
-                        normalizedPath !in allowedScriptFiles) ||
-                ((fileName == "package.json" || fileName == "package-lock.json") &&
-                        normalizedPath !in allowedPackageMetadata) ||
-                fileName in forbiddenMetadataFiles ||
-                lowercasePath.startsWith("java-worker/")
+            if (lowercasePath.endsWith(".ts") || lowercasePath.endsWith(".tsx") || ((lowercasePath.endsWith(".js") || lowercasePath.endsWith(
+                    ".mjs"
+                ) || lowercasePath.endsWith(".cjs")) && normalizedPath !in allowedScriptFiles) || ((fileName == "package.json" || fileName == "package-lock.json") && normalizedPath !in allowedPackageMetadata) || fileName in forbiddenMetadataFiles || lowercasePath.startsWith(
+                    "java-worker/"
+                )
             ) {
                 violations += "forbidden tracked file: $normalizedPath"
             }
 
             val isPackagingLockfile = normalizedPath == "packaging/mcpb/package-lock.json"
             val mustInspectContents =
-                (lowercasePath.endsWith(".json") &&
-                        normalizedPath != "contracts/node-oracle.json" &&
-                        !isPackagingLockfile &&
-                        !normalizedPath.startsWith("src/test/resources/contracts/") &&
-                        !normalizedPath.startsWith("src/test/resources/oracle/") &&
-                        !normalizedPath.startsWith("docs/superpowers/")) ||
-                        normalizedPath == "build.gradle.kts" ||
-                        normalizedPath == "settings.gradle.kts" ||
-                        normalizedPath.endsWith(".gradle") ||
-                        normalizedPath.endsWith(".gradle.kts") ||
-                        normalizedPath.endsWith(".toml") ||
-                        normalizedPath.endsWith(".properties") ||
-                        normalizedPath.startsWith(".github/") ||
-                        normalizedPath.startsWith("scripts/") ||
-                        normalizedPath.startsWith("src/main/")
+                (lowercasePath.endsWith(".json") && normalizedPath != "contracts/node-oracle.json" && !isPackagingLockfile && !normalizedPath.startsWith(
+                    "src/test/resources/contracts/"
+                ) && !normalizedPath.startsWith("src/test/resources/oracle/") && !normalizedPath.startsWith("docs/superpowers/")) || normalizedPath == "build.gradle.kts" || normalizedPath == "settings.gradle.kts" || normalizedPath.endsWith(
+                    ".gradle"
+                ) || normalizedPath.endsWith(".gradle.kts") || normalizedPath.endsWith(".toml") || normalizedPath.endsWith(
+                    ".properties"
+                ) || normalizedPath.startsWith(".github/") || normalizedPath.startsWith("scripts/") || normalizedPath.startsWith(
+                    "src/main/"
+                )
             if (mustInspectContents) {
                 val file = repositoryRoot.toPath().resolve(path)
                 val syntheticContents = syntheticFiles[path]
@@ -571,8 +511,7 @@ fun registerCutoverScan(
                     val contents = syntheticContents ?: Files.readString(file)
                     val forbiddenNodeMetadata = if (lowercasePath.endsWith(".json")) {
                         val isPackagingMetadata = normalizedPath.startsWith("packaging/mcpb/")
-                        val parsedJson = runCatching { JsonSlurper().parseText(contents) }
-                            .getOrElse { cause ->
+                        val parsedJson = runCatching { JsonSlurper().parseText(contents) }.getOrElse { cause ->
                                 violations += "invalid inspected JSON metadata: $normalizedPath (${cause.message})"
                                 null
                             }
@@ -600,11 +539,9 @@ fun registerCutoverScan(
                                 }
                             }
                         }
-                        fun normalizedMetadataKey(key: String) =
-                            key.lowercase().replace("_", "").replace("-", "")
+                        fun normalizedMetadataKey(key: String) = key.lowercase().replace("_", "").replace("-", "")
 
-                        fun normalizedEntrypoint(value: String) =
-                            value.trim().replace('\\', '/').removePrefix("./")
+                        fun normalizedEntrypoint(value: String) = value.trim().replace('\\', '/').removePrefix("./")
 
                         fun hasNodeOptionsMetadata(root: Any): Boolean {
                             val environmentKeys = setOf("env", "environment")
@@ -620,26 +557,20 @@ fun registerCutoverScan(
                                         }
                                         if (nestedValue != null) {
                                             pendingEnvironmentValues.add(
-                                                nestedValue to
-                                                        (normalizedKey in environmentKeys &&
-                                                                (nestedValue is String || nestedValue is Iterable<*>))
+                                                nestedValue to (normalizedKey in environmentKeys && (nestedValue is String || nestedValue is Iterable<*>))
                                             )
                                         }
                                     }
 
                                     is Iterable<*> -> value.filterNotNull().forEach { nestedValue ->
                                         pendingEnvironmentValues.add(
-                                            nestedValue to
-                                                    (assignmentList &&
-                                                            (nestedValue is String || nestedValue is Iterable<*>))
+                                            nestedValue to (assignmentList && (nestedValue is String || nestedValue is Iterable<*>))
                                         )
                                     }
 
                                     is String -> {
                                         val assignment = value.indexOf('=')
-                                        if (assignmentList &&
-                                            assignment > 0 &&
-                                            normalizedMetadataKey(
+                                        if (assignmentList && assignment > 0 && normalizedMetadataKey(
                                                 value.substring(0, assignment).trim()
                                             ) == "nodeoptions"
                                         ) {
@@ -652,8 +583,7 @@ fun registerCutoverScan(
                         }
 
                         val allowedEntrypoints = setOf(
-                            "bootstrap.cjs",
-                            "packaging/mcpb/bootstrap.cjs"
+                            "bootstrap.cjs", "packaging/mcpb/bootstrap.cjs"
                         )
                         val javascriptEntrypoint = Regex(
                             """(?i)\b[^\s"';|&()]*\.(?:js|mjs|cjs|ts|tsx)\b"""
@@ -661,16 +591,14 @@ fun registerCutoverScan(
 
                         fun hasForbiddenJavaScriptEntrypoint(value: String) =
                             javascriptEntrypoint.findAll(value).any { match ->
-                                !isPackagingMetadata ||
-                                        normalizedEntrypoint(match.value) !in allowedEntrypoints
+                                !isPackagingMetadata || normalizedEntrypoint(match.value) !in allowedEntrypoints
                             }
 
-                        fun hasForbiddenEntrypointTarget(value: String) =
-                            if (isPackagingMetadata) {
-                                normalizedEntrypoint(value) !in allowedEntrypoints
-                            } else {
-                                hasForbiddenJavaScriptEntrypoint(value)
-                            }
+                        fun hasForbiddenEntrypointTarget(value: String) = if (isPackagingMetadata) {
+                            normalizedEntrypoint(value) !in allowedEntrypoints
+                        } else {
+                            hasForbiddenJavaScriptEntrypoint(value)
+                        }
 
                         fun normalizedExecutableName(value: String) =
                             value.trim().replace('\\', '/').substringAfterLast('/').lowercase().removeSuffix(".exe")
@@ -739,10 +667,7 @@ fun registerCutoverScan(
                                         } else if (requiresSegment && character == ';') {
                                             return null
                                         }
-                                        if (character == '\r' &&
-                                            index + 1 < value.length &&
-                                            value[index + 1] == '\n'
-                                        ) {
+                                        if (character == '\r' && index + 1 < value.length && value[index + 1] == '\n') {
                                             index++
                                         }
                                     }
@@ -767,9 +692,13 @@ fun registerCutoverScan(
                                     }
 
                                     character.isWhitespace() -> finishWord()
-                                    character == '\\' && index + 1 < value.length &&
-                                            (value[index + 1].isWhitespace() ||
-                                                    value[index + 1] in setOf('\'', '"', ';', '&', '|')) -> {
+                                    character == '\\' && index + 1 < value.length && (value[index + 1].isWhitespace() || value[index + 1] in setOf(
+                                        '\'',
+                                        '"',
+                                        ';',
+                                        '&',
+                                        '|'
+                                    )) -> {
                                         index++
                                         word.append(value[index])
                                         wordStarted = true
@@ -810,8 +739,7 @@ fun registerCutoverScan(
                                     if (!assignmentName.matches(name)) {
                                         break
                                     }
-                                    hasNodeOptions = hasNodeOptions ||
-                                            normalizedMetadataKey(name) == "nodeoptions"
+                                    hasNodeOptions = hasNodeOptions || normalizedMetadataKey(name) == "nodeoptions"
                                     executableIndex++
                                 }
                             }
@@ -823,9 +751,7 @@ fun registerCutoverScan(
                                         executableIndex++
                                         if (executableIndex < words.size && words[executableIndex] == "--") {
                                             executableIndex++
-                                        } else if (executableIndex < words.size &&
-                                            words[executableIndex].startsWith("-")
-                                        ) {
+                                        } else if (executableIndex < words.size && words[executableIndex].startsWith("-")) {
                                             return null
                                         }
                                         consumeAssignments()
@@ -835,9 +761,7 @@ fun registerCutoverScan(
                                         executableIndex++
                                         if (executableIndex < words.size && words[executableIndex] == "--") {
                                             executableIndex++
-                                        } else if (executableIndex < words.size &&
-                                            words[executableIndex].startsWith("-")
-                                        ) {
+                                        } else if (executableIndex < words.size && words[executableIndex].startsWith("-")) {
                                             return null
                                         }
                                     }
@@ -848,8 +772,7 @@ fun registerCutoverScan(
                             if (executableIndex < words.size && words[executableIndex].contains('=')) {
                                 return null
                             }
-                            return executableIndex.takeIf { it < words.size }
-                                ?.let { it to hasNodeOptions }
+                            return executableIndex.takeIf { it < words.size }?.let { it to hasNodeOptions }
                         }
 
                         val nodeToken = Regex("""(?i)\bnode(?:\.exe)?\b""")
@@ -858,9 +781,9 @@ fun registerCutoverScan(
                         fun hasForbiddenCommandWords(words: List<String>): Boolean {
                             val (executableIndex, hasNodeOptions) = resolveCommandSegment(words)
                                 ?: return words.any { word ->
-                                    nodeToken.containsMatchIn(word) ||
-                                            nodeOptionsToken.containsMatchIn(word) ||
-                                            javascriptEntrypoint.containsMatchIn(word)
+                                    nodeToken.containsMatchIn(word) || nodeOptionsToken.containsMatchIn(word) || javascriptEntrypoint.containsMatchIn(
+                                        word
+                                    )
                                 }
                             if (hasNodeOptions || words.any(nodeOptionsToken::containsMatchIn)) {
                                 return true
@@ -868,29 +791,23 @@ fun registerCutoverScan(
                             val executable = words[executableIndex]
                             val arguments = words.drop(executableIndex + 1)
                             if (isNodeCommand(executable)) {
-                                return !isPackagingMetadata ||
-                                        arguments.size != 1 ||
-                                        normalizedEntrypoint(arguments.single()) !in allowedEntrypoints
+                                return !isPackagingMetadata || arguments.size != 1 || normalizedEntrypoint(arguments.single()) !in allowedEntrypoints
                             }
                             return words.drop(executableIndex).any { word ->
-                                nodeToken.containsMatchIn(word) ||
-                                        javascriptEntrypoint.containsMatchIn(word)
+                                nodeToken.containsMatchIn(word) || javascriptEntrypoint.containsMatchIn(word)
                             }
                         }
 
                         fun hasForbiddenNodeCommandText(value: String): Boolean {
                             val segments = parseCommandSegments(value)
-                                ?: return nodeToken.containsMatchIn(value) ||
-                                        nodeOptionsToken.containsMatchIn(value) ||
-                                        javascriptEntrypoint.containsMatchIn(value)
-                            if (isPackagingMetadata &&
-                                segments.size != 1 &&
-                                segments.flatten().any { word ->
-                                    nodeToken.containsMatchIn(word) ||
-                                            nodeOptionsToken.containsMatchIn(word) ||
-                                            javascriptEntrypoint.containsMatchIn(word)
-                                }
-                            ) {
+                                ?: return nodeToken.containsMatchIn(value) || nodeOptionsToken.containsMatchIn(value) || javascriptEntrypoint.containsMatchIn(
+                                    value
+                                )
+                            if (isPackagingMetadata && segments.size != 1 && segments.flatten().any { word ->
+                                    nodeToken.containsMatchIn(word) || nodeOptionsToken.containsMatchIn(word) || javascriptEntrypoint.containsMatchIn(
+                                        word
+                                    )
+                                }) {
                                 return true
                             }
                             for (segment in segments) {
@@ -917,9 +834,10 @@ fun registerCutoverScan(
                                         val fields = value.entries.associate { (key, fieldValue) ->
                                             (key as? String)?.let(::normalizedMetadataKey) to fieldValue
                                         }
-                                        val command = fields["command"]
-                                            ?: listOf("executable", "program")
-                                                .firstNotNullOfOrNull { fields[it] as? String }
+                                        val command = fields["command"] ?: listOf(
+                                            "executable",
+                                            "program"
+                                        ).firstNotNullOfOrNull { fields[it] as? String }
                                         val explicitArguments = fields["args"] ?: fields["arguments"]
                                         val (executable, arguments) = when (command) {
                                             is String -> if (explicitArguments == null) {
@@ -933,30 +851,32 @@ fun registerCutoverScan(
 
                                             is Iterable<*> -> {
                                                 val commandParts = command.toList()
-                                                (commandParts.firstOrNull() as? String) to
-                                                        (stringArguments(commandParts.drop(1)) +
-                                                                stringArguments(explicitArguments))
+                                                (commandParts.firstOrNull() as? String) to (stringArguments(
+                                                    commandParts.drop(
+                                                        1
+                                                    )
+                                                ) + stringArguments(explicitArguments))
                                             }
 
                                             is Map<*, *> -> {
                                                 val commandFields = command.entries.associate { (key, fieldValue) ->
                                                     (key as? String)?.let(::normalizedMetadataKey) to fieldValue
                                                 }
-                                                val commandExecutable =
-                                                    listOf("command", "executable", "program")
-                                                        .firstNotNullOfOrNull { commandFields[it] as? String }
+                                                val commandExecutable = listOf(
+                                                    "command",
+                                                    "executable",
+                                                    "program"
+                                                ).firstNotNullOfOrNull { commandFields[it] as? String }
                                                 val commandArguments =
                                                     commandFields["args"] ?: commandFields["arguments"]
-                                                commandExecutable to
-                                                        (stringArguments(commandArguments) +
-                                                                stringArguments(explicitArguments))
+                                                commandExecutable to (stringArguments(commandArguments) + stringArguments(
+                                                    explicitArguments
+                                                ))
                                             }
 
                                             else -> null to emptyList()
                                         }
-                                        if (executable != null &&
-                                            hasForbiddenCommandWords(listOf(executable) + arguments)
-                                        ) {
+                                        if (executable != null && hasForbiddenCommandWords(listOf(executable) + arguments)) {
                                             return true
                                         }
                                         value.values.filterNotNull().forEach(pendingCommands::add)
@@ -971,20 +891,21 @@ fun registerCutoverScan(
                         val entrypointKeys = setOf("main", "module", "browser", "bin", "exports", "entrypoint")
                         val nodeRuntime = jsonFields.any { (key, value) ->
                             val normalizedKey = normalizedMetadataKey(key)
-                            (normalizedKey == "runtime" || normalizedKey == "type") &&
-                                    value.equals("node", ignoreCase = true) ||
-                                    normalizedKey == "command" &&
-                                    (value.equals("node", ignoreCase = true) ||
-                                            value.equals("node.exe", ignoreCase = true))
+                            (normalizedKey == "runtime" || normalizedKey == "type") && value.equals(
+                                "node",
+                                ignoreCase = true
+                            ) || normalizedKey == "command" && (value.equals("node", ignoreCase = true) || value.equals(
+                                "node.exe",
+                                ignoreCase = true
+                            ))
                         }
                         val javascriptMetadata = jsonFields.any { (key, value) ->
                             val normalizedKey = normalizedMetadataKey(key)
                             val isEntrypoint = normalizedKey in entrypointKeys
                             val isCommand = normalizedKey == "command"
-                            isEntrypoint && hasForbiddenEntrypointTarget(value) ||
-                                    isCommand &&
-                                    (!isPackagingMetadata || !isNodeCommand(value)) &&
-                                    hasForbiddenNodeCommandText(value)
+                            isEntrypoint && hasForbiddenEntrypointTarget(value) || isCommand && (!isPackagingMetadata || !isNodeCommand(
+                                value
+                            )) && hasForbiddenNodeCommandText(value)
                         }
                         val nestedJavaScriptMetadata = mutableListOf<Boolean>()
                         val nestedEntrypointKeys = setOf("bin", "exports", "browser")
@@ -998,24 +919,16 @@ fun registerCutoverScan(
                             when (jsonValue) {
                                 is Map<*, *> -> jsonValue.forEach { (key, nestedValue) ->
                                     val normalizedKey = (key as? String)?.let(::normalizedMetadataKey)
-                                    if (nestedValue is String &&
-                                        (parentKey in nestedMetadataKeys ||
-                                                normalizedKey == "command")
-                                    ) {
-                                        nestedJavaScriptMetadata +=
-                                            parentKey in nestedEntrypointKeys &&
-                                                    hasForbiddenEntrypointTarget(nestedValue) ||
-                                                    (parentKey == "scripts" || normalizedKey == "command") &&
-                                                    (!isPackagingMetadata ||
-                                                            normalizedKey != "command" ||
-                                                            !isNodeCommand(nestedValue)) &&
-                                                    hasForbiddenNodeCommandText(nestedValue)
+                                    if (nestedValue is String && (parentKey in nestedMetadataKeys || normalizedKey == "command")) {
+                                        nestedJavaScriptMetadata += parentKey in nestedEntrypointKeys && hasForbiddenEntrypointTarget(
+                                            nestedValue
+                                        ) || (parentKey == "scripts" || normalizedKey == "command") && (!isPackagingMetadata || normalizedKey != "command" || !isNodeCommand(
+                                            nestedValue
+                                        )) && hasForbiddenNodeCommandText(nestedValue)
                                     }
                                     if (nestedValue != null) {
-                                        pendingMetadataValues.add(
-                                            nestedValue to
-                                                    (normalizedKey?.takeIf { it in nestedMetadataKeys } ?: parentKey)
-                                        )
+                                        pendingMetadataValues.add(nestedValue to (normalizedKey?.takeIf { it in nestedMetadataKeys }
+                                            ?: parentKey))
                                     }
                                 }
 
@@ -1027,15 +940,13 @@ fun registerCutoverScan(
                             }
                         }
                         if (isPackagingMetadata) {
-                            javascriptMetadata ||
-                                    nestedJavaScriptMetadata.any { it } ||
-                                    parsedJson != null && hasNodeOptionsMetadata(parsedJson) ||
-                                    parsedJson != null && hasForbiddenStructuredNodeInvocation(parsedJson)
+                            javascriptMetadata || nestedJavaScriptMetadata.any { it } || parsedJson != null && hasNodeOptionsMetadata(
+                                parsedJson
+                            ) || parsedJson != null && hasForbiddenStructuredNodeInvocation(parsedJson)
                         } else {
-                            nodeRuntime ||
-                                    javascriptMetadata ||
-                                    nestedJavaScriptMetadata.any { it } ||
-                                    parsedJson != null && hasForbiddenStructuredNodeInvocation(parsedJson)
+                            nodeRuntime || javascriptMetadata || nestedJavaScriptMetadata.any { it } || parsedJson != null && hasForbiddenStructuredNodeInvocation(
+                                parsedJson
+                            )
                         }
                     } else {
                         false
@@ -1052,11 +963,9 @@ fun registerCutoverScan(
                 "Early worktree cutover is incomplete:\n${violations.joinToString("\n")}"
             }
         } else {
-            val unreportedBypasses = syntheticFiles.keys
-                .filterNot { it in allowedSyntheticFiles }
+            val unreportedBypasses = syntheticFiles.keys.filterNot { it in allowedSyntheticFiles }
                 .filter { path -> violations.none { path in it } }
-            val rejectedAllowedFiles = allowedSyntheticFiles
-                .filter { path -> violations.any { path in it } }
+            val rejectedAllowedFiles = allowedSyntheticFiles.filter { path -> violations.any { path in it } }
             check(unreportedBypasses.isEmpty() && rejectedAllowedFiles.isEmpty()) {
                 buildString {
                     appendLine("cutoverCheck bypass regression failed")
@@ -1131,30 +1040,20 @@ val cutoverBypassFixtures = linkedMapOf(
     "src/main/resources/cutover/package-json.properties" to "package-" + "json-indexer=retired",
     ".cutover-fixtures/root-node.json" to "{\"runtime\":\"no" + "de\"}",
     ".cutover-fixtures/root-command.json" to "{\"command\":\"no" + "de escape.cjs\"}",
-    ".cutover-fixtures/root-structured-command.json" to
-            "{\"command\":\"no" + "de\",\"args\":[\"escape.cjs\"]}",
+    ".cutover-fixtures/root-structured-command.json" to "{\"command\":\"no" + "de\",\"args\":[\"escape.cjs\"]}",
     ".cutover-fixtures/shell-wrapper.json" to "{\"command\":\"sh -c 'node escape.cjs'\"}",
     "packaging/mcpb/escape.json" to "{\"command\":\"no" + "de ../escape.cjs\"}",
     "packaging/mcpb/bare-node.json" to "{\"command\":\"node\"}",
     "packaging/mcpb/shell-wrapper.json" to "{\"command\":\"sh -c 'node bootstrap.cjs'\"}",
-    "packaging/mcpb/structured-shell.json" to
-            "{\"command\":\"sh\",\"args\":[\"-c\",\"node escape.cjs\"]}",
-    "packaging/mcpb/nested-command.json" to
-            "{\"server\":{\"command\":{\"executable\":\"node\",\"arguments\":[\"escape.cjs\"]}}}",
-    "packaging/mcpb/nested-executable.json" to
-            "{\"server\":{\"executable\":\"node\",\"arguments\":[\"escape.cjs\"]}}",
-    "packaging/mcpb/nested-program.json" to
-            "{\"server\":{\"program\":\"node\",\"args\":[\"escape.cjs\"]}}",
-    "packaging/mcpb/node-options-map.json" to
-            "{\"command\":\"node\",\"args\":[\"bootstrap.cjs\"],\"env\":{\"NODE_OPTIONS\":\"--require escape.cjs\"}}",
-    "packaging/mcpb/node-options-list.json" to
-            "{\"command\":\"node\",\"args\":[\"bootstrap.cjs\"],\"environment\":[\"NODE_OPTIONS=--require escape.cjs\"]}",
-    "packaging/mcpb/node-options-inline.json" to
-            "{\"command\":\"NODE_OPTIONS=--require=escape.cjs node bootstrap.cjs\"}",
-    "packaging/mcpb/env-option-wrapper.json" to
-            "{\"command\":\"env -S node bootstrap.cjs\"}",
-    "packaging/mcpb/exec-option-wrapper.json" to
-            "{\"command\":\"exec -a node bootstrap.cjs\"}",
+    "packaging/mcpb/structured-shell.json" to "{\"command\":\"sh\",\"args\":[\"-c\",\"node escape.cjs\"]}",
+    "packaging/mcpb/nested-command.json" to "{\"server\":{\"command\":{\"executable\":\"node\",\"arguments\":[\"escape.cjs\"]}}}",
+    "packaging/mcpb/nested-executable.json" to "{\"server\":{\"executable\":\"node\",\"arguments\":[\"escape.cjs\"]}}",
+    "packaging/mcpb/nested-program.json" to "{\"server\":{\"program\":\"node\",\"args\":[\"escape.cjs\"]}}",
+    "packaging/mcpb/node-options-map.json" to "{\"command\":\"node\",\"args\":[\"bootstrap.cjs\"],\"env\":{\"NODE_OPTIONS\":\"--require escape.cjs\"}}",
+    "packaging/mcpb/node-options-list.json" to "{\"command\":\"node\",\"args\":[\"bootstrap.cjs\"],\"environment\":[\"NODE_OPTIONS=--require escape.cjs\"]}",
+    "packaging/mcpb/node-options-inline.json" to "{\"command\":\"NODE_OPTIONS=--require=escape.cjs node bootstrap.cjs\"}",
+    "packaging/mcpb/env-option-wrapper.json" to "{\"command\":\"env -S node bootstrap.cjs\"}",
+    "packaging/mcpb/exec-option-wrapper.json" to "{\"command\":\"exec -a node bootstrap.cjs\"}",
     "packaging/mcpb/malformed-chain.json" to "{\"command\":\"node bootstrap.cjs &&\"}",
     "packaging/mcpb/unclosed-quote.json" to "{\"command\":\"sh -c 'node bootstrap.cjs\"}",
     "packaging/mcpb/pipeline.json" to "{\"command\":\"echo ok | node bootstrap.cjs\"}",
@@ -1201,8 +1100,7 @@ val allowedCutoverFixtures = setOf(
 )
 
 val cutoverCheck = registerCutoverScan(
-    "cutoverCheck",
-    "Rejects tracked retired implementation surface."
+    "cutoverCheck", "Rejects tracked retired implementation surface."
 )
 val cutoverCheckBypassTest = registerCutoverScan(
     "cutoverCheckBypassTest",

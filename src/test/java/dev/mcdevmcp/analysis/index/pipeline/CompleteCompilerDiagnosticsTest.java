@@ -1,7 +1,7 @@
 package dev.mcdevmcp.analysis.index.pipeline;
 
-import dev.mcdevmcp.analysis.index.IndexBuildException;
 import dev.mcdevmcp.analysis.index.IndexBuildEvidence;
+import dev.mcdevmcp.analysis.index.IndexBuildException;
 import dev.mcdevmcp.analysis.index.SourceIndexer;
 import dev.mcdevmcp.storage.h2.AtomicH2Database;
 import org.junit.jupiter.api.Test;
@@ -9,6 +9,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -21,6 +22,20 @@ class CompleteCompilerDiagnosticsTest {
 
     @TempDir
     Path temporaryDirectory;
+
+    private static void writeRepeatedBody(Path sourceRoot, String name, String statement) throws Exception {
+        String body = String.join("\n", Collections.nCopies(DIAGNOSTICS_PER_SOURCE, "        " + statement));
+        Files.writeString(sourceRoot.resolve(name + ".java"), "class " + name + " {\n    void run() {\n" + body + "\n    }\n}\n");
+    }
+
+    private static void assertDiagnosticLocations(IndexBuildEvidence evidence, String file, String code) {
+        List<String> diagnostics = evidence.diagnostics().stream().filter(diagnostic -> diagnostic.startsWith(file + ":")).toList();
+        assertEquals(DIAGNOSTICS_PER_SOURCE, diagnostics.size());
+        assertEquals(diagnostics.stream().sorted().toList(), diagnostics);
+        List<Long> lines = diagnostics.stream().map(diagnostic -> Long.parseLong(diagnostic.substring(file.length() + 1, diagnostic.indexOf(':', file.length() + 1)))).sorted().toList();
+        assertEquals(IntStream.range(3, DIAGNOSTICS_PER_SOURCE + 3).mapToObj(value -> (long) value).toList(), lines);
+        assertTrue(diagnostics.stream().allMatch(diagnostic -> diagnostic.endsWith("[" + code + "]")), diagnostics.toString());
+    }
 
     @Test
     void retainsEveryOwnedBodyErrorWithStableLocationsAcrossWorkers() throws Exception {
@@ -94,19 +109,5 @@ class CompleteCompilerDiagnosticsTest {
         Path database = temporaryDirectory.resolve("prior.mv.db");
         new SourceIndexer().build(IndexerTestSupport.request(sourceRoot, jar, database, 1));
         return database;
-    }
-
-    private static void writeRepeatedBody(Path sourceRoot, String name, String statement) throws Exception {
-        String body = String.join("\n", java.util.Collections.nCopies(DIAGNOSTICS_PER_SOURCE, "        " + statement));
-        Files.writeString(sourceRoot.resolve(name + ".java"), "class " + name + " {\n    void run() {\n" + body + "\n    }\n}\n");
-    }
-
-    private static void assertDiagnosticLocations(IndexBuildEvidence evidence, String file, String code) {
-        List<String> diagnostics = evidence.diagnostics().stream().filter(diagnostic -> diagnostic.startsWith(file + ":")).toList();
-        assertEquals(DIAGNOSTICS_PER_SOURCE, diagnostics.size());
-        assertEquals(diagnostics.stream().sorted().toList(), diagnostics);
-        List<Long> lines = diagnostics.stream().map(diagnostic -> Long.parseLong(diagnostic.substring(file.length() + 1, diagnostic.indexOf(':', file.length() + 1)))).sorted().toList();
-        assertEquals(IntStream.range(3, DIAGNOSTICS_PER_SOURCE + 3).mapToObj(value -> (long) value).toList(), lines);
-        assertTrue(diagnostics.stream().allMatch(diagnostic -> diagnostic.endsWith("[" + code + "]")), diagnostics.toString());
     }
 }

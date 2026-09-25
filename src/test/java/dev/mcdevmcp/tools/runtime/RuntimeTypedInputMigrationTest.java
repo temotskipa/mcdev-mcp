@@ -1,16 +1,18 @@
 package dev.mcdevmcp.tools.runtime;
 
+import com.fasterxml.jackson.annotation.JsonCreator;
+import dev.mcdevmcp.bridge.BridgePayload;
 import dev.mcdevmcp.bridge.BridgeRequest;
 import dev.mcdevmcp.bridge.BridgeResponse;
 import dev.mcdevmcp.bridge.BridgeTestHarness;
 import dev.mcdevmcp.bridge.payload.*;
-import dev.mcdevmcp.minecraft.ResourceIdentifier;
 import dev.mcdevmcp.mcp.tool.CompleteToolBindings;
 import dev.mcdevmcp.mcp.tool.CountingMcpJsonMapper;
 import dev.mcdevmcp.mcp.tool.ToolCatalog;
 import dev.mcdevmcp.mcp.tool.api.ToolBinding;
 import dev.mcdevmcp.mcp.tool.api.ToolInput;
 import dev.mcdevmcp.mcp.tool.api.ToolResult;
+import dev.mcdevmcp.minecraft.ResourceIdentifier;
 import dev.mcdevmcp.support.AppEnvironment;
 import dev.mcdevmcp.support.Cancellation;
 import io.modelcontextprotocol.json.McpJsonDefaults;
@@ -19,22 +21,18 @@ import io.modelcontextprotocol.json.TypeRef;
 import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Modifier;
+import java.lang.reflect.RecordComponent;
 import java.math.BigDecimal;
+import java.math.BigInteger;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Stream;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertInstanceOf;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.*;
 
 class RuntimeTypedInputMigrationTest {
     private static final McpJsonMapper MAPPER = McpJsonDefaults.getMapper();
@@ -45,7 +43,189 @@ class RuntimeTypedInputMigrationTest {
     private static final List<BindingExpectation> SESSION_BINDINGS = List.of(expectation("mc_join_server", JoinServerArguments.class, "McJoinServerTool", "JoinServerWireArguments", Map.of("address", "string", "acceptResourcePacks", "boolean", "wait", "boolean", "timeoutSeconds", "number"), List.of("address")), expectation("mc_wait_until_in_world", WaitUntilInWorldArguments.class, "McWaitUntilInWorldTool", "WaitUntilInWorldWireArguments", Map.of("timeoutSeconds", "number", "requireAbsenceFirst", "boolean"), List.of()), expectation("mc_quit_client", QuitClientArguments.class, "McQuitClientTool", "QuitClientWireArguments", Map.of("waitForExit", "boolean", "timeoutSeconds", "number"), List.of()), expectation("mc_wait_for_bridge", WaitForBridgeArguments.class, "McWaitForBridgeTool", "WaitForBridgeWireArguments", Map.of("expectedVersion", "string", "timeoutSeconds", "number"), List.of()));
 
     private static List<BindingExpectation> allMigratedBindings() {
-        return java.util.stream.Stream.concat(MIGRATED_BINDINGS.stream(), SESSION_BINDINGS.stream()).toList();
+        return Stream.concat(MIGRATED_BINDINGS.stream(), SESSION_BINDINGS.stream()).toList();
+    }
+
+    private static <A> void assertQuerySchema(ToolBinding<?> binding, Class<A> type, Map<String, Object> properties) {
+        assertNotNull(binding);
+        ToolInput<A> input = typedInput(binding, type);
+        assertEquals(Map.of("type", "object", "properties", properties, "additionalProperties", false), input.schema().value());
+    }
+
+    private static Map<String, Object> nullArgument(String name) {
+        var arguments = new LinkedHashMap<String, Object>();
+        arguments.put(name, null);
+        return arguments;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static <A> ToolInput<A> typedInput(ToolBinding<?> binding, Class<A> type) {
+        assertNotNull(binding);
+        ToolInput<?> input = binding.input();
+        assertEquals(type, input.type().rawClass());
+        return (ToolInput<A>) input;
+    }
+
+    private static Map<String, Object> itemIdArguments(Object itemId) {
+        var arguments = new LinkedHashMap<String, Object>();
+        arguments.put("itemId", itemId);
+        return arguments;
+    }
+
+    private static Map<String, Object> mapWithNull(String... names) {
+        var arguments = new LinkedHashMap<String, Object>();
+        arguments.put("frames", 2);
+        for (String name : names) {
+            arguments.put(name, null);
+        }
+        return arguments;
+    }
+
+    private static BindingExpectation expectation(String toolName, Class<?> argumentType, String toolClassName, String legacyWireName, Map<String, String> propertyTypes, List<String> requiredProperties) {
+        return new BindingExpectation(toolName, argumentType, toolClassName, legacyWireName, propertyTypes, requiredProperties);
+    }
+
+    private static void assertTypedInputBinding(Map<String, ToolBinding<?>> bindings, BindingExpectation expectation) {
+        ToolBinding<?> binding = assertInstanceOf(ToolBinding.class, bindings.get(expectation.toolName()), () -> "Missing binding: " + expectation.toolName());
+        ToolInput<?> input = binding.input();
+        assertEquals(expectation.argumentType(), input.type().rawClass(), expectation.toolName() + " input type");
+
+        Map<String, Object> schema = input.schema().value();
+        assertEquals("object", schema.get("type"), expectation.toolName());
+        assertEquals(false, schema.get("additionalProperties"), expectation.toolName() + " must be closed");
+        Object rawProperties = schema.get("properties");
+        assertInstanceOf(Map.class, rawProperties, expectation.toolName() + " properties");
+        Map<?, ?> properties = (Map<?, ?>) rawProperties;
+        assertEquals(expectation.propertyTypes().keySet(), properties.keySet(), expectation.toolName() + " property names");
+        expectation.propertyTypes().forEach((name, type) -> {
+            Object rawProperty = properties.get(name);
+            assertInstanceOf(Map.class, rawProperty, expectation.toolName() + '.' + name);
+            assertEquals(type, ((Map<?, ?>) rawProperty).get("type"), expectation.toolName() + '.' + name);
+        });
+
+        if (expectation.requiredProperties().isEmpty()) {
+            assertFalse(schema.containsKey("required"), expectation.toolName() + " should not have required fields");
+        }
+        else {
+            assertEquals(expectation.requiredProperties(), schema.get("required"), expectation.toolName() + " required properties");
+        }
+    }
+
+    private static void assertValidDispatch(String toolName, Map<String, Object> arguments, String endpoint, Map<String, Object> expectedPayload) throws Exception {
+        var mapper = new CountingMcpJsonMapper(MAPPER);
+        try (var harness = new BridgeTestHarness(MAPPER, ENVIRONMENT, (_, request) -> successfulResponse(request))) {
+            ToolBinding<?> binding = RuntimeToolModule.handlers(harness.session(), MAPPER, ENVIRONMENT).get(toolName);
+            assertNotNull(binding, "Missing binding: " + toolName);
+
+            ToolResult<?> result = binding.invoke(mapper, arguments, Cancellation.none()).toCompletableFuture().get(5, TimeUnit.SECONDS);
+
+            assertFalse(result.isError(), toolName);
+            assertFalse(result.content().isEmpty(), toolName + " result content");
+            assertEquals(1, mapper.convertValueCalls(), toolName + " mapper conversion count");
+            List<BridgeRequest> requests = harness.requests();
+            assertFalse(requests.isEmpty(), toolName + " made no bridge request");
+            assertEquals(EmptyBridgePayload.class, requests.getFirst().payload().getClass(), toolName + " connection status payload type");
+            BridgeRequest target = requests.getLast();
+            assertEquals(endpoint, target.endpoint().wireName(), toolName);
+            assertEquals(expectedPayloadType(toolName, arguments), target.payload().getClass(), toolName + " payload type");
+            assertEquals(expectedPayload, mapPayload(target.payload()), toolName);
+        }
+    }
+
+    private static void assertQueryDispatch(String toolName, Map<String, Object> arguments, String endpoint, Map<String, Object> expectedPayload) throws Exception {
+        var mapper = new CountingMcpJsonMapper(MAPPER);
+        try (var harness = new BridgeTestHarness(MAPPER, ENVIRONMENT, (_, request) -> successfulQueryResponse(request))) {
+            ToolBinding<?> binding = RuntimeToolModule.handlers(harness.session(), MAPPER, ENVIRONMENT).get(toolName);
+            assertNotNull(binding, "Missing binding: " + toolName);
+
+            ToolResult<?> result = binding.invoke(mapper, arguments, Cancellation.none()).toCompletableFuture().get(5, TimeUnit.SECONDS);
+
+            assertFalse(result.isError(), toolName);
+            assertFalse(result.content().isEmpty(), toolName + " result content");
+            assertEquals(1, mapper.convertValueCalls(), toolName + " mapper conversion count");
+            List<BridgeRequest> requests = harness.requests();
+            assertEquals(endpoint.equals("status") ? 1 : 2, requests.size(), toolName + " bridge request count");
+            assertEquals("status", requests.getFirst().endpoint().wireName(), toolName + " status request");
+            assertEquals(EmptyBridgePayload.class, requests.getFirst().payload().getClass(), toolName + " status payload type");
+            assertEquals(endpoint, requests.getLast().endpoint().wireName(), toolName);
+            assertEquals(expectedPayloadType(toolName, arguments), requests.getLast().payload().getClass(), toolName + " payload type");
+            assertEquals(expectedPayload, mapPayload(requests.getLast().payload()), toolName + " payload");
+        }
+    }
+
+    private static void assertRecordVideoDispatch(Map<String, Object> arguments, Map<String, Object> expectedPayload) throws Exception {
+        var mapper = new CountingMcpJsonMapper(MAPPER);
+        try (var harness = new BridgeTestHarness(MAPPER, ENVIRONMENT, (_, request) -> successfulRecordVideoResponse(request))) {
+            ToolBinding<?> binding = RuntimeToolModule.handlers(harness.session(), MAPPER, ENVIRONMENT).get("mc_record_video");
+            ToolResult<?> result = binding.invoke(mapper, arguments, Cancellation.none()).toCompletableFuture().get(5, TimeUnit.SECONDS);
+
+            assertFalse(result.isError());
+            assertEquals(1, mapper.convertValueCalls());
+            assertEquals(arguments.get("interval") instanceof Map<?, ?> interval && "fixed".equals(interval.get("kind")) ? RecordVideoTimedPayload.class : RecordVideoFramePayload.class, harness.requests().getLast().payload().getClass());
+            Map<String, Object> actualPayload = mapPayload(harness.requests().getLast().payload());
+            assertEquals(MAPPER.writeValueAsString(new TreeMap<>(expectedPayload)), MAPPER.writeValueAsString(new TreeMap<>(actualPayload)));
+        }
+    }
+
+    private static Map<String, Object> mapPayload(Object payload) {
+        return MAPPER.convertValue(payload, new TypeRef<>() {
+        });
+    }
+
+    private static Class<? extends BridgePayload> expectedPayloadType(String toolName, Map<String, Object> arguments) {
+        return switch (toolName) {
+            case "mc_connect", "mc_snapshot", "mc_clear_block_glow", "mc_leave_server" -> EmptyBridgePayload.class;
+            case "mc_execute" -> ExecutePayload.class;
+            case "mc_join_server" -> JoinServerPayload.class;
+            case "mc_run_command" -> RunCommandPayload.class;
+            case "mc_screenshot" -> ScreenshotPayload.class;
+            case "mc_entity_details" -> EntityDetailsPayload.class;
+            case "mc_block_details" -> BlockDetailsPayload.class;
+            case "mc_set_entity_glow" -> SetEntityGlowPayload.class;
+            case "mc_set_block_glow" -> SetBlockGlowPayload.class;
+            case "mc_get_item_texture" -> ItemTexturePayload.class;
+            case "mc_get_entity_item_texture" -> EntityItemTexturePayload.class;
+            case "mc_get_item_texture_by_id" -> ItemTextureByIdPayload.class;
+            case "mc_nearby_entities" -> NearbyEntitiesPayload.class;
+            case "mc_nearby_blocks" -> NearbyBlocksPayload.class;
+            case "mc_looked_at_entity" -> LookedAtEntityPayload.class;
+            case "mc_chat_history" -> ChatHistoryPayload.class;
+            case "mc_screen_inspect" -> ScreenInspectPayload.class;
+            default -> throw new AssertionError("Unhandled payload type for " + toolName + " " + arguments);
+        };
+    }
+
+    private static CompletableFuture<BridgeResponse> successfulResponse(BridgeRequest request) {
+        return switch (request.endpoint().wireName()) {
+            case "status" -> CompletableFuture.completedFuture(RuntimeContractFixtures.status(request.id()));
+            case "getItemTexture", "getEntityItemTexture", "getItemTextureById" ->
+                    CompletableFuture.completedFuture(new BridgeResponse(request.id(), true, true, Map.of("base64Png", "iVBORw0KGgo=", "width", 16, "height", 16, "spriteName", "minecraft:item/diamond"), null, null));
+            case "screenshot" ->
+                    CompletableFuture.completedFuture(new BridgeResponse(request.id(), true, true, Map.of("path", RuntimeContractFixtures.fixturePath("C:\\Game\\shot.jpg"), "width", 1920, "height", 1080, "sizeBytes", 1536, "mimeType", "image/jpeg"), null, null));
+            default ->
+                    CompletableFuture.completedFuture(new BridgeResponse(request.id(), true, true, Map.of("ok", true), null, null));
+        };
+    }
+
+    private static CompletableFuture<BridgeResponse> successfulQueryResponse(BridgeRequest request) {
+        if (request.endpoint().wireName().equals("status")) {
+            return CompletableFuture.completedFuture(RuntimeContractFixtures.status(request.id()));
+        }
+        Object result = request.endpoint().wireName().equals("lookedAtEntity") ? Map.of("entityId", 7) : Map.of("ok", true);
+        return CompletableFuture.completedFuture(new BridgeResponse(request.id(), true, true, result, null, null));
+    }
+
+    private static CompletableFuture<BridgeResponse> successfulRecordVideoResponse(BridgeRequest request) {
+        if (request.endpoint().wireName().equals("status")) {
+            return CompletableFuture.completedFuture(RuntimeContractFixtures.status(request.id()));
+        }
+        return CompletableFuture.completedFuture(new BridgeResponse(request.id(), true, true, Map.ofEntries(Map.entry("mode", "grid"), Map.entry("path", RuntimeContractFixtures.fixturePath("C:\\Game\\grid.jpg")), Map.entry("mimeType", "image/jpeg"), Map.entry("width", 640), Map.entry("height", 360), Map.entry("sizeBytes", 2560), Map.entry("frameCount", 4), Map.entry("frameWidth", 320), Map.entry("frameHeight", 180), Map.entry("gridCols", 2), Map.entry("gridRows", 2), Map.entry("captureMs", 200), Map.entry("intervalMs", 50), Map.entry("dropped", 0)), null, null));
+    }
+
+    private static void assertInvalidArgumentsReject(ToolCatalog catalog, BridgeTestHarness harness, String tool, Map<String, Object> arguments) throws Exception {
+        ToolResult<?> result = catalog.dispatch(tool, arguments, Cancellation.none()).toCompletableFuture().get(5, TimeUnit.SECONDS);
+        assertTrue(result.isError(), () -> "Expected invalid arguments for " + tool);
+        assertEquals(List.of(), harness.requests(), () -> "Expected no bridge calls for " + tool + " with invalid arguments");
     }
 
     @Test
@@ -154,7 +334,7 @@ class RuntimeTypedInputMigrationTest {
             ToolInput<ScreenshotArguments> input = typedInput(RuntimeToolModule.handlers(harness.session(), MAPPER, ENVIRONMENT).get("mc_screenshot"), ScreenshotArguments.class);
             Map<String, Object> schema = input.schema().value();
             Map<?, ?> properties = assertInstanceOf(Map.class, schema.get("properties"));
-            assertEquals(Map.of("type", "integer", "description", "Integer downscale factor. 1 = full window resolution. 2 = half each axis (default).", "minimum", BigDecimal.ONE, "default", new java.math.BigInteger("2")), properties.get("downscale"));
+            assertEquals(Map.of("type", "integer", "description", "Integer downscale factor. 1 = full window resolution. 2 = half each axis (default).", "minimum", BigDecimal.ONE, "default", new BigInteger("2")), properties.get("downscale"));
             assertEquals(Map.of("type", "number", "description", "JPEG quality in [0.05, 1.0]. Default: 0.75.", "minimum", new BigDecimal("0.05"), "maximum", BigDecimal.ONE, "default", new BigDecimal("0.75")), properties.get("quality"));
             assertFalse(schema.containsKey("required"));
             assertEquals(false, schema.get("additionalProperties"));
@@ -199,10 +379,10 @@ class RuntimeTypedInputMigrationTest {
             Map<String, ToolBinding<?>> bindings = RuntimeToolModule.handlers(harness.session(), MAPPER, ENVIRONMENT);
 
             assertQuerySchema(bindings.get("mc_connect"), ConnectArguments.class, Map.of("port", Map.of("type", "integer", "description", "WebSocket port. Default: scan 9876-9886", "minimum", BigDecimal.ONE, "maximum", new BigDecimal("65535")), "reset", Map.of("type", "boolean", "description", "Disconnect and clear state before connecting (for switching instances)", "default", false)));
-            assertQuerySchema(bindings.get("mc_nearby_entities"), NearbyEntitiesArguments.class, Map.of("range", Map.of("type", "number", "description", "Search radius in blocks. Default 64.", "minimum", BigDecimal.ZERO, "default", new BigDecimal("64")), "limit", Map.of("type", "integer", "description", "Max entries returned. Default 100.", "minimum", BigDecimal.ZERO, "default", new java.math.BigInteger("100")), "includeIcons", Map.of("type", "boolean", "description", "Render each unique primaryEquipment item's icon. Default false.", "default", false)));
-            assertQuerySchema(bindings.get("mc_nearby_blocks"), NearbyBlocksArguments.class, Map.of("range", Map.of("type", "number", "description", "Search radius in blocks. Default 16.", "minimum", BigDecimal.ZERO, "default", new BigDecimal("16")), "limit", Map.of("type", "integer", "description", "Max entries returned. Default 100.", "minimum", BigDecimal.ZERO, "default", new java.math.BigInteger("100"))));
+            assertQuerySchema(bindings.get("mc_nearby_entities"), NearbyEntitiesArguments.class, Map.of("range", Map.of("type", "number", "description", "Search radius in blocks. Default 64.", "minimum", BigDecimal.ZERO, "default", new BigDecimal("64")), "limit", Map.of("type", "integer", "description", "Max entries returned. Default 100.", "minimum", BigDecimal.ZERO, "default", new BigInteger("100")), "includeIcons", Map.of("type", "boolean", "description", "Render each unique primaryEquipment item's icon. Default false.", "default", false)));
+            assertQuerySchema(bindings.get("mc_nearby_blocks"), NearbyBlocksArguments.class, Map.of("range", Map.of("type", "number", "description", "Search radius in blocks. Default 16.", "minimum", BigDecimal.ZERO, "default", new BigDecimal("16")), "limit", Map.of("type", "integer", "description", "Max entries returned. Default 100.", "minimum", BigDecimal.ZERO, "default", new BigInteger("100"))));
             assertQuerySchema(bindings.get("mc_looked_at_entity"), LookedAtEntityArguments.class, Map.of("range", Map.of("type", "number", "description", "Raycast distance in blocks. Default 64.", "minimum", BigDecimal.ZERO, "default", new BigDecimal("64"))));
-            assertQuerySchema(bindings.get("mc_chat_history"), ChatHistoryArguments.class, Map.of("limit", Map.of("type", "integer", "description", "Max messages returned. Default 50.", "minimum", BigDecimal.ZERO, "default", new java.math.BigInteger("50")), "includeJson", Map.of("type", "boolean", "description", "Include the Component as JSON for each message. Default false.", "default", false)));
+            assertQuerySchema(bindings.get("mc_chat_history"), ChatHistoryArguments.class, Map.of("limit", Map.of("type", "integer", "description", "Max messages returned. Default 50.", "minimum", BigDecimal.ZERO, "default", new BigInteger("50")), "includeJson", Map.of("type", "boolean", "description", "Include the Component as JSON for each message. Default false.", "default", false)));
             assertQuerySchema(bindings.get("mc_screen_inspect"), ScreenInspectArguments.class, Map.of("includeIcons", Map.of("type", "boolean", "description", "Render each unique item's icon and attach as an icons map. Default false.", "default", false)));
 
             assertEquals(new ConnectArguments(null, false), typedInput(bindings.get("mc_connect"), ConnectArguments.class).decode(MAPPER, Map.of()));
@@ -243,18 +423,6 @@ class RuntimeTypedInputMigrationTest {
         }
     }
 
-    private static <A> void assertQuerySchema(ToolBinding<?> binding, Class<A> type, Map<String, Object> properties) {
-        assertNotNull(binding);
-        ToolInput<A> input = typedInput(binding, type);
-        assertEquals(Map.of("type", "object", "properties", properties, "additionalProperties", false), input.schema().value());
-    }
-
-    private static Map<String, Object> nullArgument(String name) {
-        var arguments = new java.util.LinkedHashMap<String, Object>();
-        arguments.put(name, null);
-        return arguments;
-    }
-
     @Test
     void itemTextureSchemasPreserveDescriptionsAndBounds() {
         try (var harness = new BridgeTestHarness(MAPPER, ENVIRONMENT, (_, _) -> CompletableFuture.failedFuture(new AssertionError("No bridge call should occur in this test")))) {
@@ -280,7 +448,7 @@ class RuntimeTypedInputMigrationTest {
             ToolInput<?> input = RuntimeToolModule.handlers(harness.session(), MAPPER, ENVIRONMENT).get("mc_get_entity_item_texture").input();
             Class<?> inputClass = input.type().rawClass();
             assertNotNull(inputClass);
-            Class<?>[] componentTypes = java.util.Arrays.stream(inputClass.getRecordComponents()).map(java.lang.reflect.RecordComponent::getType).toArray(Class<?>[]::new);
+            Class<?>[] componentTypes = Arrays.stream(inputClass.getRecordComponents()).map(RecordComponent::getType).toArray(Class<?>[]::new);
             assertEquals(int.class, componentTypes[0]);
             assertEquals("EntityItemSlot", componentTypes[1].getSimpleName());
 
@@ -313,11 +481,11 @@ class RuntimeTypedInputMigrationTest {
             assertEquals(ScriptLogsArguments.class, input.type().rawClass());
             Map<String, Object> schema = input.schema().value();
             Map<?, ?> properties = assertInstanceOf(Map.class, schema.get("properties"));
-            assertEquals(List.of("mode", "limit"), new java.util.ArrayList<>(properties.keySet()));
+            assertEquals(List.of("mode", "limit"), new ArrayList<>(properties.keySet()));
             assertFalse(schema.containsKey("required"));
             assertEquals(false, schema.get("additionalProperties"));
             assertEquals(Map.of("type", "string", "enum", List.of("errors", "stats", "paths"), "description", "What to show: 'errors' (recent failures), 'stats' (error patterns), 'paths' (file locations)", "default", "errors"), properties.get("mode"));
-            assertEquals(Map.of("type", "integer", "minimum", BigDecimal.ONE, "description", "Number of entries to show (for 'errors' mode). Default: 20", "default", java.math.BigInteger.valueOf(20)), properties.get("limit"));
+            assertEquals(Map.of("type", "integer", "minimum", BigDecimal.ONE, "description", "Number of entries to show (for 'errors' mode). Default: 20", "default", BigInteger.valueOf(20)), properties.get("limit"));
 
             ScriptLogsArguments defaults = new ScriptLogsArguments(null, 0);
             assertEquals("ERRORS", defaults.mode().name());
@@ -387,14 +555,6 @@ class RuntimeTypedInputMigrationTest {
         }
     }
 
-    @SuppressWarnings("unchecked")
-    private static <A> ToolInput<A> typedInput(ToolBinding<?> binding, Class<A> type) {
-        assertNotNull(binding);
-        ToolInput<?> input = binding.input();
-        assertEquals(type, input.type().rawClass());
-        return (ToolInput<A>) input;
-    }
-
     @Test
     void recordVideoBindingExposesTaggedDurationIntervalAndPrimitiveInput() {
         try (var harness = new BridgeTestHarness(MAPPER, ENVIRONMENT, (_, _) -> CompletableFuture.failedFuture(new AssertionError("No bridge call should occur in this test")))) {
@@ -452,7 +612,7 @@ class RuntimeTypedInputMigrationTest {
             assertEquals(int.class, RecordVideoArguments.class.getRecordComponents()[4].getType());
             assertEquals(double.class, RecordVideoArguments.class.getRecordComponents()[5].getType());
             assertEquals(Duration.class, RecordInterval.Fixed.class.getRecordComponents()[0].getType());
-            var creator = java.util.Arrays.stream(RecordVideoArguments.class.getDeclaredMethods()).filter(method -> Modifier.isStatic(method.getModifiers()) && RecordVideoArguments.class.isAssignableFrom(method.getReturnType())).findFirst().orElseThrow();
+            var creator = Arrays.stream(RecordVideoArguments.class.getDeclaredMethods()).filter(method -> Modifier.isStatic(method.getModifiers()) && RecordVideoArguments.class.isAssignableFrom(method.getReturnType())).findFirst().orElseThrow();
             assertEquals(List.of(Integer.class, RecordInterval.class, RecordVideoOutput.class, Integer.class, Integer.class, Double.class), List.of(creator.getParameterTypes()));
             assertEquals(5, arguments.frames());
             assertEquals("Frame", arguments.interval().getClass().getSimpleName());
@@ -529,21 +689,6 @@ class RuntimeTypedInputMigrationTest {
         }
     }
 
-    private static Map<String, Object> itemIdArguments(Object itemId) {
-        var arguments = new java.util.LinkedHashMap<String, Object>();
-        arguments.put("itemId", itemId);
-        return arguments;
-    }
-
-    private static Map<String, Object> mapWithNull(String... names) {
-        var arguments = new java.util.LinkedHashMap<String, Object>();
-        arguments.put("frames", 2);
-        for (String name : names) {
-            arguments.put(name, null);
-        }
-        return arguments;
-    }
-
     @Test
     void outOfSchemaValuesFailBeforeAnyBridgeCall() throws Exception {
         try (var harness = new BridgeTestHarness(MAPPER, ENVIRONMENT, (_, _) -> CompletableFuture.failedFuture(new AssertionError("No bridge call should occur on invalid arguments")))) {
@@ -573,8 +718,8 @@ class RuntimeTypedInputMigrationTest {
         assertFalse(Files.readString(recordVideoTool).contains("ToolBinding.compatibility"));
         assertFalse(Files.exists(RUNTIME_SOURCES.resolve("RecordVideoWireArguments.java")));
         assertFalse(Files.readString(recordVideoArguments).contains("RecordVideoWireArguments"));
-        var creator = java.util.Arrays.stream(RecordVideoArguments.class.getDeclaredMethods()).filter(method -> Modifier.isStatic(method.getModifiers()) && RecordVideoArguments.class.isAssignableFrom(method.getReturnType())).findFirst().orElseThrow();
-        assertEquals(com.fasterxml.jackson.annotation.JsonCreator.Mode.PROPERTIES, creator.getAnnotation(com.fasterxml.jackson.annotation.JsonCreator.class).mode());
+        var creator = Arrays.stream(RecordVideoArguments.class.getDeclaredMethods()).filter(method -> Modifier.isStatic(method.getModifiers()) && RecordVideoArguments.class.isAssignableFrom(method.getReturnType())).findFirst().orElseThrow();
+        assertEquals(JsonCreator.Mode.PROPERTIES, creator.getAnnotation(JsonCreator.class).mode());
     }
 
     @Test
@@ -589,7 +734,7 @@ class RuntimeTypedInputMigrationTest {
             assertTrue(Files.isRegularFile(argumentSource), "Missing final argument source: " + argumentSource);
             assertTrue(expectation.argumentType().isRecord(), expectation.argumentType().getSimpleName() + " must be a record");
             assertTrue(Modifier.isFinal(expectation.argumentType().getModifiers()), expectation.argumentType().getSimpleName() + " must be final");
-            assertFalse(java.util.Arrays.stream(expectation.argumentType().getDeclaredMethods()).anyMatch(method -> Modifier.isStatic(method.getModifiers()) && expectation.argumentType().isAssignableFrom(method.getReturnType()) && (method.getAnnotation(com.fasterxml.jackson.annotation.JsonCreator.class) == null || method.getAnnotation(com.fasterxml.jackson.annotation.JsonCreator.class).mode() != com.fasterxml.jackson.annotation.JsonCreator.Mode.PROPERTIES)), expectation.argumentType().getSimpleName() + " reintroduced a static converter");
+            assertFalse(Arrays.stream(expectation.argumentType().getDeclaredMethods()).anyMatch(method -> Modifier.isStatic(method.getModifiers()) && expectation.argumentType().isAssignableFrom(method.getReturnType()) && (method.getAnnotation(JsonCreator.class) == null || method.getAnnotation(JsonCreator.class).mode() != JsonCreator.Mode.PROPERTIES)), expectation.argumentType().getSimpleName() + " reintroduced a static converter");
 
             if (expectation.legacyWireName() != null) {
                 assertFalse(Files.exists(RUNTIME_SOURCES.resolve(expectation.legacyWireName() + ".java")), expectation.legacyWireName() + " must stay deleted");
@@ -611,153 +756,6 @@ class RuntimeTypedInputMigrationTest {
             }
             assertEquals(List.of(), harness.requests());
         }
-    }
-
-    private static BindingExpectation expectation(String toolName, Class<?> argumentType, String toolClassName, String legacyWireName, Map<String, String> propertyTypes, List<String> requiredProperties) {
-        return new BindingExpectation(toolName, argumentType, toolClassName, legacyWireName, propertyTypes, requiredProperties);
-    }
-
-    private static void assertTypedInputBinding(Map<String, ToolBinding<?>> bindings, BindingExpectation expectation) {
-        ToolBinding<?> binding = assertInstanceOf(ToolBinding.class, bindings.get(expectation.toolName()), () -> "Missing binding: " + expectation.toolName());
-        ToolInput<?> input = binding.input();
-        assertEquals(expectation.argumentType(), input.type().rawClass(), expectation.toolName() + " input type");
-
-        Map<String, Object> schema = input.schema().value();
-        assertEquals("object", schema.get("type"), expectation.toolName());
-        assertEquals(false, schema.get("additionalProperties"), expectation.toolName() + " must be closed");
-        Object rawProperties = schema.get("properties");
-        assertInstanceOf(Map.class, rawProperties, expectation.toolName() + " properties");
-        Map<?, ?> properties = (Map<?, ?>) rawProperties;
-        assertEquals(expectation.propertyTypes().keySet(), properties.keySet(), expectation.toolName() + " property names");
-        expectation.propertyTypes().forEach((name, type) -> {
-            Object rawProperty = properties.get(name);
-            assertInstanceOf(Map.class, rawProperty, expectation.toolName() + '.' + name);
-            assertEquals(type, ((Map<?, ?>) rawProperty).get("type"), expectation.toolName() + '.' + name);
-        });
-
-        if (expectation.requiredProperties().isEmpty()) {
-            assertFalse(schema.containsKey("required"), expectation.toolName() + " should not have required fields");
-        }
-        else {
-            assertEquals(expectation.requiredProperties(), schema.get("required"), expectation.toolName() + " required properties");
-        }
-    }
-
-    private static void assertValidDispatch(String toolName, Map<String, Object> arguments, String endpoint, Map<String, Object> expectedPayload) throws Exception {
-        var mapper = new CountingMcpJsonMapper(MAPPER);
-        try (var harness = new BridgeTestHarness(MAPPER, ENVIRONMENT, (_, request) -> successfulResponse(request))) {
-            ToolBinding<?> binding = RuntimeToolModule.handlers(harness.session(), MAPPER, ENVIRONMENT).get(toolName);
-            assertNotNull(binding, "Missing binding: " + toolName);
-
-            ToolResult<?> result = binding.invoke(mapper, arguments, Cancellation.none()).toCompletableFuture().get(5, TimeUnit.SECONDS);
-
-            assertFalse(result.isError(), toolName);
-            assertFalse(result.content().isEmpty(), toolName + " result content");
-            assertEquals(1, mapper.convertValueCalls(), toolName + " mapper conversion count");
-            List<BridgeRequest> requests = harness.requests();
-            assertFalse(requests.isEmpty(), toolName + " made no bridge request");
-            assertEquals(EmptyBridgePayload.class, requests.getFirst().payload().getClass(), toolName + " connection status payload type");
-            BridgeRequest target = requests.getLast();
-            assertEquals(endpoint, target.endpoint().wireName(), toolName);
-            assertEquals(expectedPayloadType(toolName, arguments), target.payload().getClass(), toolName + " payload type");
-            assertEquals(expectedPayload, mapPayload(target.payload()), toolName);
-        }
-    }
-
-    private static void assertQueryDispatch(String toolName, Map<String, Object> arguments, String endpoint, Map<String, Object> expectedPayload) throws Exception {
-        var mapper = new CountingMcpJsonMapper(MAPPER);
-        try (var harness = new BridgeTestHarness(MAPPER, ENVIRONMENT, (_, request) -> successfulQueryResponse(request))) {
-            ToolBinding<?> binding = RuntimeToolModule.handlers(harness.session(), MAPPER, ENVIRONMENT).get(toolName);
-            assertNotNull(binding, "Missing binding: " + toolName);
-
-            ToolResult<?> result = binding.invoke(mapper, arguments, Cancellation.none()).toCompletableFuture().get(5, TimeUnit.SECONDS);
-
-            assertFalse(result.isError(), toolName);
-            assertFalse(result.content().isEmpty(), toolName + " result content");
-            assertEquals(1, mapper.convertValueCalls(), toolName + " mapper conversion count");
-            List<BridgeRequest> requests = harness.requests();
-            assertEquals(endpoint.equals("status") ? 1 : 2, requests.size(), toolName + " bridge request count");
-            assertEquals("status", requests.getFirst().endpoint().wireName(), toolName + " status request");
-            assertEquals(EmptyBridgePayload.class, requests.getFirst().payload().getClass(), toolName + " status payload type");
-            assertEquals(endpoint, requests.getLast().endpoint().wireName(), toolName);
-            assertEquals(expectedPayloadType(toolName, arguments), requests.getLast().payload().getClass(), toolName + " payload type");
-            assertEquals(expectedPayload, mapPayload(requests.getLast().payload()), toolName + " payload");
-        }
-    }
-
-    private static void assertRecordVideoDispatch(Map<String, Object> arguments, Map<String, Object> expectedPayload) throws Exception {
-        var mapper = new CountingMcpJsonMapper(MAPPER);
-        try (var harness = new BridgeTestHarness(MAPPER, ENVIRONMENT, (_, request) -> successfulRecordVideoResponse(request))) {
-            ToolBinding<?> binding = RuntimeToolModule.handlers(harness.session(), MAPPER, ENVIRONMENT).get("mc_record_video");
-            ToolResult<?> result = binding.invoke(mapper, arguments, Cancellation.none()).toCompletableFuture().get(5, TimeUnit.SECONDS);
-
-            assertFalse(result.isError());
-            assertEquals(1, mapper.convertValueCalls());
-            assertEquals(arguments.get("interval") instanceof Map<?, ?> interval && "fixed".equals(interval.get("kind")) ? RecordVideoTimedPayload.class : RecordVideoFramePayload.class, harness.requests().getLast().payload().getClass());
-            Map<String, Object> actualPayload = mapPayload(harness.requests().getLast().payload());
-            assertEquals(MAPPER.writeValueAsString(new java.util.TreeMap<>(expectedPayload)), MAPPER.writeValueAsString(new java.util.TreeMap<>(actualPayload)));
-        }
-    }
-
-    private static Map<String, Object> mapPayload(Object payload) {
-        return MAPPER.convertValue(payload, new TypeRef<>() {
-        });
-    }
-
-    private static Class<? extends dev.mcdevmcp.bridge.BridgePayload> expectedPayloadType(String toolName, Map<String, Object> arguments) {
-        return switch (toolName) {
-            case "mc_connect", "mc_snapshot", "mc_clear_block_glow", "mc_leave_server" -> EmptyBridgePayload.class;
-            case "mc_execute" -> ExecutePayload.class;
-            case "mc_join_server" -> JoinServerPayload.class;
-            case "mc_run_command" -> RunCommandPayload.class;
-            case "mc_screenshot" -> ScreenshotPayload.class;
-            case "mc_entity_details" -> EntityDetailsPayload.class;
-            case "mc_block_details" -> BlockDetailsPayload.class;
-            case "mc_set_entity_glow" -> SetEntityGlowPayload.class;
-            case "mc_set_block_glow" -> SetBlockGlowPayload.class;
-            case "mc_get_item_texture" -> ItemTexturePayload.class;
-            case "mc_get_entity_item_texture" -> EntityItemTexturePayload.class;
-            case "mc_get_item_texture_by_id" -> ItemTextureByIdPayload.class;
-            case "mc_nearby_entities" -> NearbyEntitiesPayload.class;
-            case "mc_nearby_blocks" -> NearbyBlocksPayload.class;
-            case "mc_looked_at_entity" -> LookedAtEntityPayload.class;
-            case "mc_chat_history" -> ChatHistoryPayload.class;
-            case "mc_screen_inspect" -> ScreenInspectPayload.class;
-            default -> throw new AssertionError("Unhandled payload type for " + toolName + " " + arguments);
-        };
-    }
-
-    private static CompletableFuture<BridgeResponse> successfulResponse(BridgeRequest request) {
-        return switch (request.endpoint().wireName()) {
-            case "status" -> CompletableFuture.completedFuture(RuntimeContractFixtures.status(request.id()));
-            case "getItemTexture", "getEntityItemTexture", "getItemTextureById" ->
-                    CompletableFuture.completedFuture(new BridgeResponse(request.id(), true, true, Map.of("base64Png", "iVBORw0KGgo=", "width", 16, "height", 16, "spriteName", "minecraft:item/diamond"), null, null));
-            case "screenshot" ->
-                    CompletableFuture.completedFuture(new BridgeResponse(request.id(), true, true, Map.of("path", RuntimeContractFixtures.fixturePath("C:\\Game\\shot.jpg"), "width", 1920, "height", 1080, "sizeBytes", 1536, "mimeType", "image/jpeg"), null, null));
-            default ->
-                    CompletableFuture.completedFuture(new BridgeResponse(request.id(), true, true, Map.of("ok", true), null, null));
-        };
-    }
-
-    private static CompletableFuture<BridgeResponse> successfulQueryResponse(BridgeRequest request) {
-        if (request.endpoint().wireName().equals("status")) {
-            return CompletableFuture.completedFuture(RuntimeContractFixtures.status(request.id()));
-        }
-        Object result = request.endpoint().wireName().equals("lookedAtEntity") ? Map.of("entityId", 7) : Map.of("ok", true);
-        return CompletableFuture.completedFuture(new BridgeResponse(request.id(), true, true, result, null, null));
-    }
-
-    private static CompletableFuture<BridgeResponse> successfulRecordVideoResponse(BridgeRequest request) {
-        if (request.endpoint().wireName().equals("status")) {
-            return CompletableFuture.completedFuture(RuntimeContractFixtures.status(request.id()));
-        }
-        return CompletableFuture.completedFuture(new BridgeResponse(request.id(), true, true, Map.ofEntries(Map.entry("mode", "grid"), Map.entry("path", RuntimeContractFixtures.fixturePath("C:\\Game\\grid.jpg")), Map.entry("mimeType", "image/jpeg"), Map.entry("width", 640), Map.entry("height", 360), Map.entry("sizeBytes", 2560), Map.entry("frameCount", 4), Map.entry("frameWidth", 320), Map.entry("frameHeight", 180), Map.entry("gridCols", 2), Map.entry("gridRows", 2), Map.entry("captureMs", 200), Map.entry("intervalMs", 50), Map.entry("dropped", 0)), null, null));
-    }
-
-    private static void assertInvalidArgumentsReject(ToolCatalog catalog, BridgeTestHarness harness, String tool, Map<String, Object> arguments) throws Exception {
-        ToolResult<?> result = catalog.dispatch(tool, arguments, Cancellation.none()).toCompletableFuture().get(5, TimeUnit.SECONDS);
-        assertTrue(result.isError(), () -> "Expected invalid arguments for " + tool);
-        assertEquals(List.of(), harness.requests(), () -> "Expected no bridge calls for " + tool + " with invalid arguments");
     }
 
     private record BindingExpectation(String toolName, Class<?> argumentType, String toolClassName, String legacyWireName, Map<String, String> propertyTypes, List<String> requiredProperties) {

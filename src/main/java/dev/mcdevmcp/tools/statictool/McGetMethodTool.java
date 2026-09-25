@@ -1,13 +1,14 @@
 package dev.mcdevmcp.tools.statictool;
 
 import dev.mcdevmcp.mcp.tool.ToolDeclaration;
-import dev.mcdevmcp.mcp.tool.api.ToolBinding;
 import dev.mcdevmcp.mcp.tool.api.ContentToolResult;
+import dev.mcdevmcp.mcp.tool.api.ToolBinding;
 import dev.mcdevmcp.mcp.tool.api.ToolResult;
 import dev.mcdevmcp.storage.h2.SymbolRepository;
 import dev.mcdevmcp.storage.model.ClassSymbol;
 import dev.mcdevmcp.storage.model.MethodSymbol;
 
+import java.nio.file.NoSuchFileException;
 import java.util.Arrays;
 import java.util.stream.Collectors;
 
@@ -30,7 +31,7 @@ final class McGetMethodTool {
                 String source;
                 try {
                     source = support.fullSource(lease, type);
-                } catch (java.nio.file.NoSuchFileException exception) {
+                } catch (NoSuchFileException exception) {
                     return missing(className, methodName);
                 }
                 if (source.isEmpty()) {

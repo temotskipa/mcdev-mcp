@@ -4,21 +4,10 @@ import io.modelcontextprotocol.json.McpJsonDefaults;
 import io.modelcontextprotocol.json.McpJsonMapper;
 import io.modelcontextprotocol.json.TypeRef;
 
-import java.io.BufferedReader;
-import java.io.BufferedWriter;
-import java.io.IOException;
-import java.io.InputStreamReader;
-import java.io.OutputStreamWriter;
+import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.HashSet;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.LinkedBlockingQueue;
@@ -88,6 +77,81 @@ final class McpProcessClient implements AutoCloseable {
             throw new IllegalArgumentException("MCP parity processes must use piped standard streams");
         }
         return new McpProcessClient(processBuilder.start(), validatedTimeout, processBuilder.command().getFirst(), allowForcedShutdown);
+    }
+
+    private static Duration requirePositiveTimeout(Duration timeout) {
+        Objects.requireNonNull(timeout, "timeout");
+        if (timeout.isNegative() || timeout.isZero()) {
+            throw new IllegalArgumentException("timeout must be positive");
+        }
+        return timeout;
+    }
+
+    private static Map<String, Object> jsonRpcRequest(long id, String method, Map<String, Object> parameters) {
+        var request = new LinkedHashMap<String, Object>();
+        request.put("jsonrpc", "2.0");
+        request.put("id", id);
+        request.put("method", method);
+        request.put("params", Map.copyOf(Objects.requireNonNull(parameters, "parameters")));
+        return request;
+    }
+
+    private static boolean isNotification(Map<String, Object> message) {
+        return "2.0".equals(message.get("jsonrpc")) && message.get("method") instanceof String && !message.containsKey("id") && !message.containsKey("result") && !message.containsKey("error");
+    }
+
+    private static void validateIncomingMessage(Map<String, Object> message) {
+        if (!"2.0".equals(message.get("jsonrpc"))) {
+            throw new IllegalArgumentException("MCP process emitted a JSON-RPC message without jsonrpc exactly 2.0");
+        }
+
+        boolean hasId = message.containsKey("id");
+        boolean hasMethod = message.containsKey("method");
+        boolean hasResult = message.containsKey("result");
+        boolean hasError = message.containsKey("error");
+        if (!hasId) {
+            if (!(message.get("method") instanceof String) || hasResult || hasError) {
+                throw new IllegalArgumentException("MCP process emitted a malformed JSON-RPC notification envelope");
+            }
+            return;
+        }
+
+        Object id = message.get("id");
+        responseKey(id);
+        if (hasMethod) {
+            throw new IllegalArgumentException("MCP process emitted an unsupported JSON-RPC server request");
+        }
+        if (hasResult == hasError) {
+            throw new IllegalArgumentException("MCP process emitted a malformed JSON-RPC response without exactly one of result or error");
+        }
+        if (hasError) {
+            Object error = message.get("error");
+            if (!(error instanceof Map<?, ?> errorFields) || !(errorFields.get("code") instanceof Number) || !(errorFields.get("message") instanceof String)) {
+                throw new IllegalArgumentException("MCP process emitted a malformed JSON-RPC error object");
+            }
+        }
+    }
+
+    private static Map<String, Object> immutableMessage(Map<String, Object> message) {
+        return Collections.unmodifiableMap(new LinkedHashMap<>(message));
+    }
+
+    private static IOException appendFailure(IOException existing, IOException next) {
+        if (existing == null) {
+            return next;
+        }
+        existing.addSuppressed(next);
+        return existing;
+    }
+
+    private static String responseKey(Object id) {
+        if (id instanceof Number number) {
+            return "number:" + number;
+        }
+        if (id instanceof String text) {
+            return "string:" + text;
+        }
+        throw new IllegalArgumentException("JSON-RPC id must be a string or number: " + id);
     }
 
     synchronized Map<String, Object> initialize(Map<String, Object> parameters) throws IOException {
@@ -217,23 +281,6 @@ final class McpProcessClient implements AutoCloseable {
         }
     }
 
-    private static Duration requirePositiveTimeout(Duration timeout) {
-        Objects.requireNonNull(timeout, "timeout");
-        if (timeout.isNegative() || timeout.isZero()) {
-            throw new IllegalArgumentException("timeout must be positive");
-        }
-        return timeout;
-    }
-
-    private static Map<String, Object> jsonRpcRequest(long id, String method, Map<String, Object> parameters) {
-        var request = new LinkedHashMap<String, Object>();
-        request.put("jsonrpc", "2.0");
-        request.put("id", id);
-        request.put("method", method);
-        request.put("params", Map.copyOf(Objects.requireNonNull(parameters, "parameters")));
-        return request;
-    }
-
     private Map<String, Object> awaitResponse(Object requestId) throws IOException {
         String key = responseKey(requestId);
         long remainingNanos = timeout.toNanos();
@@ -315,46 +362,6 @@ final class McpProcessClient implements AutoCloseable {
             throw failAndClose("MCP process emitted duplicate JSON-RPC response id " + responseId, null);
         }
         throw failAndClose("MCP process emitted unmatched JSON-RPC response id " + responseId, null);
-    }
-
-    private static boolean isNotification(Map<String, Object> message) {
-        return "2.0".equals(message.get("jsonrpc")) && message.get("method") instanceof String && !message.containsKey("id") && !message.containsKey("result") && !message.containsKey("error");
-    }
-
-    private static void validateIncomingMessage(Map<String, Object> message) {
-        if (!"2.0".equals(message.get("jsonrpc"))) {
-            throw new IllegalArgumentException("MCP process emitted a JSON-RPC message without jsonrpc exactly 2.0");
-        }
-
-        boolean hasId = message.containsKey("id");
-        boolean hasMethod = message.containsKey("method");
-        boolean hasResult = message.containsKey("result");
-        boolean hasError = message.containsKey("error");
-        if (!hasId) {
-            if (!(message.get("method") instanceof String) || hasResult || hasError) {
-                throw new IllegalArgumentException("MCP process emitted a malformed JSON-RPC notification envelope");
-            }
-            return;
-        }
-
-        Object id = message.get("id");
-        responseKey(id);
-        if (hasMethod) {
-            throw new IllegalArgumentException("MCP process emitted an unsupported JSON-RPC server request");
-        }
-        if (hasResult == hasError) {
-            throw new IllegalArgumentException("MCP process emitted a malformed JSON-RPC response without exactly one of result or error");
-        }
-        if (hasError) {
-            Object error = message.get("error");
-            if (!(error instanceof Map<?, ?> errorFields) || !(errorFields.get("code") instanceof Number) || !(errorFields.get("message") instanceof String)) {
-                throw new IllegalArgumentException("MCP process emitted a malformed JSON-RPC error object");
-            }
-        }
-    }
-
-    private static Map<String, Object> immutableMessage(Map<String, Object> message) {
-        return Collections.unmodifiableMap(new LinkedHashMap<>(message));
     }
 
     private void pumpStdout() {
@@ -479,24 +486,6 @@ final class McpProcessClient implements AutoCloseable {
         String diagnostic = stderr();
         String suffix = diagnostic.isBlank() ? "" : System.lineSeparator() + "MCP STDERR:" + System.lineSeparator() + diagnostic;
         return cause == null ? new IOException(message + suffix) : new IOException(message + suffix, cause);
-    }
-
-    private static IOException appendFailure(IOException existing, IOException next) {
-        if (existing == null) {
-            return next;
-        }
-        existing.addSuppressed(next);
-        return existing;
-    }
-
-    private static String responseKey(Object id) {
-        if (id instanceof Number number) {
-            return "number:" + number;
-        }
-        if (id instanceof String text) {
-            return "string:" + text;
-        }
-        throw new IllegalArgumentException("JSON-RPC id must be a string or number: " + id);
     }
 
     private void recordCompletedResponse(String responseId) throws IOException {

@@ -26,6 +26,40 @@ class AnalysisBenchmarkMainTest {
     @TempDir
     Path temporaryDirectory;
 
+    private static AnalysisBenchmarkMain.Arguments arguments(Fixture fixture, Path output, Path productionCache) {
+        return new AnalysisBenchmarkMain.Arguments(new MinecraftVersion("1.21.11"), fixture.sourceRoot(), fixture.remappedJar(), fixture.remappedJar(), output, productionCache, 1, "machine-a", "run-42", BenchmarkGarbageCollector.G1, ClasspathFixtures.empty(fixture.cacheRoot().resolve("dependencies")));
+    }
+
+    private static BenchmarkChildMeasurement child(BenchmarkPhase phase, long elapsedSeconds, long rss, long gcCollections) {
+        return child(phase, elapsedSeconds, rss, gcCollections, RUNTIME);
+    }
+
+    private static BenchmarkChildMeasurement child(BenchmarkPhase phase, long elapsedSeconds, long rss, long gcCollections, BenchmarkRuntimeMetadata runtime) {
+        BenchmarkWorkCounts counts = phase == BenchmarkPhase.INDEX ? indexCounts() : callgraphCounts();
+        return new BenchmarkChildMeasurement(phase, counts.units(), elapsedSeconds * 1_000_000_000L, rss, gcCollections, gcCollections * 10, counts, runtime, 2, ClasspathFixtures.IDENTITY, ClasspathFixtures.RAW_HASH);
+    }
+
+    private static BenchmarkMeasurement measurement(long indexNanos, long callgraphNanos, long indexRss, long callgraphRss, long gc, BenchmarkWorkCounts indexCounts, BenchmarkWorkCounts callgraphCounts) {
+        return new BenchmarkMeasurement(indexNanos, callgraphNanos, 1_000.0d / indexNanos, 2_000.0d / callgraphNanos, indexRss, callgraphRss, gc, gc * 10, 10 - gc, (10 - gc) * 10, indexCounts, callgraphCounts);
+    }
+
+    private static BenchmarkWorkCounts indexCounts() {
+        return new BenchmarkWorkCounts(100, 1, 100, 2, 3, 4, 0, 0, 0);
+    }
+
+    private static BenchmarkWorkCounts callgraphCounts() {
+        return new BenchmarkWorkCounts(200, 0, 0, 0, 0, 0, 10, 20, 200);
+    }
+
+    private static List<String> fixtureProcessCommand(String command) {
+        return List.of(javaExecutable().toString(), "--enable-preview", "-cp", System.getProperty("java.class.path"), BenchmarkChildProcessFixtureMain.class.getName(), command);
+    }
+
+    private static Path javaExecutable() {
+        String executable = System.getProperty("os.name", "").startsWith("Windows") ? "java.exe" : "java";
+        return Path.of(System.getProperty("java.home"), "bin", executable).toAbsolutePath().normalize();
+    }
+
     @Test
     void rejectsCanonicalOutputOverlapWithoutInvokingAChild() throws Exception {
         Fixture fixture = fixture();
@@ -243,40 +277,6 @@ class AnalysisBenchmarkMainTest {
             output.closeEntry();
         }
         return new Fixture(cache, sourceRoot, jar);
-    }
-
-    private static AnalysisBenchmarkMain.Arguments arguments(Fixture fixture, Path output, Path productionCache) {
-        return new AnalysisBenchmarkMain.Arguments(new MinecraftVersion("1.21.11"), fixture.sourceRoot(), fixture.remappedJar(), fixture.remappedJar(), output, productionCache, 1, "machine-a", "run-42", BenchmarkGarbageCollector.G1, ClasspathFixtures.empty(fixture.cacheRoot().resolve("dependencies")));
-    }
-
-    private static BenchmarkChildMeasurement child(BenchmarkPhase phase, long elapsedSeconds, long rss, long gcCollections) {
-        return child(phase, elapsedSeconds, rss, gcCollections, RUNTIME);
-    }
-
-    private static BenchmarkChildMeasurement child(BenchmarkPhase phase, long elapsedSeconds, long rss, long gcCollections, BenchmarkRuntimeMetadata runtime) {
-        BenchmarkWorkCounts counts = phase == BenchmarkPhase.INDEX ? indexCounts() : callgraphCounts();
-        return new BenchmarkChildMeasurement(phase, counts.units(), elapsedSeconds * 1_000_000_000L, rss, gcCollections, gcCollections * 10, counts, runtime, 2, ClasspathFixtures.IDENTITY, ClasspathFixtures.RAW_HASH);
-    }
-
-    private static BenchmarkMeasurement measurement(long indexNanos, long callgraphNanos, long indexRss, long callgraphRss, long gc, BenchmarkWorkCounts indexCounts, BenchmarkWorkCounts callgraphCounts) {
-        return new BenchmarkMeasurement(indexNanos, callgraphNanos, 1_000.0d / indexNanos, 2_000.0d / callgraphNanos, indexRss, callgraphRss, gc, gc * 10, 10 - gc, (10 - gc) * 10, indexCounts, callgraphCounts);
-    }
-
-    private static BenchmarkWorkCounts indexCounts() {
-        return new BenchmarkWorkCounts(100, 1, 100, 2, 3, 4, 0, 0, 0);
-    }
-
-    private static BenchmarkWorkCounts callgraphCounts() {
-        return new BenchmarkWorkCounts(200, 0, 0, 0, 0, 0, 10, 20, 200);
-    }
-
-    private static List<String> fixtureProcessCommand(String command) {
-        return List.of(javaExecutable().toString(), "--enable-preview", "-cp", System.getProperty("java.class.path"), BenchmarkChildProcessFixtureMain.class.getName(), command);
-    }
-
-    private static Path javaExecutable() {
-        String executable = System.getProperty("os.name", "").startsWith("Windows") ? "java.exe" : "java";
-        return Path.of(System.getProperty("java.home"), "bin", executable).toAbsolutePath().normalize();
     }
 
     private record Fixture(Path cacheRoot, Path sourceRoot, Path remappedJar) {

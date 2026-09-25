@@ -11,6 +11,9 @@ import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
 import java.time.Duration;
+import java.time.Instant;
+import java.util.Arrays;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -26,7 +29,7 @@ class AtomicH2DatabaseTest {
     }
 
     private static void createMarker(Connection connection, String value) throws SQLException {
-        SymbolSchema.create(connection, new MinecraftVersion("1.21.5"), Path.of("client"), "a".repeat(64), java.time.Instant.EPOCH);
+        SymbolSchema.create(connection, new MinecraftVersion("1.21.5"), Path.of("client"), "a".repeat(64), Instant.EPOCH);
         SymbolSchema.createIndexes(connection);
         try (var statement = connection.createStatement()) {
             statement.execute("CREATE TABLE marker (marker_value VARCHAR)");
@@ -131,7 +134,7 @@ class AtomicH2DatabaseTest {
             throw new SQLException("builder failed");
         }, AtomicH2DatabaseTest::validateMarker));
         assertEquals("old", marker(target));
-        assertEquals(java.util.Arrays.toString(oldBytes), java.util.Arrays.toString(Files.readAllBytes(target)));
+        assertEquals(Arrays.toString(oldBytes), Arrays.toString(Files.readAllBytes(target)));
 
         assertThrows(SQLException.class, () -> new AtomicH2Database().rebuild(target, Duration.ofSeconds(1), connection -> {
             createMarker(connection, "new");
@@ -274,7 +277,7 @@ class AtomicH2DatabaseTest {
         assertEquals("forced fallback move failure 1", failure.getMessage());
         assertFalse(Files.exists(target));
         assertFalse(Files.exists(backup));
-        assertTrue(java.util.Arrays.stream(failure.getSuppressed()).anyMatch(suppressed -> suppressed.getMessage().contains("Neither target nor backup remains after failed backup move")));
+        assertTrue(Arrays.stream(failure.getSuppressed()).anyMatch(suppressed -> suppressed.getMessage().contains("Neither target nor backup remains after failed backup move")));
     }
 
     @Test
@@ -342,7 +345,7 @@ class AtomicH2DatabaseTest {
         Path target = temporaryDirectory.resolve("symbols.mv.db");
         Path backup = target.resolveSibling("symbols.mv.db.bak");
         createDatabase(target);
-        var validations = new java.util.concurrent.atomic.AtomicInteger();
+        var validations = new AtomicInteger();
 
         SQLException failure = assertThrows(SQLException.class, () -> new AtomicH2Database(new ForcedFallbackMoveStrategy(3)).rebuild(target, Duration.ofSeconds(1), connection -> {
             createMarker(connection, "new");
@@ -354,7 +357,7 @@ class AtomicH2DatabaseTest {
         }));
 
         assertEquals("promotion validation failed", failure.getMessage());
-        assertTrue(java.util.Arrays.stream(failure.getSuppressed()).anyMatch(suppressed -> suppressed.getMessage().contains("Unable to restore backup")));
+        assertTrue(Arrays.stream(failure.getSuppressed()).anyMatch(suppressed -> suppressed.getMessage().contains("Unable to restore backup")));
         assertFalse(Files.exists(target));
         assertTrue(Files.exists(backup));
         Path preserved = temporaryDirectory.resolve("preserved.mv.db");
@@ -368,7 +371,7 @@ class AtomicH2DatabaseTest {
         Path backup = target.resolveSibling("symbols.mv.db.bak");
         createDatabase(target);
         byte[] original = Files.readAllBytes(target);
-        var validations = new java.util.concurrent.atomic.AtomicInteger();
+        var validations = new AtomicInteger();
 
         SQLException failure = assertThrows(SQLException.class, () -> new AtomicH2Database(new ForcedFallbackMoveStrategy(3, ForcedFallbackMoveStrategy.FailureTiming.AFTER_SIDE_EFFECT)).rebuild(target, Duration.ofSeconds(1), connection -> {
             createMarker(connection, "new");
@@ -398,7 +401,7 @@ class AtomicH2DatabaseTest {
         }, AtomicH2DatabaseTest::validateMarker));
 
         assertEquals("forced fallback move failure 2", failure.getMessage());
-        assertTrue(java.util.Arrays.stream(failure.getSuppressed()).anyMatch(suppressed -> suppressed.getMessage().contains("Unable to remove uncertain promoted target")));
+        assertTrue(Arrays.stream(failure.getSuppressed()).anyMatch(suppressed -> suppressed.getMessage().contains("Unable to remove uncertain promoted target")));
         assertEquals("new", marker(target));
         assertArrayEquals(original, Files.readAllBytes(backup));
     }
@@ -410,7 +413,7 @@ class AtomicH2DatabaseTest {
         Path rejected = target.resolveSibling("symbols.mv.db.failed-promotion");
         createDatabase(target);
         byte[] original = Files.readAllBytes(target);
-        var validations = new java.util.concurrent.atomic.AtomicInteger();
+        var validations = new AtomicInteger();
 
         SQLException failure = assertThrows(SQLException.class, () -> new AtomicH2Database(new ForcedFallbackMoveStrategy(0, ForcedFallbackMoveStrategy.FailureTiming.BEFORE_SIDE_EFFECT, ForcedFallbackMoveStrategy.DeleteFailure.FAILED_PROMOTION)).rebuild(target, Duration.ofSeconds(1), connection -> {
             createMarker(connection, "new");

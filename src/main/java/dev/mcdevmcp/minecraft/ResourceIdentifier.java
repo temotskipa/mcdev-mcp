@@ -18,11 +18,6 @@ public record ResourceIdentifier(String value) {
         return new ResourceIdentifier(value);
     }
 
-    @JsonValue
-    public String wireValue() {
-        return value;
-    }
-
     private static String canonicalValue(String value) {
         if (value == null) {
             throw new IllegalArgumentException("Resource identifier must not be null");
@@ -83,5 +78,10 @@ public record ResourceIdentifier(String value) {
 
     private static IllegalArgumentException invalid(String value) {
         return new IllegalArgumentException("Invalid resource identifier: " + value);
+    }
+
+    @JsonValue
+    public String wireValue() {
+        return value;
     }
 }

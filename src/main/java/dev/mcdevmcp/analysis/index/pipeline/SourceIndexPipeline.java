@@ -1,11 +1,7 @@
 package dev.mcdevmcp.analysis.index.pipeline;
 
 import dev.mcdevmcp.analysis.classfile.ClassFileTypeCatalog;
-import dev.mcdevmcp.analysis.index.IndexBuildEvidence;
-import dev.mcdevmcp.analysis.index.IndexBuildException;
-import dev.mcdevmcp.analysis.index.IndexRequest;
-import dev.mcdevmcp.analysis.index.IndexSummary;
-import dev.mcdevmcp.analysis.index.PublishedSourceRoot;
+import dev.mcdevmcp.analysis.index.*;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -15,11 +11,7 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.HashSet;
-import java.util.HexFormat;
-import java.util.List;
-import java.util.Objects;
-import java.util.Set;
+import java.util.*;
 
 public final class SourceIndexPipeline {
     private static final int REPORTED_DIAGNOSTIC_LIMIT = 20;

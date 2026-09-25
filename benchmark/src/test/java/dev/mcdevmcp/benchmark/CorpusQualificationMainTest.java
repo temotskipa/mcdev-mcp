@@ -1,9 +1,6 @@
 package dev.mcdevmcp.benchmark;
 
-import dev.mcdevmcp.analysis.index.IndexRequest;
-import dev.mcdevmcp.analysis.index.IndexSummary;
-import dev.mcdevmcp.analysis.index.SourceIndexer;
-import dev.mcdevmcp.analysis.index.SourceRoot;
+import dev.mcdevmcp.analysis.index.*;
 import dev.mcdevmcp.storage.model.MethodReference;
 import dev.mcdevmcp.storage.model.MinecraftVersion;
 import dev.mcdevmcp.storage.model.SourceNamespace;
@@ -38,9 +35,29 @@ class CorpusQualificationMainTest {
     @TempDir
     Path temporaryDirectory;
 
+    private static List<CorpusProbe> placeholderProbes() {
+        return List.of(new CorpusProbe(CorpusProbeKind.SYMBOL_CLASS, "sample.Target", ZERO_HASH), new CorpusProbe(CorpusProbeKind.SYMBOL_FIELD, "sample.Target#value", ZERO_HASH), new CorpusProbe(CorpusProbeKind.SYMBOL_METHOD, "sample.Target#run", ZERO_HASH), new CorpusProbe(CorpusProbeKind.CALLERS, "sample.Target#helper", ZERO_HASH), new CorpusProbe(CorpusProbeKind.CALLEES, "sample.Target#run", ZERO_HASH));
+    }
+
+    private static NodeCorpusBaseline baseline(String sourceHash, String jarHash, CorpusIndexCounts indexCounts, CorpusCallgraphCounts callgraphCounts, List<CorpusProbe> probes) {
+        return new NodeCorpusBaseline(1, VERSION, sourceHash, jarHash, NODE_CALLGRAPH_HASH, NODE_CALLGRAPH, ORACLE, indexCounts, callgraphCounts, probes);
+    }
+
+    private static String[] arguments(Path source, Path jar, Path baseline, Path expectation, Path output, int workers) {
+        return arguments(source, jar, baseline, expectation, output, output.resolveSibling("production-cache"), workers);
+    }
+
+    private static String[] arguments(Path source, Path jar, Path baseline, Path expectation, Path output, Path productionCache, int workers) {
+        return new String[]{"--minecraft-version", VERSION.value(), "--source-root", source.toString(), "--remapped-jar", jar.toString(), "--node-baseline", baseline.toString(), "--expectation", expectation.toString(), "--output-root", output.toString(), "--production-cache-root", productionCache.toString(), "--workers", Integer.toString(workers), "--classpath-manifest", ClasspathFixtures.empty(jar.getParent().resolve("dependencies")).toString()};
+    }
+
+    private static CorpusQualificationReport readReport(Path output) throws IOException {
+        return McpJsonDefaults.getMapper().readValue(Files.readAllBytes(output.resolve(CorpusQualificationMain.REPORT_NAME)), CorpusQualificationReport.class);
+    }
+
     @Test
     void accountsForPackageAndModuleUnitsWithoutTreatingThemAsSkipped() {
-        var evidence = new dev.mcdevmcp.analysis.index.IndexBuildEvidence(List.of("module-info.java", "sample/Target.java", "sample/package-info.java"), List.of("module-info.java", "sample/Target.java", "sample/package-info.java"), List.of("sample/Target.java"), List.of("module-info.java", "sample/package-info.java"), List.of());
+        var evidence = new IndexBuildEvidence(List.of("module-info.java", "sample/Target.java", "sample/package-info.java"), List.of("module-info.java", "sample/Target.java", "sample/package-info.java"), List.of("sample/Target.java"), List.of("module-info.java", "sample/package-info.java"), List.of());
         List<String> failures = new ArrayList<>();
 
         CorpusQualificationMain.validateAccounting(failures, evidence);
@@ -51,7 +68,7 @@ class CorpusQualificationMainTest {
 
     @Test
     void rejectsPartialOverlappingAndDuplicateCompilationUnitAccounting() {
-        var evidence = new dev.mcdevmcp.analysis.index.IndexBuildEvidence(List.of("A.java", "B.java"), List.of("A.java"), List.of("A.java"), List.of("A.java"), List.of());
+        var evidence = new IndexBuildEvidence(List.of("A.java", "B.java"), List.of("A.java"), List.of("A.java"), List.of("A.java"), List.of());
         List<String> failures = new ArrayList<>();
 
         CorpusQualificationMain.validateAccounting(failures, evidence);
@@ -306,14 +323,6 @@ class CorpusQualificationMainTest {
         assertEquals(List.of("module-info.java", "sample/package-info.java"), qualified.typeFreeCompilationUnits());
     }
 
-    private static List<CorpusProbe> placeholderProbes() {
-        return List.of(new CorpusProbe(CorpusProbeKind.SYMBOL_CLASS, "sample.Target", ZERO_HASH), new CorpusProbe(CorpusProbeKind.SYMBOL_FIELD, "sample.Target#value", ZERO_HASH), new CorpusProbe(CorpusProbeKind.SYMBOL_METHOD, "sample.Target#run", ZERO_HASH), new CorpusProbe(CorpusProbeKind.CALLERS, "sample.Target#helper", ZERO_HASH), new CorpusProbe(CorpusProbeKind.CALLEES, "sample.Target#run", ZERO_HASH));
-    }
-
-    private static NodeCorpusBaseline baseline(String sourceHash, String jarHash, CorpusIndexCounts indexCounts, CorpusCallgraphCounts callgraphCounts, List<CorpusProbe> probes) {
-        return new NodeCorpusBaseline(1, VERSION, sourceHash, jarHash, NODE_CALLGRAPH_HASH, NODE_CALLGRAPH, ORACLE, indexCounts, callgraphCounts, probes);
-    }
-
     @Test
     void corpusProbeTemplateNamesBothUnqualifiedVersionsWithoutInventingHashes() throws Exception {
         String template;
@@ -359,18 +368,6 @@ class CorpusQualificationMainTest {
             }
         }
         return new Fixture(sources, jar);
-    }
-
-    private static String[] arguments(Path source, Path jar, Path baseline, Path expectation, Path output, int workers) {
-        return arguments(source, jar, baseline, expectation, output, output.resolveSibling("production-cache"), workers);
-    }
-
-    private static String[] arguments(Path source, Path jar, Path baseline, Path expectation, Path output, Path productionCache, int workers) {
-        return new String[]{"--minecraft-version", VERSION.value(), "--source-root", source.toString(), "--remapped-jar", jar.toString(), "--node-baseline", baseline.toString(), "--expectation", expectation.toString(), "--output-root", output.toString(), "--production-cache-root", productionCache.toString(), "--workers", Integer.toString(workers), "--classpath-manifest", ClasspathFixtures.empty(jar.getParent().resolve("dependencies")).toString()};
-    }
-
-    private static CorpusQualificationReport readReport(Path output) throws IOException {
-        return McpJsonDefaults.getMapper().readValue(Files.readAllBytes(output.resolve(CorpusQualificationMain.REPORT_NAME)), CorpusQualificationReport.class);
     }
 
     private record Fixture(Path sources, Path jar) {

@@ -3,21 +3,7 @@ plugins {
     id("org.gradlex.extra-java-module-info")
 }
 
-val testJavaFeature = providers.gradleProperty("testJavaVersion").orElse("26").map { configuredVersion ->
-    configuredVersion.toInt().also { feature ->
-        require(feature == 26) { "Java 26 is required for testJavaVersion, got $feature" }
-    }
-}
-val testJavaLauncher = javaToolchains.launcherFor {
-    languageVersion.set(testJavaFeature.map(JavaLanguageVersion::of))
-}
-
-java {
-    modularity.inferModulePath.set(true)
-    toolchain {
-        languageVersion.set(JavaLanguageVersion.of(26))
-    }
-}
+apply(from = rootProject.file("gradle/java-preview.gradle.kts"))
 
 dependencies {
     implementation(project(":"))
@@ -45,12 +31,6 @@ val applicationExports = listOf(
     "dev.mcdevmcp/dev.mcdevmcp.support=dev.mcdevmcp.benchmark",
 )
 
-tasks.withType<JavaCompile>().configureEach {
-    options.release.set(26)
-    options.encoding = "UTF-8"
-    options.compilerArgs.addAll(listOf("-Xlint:all", "-Xlint:-preview", "-Xlint:-requires-automatic", "-Xlint:-requires-transitive-automatic", "-Werror", "--enable-preview"))
-}
-
 tasks.named<JavaCompile>("compileJava") {
     applicationExports.forEach { export ->
         options.compilerArgs.addAll(listOf("--add-exports", export))
@@ -58,8 +38,5 @@ tasks.named<JavaCompile>("compileJava") {
 }
 
 tasks.withType<Test>().configureEach {
-    useJUnitPlatform()
-    javaLauncher.set(testJavaLauncher)
-    jvmArgs("--enable-preview")
     filter.isFailOnNoMatchingTests = false
 }

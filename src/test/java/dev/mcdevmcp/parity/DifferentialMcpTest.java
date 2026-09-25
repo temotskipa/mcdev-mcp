@@ -14,6 +14,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.math.BigDecimal;
+import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -41,103 +42,9 @@ class DifferentialMcpTest {
     private static final Set<String> TYPED_CATALOG_ADDITIONAL_PROPERTIES = Set.of("mc_version:inputSchema.additionalProperties", "mc_search:inputSchema.additionalProperties", "mc_get_class:inputSchema.additionalProperties", "mc_get_method:inputSchema.additionalProperties", "mc_find_refs:inputSchema.additionalProperties", "mc_list_classes:inputSchema.additionalProperties", "mc_list_packages:inputSchema.additionalProperties", "mc_find_hierarchy:inputSchema.additionalProperties", "mc_connect:inputSchema.additionalProperties", "mc_execute:inputSchema.additionalProperties", "mc_snapshot:inputSchema.additionalProperties", "mc_screenshot:inputSchema.additionalProperties", "mc_record_video:inputSchema.additionalProperties", "mc_record_video:inputSchema.properties.interval.oneOf[0].additionalProperties", "mc_record_video:inputSchema.properties.interval.oneOf[1].additionalProperties", "mc_nearby_entities:inputSchema.additionalProperties", "mc_entity_details:inputSchema.additionalProperties", "mc_nearby_blocks:inputSchema.additionalProperties", "mc_block_details:inputSchema.additionalProperties", "mc_block_details:inputSchema.properties.position.additionalProperties", "mc_looked_at_entity:inputSchema.additionalProperties", "mc_set_entity_glow:inputSchema.additionalProperties", "mc_set_block_glow:inputSchema.additionalProperties", "mc_set_block_glow:inputSchema.properties.position.additionalProperties", "mc_clear_block_glow:inputSchema.additionalProperties", "mc_get_item_texture:inputSchema.additionalProperties", "mc_get_entity_item_texture:inputSchema.additionalProperties", "mc_get_item_texture_by_id:inputSchema.additionalProperties", "mc_chat_history:inputSchema.additionalProperties", "mc_screen_inspect:inputSchema.additionalProperties", "mc_join_server:inputSchema.additionalProperties", "mc_leave_server:inputSchema.additionalProperties", "mc_wait_until_in_world:inputSchema.additionalProperties", "mc_quit_client:inputSchema.additionalProperties", "mc_wait_for_bridge:inputSchema.additionalProperties", "mc_script_logs:inputSchema.additionalProperties", "mc_run_command:inputSchema.additionalProperties");
     private static final String JAVA_EXECUTE_TIMEOUT_PROSE = "\n\ntimeoutSeconds: optional per-call deadline in seconds (default 10, max 300 = 5 min).";
     private static final Map<String, Set<StaticOutcome>> REQUIRED_PROCESS_STATIC_OUTCOMES = Map.of("mc_version", Set.of(StaticOutcome.SUCCESS, StaticOutcome.ERROR), "mc_search", Set.of(StaticOutcome.SUCCESS, StaticOutcome.ERROR, StaticOutcome.EMPTY, StaticOutcome.TRUNCATED), "mc_get_class", Set.of(StaticOutcome.SUCCESS, StaticOutcome.ERROR, StaticOutcome.EMPTY), "mc_get_method", Set.of(StaticOutcome.SUCCESS, StaticOutcome.ERROR, StaticOutcome.EMPTY), "mc_find_refs", Set.of(StaticOutcome.SUCCESS, StaticOutcome.ERROR, StaticOutcome.EMPTY, StaticOutcome.TRUNCATED), "mc_list_classes", Set.of(StaticOutcome.SUCCESS, StaticOutcome.ERROR, StaticOutcome.EMPTY, StaticOutcome.TRUNCATED), "mc_list_packages", Set.of(StaticOutcome.SUCCESS, StaticOutcome.ERROR, StaticOutcome.EMPTY, StaticOutcome.TRUNCATED), "mc_find_hierarchy", Set.of(StaticOutcome.SUCCESS, StaticOutcome.ERROR, StaticOutcome.EMPTY, StaticOutcome.TRUNCATED));
-
+    private static final Object MISSING_SCHEMA_VALUE = new Object();
     @TempDir
     Path temporaryDirectory;
-
-    @Test
-    void matchesThePinnedNodeServerAcrossTheCompleteMcpSurface() throws Exception {
-        List<Scenario> scenarios = scenarios();
-        Path nodeRoot = prepareProcessRoot("node");
-        Path javaRoot = prepareProcessRoot("java");
-
-        try (NodeOracleMaterializer oracle = NodeOracleMaterializer.materialize()) {
-            StaticParityFixture.prepareNode(nodeRoot, oracle);
-            StaticParityFixture.prepareJava(javaRoot);
-            try (ScriptedDebugBridge nodeBridge = ScriptedDebugBridge.start(nodeRoot.resolve("bridge"));
-                 ScriptedDebugBridge javaBridge = ScriptedDebugBridge.start(javaRoot.resolve("bridge"));
-                 McpProcessClient node = McpProcessClient.startAllowingForcedShutdown(configure(oracle.nodeProcess("dist/cli.js", "serve"), nodeRoot, nodeBridge.port()));
-                 McpProcessClient java = McpProcessClient.start(configure(javaProcess(javaRoot), javaRoot, javaBridge.port()))) {
-                Map<String, Map<String, Object>> nodeResponses = new LinkedHashMap<>();
-
-                for (Scenario scenario : scenarios) {
-                    Map<String, Object> nodeResponse = execute(node, scenario, nodeBridge.port(), true);
-                    Map<String, Object> javaResponse = execute(java, scenario, javaBridge.port(), false);
-                    nodeResponses.put(scenario.label(), nodeResponse);
-                    if (scenario.label().equals("runtime-looked-at-entity") || scenario.label().equals("runtime-looked-at-entity-null")) {
-                        String expected = scenario.label().equals("runtime-looked-at-entity") ? "{\n  \"entityId\": 7\n}" : "{\n  \"entityId\": null\n}";
-                        assertEquals(expected, toolText(nodeResponse), "Pinned Node provider-object rendering: " + scenario.label());
-                        assertEquals(expected, toolText(javaResponse), "Java provider-object rendering: " + scenario.label());
-                    }
-                    if (scenario.kind().equals("static")) {
-                        assertStaticOutcome(scenario, nodeResponse, "Node");
-                        assertStaticOutcome(scenario, javaResponse, "Java");
-                    }
-                    if (scenario.kind().equals("initialize")) {
-                        assertInitializeVersions(nodeResponse, javaResponse);
-                    }
-                    switch (scenario.comparison()) {
-                        case "exact" ->
-                                assertEquivalent(scenario, nodeResponse, javaResponse, nodeRoot, javaRoot, nodeBridge.port(), javaBridge.port());
-                        case "find_refs_descriptors" ->
-                                assertDescriptorUpgrade(scenario, nodeResponse, javaResponse, nodeRoot, javaRoot, nodeBridge.port(), javaBridge.port());
-                        case "java_launcher" ->
-                                assertJavaLauncherUpgrade(scenario, nodeResponse, javaResponse, nodeRoot, javaRoot, nodeBridge.port(), javaBridge.port());
-                        case "sdk_input_validation" ->
-                                assertSdkInputValidationUpgrade(scenario, nodeResponse, javaResponse, nodeRoot, javaRoot, nodeBridge.port(), javaBridge.port());
-                        case "typed_catalog" -> assertTypedCatalogUpgrade(nodeResponse, javaResponse);
-                        case "pinned_guide_links" ->
-                                assertCurrentGuideReferences(scenario, nodeResponse, javaResponse, nodeRoot, javaRoot, nodeBridge.port(), javaBridge.port());
-                        case "reviewed_guide" ->
-                                assertReviewedGuide(scenario, nodeResponse, javaResponse, nodeRoot, javaRoot, nodeBridge.port(), javaBridge.port());
-                        default ->
-                                throw new IllegalStateException("Unsupported parity comparison: " + scenario.comparison());
-                    }
-                }
-
-                assertCatalogCoverage(nodeResponses.get("tools-list"), scenarios);
-                assertStaticProcessCoverage(scenarios);
-                assertEquals(normalizeValue(node.awaitQuiescence(), nodeRoot, nodeBridge.port()), normalizeValue(java.awaitQuiescence(), javaRoot, javaBridge.port()), "Node and Java must emit the same MCP notifications and no unmatched responses");
-                assertTrue(bridgeInvocationsEquivalent(nodeBridge.invocations(), javaBridge.invocations()), "Node and Java must make the same DebugBridge calls in the same order, with only the reviewed bridge projections");
-                nodeBridge.assertHealthy();
-                javaBridge.assertHealthy();
-                assertTrue(node.stderr().isBlank(), () -> "Node server STDERR was not clean:\n" + node.stderr());
-                assertTrue(java.stderr().isBlank(), () -> "Java server STDERR was not clean:\n" + java.stderr());
-                nodeBridge.shutdown();
-                javaBridge.shutdown();
-            }
-        }
-    }
-
-    @Test
-    void reviewedBridgeProjectionsRejectUnreviewedRepresentations() {
-        var nodeRecord = new ScriptedDebugBridge.Invocation("record_video", object("frames", 4, "interval", 50, "output", "grid", "gridCols", 2, "downscale", 2, "quality", 0.75));
-        var javaRecord = new ScriptedDebugBridge.Invocation("record_video", object("frames", 4, "interval", 50.0, "output", "grid", "gridCols", 2, "downscale", 2, "quality", 0.75));
-        assertTrue(bridgeInvocationsEquivalent(List.of(nodeRecord), List.of(javaRecord)), "The reviewed 50 / 50.0 record-video pair must compare equal");
-
-        var nodeUnreviewedRecord = new ScriptedDebugBridge.Invocation("record_video", object("frames", 4, "interval", 51, "output", "grid", "gridCols", 2, "downscale", 2, "quality", 0.75));
-        var javaUnreviewedRecord = new ScriptedDebugBridge.Invocation("record_video", object("frames", 4, "interval", 51.0, "output", "grid", "gridCols", 2, "downscale", 2, "quality", 0.75));
-        assertFalse(bridgeInvocationsEquivalent(List.of(nodeUnreviewedRecord), List.of(javaUnreviewedRecord)), "An unreviewed 51 / 51.0 record-video pair must not compare equal");
-
-        var nodeEntityItem = new ScriptedDebugBridge.Invocation("getEntityItemTexture", object("entityId", 7, "slot", "mainhand"));
-        var javaEntityItem = new ScriptedDebugBridge.Invocation("getEntityItemTexture", object("entityId", 7, "slot", "MAINHAND"));
-        assertTrue(bridgeInvocationsEquivalent(List.of(nodeEntityItem), List.of(javaEntityItem)), "The reviewed mainhand / MAINHAND entity-item pair must compare equal");
-
-        var nodeUnreviewedEntityItem = new ScriptedDebugBridge.Invocation("getEntityItemTexture", object("entityId", 7, "slot", "head"));
-        var javaUnreviewedEntityItem = new ScriptedDebugBridge.Invocation("getEntityItemTexture", object("entityId", 7, "slot", "HEAD"));
-        assertFalse(bridgeInvocationsEquivalent(List.of(nodeUnreviewedEntityItem), List.of(javaUnreviewedEntityItem)), "An unreviewed slot spelling must not compare equal");
-    }
-
-    private Path prepareProcessRoot(String name) throws IOException {
-        Path root = temporaryDirectory.resolve(name).toAbsolutePath().normalize();
-        Files.createDirectories(root.resolve("home"));
-        Files.createDirectories(root.resolve("local-app-data"));
-        Files.createDirectories(root.resolve("roaming-app-data"));
-        Files.createDirectories(root.resolve("xdg-cache"));
-        Files.createDirectories(root.resolve("tmp"));
-        Files.createDirectories(root.resolve("bridge"));
-        return root;
-    }
 
     private static ProcessBuilder configure(ProcessBuilder builder, Path root, int bridgePort) {
         Map<String, String> environment = builder.environment();
@@ -340,7 +247,7 @@ class DifferentialMcpTest {
 
     private static void assertScreenshotCatalogSchemas(Map<String, Object> nodeTool, Map<String, Object> javaTool, Set<String> exercisedDefaults, Set<String> exercisedEmptyRequired, Set<String> nodeAdditionalProperties, Set<String> javaAdditionalProperties) {
         Map<String, Object> expectedNode = object("type", "object", "properties", object("downscale", object("type", "number", "description", "Integer downscale factor. 1 = full window resolution. 2 = half each axis (default)."), "quality", object("type", "number", "description", "JPEG quality in [0.05, 1.0]. Default: 0.75.")), "required", List.of());
-        Map<String, Object> expectedJava = object("type", "object", "properties", object("downscale", object("type", "integer", "description", "Integer downscale factor. 1 = full window resolution. 2 = half each axis (default).", "minimum", BigDecimal.ONE, "default", new java.math.BigInteger("2")), "quality", object("type", "number", "description", "JPEG quality in [0.05, 1.0]. Default: 0.75.", "minimum", new BigDecimal("0.05"), "maximum", BigDecimal.ONE, "default", new BigDecimal("0.75"))), "additionalProperties", false);
+        Map<String, Object> expectedJava = object("type", "object", "properties", object("downscale", object("type", "integer", "description", "Integer downscale factor. 1 = full window resolution. 2 = half each axis (default).", "minimum", BigDecimal.ONE, "default", new BigInteger("2")), "quality", object("type", "number", "description", "JPEG quality in [0.05, 1.0]. Default: 0.75.", "minimum", new BigDecimal("0.05"), "maximum", BigDecimal.ONE, "default", new BigDecimal("0.75"))), "additionalProperties", false);
         assertExactTypedCatalogSchemas(nodeTool, javaTool, expectedNode, expectedJava, exercisedDefaults, exercisedEmptyRequired, nodeAdditionalProperties, javaAdditionalProperties);
     }
 
@@ -355,7 +262,7 @@ class DifferentialMcpTest {
             }
             case "mc_chat_history" -> {
                 expectedNode = object("type", "object", "properties", object("limit", object("type", "number", "description", "Max messages returned. Default 50."), "includeJson", object("type", "boolean", "description", "Include the Component as JSON for each message. Default false.")), "required", List.of());
-                expectedJava = object("type", "object", "properties", object("limit", object("type", "integer", "description", "Max messages returned. Default 50.", "minimum", BigDecimal.ZERO, "default", new java.math.BigInteger("50")), "includeJson", object("type", "boolean", "description", "Include the Component as JSON for each message. Default false.", "default", false)), "additionalProperties", false);
+                expectedJava = object("type", "object", "properties", object("limit", object("type", "integer", "description", "Max messages returned. Default 50.", "minimum", BigDecimal.ZERO, "default", new BigInteger("50")), "includeJson", object("type", "boolean", "description", "Include the Component as JSON for each message. Default false.", "default", false)), "additionalProperties", false);
             }
             case "mc_screen_inspect" -> {
                 expectedNode = object("type", "object", "properties", object("includeIcons", object("type", "boolean", "description", "Render each unique item's icon and attach as an icons map. Default false.")), "required", List.of());
@@ -385,7 +292,7 @@ class DifferentialMcpTest {
         switch (name) {
             case "mc_nearby_entities" -> {
                 expectedNode = object("type", "object", "properties", object("range", object("type", "number", "description", "Search radius in blocks. Default 64."), "limit", object("type", "number", "description", "Max entries returned. Default 100."), "includeIcons", object("type", "boolean", "description", "Render each unique primaryEquipment item's icon. Default false.")), "required", List.of());
-                expectedJava = object("type", "object", "properties", object("range", object("type", "number", "description", "Search radius in blocks. Default 64.", "minimum", BigDecimal.ZERO, "default", new BigDecimal("64")), "limit", object("type", "integer", "description", "Max entries returned. Default 100.", "minimum", BigDecimal.ZERO, "default", new java.math.BigInteger("100")), "includeIcons", object("type", "boolean", "description", "Render each unique primaryEquipment item's icon. Default false.", "default", false)), "additionalProperties", false);
+                expectedJava = object("type", "object", "properties", object("range", object("type", "number", "description", "Search radius in blocks. Default 64.", "minimum", BigDecimal.ZERO, "default", new BigDecimal("64")), "limit", object("type", "integer", "description", "Max entries returned. Default 100.", "minimum", BigDecimal.ZERO, "default", new BigInteger("100")), "includeIcons", object("type", "boolean", "description", "Render each unique primaryEquipment item's icon. Default false.", "default", false)), "additionalProperties", false);
             }
             case "mc_entity_details" -> {
                 expectedNode = object("type", "object", "properties", object("entityId", object("type", "number", "description", "Entity id from mc_nearby_entities or mc_looked_at_entity.")), "required", List.of("entityId"));
@@ -403,7 +310,7 @@ class DifferentialMcpTest {
         switch (name) {
             case "mc_nearby_blocks" -> {
                 expectedNode = object("type", "object", "properties", object("range", object("type", "number", "description", "Search radius in blocks. Default 16."), "limit", object("type", "number", "description", "Max entries returned. Default 100.")), "required", List.of());
-                expectedJava = object("type", "object", "properties", object("range", object("type", "number", "description", "Search radius in blocks. Default 16.", "minimum", BigDecimal.ZERO, "default", new BigDecimal("16")), "limit", object("type", "integer", "description", "Max entries returned. Default 100.", "minimum", BigDecimal.ZERO, "default", new java.math.BigInteger("100"))), "additionalProperties", false);
+                expectedJava = object("type", "object", "properties", object("range", object("type", "number", "description", "Search radius in blocks. Default 16.", "minimum", BigDecimal.ZERO, "default", new BigDecimal("16")), "limit", object("type", "integer", "description", "Max entries returned. Default 100.", "minimum", BigDecimal.ZERO, "default", new BigInteger("100"))), "additionalProperties", false);
             }
             case "mc_block_details" -> {
                 expectedNode = object("type", "object", "properties", object("x", object("type", "number"), "y", object("type", "number"), "z", object("type", "number")), "required", List.of("x", "y", "z"));
@@ -446,7 +353,7 @@ class DifferentialMcpTest {
 
     private static void assertScriptLogsCatalogSchemas(Map<String, Object> nodeTool, Map<String, Object> javaTool, Set<String> exercisedDefaults, Set<String> exercisedEmptyRequired, Set<String> nodeAdditionalProperties, Set<String> javaAdditionalProperties) {
         Map<String, Object> expectedNode = object("type", "object", "properties", object("mode", object("type", "string", "enum", List.of("errors", "stats", "paths"), "description", "What to show: 'errors' (recent failures), 'stats' (error patterns), 'paths' (file locations)"), "limit", object("type", "number", "description", "Number of entries to show (for 'errors' mode). Default: 20")), "required", List.of());
-        Map<String, Object> expectedJava = object("type", "object", "properties", object("mode", object("type", "string", "enum", List.of("errors", "stats", "paths"), "description", "What to show: 'errors' (recent failures), 'stats' (error patterns), 'paths' (file locations)", "default", "errors"), "limit", object("type", "integer", "minimum", BigDecimal.ONE, "description", "Number of entries to show (for 'errors' mode). Default: 20", "default", new java.math.BigInteger("20"))), "additionalProperties", false);
+        Map<String, Object> expectedJava = object("type", "object", "properties", object("mode", object("type", "string", "enum", List.of("errors", "stats", "paths"), "description", "What to show: 'errors' (recent failures), 'stats' (error patterns), 'paths' (file locations)", "default", "errors"), "limit", object("type", "integer", "minimum", BigDecimal.ONE, "description", "Number of entries to show (for 'errors' mode). Default: 20", "default", new BigInteger("20"))), "additionalProperties", false);
         assertExactTypedCatalogSchemas(nodeTool, javaTool, expectedNode, expectedJava, exercisedDefaults, exercisedEmptyRequired, nodeAdditionalProperties, javaAdditionalProperties);
     }
 
@@ -527,8 +434,6 @@ class DifferentialMcpTest {
         }
         assertTrue(nodeAdditionalProperties.isEmpty(), "Pinned Node must not publish Java-only additionalProperties paths");
     }
-
-    private static final Object MISSING_SCHEMA_VALUE = new Object();
 
     private static Object schemaValue(Object schema, String path) {
         Object current = schema;
@@ -663,7 +568,7 @@ class DifferentialMcpTest {
         Map<String, Object> nodeInterval = intervalSchema(nodeTool);
         Map<String, Object> javaInterval = intervalSchema(javaTool);
         Map<String, Object> expectedNodeSchema = object("type", "object", "properties", object("frames", object("type", "number", "description", "Number of frames to capture, 1..300. Required."), "interval", object("description", "\"frame\" for every render tick (~60 Hz), or milliseconds (number, >= 1). Default \"frame\". Recommended: 50–100 ms unless you specifically need sub-tick detail.", "oneOf", List.of(object("type", "string", "enum", List.of("frame")), object("type", "number", "minimum", BigDecimal.ONE))), "output", object("type", "string", "enum", List.of("grid", "frames"), "description", "\"grid\" (one composed JPEG, default) or \"frames\" (N separate JPEGs)."), "gridCols", object("type", "number", "description", "Columns in grid layout. Default ceil(sqrt(frames)). Only used in \"grid\" mode."), "downscale", object("type", "number", "description", "Integer downscale factor. Default 2 (half each axis)."), "quality", object("type", "number", "description", "JPEG quality in [0.05, 1.0]. Default 0.75. In \"grid\" mode applies once to the composed image.")), "required", List.of("frames"));
-        Map<String, Object> expectedJavaSchema = object("type", "object", "properties", object("frames", object("type", "integer", "description", "Number of frames to capture, 1..300. Required.", "minimum", BigDecimal.ONE, "maximum", BigDecimal.valueOf(300)), "interval", object("description", "Use {kind:\"fixed\",intervalSeconds:0.05} for a fixed cadence, or {kind:\"frame\"} for every render tick (~60 Hz). Default {kind:\"frame\"}.", "oneOf", List.of(object("type", "object", "properties", object("kind", object("type", "string", "const", "frame")), "required", List.of("kind"), "additionalProperties", false), object("type", "object", "properties", object("kind", object("type", "string", "const", "fixed"), "intervalSeconds", object("type", "number", "minimum", new BigDecimal("0.001"))), "required", List.of("kind", "intervalSeconds"), "additionalProperties", false))), "output", object("type", "string", "enum", List.of("grid", "frames"), "description", "\"grid\" (one composed JPEG, default) or \"frames\" (N separate JPEGs).", "default", "grid"), "gridCols", object("type", "integer", "description", "Columns in grid layout. Default max(1, ceil(sqrt(frames))). Only used in \"grid\" mode.", "minimum", BigDecimal.ONE), "downscale", object("type", "integer", "description", "Integer downscale factor. Default 2 (half each axis).", "minimum", BigDecimal.ONE, "default", new java.math.BigInteger("2")), "quality", object("type", "number", "description", "JPEG quality in [0.05, 1.0]. Default 0.75. In \"grid\" mode applies once to the composed image.", "minimum", new BigDecimal("0.05"), "maximum", BigDecimal.ONE, "default", new BigDecimal("0.75"))), "required", List.of("frames"), "additionalProperties", false);
+        Map<String, Object> expectedJavaSchema = object("type", "object", "properties", object("frames", object("type", "integer", "description", "Number of frames to capture, 1..300. Required.", "minimum", BigDecimal.ONE, "maximum", BigDecimal.valueOf(300)), "interval", object("description", "Use {kind:\"fixed\",intervalSeconds:0.05} for a fixed cadence, or {kind:\"frame\"} for every render tick (~60 Hz). Default {kind:\"frame\"}.", "oneOf", List.of(object("type", "object", "properties", object("kind", object("type", "string", "const", "frame")), "required", List.of("kind"), "additionalProperties", false), object("type", "object", "properties", object("kind", object("type", "string", "const", "fixed"), "intervalSeconds", object("type", "number", "minimum", new BigDecimal("0.001"))), "required", List.of("kind", "intervalSeconds"), "additionalProperties", false))), "output", object("type", "string", "enum", List.of("grid", "frames"), "description", "\"grid\" (one composed JPEG, default) or \"frames\" (N separate JPEGs).", "default", "grid"), "gridCols", object("type", "integer", "description", "Columns in grid layout. Default max(1, ceil(sqrt(frames))). Only used in \"grid\" mode.", "minimum", BigDecimal.ONE), "downscale", object("type", "integer", "description", "Integer downscale factor. Default 2 (half each axis).", "minimum", BigDecimal.ONE, "default", new BigInteger("2")), "quality", object("type", "number", "description", "JPEG quality in [0.05, 1.0]. Default 0.75. In \"grid\" mode applies once to the composed image.", "minimum", new BigDecimal("0.05"), "maximum", BigDecimal.ONE, "default", new BigDecimal("0.75"))), "required", List.of("frames"), "additionalProperties", false);
         assertEquals(canonicalJson(expectedNodeSchema), canonicalJson(inputSchema(nodeTool)), "Pinned Node record-video schema changed");
         assertEquals(canonicalJson(expectedJavaSchema), canonicalJson(inputSchema(javaTool)), "Java record-video schema must be the exact typed schema");
         Map<String, Object> expectedNode = object("description", "\"frame\" for every render tick (~60 Hz), or milliseconds (number, >= 1). Default \"frame\". Recommended: 50–100 ms unless you specifically need sub-tick detail.", "oneOf", List.of(object("type", "string", "enum", List.of("frame")), object("type", "number", "minimum", BigDecimal.ONE)));
@@ -704,7 +609,7 @@ class DifferentialMcpTest {
 
     private static Object canonicalJsonValue(Object value) {
         if (value instanceof Map<?, ?> object) {
-            var canonical = new java.util.TreeMap<String, Object>();
+            var canonical = new TreeMap<String, Object>();
             for (Map.Entry<?, ?> entry : object.entrySet()) {
                 canonical.put((String) entry.getKey(), canonicalJsonValue(entry.getValue()));
             }
@@ -1090,6 +995,100 @@ class DifferentialMcpTest {
 
     private static Map<String, Object> map(Object value) {
         return MAPPER.convertValue(value, MAP_TYPE);
+    }
+
+    @Test
+    void matchesThePinnedNodeServerAcrossTheCompleteMcpSurface() throws Exception {
+        List<Scenario> scenarios = scenarios();
+        Path nodeRoot = prepareProcessRoot("node");
+        Path javaRoot = prepareProcessRoot("java");
+
+        try (NodeOracleMaterializer oracle = NodeOracleMaterializer.materialize()) {
+            StaticParityFixture.prepareNode(nodeRoot, oracle);
+            StaticParityFixture.prepareJava(javaRoot);
+            try (ScriptedDebugBridge nodeBridge = ScriptedDebugBridge.start(nodeRoot.resolve("bridge"));
+                 ScriptedDebugBridge javaBridge = ScriptedDebugBridge.start(javaRoot.resolve("bridge"));
+                 McpProcessClient node = McpProcessClient.startAllowingForcedShutdown(configure(oracle.nodeProcess("dist/cli.js", "serve"), nodeRoot, nodeBridge.port()));
+                 McpProcessClient java = McpProcessClient.start(configure(javaProcess(javaRoot), javaRoot, javaBridge.port()))) {
+                Map<String, Map<String, Object>> nodeResponses = new LinkedHashMap<>();
+
+                for (Scenario scenario : scenarios) {
+                    Map<String, Object> nodeResponse = execute(node, scenario, nodeBridge.port(), true);
+                    Map<String, Object> javaResponse = execute(java, scenario, javaBridge.port(), false);
+                    nodeResponses.put(scenario.label(), nodeResponse);
+                    if (scenario.label().equals("runtime-looked-at-entity") || scenario.label().equals("runtime-looked-at-entity-null")) {
+                        String expected = scenario.label().equals("runtime-looked-at-entity") ? "{\n  \"entityId\": 7\n}" : "{\n  \"entityId\": null\n}";
+                        assertEquals(expected, toolText(nodeResponse), "Pinned Node provider-object rendering: " + scenario.label());
+                        assertEquals(expected, toolText(javaResponse), "Java provider-object rendering: " + scenario.label());
+                    }
+                    if (scenario.kind().equals("static")) {
+                        assertStaticOutcome(scenario, nodeResponse, "Node");
+                        assertStaticOutcome(scenario, javaResponse, "Java");
+                    }
+                    if (scenario.kind().equals("initialize")) {
+                        assertInitializeVersions(nodeResponse, javaResponse);
+                    }
+                    switch (scenario.comparison()) {
+                        case "exact" ->
+                                assertEquivalent(scenario, nodeResponse, javaResponse, nodeRoot, javaRoot, nodeBridge.port(), javaBridge.port());
+                        case "find_refs_descriptors" ->
+                                assertDescriptorUpgrade(scenario, nodeResponse, javaResponse, nodeRoot, javaRoot, nodeBridge.port(), javaBridge.port());
+                        case "java_launcher" ->
+                                assertJavaLauncherUpgrade(scenario, nodeResponse, javaResponse, nodeRoot, javaRoot, nodeBridge.port(), javaBridge.port());
+                        case "sdk_input_validation" ->
+                                assertSdkInputValidationUpgrade(scenario, nodeResponse, javaResponse, nodeRoot, javaRoot, nodeBridge.port(), javaBridge.port());
+                        case "typed_catalog" -> assertTypedCatalogUpgrade(nodeResponse, javaResponse);
+                        case "pinned_guide_links" ->
+                                assertCurrentGuideReferences(scenario, nodeResponse, javaResponse, nodeRoot, javaRoot, nodeBridge.port(), javaBridge.port());
+                        case "reviewed_guide" ->
+                                assertReviewedGuide(scenario, nodeResponse, javaResponse, nodeRoot, javaRoot, nodeBridge.port(), javaBridge.port());
+                        default ->
+                                throw new IllegalStateException("Unsupported parity comparison: " + scenario.comparison());
+                    }
+                }
+
+                assertCatalogCoverage(nodeResponses.get("tools-list"), scenarios);
+                assertStaticProcessCoverage(scenarios);
+                assertEquals(normalizeValue(node.awaitQuiescence(), nodeRoot, nodeBridge.port()), normalizeValue(java.awaitQuiescence(), javaRoot, javaBridge.port()), "Node and Java must emit the same MCP notifications and no unmatched responses");
+                assertTrue(bridgeInvocationsEquivalent(nodeBridge.invocations(), javaBridge.invocations()), "Node and Java must make the same DebugBridge calls in the same order, with only the reviewed bridge projections");
+                nodeBridge.assertHealthy();
+                javaBridge.assertHealthy();
+                assertTrue(node.stderr().isBlank(), () -> "Node server STDERR was not clean:\n" + node.stderr());
+                assertTrue(java.stderr().isBlank(), () -> "Java server STDERR was not clean:\n" + java.stderr());
+                nodeBridge.shutdown();
+                javaBridge.shutdown();
+            }
+        }
+    }
+
+    @Test
+    void reviewedBridgeProjectionsRejectUnreviewedRepresentations() {
+        var nodeRecord = new ScriptedDebugBridge.Invocation("record_video", object("frames", 4, "interval", 50, "output", "grid", "gridCols", 2, "downscale", 2, "quality", 0.75));
+        var javaRecord = new ScriptedDebugBridge.Invocation("record_video", object("frames", 4, "interval", 50.0, "output", "grid", "gridCols", 2, "downscale", 2, "quality", 0.75));
+        assertTrue(bridgeInvocationsEquivalent(List.of(nodeRecord), List.of(javaRecord)), "The reviewed 50 / 50.0 record-video pair must compare equal");
+
+        var nodeUnreviewedRecord = new ScriptedDebugBridge.Invocation("record_video", object("frames", 4, "interval", 51, "output", "grid", "gridCols", 2, "downscale", 2, "quality", 0.75));
+        var javaUnreviewedRecord = new ScriptedDebugBridge.Invocation("record_video", object("frames", 4, "interval", 51.0, "output", "grid", "gridCols", 2, "downscale", 2, "quality", 0.75));
+        assertFalse(bridgeInvocationsEquivalent(List.of(nodeUnreviewedRecord), List.of(javaUnreviewedRecord)), "An unreviewed 51 / 51.0 record-video pair must not compare equal");
+
+        var nodeEntityItem = new ScriptedDebugBridge.Invocation("getEntityItemTexture", object("entityId", 7, "slot", "mainhand"));
+        var javaEntityItem = new ScriptedDebugBridge.Invocation("getEntityItemTexture", object("entityId", 7, "slot", "MAINHAND"));
+        assertTrue(bridgeInvocationsEquivalent(List.of(nodeEntityItem), List.of(javaEntityItem)), "The reviewed mainhand / MAINHAND entity-item pair must compare equal");
+
+        var nodeUnreviewedEntityItem = new ScriptedDebugBridge.Invocation("getEntityItemTexture", object("entityId", 7, "slot", "head"));
+        var javaUnreviewedEntityItem = new ScriptedDebugBridge.Invocation("getEntityItemTexture", object("entityId", 7, "slot", "HEAD"));
+        assertFalse(bridgeInvocationsEquivalent(List.of(nodeUnreviewedEntityItem), List.of(javaUnreviewedEntityItem)), "An unreviewed slot spelling must not compare equal");
+    }
+
+    private Path prepareProcessRoot(String name) throws IOException {
+        Path root = temporaryDirectory.resolve(name).toAbsolutePath().normalize();
+        Files.createDirectories(root.resolve("home"));
+        Files.createDirectories(root.resolve("local-app-data"));
+        Files.createDirectories(root.resolve("roaming-app-data"));
+        Files.createDirectories(root.resolve("xdg-cache"));
+        Files.createDirectories(root.resolve("tmp"));
+        Files.createDirectories(root.resolve("bridge"));
+        return root;
     }
 
     private enum StaticOutcome {

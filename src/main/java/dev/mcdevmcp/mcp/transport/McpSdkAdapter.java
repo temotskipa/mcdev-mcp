@@ -8,6 +8,7 @@ import dev.mcdevmcp.mcp.tool.ToolDefinition;
 import dev.mcdevmcp.mcp.tool.api.StructuredToolResult;
 import dev.mcdevmcp.mcp.tool.api.ToolBinding;
 import dev.mcdevmcp.mcp.tool.api.ToolResult;
+import dev.mcdevmcp.support.ScopeOutcomes;
 import io.modelcontextprotocol.json.McpJsonMapper;
 import io.modelcontextprotocol.server.McpAsyncServer;
 import io.modelcontextprotocol.server.McpAsyncServerExchange;
@@ -149,13 +150,11 @@ public final class McpSdkAdapter {
                 return null;
             });
             scope.join();
-        } catch (StructuredTaskScope.TimeoutException exception) {
-            throw new IllegalStateException(description + " did not close within " + STREAMABLE_CLOSE_TIMEOUT, exception);
-        } catch (InterruptedException exception) {
-            Thread.currentThread().interrupt();
-            throw new IllegalStateException("Interrupted while closing " + description, exception);
-        } catch (StructuredTaskScope.FailedException exception) {
-            Throwable cause = exception.getCause();
+        } catch (ExecutionException exception) {
+            if (ScopeOutcomes.timedOut(exception)) {
+                throw new IllegalStateException(description + " did not close within " + STREAMABLE_CLOSE_TIMEOUT, exception);
+            }
+            Throwable cause = ScopeOutcomes.cause(exception);
             if (cause instanceof Error error) {
                 throw error;
             }
@@ -163,6 +162,9 @@ public final class McpSdkAdapter {
                 throw runtimeException;
             }
             throw new IllegalStateException("Unable to close " + description, cause);
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("Interrupted while closing " + description, exception);
         }
     }
 
@@ -200,8 +202,8 @@ public final class McpSdkAdapter {
                             return McpSchema.ReadResourceResult.builder(List.of(contents)).build();
                         });
                         result.complete(scope.join());
-                    } catch (StructuredTaskScope.FailedException exception) {
-                        Throwable cause = exception.getCause() == null ? exception : exception.getCause();
+                    } catch (ExecutionException exception) {
+                        Throwable cause = ScopeOutcomes.cause(exception);
                         result.completeExceptionally(cause);
                         if (cause instanceof Error error) {
                             throw error;

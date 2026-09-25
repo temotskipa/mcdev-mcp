@@ -2,9 +2,9 @@ package dev.mcdevmcp.storage;
 
 import dev.mcdevmcp.storage.callgraph.CallgraphCleaner;
 import dev.mcdevmcp.storage.h2.IndexCleaner;
-import dev.mcdevmcp.storage.model.MinecraftVersion;
-import dev.mcdevmcp.storage.migration.VersionOperationLease;
 import dev.mcdevmcp.storage.migration.CachePathBoundary;
+import dev.mcdevmcp.storage.migration.VersionOperationLease;
+import dev.mcdevmcp.storage.model.MinecraftVersion;
 
 import java.io.IOException;
 import java.nio.file.*;
@@ -46,7 +46,20 @@ public final class CacheCleaner {
         }
     }
 
-    private void collectVersions(Path root, java.util.Map<String, MinecraftVersion> versions, boolean indexRoot) throws IOException {
+    private static boolean isPersistentLockScaffold(Path relative, Path candidate, boolean indexRoot) {
+        if (Files.isSymbolicLink(candidate)) {
+            return false;
+        }
+        if (indexRoot) {
+            return Files.isRegularFile(candidate, LinkOption.NOFOLLOW_LINKS) && relative.equals(Path.of("symbols.mv.db.lock"));
+        }
+        if (Files.isDirectory(candidate, LinkOption.NOFOLLOW_LINKS)) {
+            return relative.equals(Path.of("indexes")) || relative.equals(Path.of("indexes", "callgraph"));
+        }
+        return Files.isRegularFile(candidate, LinkOption.NOFOLLOW_LINKS) && relative.equals(Path.of("indexes", "callgraph", "publication.lock"));
+    }
+
+    private void collectVersions(Path root, Map<String, MinecraftVersion> versions, boolean indexRoot) throws IOException {
         if (!Files.exists(root, LinkOption.NOFOLLOW_LINKS)) {
             return;
         }
@@ -92,19 +105,6 @@ public final class CacheCleaner {
             }
         }
         return foundScaffold;
-    }
-
-    private static boolean isPersistentLockScaffold(Path relative, Path candidate, boolean indexRoot) {
-        if (Files.isSymbolicLink(candidate)) {
-            return false;
-        }
-        if (indexRoot) {
-            return Files.isRegularFile(candidate, LinkOption.NOFOLLOW_LINKS) && relative.equals(Path.of("symbols.mv.db.lock"));
-        }
-        if (Files.isDirectory(candidate, LinkOption.NOFOLLOW_LINKS)) {
-            return relative.equals(Path.of("indexes")) || relative.equals(Path.of("indexes", "callgraph"));
-        }
-        return Files.isRegularFile(candidate, LinkOption.NOFOLLOW_LINKS) && relative.equals(Path.of("indexes", "callgraph", "publication.lock"));
     }
 
     private void deleteCacheArtifacts(Path root) throws IOException {

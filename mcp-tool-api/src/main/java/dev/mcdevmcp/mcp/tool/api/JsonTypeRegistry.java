@@ -44,18 +44,6 @@ public final class JsonTypeRegistry {
         return STANDARD;
     }
 
-    public Optional<JsonLogicalType<?>> find(Type exactType) {
-        return Optional.ofNullable(byType.get(Objects.requireNonNull(exactType, "exactType")));
-    }
-
-    public Optional<JsonLogicalType<?>> find(TypeRef<?> exactType) {
-        return find(Objects.requireNonNull(exactType, "exactType").getType());
-    }
-
-    public Optional<JsonLogicalType<?>> find(String logicalId) {
-        return Optional.ofNullable(byId.get(Objects.requireNonNull(logicalId, "logicalId")));
-    }
-
     private static void validateType(Type type, Set<Type> activeTypes) {
         Objects.requireNonNull(type, "type");
         switch (type) {
@@ -158,5 +146,17 @@ public final class JsonTypeRegistry {
             return false;
         }
         return declaringClass.getTypeParameters().length != 0 || capturesGenericNonStaticOwner(declaringClass);
+    }
+
+    public Optional<JsonLogicalType<?>> find(Type exactType) {
+        return Optional.ofNullable(byType.get(Objects.requireNonNull(exactType, "exactType")));
+    }
+
+    public Optional<JsonLogicalType<?>> find(TypeRef<?> exactType) {
+        return find(Objects.requireNonNull(exactType, "exactType").getType());
+    }
+
+    public Optional<JsonLogicalType<?>> find(String logicalId) {
+        return Optional.ofNullable(byId.get(Objects.requireNonNull(logicalId, "logicalId")));
     }
 }

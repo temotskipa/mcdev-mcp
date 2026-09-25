@@ -1,7 +1,7 @@
 package dev.mcdevmcp.tools.statictool;
 
-import dev.mcdevmcp.mcp.tool.api.ToolBinding;
 import dev.mcdevmcp.mcp.tool.ToolDeclaration;
+import dev.mcdevmcp.mcp.tool.api.ToolBinding;
 import dev.mcdevmcp.storage.PlatformPaths;
 
 import java.util.LinkedHashMap;

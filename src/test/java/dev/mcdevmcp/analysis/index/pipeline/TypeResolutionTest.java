@@ -14,6 +14,9 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.jar.JarEntry;
+import java.util.jar.JarOutputStream;
+import java.util.zip.ZipFile;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -56,12 +59,12 @@ class TypeResolutionTest {
         Path original = IndexerTestSupport.createJar(temporaryDirectory.resolve("original.jar"), Map.of("duplicate/Type.java", "package duplicate; public class Type {}"));
         Path duplicate = temporaryDirectory.resolve("duplicate.jar");
         byte[] classBytes;
-        try (var zip = new java.util.zip.ZipFile(original.toFile())) {
+        try (var zip = new ZipFile(original.toFile())) {
             classBytes = zip.getInputStream(zip.getEntry("duplicate/Type.class")).readAllBytes();
         }
-        try (var output = new java.util.jar.JarOutputStream(java.nio.file.Files.newOutputStream(duplicate))) {
+        try (var output = new JarOutputStream(Files.newOutputStream(duplicate))) {
             for (String name : List.of("duplicate/Type.class", "other/Name.class")) {
-                output.putNextEntry(new java.util.jar.JarEntry(name));
+                output.putNextEntry(new JarEntry(name));
                 output.write(classBytes);
                 output.closeEntry();
             }

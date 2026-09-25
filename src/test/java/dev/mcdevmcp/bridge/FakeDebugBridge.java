@@ -31,13 +31,13 @@ final class FakeDebugBridge {
         return Path.of("run").toAbsolutePath().normalize().toString();
     }
 
-    BridgeClient client() {
-        BridgeJson json = new BridgeJson(McpJsonDefaults.getMapper());
-        return BridgeClient.testing(json, request -> CompletableFuture.completedFuture(new BridgeResponse(request.id(), true, true, request.endpoint().wireName().equals("status") ? status : wirePayload(json, request.payload()), "", null)));
-    }
-
     private static Map<String, Object> wirePayload(BridgeJson json, BridgePayload payload) {
         return json.mapper().convertValue(payload, new TypeRef<>() {
         });
+    }
+
+    BridgeClient client() {
+        BridgeJson json = new BridgeJson(McpJsonDefaults.getMapper());
+        return BridgeClient.testing(json, request -> CompletableFuture.completedFuture(new BridgeResponse(request.id(), true, true, request.endpoint().wireName().equals("status") ? status : wirePayload(json, request.payload()), "", null)));
     }
 }

@@ -33,7 +33,7 @@ public final class ToolHandlers {
                 try (var scope = StructuredTaskScope.open(StructuredTaskScope.Joiner.<T>anySuccessfulOrThrow(), config -> config.withName("mcp-tool-blocking"))) {
                     scope.fork(work);
                     result.complete(scope.join());
-                } catch (StructuredTaskScope.FailedException exception) {
+                } catch (ExecutionException exception) {
                     Throwable cause = exception.getCause() == null ? exception : exception.getCause();
                     result.completeExceptionally(cause);
                     if (cause instanceof Error error) {

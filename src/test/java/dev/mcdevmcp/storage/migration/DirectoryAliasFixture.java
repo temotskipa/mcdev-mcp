@@ -1,6 +1,7 @@
 package dev.mcdevmcp.storage.migration;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
@@ -20,7 +21,7 @@ public final class DirectoryAliasFixture {
             try {
                 if (!process.waitFor(10, TimeUnit.SECONDS)) throw new IOException("Junction creation timed out");
                 if (process.exitValue() != 0) {
-                    throw new IOException("Junction creation failed: " + new String(process.getInputStream().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8));
+                    throw new IOException("Junction creation failed: " + new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8));
                 }
             } finally {
                 if (process.isAlive()) {

@@ -20,7 +20,7 @@ permissions:
 
 jobs:
   benchmark:
-    name: Java 26 corpus qualification and benchmark
+    name: Preview JDK corpus qualification and benchmark
     runs-on: [ self-hosted, linux, x64, mcdev-benchmark ]
     permissions:
       contents: read
@@ -36,20 +36,31 @@ jobs:
           path: .superpowers/parity/benchmark-node-oracle
           fetch-depth: 1
           persist-credentials: false
-      - name: Install Temurin 26
+      - name: Read the preview Java feature
+        id: preview-java
+        shell: bash
+        run: |
+          set -euo pipefail
+          feature="$(sed -n 's/^javaFeature=//p' gradle.properties)"
+          test -n "$feature"
+          echo "feature=$feature" >> "$GITHUB_OUTPUT"
+      - name: Install the preview JDK
         uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
         with:
           distribution: temurin
-          java-version: '26'
+          java-version: ${{ steps.preview-java.outputs.feature }}
       - name: Install the frozen-oracle Node runtime
         uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version: '24'
-      - name: Preserve Java 26 location and identify the physical runner
+      - name: Preserve the preview JDK location and identify the physical runner
         shell: bash
         run: |
           set -euo pipefail
-          echo "JAVA_HOME_26=$JAVA_HOME" >> "$GITHUB_ENV"
+          feature="$(sed -n 's/^javaFeature=//p' gradle.properties)"
+          test -n "$feature"
+          echo "PREVIEW_JAVA_FEATURE=$feature" >> "$GITHUB_ENV"
+          echo "PREVIEW_JAVA_HOME=$JAVA_HOME" >> "$GITHUB_ENV"
           test -s /etc/machine-id
           machine_id="$({ cat /etc/machine-id; lscpu | sed -n '/^Architecture:/p;/^Model name:/p;/^CPU(s):/p'; } | sha256sum | cut -d' ' -f1)"
           echo "MACHINE_ID=$machine_id" >> "$GITHUB_ENV"
@@ -57,11 +68,11 @@ jobs:
           if (( workers > 4 )); then workers=4; fi
           if (( workers < 1 )); then workers=1; fi
           echo "MAX_WORKERS=$workers" >> "$GITHUB_ENV"
-      - name: Build the Java 26 benchmark executable once
+      - name: Build the benchmark executable once
         shell: bash
         run: |
           set -euo pipefail
-          export JAVA_HOME="$JAVA_HOME_26"
+          export JAVA_HOME="$PREVIEW_JAVA_HOME"
           export PATH="$JAVA_HOME/bin:$PATH"
           ./gradlew clean benchmarkBundle --rerun-tasks --no-build-cache --no-configuration-cache --console=plain
           mkdir benchmark-runtime
@@ -72,7 +83,7 @@ jobs:
       - name: Preserve the benchmark producer bytes for canonical hash verification
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: benchmark-java26-producer-${{ github.run_number }}-${{ github.run_attempt }}
+          name: benchmark-producer-${{ github.run_number }}-${{ github.run_attempt }}
           path: |
             build/bundles/mcdev-mcp-benchmark-*.zip
             benchmark-runtime/server/mcdev-mcp-*.jar
@@ -378,7 +389,7 @@ jobs:
             test "$(jq -er '.nodeCallgraphSha256' "$reviewed_baseline")" = "$(sha256sum "$node_callgraph" | cut -d' ' -f1)"
           done < "$BENCHMARK_ROOT/prepared.tsv"
           test -z "$(git -C "$oracle_source" status --porcelain=v1 --untracked-files=all)"
-      - name: Qualify complete corpora on Java 26 and worker counts
+      - name: Qualify complete corpora on the preview JDK and worker counts
         shell: bash
         run: |
           set -euo pipefail
@@ -389,8 +400,8 @@ jobs:
           if (( MAX_WORKERS > 1 )); then worker_counts+=("$MAX_WORKERS"); fi
           while IFS=$'\t' read -r id version source remapped baseline node_callgraph expectation production_cache classpath_manifest classpath_hash classpath_identity; do
             hashes=()
-            for feature in 26; do
-              java_home="$JAVA_HOME_26"
+            for feature in "$PREVIEW_JAVA_FEATURE"; do
+              java_home="$PREVIEW_JAVA_HOME"
               for workers in "${worker_counts[@]}"; do
                 output="$BENCHMARK_ROOT/reports/qualification/$id/java$feature-workers$workers"
                 mkdir -p "$output"
@@ -416,23 +427,23 @@ jobs:
             done
             test "$(printf '%s\n' "${hashes[@]}" | sort -u | wc -l)" -eq 1
           done < "$BENCHMARK_ROOT/prepared.tsv"
-      - name: Run the blocking Java 26 default-G1 benchmark
+      - name: Run the blocking default-G1 benchmark
         shell: bash
         run: |
           set -euo pipefail
           jar="$(find benchmark-runtime/server -maxdepth 1 -name 'mcdev-mcp-*.jar' -type f -print -quit)"
           classpath="benchmark-runtime/harness:$jar"
           while IFS=$'\t' read -r id version source remapped baseline node_callgraph expectation production_cache classpath_manifest classpath_hash classpath_identity; do
-            output="$BENCHMARK_ROOT/reports/g1/$id/java26"
+            output="$BENCHMARK_ROOT/reports/g1/$id/java$PREVIEW_JAVA_FEATURE"
             mkdir -p "$output"
             test "$(sha256sum "$classpath_manifest" | cut -d' ' -f1)" = "$classpath_hash"
-            "$JAVA_HOME_26/bin/java" --enable-preview -cp "$classpath" \
+            "$PREVIEW_JAVA_HOME/bin/java" --enable-preview -cp "$classpath" \
               dev.mcdevmcp.benchmark.AnalysisBenchmarkMain \
               --minecraft-version "$version" --source-root "$source" \
               --remapped-jar "$remapped" --server-jar "$jar" --output-root "$output" \
               --classpath-manifest "$classpath_manifest" \
               --production-cache-root "$production_cache" --workers "$MAX_WORKERS" \
-              --machine-id "$MACHINE_ID" --run-id "$GITHUB_RUN_NUMBER-$id-java26" --gc G1
+              --machine-id "$MACHINE_ID" --run-id "$GITHUB_RUN_NUMBER-$id-java$PREVIEW_JAVA_FEATURE" --gc G1
             report="$(find "$output" -maxdepth 1 -name 'benchmark-*.json' -type f -print -quit)"
             test -n "$report"
             test "$(sha256sum "$classpath_manifest" | cut -d' ' -f1)" = "$classpath_hash"
@@ -442,8 +453,8 @@ jobs:
                .classpath.identity == $identity and .classpath.manifestSha256 == $hash and
                .classpath.metadataSha256 == $manifest[0].metadataSha256 and
                .classpath.artifacts == $manifest[0].artifacts' "$report" >/dev/null
-            test "$(jq -er '.runtime.javaFeature' "$report")" -eq 26
-            test "$(jq -er '.result.javaFeature' "$report")" -eq 26
+            test "$(jq -er '.runtime.javaFeature' "$report")" -eq "$PREVIEW_JAVA_FEATURE"
+            test "$(jq -er '.result.javaFeature' "$report")" -eq "$PREVIEW_JAVA_FEATURE"
             test "$(jq -er '.serverJarSha256' "$report")" = "$BENCHMARK_JAR_SHA256"
           done < "$BENCHMARK_ROOT/prepared.tsv"
           printf '%s\n' "$MACHINE_ID" > "$BENCHMARK_ROOT/reports/g1/machine-id.txt"
@@ -455,16 +466,16 @@ jobs:
           jar="$(find benchmark-runtime/server -maxdepth 1 -name 'mcdev-mcp-*.jar' -type f -print -quit)"
           classpath="benchmark-runtime/harness:$jar"
           while IFS=$'\t' read -r id version source remapped baseline node_callgraph expectation production_cache classpath_manifest classpath_hash classpath_identity; do
-            output="$BENCHMARK_ROOT/reports/parallel-gc/$id/java26"
+            output="$BENCHMARK_ROOT/reports/parallel-gc/$id/java$PREVIEW_JAVA_FEATURE"
             mkdir -p "$output"
             test "$(sha256sum "$classpath_manifest" | cut -d' ' -f1)" = "$classpath_hash"
-            "$JAVA_HOME_26/bin/java" --enable-preview -cp "$classpath" \
+            "$PREVIEW_JAVA_HOME/bin/java" --enable-preview -cp "$classpath" \
               dev.mcdevmcp.benchmark.AnalysisBenchmarkMain \
               --minecraft-version "$version" --source-root "$source" \
               --remapped-jar "$remapped" --server-jar "$jar" --output-root "$output" \
               --classpath-manifest "$classpath_manifest" \
               --production-cache-root "$production_cache" --workers "$MAX_WORKERS" \
-              --machine-id "$MACHINE_ID" --run-id "$GITHUB_RUN_NUMBER-$id-java26-parallel" --gc PARALLEL
+              --machine-id "$MACHINE_ID" --run-id "$GITHUB_RUN_NUMBER-$id-java$PREVIEW_JAVA_FEATURE-parallel" --gc PARALLEL
             report="$(find "$output" -maxdepth 1 -name 'benchmark-*.json' -type f -print -quit)"
             test -n "$report"
             test "$(sha256sum "$classpath_manifest" | cut -d' ' -f1)" = "$classpath_hash"
@@ -474,8 +485,8 @@ jobs:
                .classpath.identity == $identity and .classpath.manifestSha256 == $hash and
                .classpath.metadataSha256 == $manifest[0].metadataSha256 and
                .classpath.artifacts == $manifest[0].artifacts' "$report" >/dev/null
-            test "$(jq -er '.runtime.javaFeature' "$report")" -eq 26
-            test "$(jq -er '.result.javaFeature' "$report")" -eq 26
+            test "$(jq -er '.runtime.javaFeature' "$report")" -eq "$PREVIEW_JAVA_FEATURE"
+            test "$(jq -er '.result.javaFeature' "$report")" -eq "$PREVIEW_JAVA_FEATURE"
             test "$(jq -er '.serverJarSha256' "$report")" = "$BENCHMARK_JAR_SHA256"
           done < "$BENCHMARK_ROOT/prepared.tsv"
       - name: Summarize manual advisory results
@@ -484,7 +495,7 @@ jobs:
         run: |
           {
             printf '### Manual advisory benchmark\n\n'
-            printf 'This run is advisory only; Java 26 remains the sole release runtime.\n'
+            printf 'This run is advisory only; the preview JDK remains the sole release runtime.\n'
           } >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
@@ -499,7 +510,7 @@ jobs:
           retention-days: 90
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: benchmark-java26
+          name: benchmark-preview
           path: ${{ env.BENCHMARK_ROOT }}/reports/**
           if-no-files-found: error
           retention-days: 90

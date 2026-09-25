@@ -2,7 +2,9 @@ package dev.mcdevmcp.mcp.transport;
 
 import dev.mcdevmcp.mcp.McpContractTestSupport;
 import dev.mcdevmcp.mcp.resource.ResourceCatalog;
-import dev.mcdevmcp.mcp.tool.*;
+import dev.mcdevmcp.mcp.tool.TestEmptyArguments;
+import dev.mcdevmcp.mcp.tool.ToolAvailability;
+import dev.mcdevmcp.mcp.tool.ToolDefinition;
 import dev.mcdevmcp.mcp.tool.api.*;
 import dev.mcdevmcp.support.AppVersion;
 import io.modelcontextprotocol.json.McpJsonDefaults;
@@ -14,6 +16,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
@@ -97,7 +100,7 @@ class McpStdioIntegrationTest {
         var process = processBuilder.start();
         try {
             var writer = new OutputStreamWriter(process.getOutputStream(), StandardCharsets.UTF_8);
-            try (var reader = new BufferedReader(new java.io.InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
+            try (var reader = new BufferedReader(new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
                 try {
                     write(writer, request(1, "initialize", initializeParams()));
                     var initialize = readJsonLine(reader);

@@ -23,6 +23,14 @@ class JavacBatchPartitionTest {
     @TempDir
     Path temporaryDirectory;
 
+    private static List<Integer> sizes(List<List<DecodedSource>> batches) {
+        return batches.stream().map(List::size).toList();
+    }
+
+    private static List<DecodedSource> flatten(List<List<DecodedSource>> batches) {
+        return batches.stream().flatMap(List::stream).toList();
+    }
+
     @Test
     void emptyAndUnitBoundaryPlansHaveExactOrderedCoverage() {
         assertTrue(JavacSourceParser.partition(List.of()).isEmpty());
@@ -95,13 +103,5 @@ class JavacBatchPartitionTest {
     private DecodedSource source(String name, String content) {
         SourceRoot root = new SourceRoot(SourceNamespace.MINECRAFT, Optional.empty(), temporaryDirectory);
         return new DecodedSource(root, temporaryDirectory.resolve(name), Path.of(name), name, content, URI.create("memory:/" + name), "", List.of());
-    }
-
-    private static List<Integer> sizes(List<List<DecodedSource>> batches) {
-        return batches.stream().map(List::size).toList();
-    }
-
-    private static List<DecodedSource> flatten(List<List<DecodedSource>> batches) {
-        return batches.stream().flatMap(List::stream).toList();
     }
 }

@@ -2,6 +2,7 @@ package dev.mcdevmcp.storage.callgraph;
 
 import dev.mcdevmcp.storage.bundle.BundleLock;
 import dev.mcdevmcp.storage.model.MinecraftVersion;
+import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
@@ -17,7 +18,7 @@ final class CallgraphCleanerTest {
         try {
             Files.createSymbolicLink(link, target);
         } catch (IOException | UnsupportedOperationException | SecurityException exception) {
-            org.junit.jupiter.api.Assumptions.assumeTrue(false, "Symbolic links are unavailable: " + exception.getMessage());
+            Assumptions.assumeTrue(false, "Symbolic links are unavailable: " + exception.getMessage());
         }
     }
 

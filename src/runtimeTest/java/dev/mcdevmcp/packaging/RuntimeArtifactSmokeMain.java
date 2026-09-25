@@ -6,6 +6,8 @@ import dev.mcdevmcp.analysis.decompile.MinecraftRemapper;
 import dev.mcdevmcp.mcp.McpServerFactory;
 import dev.mcdevmcp.mcp.tool.ToolDefinition;
 import dev.mcdevmcp.support.AppEnvironment;
+import dev.mcdevmcp.support.RequiredRuntime;
+import dev.mcdevmcp.support.ScopeOutcomes;
 import io.modelcontextprotocol.json.McpJsonDefaults;
 import io.modelcontextprotocol.json.TypeRef;
 
@@ -28,6 +30,7 @@ import java.sql.Driver;
 import java.sql.DriverManager;
 import java.time.Duration;
 import java.util.*;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.StructuredTaskScope;
 import java.util.concurrent.TimeUnit;
 import java.util.jar.*;
@@ -64,7 +67,7 @@ public final class RuntimeArtifactSmokeMain {
         int feature = Runtime.version().feature();
         String vendor = System.getProperty("java.vendor", "").strip();
         String vm = System.getProperty("java.vm.name", "").strip();
-        require(feature == 26, "Runtime must be Java 26 with --enable-preview, got " + feature);
+        require(feature == RequiredRuntime.FEATURE, RequiredRuntime.previewRequirement() + ", got " + feature);
         require(ManagementFactory.getRuntimeMXBean().getInputArguments().contains("--enable-preview"), "Runtime smoke requires --enable-preview");
         require(!vendor.isEmpty(), "Runtime vendor is unavailable");
         require(!vm.isEmpty(), "Runtime VM name is unavailable");
@@ -238,8 +241,11 @@ public final class RuntimeArtifactSmokeMain {
             require(exit.get() == 0, "Exact JAR CLI exited with " + exit.get());
             require(version.equals(output.get().strip()), "Exact JAR CLI version differs from its manifest");
             require(errors.get().isBlank(), "Exact JAR CLI emitted diagnostics");
-        } catch (StructuredTaskScope.TimeoutException exception) {
-            throw new IllegalStateException("Exact JAR CLI did not stop before its deadline", exception);
+        } catch (ExecutionException exception) {
+            if (ScopeOutcomes.timedOut(exception)) {
+                throw new IllegalStateException("Exact JAR CLI did not stop before its deadline", exception);
+            }
+            throw exception;
         } finally {
             stopProcess(process);
         }
@@ -324,8 +330,11 @@ public final class RuntimeArtifactSmokeMain {
             String response = scope.join();
             require(response != null, "Exact JAR STDIO server closed before answering " + operation);
             return McpJsonDefaults.getMapper().readValue(response, MAP_TYPE);
-        } catch (StructuredTaskScope.TimeoutException exception) {
-            throw new IllegalStateException("Exact JAR did not answer " + operation + " before its deadline", exception);
+        } catch (ExecutionException exception) {
+            if (ScopeOutcomes.timedOut(exception)) {
+                throw new IllegalStateException("Exact JAR did not answer " + operation + " before its deadline", exception);
+            }
+            throw exception;
         }
     }
 

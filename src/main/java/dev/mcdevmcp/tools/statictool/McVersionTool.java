@@ -2,18 +2,18 @@ package dev.mcdevmcp.tools.statictool;
 
 import dev.mcdevmcp.app.MinecraftVersionValidator;
 import dev.mcdevmcp.mcp.tool.ToolDeclaration;
-import dev.mcdevmcp.mcp.tool.api.ToolBinding;
 import dev.mcdevmcp.mcp.tool.api.ContentToolResult;
+import dev.mcdevmcp.mcp.tool.api.ToolBinding;
 import dev.mcdevmcp.mcp.tool.api.ToolResult;
-import dev.mcdevmcp.storage.callgraph.CallgraphRepository;
 import dev.mcdevmcp.storage.CacheCleaner;
-import dev.mcdevmcp.storage.migration.VersionOperationLease;
+import dev.mcdevmcp.storage.callgraph.CallgraphRepository;
 import dev.mcdevmcp.storage.migration.CachePathBoundary;
+import dev.mcdevmcp.storage.migration.VersionOperationLease;
 import dev.mcdevmcp.storage.model.MinecraftVersion;
 import dev.mcdevmcp.support.AppVersion;
 
-import java.nio.file.Files;
 import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.util.ArrayList;
 

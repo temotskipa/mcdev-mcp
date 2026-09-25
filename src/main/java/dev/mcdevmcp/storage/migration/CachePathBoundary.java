@@ -41,6 +41,14 @@ public final class CachePathBoundary {
         return boundary;
     }
 
+    private static BasicFileAttributes directory(Path path) throws IOException {
+        BasicFileAttributes attributes = Files.readAttributes(path, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
+        if (!attributes.isDirectory() || attributes.isSymbolicLink() || attributes.isOther()) {
+            throw new IOException("Cache boundary must be a real directory: " + path);
+        }
+        return attributes;
+    }
+
     public Path physicalRoot() {
         return physicalRoot;
     }
@@ -98,13 +106,5 @@ public final class CachePathBoundary {
             }
         }
         return resolved;
-    }
-
-    private static BasicFileAttributes directory(Path path) throws IOException {
-        BasicFileAttributes attributes = Files.readAttributes(path, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
-        if (!attributes.isDirectory() || attributes.isSymbolicLink() || attributes.isOther()) {
-            throw new IOException("Cache boundary must be a real directory: " + path);
-        }
-        return attributes;
     }
 }

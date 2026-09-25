@@ -1,48 +1,29 @@
 package dev.mcdevmcp.mcp.tool;
 
-import com.sun.source.tree.AnnotationTree;
-import com.sun.source.tree.ClassTree;
-import com.sun.source.tree.CompilationUnitTree;
-import com.sun.source.tree.IdentifierTree;
-import com.sun.source.tree.MemberSelectTree;
-import com.sun.source.tree.MethodTree;
-import com.sun.source.tree.MethodInvocationTree;
-import com.sun.source.tree.NewClassTree;
-import com.sun.source.tree.Tree;
-import com.sun.source.tree.TypeCastTree;
-import com.sun.source.tree.ParameterizedTypeTree;
-import com.sun.source.tree.VariableTree;
+import com.sun.source.tree.*;
 import com.sun.source.util.JavacTask;
 import com.sun.source.util.TreePath;
 import com.sun.source.util.TreePathScanner;
 import com.sun.source.util.Trees;
+import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
-import javax.lang.model.element.AnnotationMirror;
-import javax.lang.model.element.AnnotationValue;
-import javax.lang.model.element.Element;
-import javax.lang.model.element.ElementKind;
-import javax.lang.model.element.ExecutableElement;
-import javax.lang.model.element.Modifier;
-import javax.lang.model.element.TypeElement;
+import javax.lang.model.element.*;
 import javax.lang.model.type.DeclaredType;
 import javax.lang.model.type.TypeKind;
 import javax.lang.model.type.TypeMirror;
 import javax.lang.model.util.Types;
-import javax.tools.Diagnostic;
-import javax.tools.DiagnosticCollector;
-import javax.tools.JavaCompiler;
-import javax.tools.JavaFileObject;
-import javax.tools.StandardJavaFileManager;
-import javax.tools.ToolProvider;
+import javax.tools.*;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
+import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
@@ -55,6 +36,63 @@ class TypedOutputBindingSourceGuardTest {
 
     @TempDir
     Path temporaryDirectory;
+
+    private static void assertSafe(List<Path> sources) throws IOException {
+        JavaCompiler compiler = Objects.requireNonNull(ToolProvider.getSystemJavaCompiler(), "JDK compiler is required for source guards");
+        DiagnosticCollector<JavaFileObject> diagnostics = new DiagnosticCollector<>();
+        List<String> options = List.of("--source", Integer.toString(Runtime.version().feature()), "--enable-preview", "-proc:none", "-classpath", Objects.requireNonNull(System.getProperty("java.class.path"), "test classpath"));
+        try (StandardJavaFileManager fileManager = compiler.getStandardFileManager(diagnostics, Locale.ROOT, StandardCharsets.UTF_8)) {
+            JavacTask task = (JavacTask) compiler.getTask(null, fileManager, diagnostics, options, null, fileManager.getJavaFileObjectsFromPaths(sources));
+            List<CompilationUnitTree> units = new ArrayList<>();
+            task.parse().forEach(units::add);
+            try {
+                task.analyze();
+            } catch (RuntimeException exception) {
+                throw new AssertionError("Javac attribution failed for typed output source guard:\n" + renderDiagnostics(diagnostics), exception);
+            }
+            if (diagnostics.getDiagnostics().stream().anyMatch(diagnostic -> diagnostic.getKind() == Diagnostic.Kind.ERROR)) {
+                throw new AssertionError("Javac attribution produced errors for typed output source guard:\n" + renderDiagnostics(diagnostics));
+            }
+            SourceScanner scanner = new SourceScanner(Trees.instance(task));
+            for (CompilationUnitTree unit : units) {
+                scanner.scan(unit, sourceOf(unit));
+            }
+        }
+    }
+
+    private static void assertNoResultMetadata(List<Path> sources) throws IOException {
+        JavaCompiler compiler = Objects.requireNonNull(ToolProvider.getSystemJavaCompiler(), "JDK compiler is required for source guards");
+        DiagnosticCollector<JavaFileObject> diagnostics = new DiagnosticCollector<>();
+        List<String> options = List.of("--source", Integer.toString(Runtime.version().feature()), "--enable-preview", "-proc:none", "-classpath", Objects.requireNonNull(System.getProperty("java.class.path"), "test classpath"));
+        try (StandardJavaFileManager fileManager = compiler.getStandardFileManager(diagnostics, Locale.ROOT, StandardCharsets.UTF_8)) {
+            JavacTask task = (JavacTask) compiler.getTask(null, fileManager, diagnostics, options, null, fileManager.getJavaFileObjectsFromPaths(sources));
+            List<CompilationUnitTree> units = new ArrayList<>();
+            task.parse().forEach(units::add);
+            try {
+                task.analyze();
+            } catch (RuntimeException exception) {
+                throw new AssertionError("Javac attribution failed for result metadata guard:\n" + renderDiagnostics(diagnostics), exception);
+            }
+            if (diagnostics.getDiagnostics().stream().anyMatch(diagnostic -> diagnostic.getKind() == Diagnostic.Kind.ERROR)) {
+                throw new AssertionError("Javac attribution produced errors for result metadata guard:\n" + renderDiagnostics(diagnostics));
+            }
+            ResultMetadataScanner scanner = new ResultMetadataScanner(Trees.instance(task), task.getTypes());
+            for (CompilationUnitTree unit : units) {
+                scanner.scan(unit, sourceOf(unit));
+            }
+        }
+    }
+
+    private static Path sourceOf(CompilationUnitTree unit) {
+        return Path.of(unit.getSourceFile().toUri()).toAbsolutePath().normalize();
+    }
+
+    private static String renderDiagnostics(DiagnosticCollector<JavaFileObject> diagnostics) {
+        if (diagnostics.getDiagnostics().isEmpty()) {
+            return "<none>";
+        }
+        return diagnostics.getDiagnostics().stream().map(diagnostic -> diagnostic.getKind() + " " + diagnostic.getMessage(Locale.ROOT)).collect(Collectors.joining(System.lineSeparator()));
+    }
 
     @Test
     void productionBindingCatalogAndAdapterUseOnlyResolvedGenericTypes() throws IOException {
@@ -82,7 +120,7 @@ class TypedOutputBindingSourceGuardTest {
     @Test
     void resultMetadataIsAbsentFromAllProductionAndTestSources() throws IOException {
         Path root = Path.of("").toAbsolutePath().normalize();
-        List<Path> sources = new java.util.ArrayList<>();
+        List<Path> sources = new ArrayList<>();
         for (String sourceRoot : List.of("mcp-tool-api/src/main/java", "mcp-tool-api/src/test/java", "mcp-tool-api/src/jpmsSmoke/java", "src/main/java", "src/test/java")) {
             Path directory = root.resolve(sourceRoot);
             if (!Files.isDirectory(directory)) {
@@ -107,7 +145,7 @@ class TypedOutputBindingSourceGuardTest {
     private void assertRejected(String sourceText, String label) throws IOException {
         Path source = writeFixture("fixture/Guarded.java", sourceText);
         AssertionError failure = assertThrows(AssertionError.class, () -> assertSafe(List.of(source)), label);
-        org.junit.jupiter.api.Assertions.assertTrue(failure.getMessage().contains(label), failure.getMessage());
+        Assertions.assertTrue(failure.getMessage().contains(label), failure.getMessage());
     }
 
     private Path writeFixture(String relativePath, String sourceText) throws IOException {
@@ -120,64 +158,7 @@ class TypedOutputBindingSourceGuardTest {
     private void assertResultMetadataRejected(String sourceText, String label) throws IOException {
         Path source = writeFixture("metadata/" + label.replace(' ', '-') + ".java", sourceText);
         AssertionError failure = assertThrows(AssertionError.class, () -> assertNoResultMetadata(List.of(source)), label);
-        org.junit.jupiter.api.Assertions.assertTrue(failure.getMessage().contains(label), failure.getMessage());
-    }
-
-    private static void assertSafe(List<Path> sources) throws IOException {
-        JavaCompiler compiler = Objects.requireNonNull(ToolProvider.getSystemJavaCompiler(), "JDK compiler is required for source guards");
-        DiagnosticCollector<JavaFileObject> diagnostics = new DiagnosticCollector<>();
-        List<String> options = List.of("--source", Integer.toString(Runtime.version().feature()), "--enable-preview", "-proc:none", "-classpath", Objects.requireNonNull(System.getProperty("java.class.path"), "test classpath"));
-        try (StandardJavaFileManager fileManager = compiler.getStandardFileManager(diagnostics, Locale.ROOT, StandardCharsets.UTF_8)) {
-            JavacTask task = (JavacTask) compiler.getTask(null, fileManager, diagnostics, options, null, fileManager.getJavaFileObjectsFromPaths(sources));
-            List<CompilationUnitTree> units = new java.util.ArrayList<>();
-            task.parse().forEach(units::add);
-            try {
-                task.analyze();
-            } catch (RuntimeException exception) {
-                throw new AssertionError("Javac attribution failed for typed output source guard:\n" + renderDiagnostics(diagnostics), exception);
-            }
-            if (diagnostics.getDiagnostics().stream().anyMatch(diagnostic -> diagnostic.getKind() == Diagnostic.Kind.ERROR)) {
-                throw new AssertionError("Javac attribution produced errors for typed output source guard:\n" + renderDiagnostics(diagnostics));
-            }
-            SourceScanner scanner = new SourceScanner(Trees.instance(task));
-            for (CompilationUnitTree unit : units) {
-                scanner.scan(unit, sourceOf(unit));
-            }
-        }
-    }
-
-    private static void assertNoResultMetadata(List<Path> sources) throws IOException {
-        JavaCompiler compiler = Objects.requireNonNull(ToolProvider.getSystemJavaCompiler(), "JDK compiler is required for source guards");
-        DiagnosticCollector<JavaFileObject> diagnostics = new DiagnosticCollector<>();
-        List<String> options = List.of("--source", Integer.toString(Runtime.version().feature()), "--enable-preview", "-proc:none", "-classpath", Objects.requireNonNull(System.getProperty("java.class.path"), "test classpath"));
-        try (StandardJavaFileManager fileManager = compiler.getStandardFileManager(diagnostics, Locale.ROOT, StandardCharsets.UTF_8)) {
-            JavacTask task = (JavacTask) compiler.getTask(null, fileManager, diagnostics, options, null, fileManager.getJavaFileObjectsFromPaths(sources));
-            List<CompilationUnitTree> units = new java.util.ArrayList<>();
-            task.parse().forEach(units::add);
-            try {
-                task.analyze();
-            } catch (RuntimeException exception) {
-                throw new AssertionError("Javac attribution failed for result metadata guard:\n" + renderDiagnostics(diagnostics), exception);
-            }
-            if (diagnostics.getDiagnostics().stream().anyMatch(diagnostic -> diagnostic.getKind() == Diagnostic.Kind.ERROR)) {
-                throw new AssertionError("Javac attribution produced errors for result metadata guard:\n" + renderDiagnostics(diagnostics));
-            }
-            ResultMetadataScanner scanner = new ResultMetadataScanner(Trees.instance(task), task.getTypes());
-            for (CompilationUnitTree unit : units) {
-                scanner.scan(unit, sourceOf(unit));
-            }
-        }
-    }
-
-    private static Path sourceOf(CompilationUnitTree unit) {
-        return Path.of(unit.getSourceFile().toUri()).toAbsolutePath().normalize();
-    }
-
-    private static String renderDiagnostics(DiagnosticCollector<JavaFileObject> diagnostics) {
-        if (diagnostics.getDiagnostics().isEmpty()) {
-            return "<none>";
-        }
-        return diagnostics.getDiagnostics().stream().map(diagnostic -> diagnostic.getKind() + " " + diagnostic.getMessage(Locale.ROOT)).collect(java.util.stream.Collectors.joining(System.lineSeparator()));
+        Assertions.assertTrue(failure.getMessage().contains(label), failure.getMessage());
     }
 
     private static final class SourceScanner extends TreePathScanner<Void, Path> {
@@ -185,6 +166,10 @@ class TypedOutputBindingSourceGuardTest {
 
         private SourceScanner(Trees trees) {
             this.trees = trees;
+        }
+
+        private static void reject(Path source, Tree tree, String kind) {
+            throw new AssertionError(source + ": " + kind + " bypasses the typed output binding boundary at " + tree);
         }
 
         @Override
@@ -288,10 +273,6 @@ class TypedOutputBindingSourceGuardTest {
             }
             return path;
         }
-
-        private static void reject(Path source, Tree tree, String kind) {
-            throw new AssertionError(source + ": " + kind + " bypasses the typed output binding boundary at " + tree);
-        }
     }
 
     private static final class ResultMetadataScanner extends TreePathScanner<Void, Path> {
@@ -304,6 +285,14 @@ class TypedOutputBindingSourceGuardTest {
         private ResultMetadataScanner(Trees trees, Types types) {
             this.trees = trees;
             this.types = types;
+        }
+
+        private static boolean isNotDeclared(TypeMirror mirror, String qualifiedName) {
+            return !(mirror instanceof DeclaredType declared && declared.asElement() instanceof TypeElement type && type.getQualifiedName().contentEquals(qualifiedName));
+        }
+
+        private static void reject(Path source, Tree tree, String kind) {
+            throw new AssertionError(source + ": " + kind + " is forbidden at " + tree);
         }
 
         @Override
@@ -392,14 +381,6 @@ class TypedOutputBindingSourceGuardTest {
                 return true;
             }
             return !types.isSameType(constructor.getParameters().get(1).asType(), owner.getTypeParameters().getFirst().asType()) || constructor.getParameters().get(2).asType().getKind() != TypeKind.BOOLEAN;
-        }
-
-        private static boolean isNotDeclared(TypeMirror mirror, String qualifiedName) {
-            return !(mirror instanceof DeclaredType declared && declared.asElement() instanceof TypeElement type && type.getQualifiedName().contentEquals(qualifiedName));
-        }
-
-        private static void reject(Path source, Tree tree, String kind) {
-            throw new AssertionError(source + ": " + kind + " is forbidden at " + tree);
         }
     }
 }

@@ -8,6 +8,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 import javax.tools.ToolProvider;
 import java.io.IOException;
+import java.io.InterruptedIOException;
 import java.lang.classfile.Attributes;
 import java.lang.classfile.ClassFile;
 import java.lang.classfile.attribute.SourceFileAttribute;
@@ -169,7 +170,7 @@ final class SourceCacheValidatorTest {
         Path jar = compile(sources, "-g:source");
         var validator = new SourceCacheValidator();
         assertThrows(IOException.class, () -> validator.validate(sources.resolve("A.java"), jar, Cancellation.none()));
-        assertThrows(java.io.InterruptedIOException.class, () -> validator.validate(sources, jar, () -> true));
+        assertThrows(InterruptedIOException.class, () -> validator.validate(sources, jar, () -> true));
         assertFalse(Thread.currentThread().isInterrupted());
     }
 

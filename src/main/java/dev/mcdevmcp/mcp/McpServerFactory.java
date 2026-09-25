@@ -5,12 +5,14 @@ import dev.mcdevmcp.mcp.resource.ResourceCatalog;
 import dev.mcdevmcp.mcp.tool.ToolCatalog;
 import dev.mcdevmcp.mcp.tool.ToolDeclarations;
 import dev.mcdevmcp.mcp.tool.ToolDefinition;
+import dev.mcdevmcp.mcp.tool.api.ContentToolBinding;
 import dev.mcdevmcp.mcp.tool.api.ToolBinding;
 import dev.mcdevmcp.mcp.transport.McpSdkAdapter;
 import dev.mcdevmcp.mcp.transport.StdioServer;
 import dev.mcdevmcp.storage.PlatformPaths;
 import dev.mcdevmcp.support.AppEnvironment;
 import dev.mcdevmcp.support.AppVersion;
+import dev.mcdevmcp.support.DebugLog;
 import dev.mcdevmcp.tools.runtime.RuntimeBindingDeclaration;
 import dev.mcdevmcp.tools.runtime.RuntimeContext;
 import dev.mcdevmcp.tools.runtime.RuntimeToolModule;
@@ -23,12 +25,10 @@ import java.io.OutputStream;
 import java.net.http.HttpClient;
 import java.nio.file.Path;
 import java.time.Duration;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
+import java.util.*;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 public final class McpServerFactory implements AutoCloseable {
@@ -126,7 +126,7 @@ public final class McpServerFactory implements AutoCloseable {
 
             @Override
             public BridgeSession createSession(HttpClient client, McpJsonMapper mapper, AppEnvironment environment) {
-                return new BridgeSession(client, mapper, environment, message -> dev.mcdevmcp.support.DebugLog.write(environment, message));
+                return new BridgeSession(client, mapper, environment, message -> DebugLog.write(environment, message));
             }
 
             @Override
@@ -148,7 +148,7 @@ public final class McpServerFactory implements AutoCloseable {
         executor.shutdownNow();
         boolean interrupted = false;
         try {
-            if (!executor.awaitTermination(EXECUTOR_STOP_TIMEOUT.toNanos(), java.util.concurrent.TimeUnit.NANOSECONDS)) {
+            if (!executor.awaitTermination(EXECUTOR_STOP_TIMEOUT.toNanos(), TimeUnit.NANOSECONDS)) {
                 failure.addSuppressed(new IllegalStateException("MCP blocking executor did not stop after startup failure"));
             }
         } catch (InterruptedException exception) {
@@ -208,6 +208,22 @@ public final class McpServerFactory implements AutoCloseable {
     private void requireOpen() {
         if (closed.get() || ownedRuntime.isClosed()) {
             throw new IllegalStateException("MCP server factory is closed");
+        }
+    }
+
+    interface RuntimeResourceFactory {
+        HttpClient createClient();
+
+        BridgeSession createSession(HttpClient client, McpJsonMapper mapper, AppEnvironment environment);
+
+        RuntimeContext createContext(BridgeSession session, McpJsonMapper mapper, AppEnvironment environment);
+
+        default void closeSession(BridgeSession session) {
+            session.close();
+        }
+
+        default void closeClient(HttpClient client) {
+            client.close();
         }
     }
 
@@ -271,22 +287,6 @@ public final class McpServerFactory implements AutoCloseable {
         }
     }
 
-    interface RuntimeResourceFactory {
-        HttpClient createClient();
-
-        BridgeSession createSession(HttpClient client, McpJsonMapper mapper, AppEnvironment environment);
-
-        RuntimeContext createContext(BridgeSession session, McpJsonMapper mapper, AppEnvironment environment);
-
-        default void closeSession(BridgeSession session) {
-            session.close();
-        }
-
-        default void closeClient(HttpClient client) {
-            client.close();
-        }
-    }
-
     private static final class RuntimeToolActivation implements AutoCloseable {
         private final AppEnvironment environment;
         private final McpJsonMapper mapper;
@@ -305,6 +305,23 @@ public final class McpServerFactory implements AutoCloseable {
             this.lazyBindings = createLazyBindings();
         }
 
+        private static void closePartialResources(RuntimeResourceFactory resourceFactory, BridgeSession session, HttpClient client, Throwable failure) {
+            if (session != null) {
+                try {
+                    resourceFactory.closeSession(session);
+                } catch (Throwable closeFailure) {
+                    failure.addSuppressed(closeFailure);
+                }
+            }
+            if (client != null) {
+                try {
+                    resourceFactory.closeClient(client);
+                } catch (Throwable closeFailure) {
+                    failure.addSuppressed(closeFailure);
+                }
+            }
+        }
+
         private Map<String, ToolBinding<?>> lazyBindings() {
             return lazyBindings;
         }
@@ -314,7 +331,7 @@ public final class McpServerFactory implements AutoCloseable {
             for (RuntimeBindingDeclaration<?> declaration : declarations) {
                 addLazyBinding(bindings, declaration);
             }
-            return java.util.Collections.unmodifiableMap(new LinkedHashMap<>(bindings));
+            return Collections.unmodifiableMap(new LinkedHashMap<>(bindings));
         }
 
         private <A> void addLazyBinding(Map<String, ToolBinding<?>> bindings, RuntimeBindingDeclaration<A> declaration) {
@@ -360,28 +377,11 @@ public final class McpServerFactory implements AutoCloseable {
             }
         }
 
-        private static void closePartialResources(RuntimeResourceFactory resourceFactory, BridgeSession session, HttpClient client, Throwable failure) {
-            if (session != null) {
-                try {
-                    resourceFactory.closeSession(session);
-                } catch (Throwable closeFailure) {
-                    failure.addSuppressed(closeFailure);
-                }
-            }
-            if (client != null) {
-                try {
-                    resourceFactory.closeClient(client);
-                } catch (Throwable closeFailure) {
-                    failure.addSuppressed(closeFailure);
-                }
-            }
-        }
-
         private synchronized boolean isActivated() {
             return context != null;
         }
 
-        private <A> dev.mcdevmcp.mcp.tool.api.ContentToolBinding<A> activeBinding(RuntimeBindingDeclaration<A> declaration) {
+        private <A> ContentToolBinding<A> activeBinding(RuntimeBindingDeclaration<A> declaration) {
             activate();
             return declaration.activeBinding();
         }

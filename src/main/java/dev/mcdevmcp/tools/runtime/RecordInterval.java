@@ -10,6 +10,10 @@ import java.time.Duration;
 @JsonSubTypes({@JsonSubTypes.Type(value = RecordInterval.Frame.class, name = "frame"), @JsonSubTypes.Type(value = RecordInterval.Fixed.class, name = "fixed")})
 sealed interface RecordInterval permits RecordInterval.Frame, RecordInterval.Fixed {
 
+    static double projectedMillis(Duration duration) {
+        return duration.getSeconds() * 1000.0 + duration.getNano() / 1_000_000.0;
+    }
+
     record Frame() implements RecordInterval {
     }
 
@@ -23,9 +27,5 @@ sealed interface RecordInterval permits RecordInterval.Frame, RecordInterval.Fix
                 throw new IllegalArgumentException("intervalSeconds must be at least 0.001 seconds");
             }
         }
-    }
-
-    static double projectedMillis(Duration duration) {
-        return duration.getSeconds() * 1000.0 + duration.getNano() / 1_000_000.0;
     }
 }

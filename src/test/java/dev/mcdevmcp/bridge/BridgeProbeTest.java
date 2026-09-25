@@ -1,7 +1,7 @@
 package dev.mcdevmcp.bridge;
 
-import dev.mcdevmcp.support.AppEnvironment;
 import dev.mcdevmcp.bridge.payload.EmptyBridgePayload;
+import dev.mcdevmcp.support.AppEnvironment;
 import io.modelcontextprotocol.json.McpJsonDefaults;
 import org.junit.jupiter.api.Test;
 

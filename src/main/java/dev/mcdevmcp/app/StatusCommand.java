@@ -4,10 +4,10 @@ import dev.mcdevmcp.storage.CacheCleaner;
 import dev.mcdevmcp.storage.PlatformPaths;
 import dev.mcdevmcp.storage.callgraph.CallgraphRepository;
 import dev.mcdevmcp.storage.h2.VersionStateRepository;
+import dev.mcdevmcp.storage.migration.CachePathBoundary;
+import dev.mcdevmcp.storage.migration.VersionOperationLease;
 import dev.mcdevmcp.storage.model.MinecraftVersion;
 import dev.mcdevmcp.storage.model.VersionState;
-import dev.mcdevmcp.storage.migration.VersionOperationLease;
-import dev.mcdevmcp.storage.migration.CachePathBoundary;
 import picocli.CommandLine;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
@@ -16,8 +16,8 @@ import picocli.CommandLine.Spec;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
-import java.util.List;
 import java.util.ArrayList;
+import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.concurrent.Callable;
@@ -36,6 +36,10 @@ public final class StatusCommand implements Callable<Integer> {
 
     public StatusCommand(PlatformPaths paths) {
         this.paths = Objects.requireNonNull(paths, "paths");
+    }
+
+    private static String mark(boolean value) {
+        return value ? "✓" : "✗";
     }
 
     @Override
@@ -116,9 +120,5 @@ public final class StatusCommand implements Callable<Integer> {
             case PUBLISHED -> "present";
             case CORRUPT -> "corrupt";
         };
-    }
-
-    private static String mark(boolean value) {
-        return value ? "✓" : "✗";
     }
 }

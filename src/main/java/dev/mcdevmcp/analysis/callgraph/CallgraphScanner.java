@@ -90,7 +90,7 @@ public final class CallgraphScanner {
             throw new IOException("Callgraph scan cancelled", exception);
         }
         try (ZipFile jar = new ZipFile(request.remappedJar().toFile());
-             StructuredTaskScope<Object, Void> scope = StructuredTaskScope.open(StructuredTaskScope.Joiner.awaitAllSuccessfulOrThrow(), config -> config.withName("callgraph-scan"))) {
+             StructuredTaskScope<Object, Void, ExecutionException> scope = StructuredTaskScope.open(StructuredTaskScope.Joiner.awaitAllSuccessfulOrThrow(), config -> config.withName("callgraph-scan"))) {
             List<String> entries = discover(jar, request);
             request.progress().report("callgraph", 5, "Extracting calls from " + entries.size() + " classes");
             var source = new OrderedBatchSource(jar, entries, scope, request);
@@ -132,7 +132,7 @@ public final class CallgraphScanner {
     private static final class OrderedBatchSource implements CallgraphWriter.BatchSource {
         private final ZipFile jar;
         private final List<String> entries;
-        private final StructuredTaskScope<Object, Void> scope;
+        private final StructuredTaskScope<Object, Void, ExecutionException> scope;
         private final CallgraphRequest request;
         private final int window;
         private final ArrayDeque<PendingExtraction> futures = new ArrayDeque<>();
@@ -145,7 +145,7 @@ public final class CallgraphScanner {
         private long inFlightClassBytes;
 
         @SuppressWarnings("preview")
-        private OrderedBatchSource(ZipFile jar, List<String> entries, StructuredTaskScope<Object, Void> scope, CallgraphRequest request) {
+        private OrderedBatchSource(ZipFile jar, List<String> entries, StructuredTaskScope<Object, Void, ExecutionException> scope, CallgraphRequest request) {
             this.jar = jar;
             this.entries = entries;
             this.scope = scope;

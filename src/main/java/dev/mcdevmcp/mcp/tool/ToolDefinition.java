@@ -16,6 +16,13 @@ public record ToolDefinition(String name, String description, ToolBinding<?> bin
         Objects.requireNonNull(availability, "Tool availability");
     }
 
+    private static String requireText(String value, String label) {
+        if (value == null || value.isBlank()) {
+            throw new IllegalArgumentException(label + " must not be blank");
+        }
+        return value;
+    }
+
     public ToolInput<?> input() {
         return binding.input();
     }
@@ -26,12 +33,5 @@ public record ToolDefinition(String name, String description, ToolBinding<?> bin
 
     public Optional<ToolOutput<?>> output() {
         return binding.output();
-    }
-
-    private static String requireText(String value, String label) {
-        if (value == null || value.isBlank()) {
-            throw new IllegalArgumentException(label + " must not be blank");
-        }
-        return value;
     }
 }

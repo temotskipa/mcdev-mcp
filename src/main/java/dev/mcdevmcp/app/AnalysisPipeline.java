@@ -4,18 +4,14 @@ import dev.mcdevmcp.analysis.callgraph.CallgraphRequest;
 import dev.mcdevmcp.analysis.callgraph.CallgraphScanner;
 import dev.mcdevmcp.analysis.callgraph.CallgraphSummary;
 import dev.mcdevmcp.analysis.decompile.*;
-import dev.mcdevmcp.analysis.index.IndexRequest;
-import dev.mcdevmcp.analysis.index.IndexSummary;
-import dev.mcdevmcp.analysis.index.PublishedSourceRoot;
-import dev.mcdevmcp.analysis.index.SourceIndexer;
-import dev.mcdevmcp.analysis.index.SourceRoot;
+import dev.mcdevmcp.analysis.index.*;
 import dev.mcdevmcp.storage.PlatformPaths;
 import dev.mcdevmcp.storage.migration.*;
 import dev.mcdevmcp.storage.model.MinecraftVersion;
 import dev.mcdevmcp.storage.model.SourceNamespace;
+import dev.mcdevmcp.support.AppVersion;
 import dev.mcdevmcp.support.Cancellation;
 import dev.mcdevmcp.support.ProgressSink;
-import dev.mcdevmcp.support.AppVersion;
 import org.jetbrains.java.decompiler.main.Fernflower;
 
 import java.io.IOException;
@@ -69,10 +65,6 @@ public final class AnalysisPipeline implements AnalysisOperations {
         Objects.requireNonNull(paths, "paths");
         int threads = IndexRequest.threadsFromEnvironment(environment);
         return new AnalysisPipeline(paths, VersionManifestClient.production(), DownloadService.production(), new MappingConverter(), new MinecraftRemapper(threads), new MinecraftDecompiler(), new SourceIndexer(), new CallgraphScanner(), threads);
-    }
-
-    int parallelism() {
-        return threads;
     }
 
     private static boolean javaSourceCacheMissing(Path root, Cancellation cancellation) throws IOException, InterruptedException {
@@ -147,6 +139,19 @@ public final class AnalysisPipeline implements AnalysisOperations {
     private static String failureMessage(String summary, Throwable failure) {
         String detail = failure.getMessage();
         return detail == null || detail.isBlank() ? summary : summary + ": " + detail;
+    }
+
+    private static IOException sourceRefreshRequired(MinecraftVersion version, SourceValidation validation) {
+        return new IOException("Cached sources require explicit refresh: " + validationMessage(validation) + ". Originals are unchanged. Run java --enable-preview -jar " + AppVersion.executableJarName() + " init -v " + version.value() + " --refresh-sources to regenerate with retained originals.");
+    }
+
+    private static String validationMessage(SourceValidation validation) {
+        String details = String.join("; ", validation.diagnostics().stream().limit(8).toList());
+        return validation.status() + (details.isEmpty() ? "" : ": " + details) + (validation.diagnostics().size() > 8 ? "; additional diagnostics: " + (validation.diagnostics().size() - 8) : "");
+    }
+
+    int parallelism() {
+        return threads;
     }
 
     private PreparedSources prepareArtifacts(PlatformPaths paths, CachePathBoundary boundary, MinecraftVersion version, ProgressSink progress, Cancellation cancellation) {
@@ -278,15 +283,6 @@ public final class AnalysisPipeline implements AnalysisOperations {
             preserveInterruption(failure);
             throw new IllegalStateException(failureMessage("Unable to initialize Minecraft " + version.value(), failure), failure);
         }
-    }
-
-    private static IOException sourceRefreshRequired(MinecraftVersion version, SourceValidation validation) {
-        return new IOException("Cached sources require explicit refresh: " + validationMessage(validation) + ". Originals are unchanged. Run java --enable-preview -jar " + AppVersion.executableJarName() + " init -v " + version.value() + " --refresh-sources to regenerate with retained originals.");
-    }
-
-    private static String validationMessage(SourceValidation validation) {
-        String details = String.join("; ", validation.diagnostics().stream().limit(8).toList());
-        return validation.status() + (details.isEmpty() ? "" : ": " + details) + (validation.diagnostics().size() > 8 ? "; additional diagnostics: " + (validation.diagnostics().size() - 8) : "");
     }
 
     @Override

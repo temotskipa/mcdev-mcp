@@ -313,7 +313,7 @@ public final class MinecraftRemapper {
     }
 
     private static boolean causedByInterruption(Throwable throwable) {
-        Set<Throwable> visited = java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<>());
+        Set<Throwable> visited = Collections.newSetFromMap(new IdentityHashMap<>());
         for (Throwable current = throwable; current != null && visited.add(current); current = current.getCause()) {
             if (current instanceof InterruptedException) {
                 return true;

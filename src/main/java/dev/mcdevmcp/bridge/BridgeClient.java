@@ -115,6 +115,14 @@ public final class BridgeClient implements AutoCloseable {
         return "Request timed out after " + effective.toMillis() + "ms" + capNote + ". The game may be frozen or the script may be in an infinite loop.";
     }
 
+    private static Duration extendedTimeout(Duration requested) {
+        try {
+            return requested.plus(RESPONSE_GRACE);
+        } catch (ArithmeticException exception) {
+            return Duration.ofMillis(Long.MAX_VALUE);
+        }
+    }
+
     @SuppressWarnings("preview")
     private Thread timeoutWatcher(String id, PendingRequest pendingRequest, Duration requested, Duration effective) {
         return Thread.ofVirtual().name("debugbridge-timeout").unstarted(() -> {
@@ -124,20 +132,12 @@ public final class BridgeClient implements AutoCloseable {
                     return null;
                 });
                 scope.join();
-            } catch (StructuredTaskScope.TimeoutException | StructuredTaskScope.FailedException ignored) {
+            } catch (ExecutionException ignored) {
                 completeExceptionally(id, pendingRequest, new IllegalStateException(timeoutMessage(requested, effective)));
             } catch (InterruptedException | CancellationException ignored) {
                 // The request completed, was cancelled, or the client closed.
             }
         });
-    }
-
-    private static Duration extendedTimeout(Duration requested) {
-        try {
-            return requested.plus(RESPONSE_GRACE);
-        } catch (ArithmeticException exception) {
-            return Duration.ofMillis(Long.MAX_VALUE);
-        }
     }
 
     public CompletionStage<BridgeResponse> send(BridgeEndpoint endpoint, BridgePayload payload, Duration endpointTimeout) {

@@ -4,19 +4,15 @@ import dev.mcdevmcp.storage.CacheCleaner;
 import dev.mcdevmcp.storage.PlatformPaths;
 import dev.mcdevmcp.storage.callgraph.CallgraphCleaner;
 import dev.mcdevmcp.storage.h2.IndexCleaner;
-import dev.mcdevmcp.storage.model.MinecraftVersion;
-import dev.mcdevmcp.storage.migration.VersionOperationLease;
 import dev.mcdevmcp.storage.migration.CachePathBoundary;
+import dev.mcdevmcp.storage.migration.VersionOperationLease;
+import dev.mcdevmcp.storage.model.MinecraftVersion;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
 import picocli.CommandLine.Spec;
 
 import java.io.IOException;
-import java.nio.file.FileVisitResult;
-import java.nio.file.Files;
-import java.nio.file.LinkOption;
-import java.nio.file.Path;
-import java.nio.file.SimpleFileVisitor;
+import java.nio.file.*;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
 import java.util.List;
@@ -57,6 +53,14 @@ public final class CleanCommand implements Callable<Integer> {
     CleanCommand(PlatformPaths paths, Consumer<MinecraftVersion> afterCacheCleanup) {
         this.paths = Objects.requireNonNull(paths, "paths");
         this.afterCacheCleanup = Objects.requireNonNull(afterCacheCleanup, "afterCacheCleanup");
+    }
+
+    private static void attemptCleanup(List<Exception> failures, Cleanup cleanup) {
+        try {
+            cleanup.run();
+        } catch (IOException | RuntimeException failure) {
+            failures.add(failure);
+        }
     }
 
     @Override
@@ -161,14 +165,6 @@ public final class CleanCommand implements Callable<Integer> {
         new CallgraphCleaner().clean(boundary.resolvedPaths().callgraphBundle(minecraft));
         deleteContainedTree(versionCache);
         afterCacheCleanup.accept(minecraft);
-    }
-
-    private static void attemptCleanup(List<Exception> failures, Cleanup cleanup) {
-        try {
-            cleanup.run();
-        } catch (IOException | RuntimeException failure) {
-            failures.add(failure);
-        }
     }
 
     private void finishCleanup(Path root, List<Exception> failures) throws IOException {

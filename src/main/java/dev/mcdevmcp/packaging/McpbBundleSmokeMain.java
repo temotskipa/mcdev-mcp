@@ -1,17 +1,22 @@
 package dev.mcdevmcp.packaging;
 
+import dev.mcdevmcp.support.ScopeOutcomes;
 import io.modelcontextprotocol.json.McpJsonDefaults;
 import io.modelcontextprotocol.json.McpJsonMapper;
 import io.modelcontextprotocol.json.TypeRef;
 
 import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.StructuredTaskScope;
 import java.util.concurrent.TimeUnit;
 
@@ -30,13 +35,13 @@ public final class McpbBundleSmokeMain {
             throw new IllegalArgumentException("Usage: McpbBundleSmokeMain <extracted-bundle-directory>");
         }
         Path bundle = Path.of(arguments[0]).toAbsolutePath();
-        Map<String, Object> manifest = MAPPER.readValue(java.nio.file.Files.readString(bundle.resolve("manifest.json")), MAP_TYPE);
-        Path logs = java.nio.file.Files.createDirectories(bundle.resolve("smoke-logs"));
+        Map<String, Object> manifest = MAPPER.readValue(Files.readString(bundle.resolve("manifest.json")), MAP_TYPE);
+        Path logs = Files.createDirectories(bundle.resolve("smoke-logs"));
         var processBuilder = new ProcessBuilder("node", "bootstrap.cjs").directory(bundle.toFile());
         processBuilder.environment().put("MCDEV_SESSION_LOG_DIR", logs.toString());
         processBuilder.environment().put("MCDEV_RUN_COMMAND", "true");
         Process process = processBuilder.start();
-        try (var output = new BufferedReader(new java.io.InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
+        try (var output = new BufferedReader(new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
             try (var input = new OutputStreamWriter(process.getOutputStream(), StandardCharsets.UTF_8)) {
                 write(input, request(1, "initialize", Map.of("protocolVersion", "2024-11-05", "capabilities", Map.of(), "clientInfo", Map.of("name", "mcpb-smoke", "version", "1.0"))));
                 Map<String, Object> initialized = readWithinTimeout(output);
@@ -83,17 +88,18 @@ public final class McpbBundleSmokeMain {
         try (var scope = StructuredTaskScope.open(StructuredTaskScope.Joiner.<Map<String, Object>>anySuccessfulOrThrow(), config -> config.withName("mcpb-smoke-read").withTimeout(TIMEOUT))) {
             scope.fork(() -> read(input));
             return scope.join();
-        } catch (StructuredTaskScope.TimeoutException exception) {
-            throw new IOException("MCPB launcher timed out waiting for a response", exception);
-        } catch (InterruptedException exception) {
-            Thread.currentThread().interrupt();
-            throw new IOException("Interrupted while reading MCPB launcher output", exception);
-        } catch (StructuredTaskScope.FailedException exception) {
-            Throwable cause = exception.getCause();
+        } catch (ExecutionException exception) {
+            if (ScopeOutcomes.timedOut(exception)) {
+                throw new IOException("MCPB launcher timed out waiting for a response", exception);
+            }
+            Throwable cause = ScopeOutcomes.cause(exception);
             if (cause instanceof IOException ioException) {
                 throw ioException;
             }
             throw new IOException("Unable to read MCPB launcher output", cause);
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            throw new IOException("Interrupted while reading MCPB launcher output", exception);
         }
     }
 
@@ -113,7 +119,7 @@ public final class McpbBundleSmokeMain {
     }
 
     private static void requireEquals(Object expected, Object actual, String label) {
-        if (!java.util.Objects.equals(expected, actual)) {
+        if (!Objects.equals(expected, actual)) {
             throw new IllegalStateException("Unexpected " + label + ": " + actual);
         }
     }

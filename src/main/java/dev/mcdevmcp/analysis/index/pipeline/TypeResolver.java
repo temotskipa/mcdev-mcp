@@ -12,6 +12,7 @@ import java.lang.constant.ConstantDescs;
 import java.lang.constant.MethodTypeDesc;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Objects;
 
 final class TypeResolver {
@@ -93,7 +94,7 @@ final class TypeResolver {
     private String encode(TypeMirror type) throws IndexBuildException {
         return switch (type.getKind()) {
             case BOOLEAN, BYTE, SHORT, INT, LONG, CHAR, FLOAT, DOUBLE, VOID ->
-                    type.getKind().name().toLowerCase(java.util.Locale.ROOT);
+                    type.getKind().name().toLowerCase(Locale.ROOT);
             case ARRAY -> encode(((ArrayType) type).getComponentType()) + "[]";
             case DECLARED -> encodeDeclared((DeclaredType) type);
             case TYPEVAR -> ((TypeVariable) type).asElement().getSimpleName().toString();

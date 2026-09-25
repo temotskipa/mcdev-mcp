@@ -6,17 +6,14 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Files;
-import java.util.ArrayList;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.InstantSource;
+import java.util.ArrayList;
 import java.util.List;
 
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.*;
 
 class ScriptLoggerTest {
     private static final McpJsonMapper MAPPER = McpJsonDefaults.getMapper();
@@ -24,7 +21,7 @@ class ScriptLoggerTest {
     @Test
     void prunesRotatedFilesOlderThanRetentionAndKeepsRecentOnes(@TempDir Path temporary) throws Exception {
         long now = 2_000_000_000_000L;
-        var diagnostics = new java.util.ArrayList<String>();
+        var diagnostics = new ArrayList<String>();
         var logger = new ScriptLogger(temporary, MAPPER, diagnostics::add, () -> false, InstantSource.fixed(Instant.ofEpochMilli(now)));
 
         Path logs = logger.logDirectory();

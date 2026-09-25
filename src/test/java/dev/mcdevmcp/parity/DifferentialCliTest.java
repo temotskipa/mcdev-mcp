@@ -1,12 +1,6 @@
 package dev.mcdevmcp.parity;
 
-import org.junit.jupiter.api.AfterAll;
-import org.junit.jupiter.api.BeforeAll;
-import org.junit.jupiter.api.DynamicTest;
-import org.junit.jupiter.api.Tag;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.TestFactory;
-import org.junit.jupiter.api.TestInstance;
+import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.api.parallel.ResourceLock;
 
@@ -27,29 +21,15 @@ import java.nio.file.attribute.BasicFileAttributes;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
-import java.util.ArrayList;
-import java.util.HexFormat;
-import java.util.LinkedHashSet;
-import java.util.List;
-import java.util.Locale;
-import java.util.Map;
-import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
+import java.util.*;
+import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.locks.LockSupport;
 import java.util.jar.JarEntry;
 import java.util.jar.JarOutputStream;
 import java.util.stream.Stream;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.*;
 import static org.junit.jupiter.api.DynamicTest.dynamicTest;
 
 @Tag("parity")
@@ -81,133 +61,6 @@ final class DifferentialCliTest {
 
     private NodeOracleMaterializer oracle;
 
-    @BeforeAll
-    void materializeOracle() throws Exception {
-        oracle = NodeOracleMaterializer.materialize();
-    }
-
-    @AfterAll
-    void closeOracle() {
-        if (oracle != null) {
-            oracle.close();
-        }
-    }
-
-    @TestFactory
-    Stream<DynamicTest> publicCommandHelpMatchesNodeOracle() {
-        return differentialTests(HELP_CASES);
-    }
-
-    @TestFactory
-    Stream<DynamicTest> offlineValidationAndMissingCacheBehaviorMatchesNodeOracle() {
-        // Task 13 requires CLI help, validation, missing-cache, legacy-status, and clean parity,
-        // while static-tool success/error/empty/truncation is exercised over STDIO. Successful init
-        // requires downloads, and Node callgraph success builds an external generator, so neither
-        // belongs in this offline process gate. The rebuild-success test below exercises the
-        // feasible stateful command against one shared source fixture despite the intentionally
-        // different JSON and H2 index layouts.
-        return differentialTests(Stream.concat(VALIDATION_CASES.stream(), CACHE_CASES.stream()).toList());
-    }
-
-    @TestFactory
-    Stream<DynamicTest> cleanSelectorBehaviorMatchesNodeOracle() {
-        return differentialTests(CLEAN_CASES);
-    }
-
-    @Test
-    void legacyOnlyStatusUsesTheApprovedNeedsRebuildDifference() throws Exception {
-        CliCase testCase = new CliCase("status-legacy-index", List.of("status", "-v", LEGACY_VERSION), Fixture.LEGACY);
-        ExecutionPair pair = execute(testCase);
-        assertStateTransitions(testCase, pair);
-
-        assertEquals(0, pair.node().exitCode());
-        assertEquals(0, pair.java().exitCode());
-        assertTrue(pair.node().stdout().contains("Indexed: ✓"), pair.node()::stdout);
-        assertEquals("\nMinecraft 1.21.11:\n  Decompiled: ✓\n  Indexed: ✓\n  Callgraph: ✗\n  Packages: 0 Minecraft, 0 Fabric\n  Generated: 2026-07-15T00:00:00.000Z\n", pair.node().stdout());
-        assertEquals("1.21.11: needs-rebuild, callgraph absent\n", pair.java().stdout());
-        assertEquals("", pair.node().stderr());
-        assertEquals("", pair.java().stderr());
-    }
-
-    @Test
-    void rewriteVersionIsAnApprovedIntentionalDifference() throws Exception {
-        CliCase testCase = new CliCase("version", List.of("--version"), Fixture.EMPTY);
-        ExecutionPair pair = execute(testCase);
-        assertStateTransitions(testCase, pair);
-
-        assertEquals(new ProcessResult(0, "2.2.1\n", ""), pair.node());
-        assertEquals(new ProcessResult(0, "3.0.0\n", ""), pair.java());
-    }
-
-    @Test
-    void cleanHelpUsesTheApprovedCurrentAnalysisStateDifference() throws Exception {
-        CliCase testCase = new CliCase("clean-help", List.of("clean", "--help"), Fixture.EMPTY);
-        ExecutionPair pair = execute(testCase);
-        assertStateTransitions(testCase, pair);
-
-        assertTrue(pair.node().stdout().contains("DecompilerMC"), pair.node()::stdout);
-        assertTrue(pair.java().stdout().contains("temporary analysis state"), pair.java()::stdout);
-        assertEquals(pair.node().stdout().replace("DecompilerMC", "$APPROVED_ANALYSIS_STATE"), pair.java().stdout().replace("temporary analysis state", "$APPROVED_ANALYSIS_STATE"));
-        assertEquals(pair.node().exitCode(), pair.java().exitCode());
-        assertEquals(pair.node().stderr(), pair.java().stderr());
-    }
-
-    @Test
-    void cleanableFixtureCoversLegacyAndCurrentOwnedArtifactLayouts() throws Exception {
-        CliEnvironment nodeEnvironment = CliEnvironment.create(temporaryDirectory.resolve("fixture-inventory/node"), Fixture.CLEANABLE, RuntimeKind.NODE);
-        CliEnvironment javaEnvironment = CliEnvironment.create(temporaryDirectory.resolve("fixture-inventory/java"), Fixture.CLEANABLE, RuntimeKind.JAVA);
-        List<String> nodePaths = LogicalState.capture(nodeEnvironment, RuntimeKind.NODE).artifacts().stream().map(ArtifactSnapshot::relativePath).toList();
-        List<String> javaPaths = LogicalState.capture(javaEnvironment, RuntimeKind.JAVA).artifacts().stream().map(ArtifactSnapshot::relativePath).toList();
-
-        assertTrue(nodePaths.contains("cache/1.21.11/client/fixture/Example.java"), nodePaths::toString);
-        assertTrue(nodePaths.contains("cache"), nodePaths::toString);
-        assertTrue(nodePaths.contains("cache/1.21.11"), nodePaths::toString);
-        assertTrue(nodePaths.contains("cache/1.21.11/jars/1.21.11_unobfuscated.jar"), nodePaths::toString);
-        assertTrue(nodePaths.contains("index/manifest.json"), nodePaths::toString);
-        assertTrue(nodePaths.contains("index/1.21.11/manifest.json"), nodePaths::toString);
-        assertTrue(nodePaths.contains("index/1.21.11/minecraft/fixture.json"), nodePaths::toString);
-        assertTrue(nodePaths.contains("cache/1.21.11/callgraph/callgraph.db"), nodePaths::toString);
-        assertFalse(nodePaths.contains("index/1.21.11/symbols.mv.db"), nodePaths::toString);
-        assertFalse(nodePaths.contains("cache/1.21.11/indexes/callgraph/current.json"), nodePaths::toString);
-
-        assertTrue(javaPaths.contains("cache/1.21.11/client/fixture/Example.java"), javaPaths::toString);
-        assertTrue(javaPaths.contains("cache"), javaPaths::toString);
-        assertTrue(javaPaths.contains("cache/1.21.11"), javaPaths::toString);
-        assertTrue(javaPaths.contains("cache/1.21.11/jars/1.21.11_unobfuscated.jar"), javaPaths::toString);
-        assertTrue(javaPaths.contains("index/1.21.11/symbols.mv.db"), javaPaths::toString);
-        assertTrue(javaPaths.contains("index/1.21.11/symbols.trace.db"), javaPaths::toString);
-        assertTrue(javaPaths.contains("cache/1.21.11/indexes/callgraph/current.json"), javaPaths::toString);
-        assertTrue(javaPaths.contains("cache/1.21.11/indexes/callgraph/generations/fixture/callers.jsonl"), javaPaths::toString);
-        assertFalse(javaPaths.contains("index/1.21.11/manifest.json"), javaPaths::toString);
-        assertFalse(javaPaths.contains("cache/1.21.11/callgraph/callgraph.db"), javaPaths::toString);
-        assertTrue(nodePaths.contains("tmp/1.21.11/fixture.partial"), nodePaths::toString);
-        assertTrue(javaPaths.contains("tmp/1.21.11/fixture.partial"), javaPaths::toString);
-    }
-
-    @Test
-    void rebuildSuccessProducesAnIndexFromTheSameOfflineSourceFixture() throws Exception {
-        CliCase testCase = new CliCase("rebuild-success", List.of("rebuild", "-v", LEGACY_VERSION), Fixture.REBUILDABLE);
-        ExecutionPair pair = execute(testCase);
-
-        assertEquals(0, pair.node().exitCode(), pair.node()::stderr);
-        assertEquals(0, pair.java().exitCode(), pair.java()::stderr);
-        assertEquals("", pair.node().stderr());
-        assertEquals("", pair.java().stderr());
-        String opening = "Rebuilding index for Minecraft " + LEGACY_VERSION + "...\n";
-        assertTrue(pair.node().stdout().startsWith(opening), pair.node()::stdout);
-        assertTrue(pair.java().stdout().startsWith(opening), pair.java()::stdout);
-        assertTrue(pair.node().stdout().contains("✓ Index rebuilt!"), pair.node()::stdout);
-        assertTrue(pair.java().stdout().contains("Indexed "), pair.java()::stdout);
-
-        String source = "cache/" + LEGACY_VERSION + "/client/fixture/Example.java";
-        assertEquals(artifact(pair.nodeBefore(), source), artifact(pair.nodeAfter(), source));
-        assertEquals(artifact(pair.javaBefore(), source), artifact(pair.javaAfter(), source));
-        assertEquals(withoutIndex(pair.nodeBefore()), withoutIndex(pair.nodeAfter()));
-        assertEquals(withoutIndex(pair.javaBefore()), withoutIndex(pair.javaAfter()));
-        assertTrue(hasArtifact(pair.nodeAfter(), "index/" + LEGACY_VERSION + "/manifest.json"));
-        assertTrue(hasArtifact(pair.javaAfter(), "index/" + LEGACY_VERSION + "/symbols.mv.db"));
-    }
-
     private static ArtifactSnapshot artifact(LogicalState state, String path) {
         return state.artifacts().stream().filter(candidate -> candidate.relativePath().equals(path)).findFirst().orElseThrow();
     }
@@ -220,48 +73,9 @@ final class DifferentialCliTest {
         return state.artifacts().stream().filter(candidate -> !StateChange.under(candidate.relativePath(), "index")).toList();
     }
 
-    private Stream<DynamicTest> differentialTests(List<CliCase> cases) {
-        return cases.stream().map(testCase -> dynamicTest(testCase.name(), () -> assertMatches(testCase)));
-    }
-
-    private void assertMatches(CliCase testCase) throws Exception {
-        ExecutionPair pair = execute(testCase);
-        LogicalState expectedNode = testCase.stateChange().expected(pair.nodeBefore(), RuntimeKind.NODE);
-        LogicalState expectedJava = testCase.stateChange().expected(pair.javaBefore(), RuntimeKind.JAVA);
-        if (!pair.node().equals(pair.java()) || !expectedNode.equals(pair.nodeAfter()) || !expectedJava.equals(pair.javaAfter())) {
-            Path report = writeMismatchReport(testCase, pair);
-            assertEquals(expectedNode, pair.nodeAfter(), () -> "Node CLI state transition mismatch; report: " + report.toAbsolutePath().normalize());
-            assertEquals(expectedJava, pair.javaAfter(), () -> "Java CLI state transition mismatch; report: " + report.toAbsolutePath().normalize());
-            assertEquals(pair.node(), pair.java(), () -> "CLI parity mismatch; report: " + report.toAbsolutePath().normalize());
-        }
-    }
-
     private static void assertStateTransitions(CliCase testCase, ExecutionPair pair) {
         assertEquals(testCase.stateChange().expected(pair.nodeBefore(), RuntimeKind.NODE), pair.nodeAfter());
         assertEquals(testCase.stateChange().expected(pair.javaBefore(), RuntimeKind.JAVA), pair.javaAfter());
-    }
-
-    private ExecutionPair execute(CliCase testCase) throws Exception {
-        Path caseRoot = temporaryDirectory.resolve(testCase.name());
-        CliEnvironment nodeEnvironment = CliEnvironment.create(caseRoot.resolve("node"), testCase.fixture(), RuntimeKind.NODE);
-        CliEnvironment javaEnvironment = CliEnvironment.create(caseRoot.resolve("java"), testCase.fixture(), RuntimeKind.JAVA);
-
-        LogicalState nodeBefore = LogicalState.capture(nodeEnvironment, RuntimeKind.NODE);
-        ProcessResult node = run(nodeProcess(testCase.arguments(), nodeEnvironment));
-        LogicalState nodeAfter = LogicalState.capture(nodeEnvironment, RuntimeKind.NODE);
-        LogicalState javaBefore = LogicalState.capture(javaEnvironment, RuntimeKind.JAVA);
-        ProcessResult java = run(javaProcess(testCase.arguments(), javaEnvironment));
-        LogicalState javaAfter = LogicalState.capture(javaEnvironment, RuntimeKind.JAVA);
-        return new ExecutionPair(normalize(node, nodeEnvironment), normalize(java, javaEnvironment), nodeBefore, nodeAfter, javaBefore, javaAfter);
-    }
-
-    private ProcessBuilder nodeProcess(List<String> arguments, CliEnvironment environment) {
-        List<String> commandArguments = new ArrayList<>(arguments.size() + 1);
-        commandArguments.add("dist/cli.js");
-        commandArguments.addAll(arguments);
-        ProcessBuilder builder = oracle.nodeProcess(commandArguments.toArray(String[]::new));
-        applyEnvironment(builder, environment);
-        return builder;
     }
 
     private static ProcessBuilder javaProcess(List<String> arguments, CliEnvironment environment) {
@@ -469,6 +283,337 @@ final class DifferentialCliTest {
         }
         int end = Math.min(text.length(), offset + 80);
         return text.substring(offset, end).replace("\\", "\\\\").replace("\n", "\\n").replace("\t", "\\t");
+    }
+
+    @BeforeAll
+    void materializeOracle() throws Exception {
+        oracle = NodeOracleMaterializer.materialize();
+    }
+
+    @AfterAll
+    void closeOracle() {
+        if (oracle != null) {
+            oracle.close();
+        }
+    }
+
+    @TestFactory
+    Stream<DynamicTest> publicCommandHelpMatchesNodeOracle() {
+        return differentialTests(HELP_CASES);
+    }
+
+    @TestFactory
+    Stream<DynamicTest> offlineValidationAndMissingCacheBehaviorMatchesNodeOracle() {
+        // Task 13 requires CLI help, validation, missing-cache, legacy-status, and clean parity,
+        // while static-tool success/error/empty/truncation is exercised over STDIO. Successful init
+        // requires downloads, and Node callgraph success builds an external generator, so neither
+        // belongs in this offline process gate. The rebuild-success test below exercises the
+        // feasible stateful command against one shared source fixture despite the intentionally
+        // different JSON and H2 index layouts.
+        return differentialTests(Stream.concat(VALIDATION_CASES.stream(), CACHE_CASES.stream()).toList());
+    }
+
+    @TestFactory
+    Stream<DynamicTest> cleanSelectorBehaviorMatchesNodeOracle() {
+        return differentialTests(CLEAN_CASES);
+    }
+
+    @Test
+    void legacyOnlyStatusUsesTheApprovedNeedsRebuildDifference() throws Exception {
+        CliCase testCase = new CliCase("status-legacy-index", List.of("status", "-v", LEGACY_VERSION), Fixture.LEGACY);
+        ExecutionPair pair = execute(testCase);
+        assertStateTransitions(testCase, pair);
+
+        assertEquals(0, pair.node().exitCode());
+        assertEquals(0, pair.java().exitCode());
+        assertTrue(pair.node().stdout().contains("Indexed: ✓"), pair.node()::stdout);
+        assertEquals("\nMinecraft 1.21.11:\n  Decompiled: ✓\n  Indexed: ✓\n  Callgraph: ✗\n  Packages: 0 Minecraft, 0 Fabric\n  Generated: 2026-07-15T00:00:00.000Z\n", pair.node().stdout());
+        assertEquals("1.21.11: needs-rebuild, callgraph absent\n", pair.java().stdout());
+        assertEquals("", pair.node().stderr());
+        assertEquals("", pair.java().stderr());
+    }
+
+    @Test
+    void rewriteVersionIsAnApprovedIntentionalDifference() throws Exception {
+        CliCase testCase = new CliCase("version", List.of("--version"), Fixture.EMPTY);
+        ExecutionPair pair = execute(testCase);
+        assertStateTransitions(testCase, pair);
+
+        assertEquals(new ProcessResult(0, "2.2.1\n", ""), pair.node());
+        assertEquals(new ProcessResult(0, "3.0.0\n", ""), pair.java());
+    }
+
+    @Test
+    void cleanHelpUsesTheApprovedCurrentAnalysisStateDifference() throws Exception {
+        CliCase testCase = new CliCase("clean-help", List.of("clean", "--help"), Fixture.EMPTY);
+        ExecutionPair pair = execute(testCase);
+        assertStateTransitions(testCase, pair);
+
+        assertTrue(pair.node().stdout().contains("DecompilerMC"), pair.node()::stdout);
+        assertTrue(pair.java().stdout().contains("temporary analysis state"), pair.java()::stdout);
+        assertEquals(pair.node().stdout().replace("DecompilerMC", "$APPROVED_ANALYSIS_STATE"), pair.java().stdout().replace("temporary analysis state", "$APPROVED_ANALYSIS_STATE"));
+        assertEquals(pair.node().exitCode(), pair.java().exitCode());
+        assertEquals(pair.node().stderr(), pair.java().stderr());
+    }
+
+    @Test
+    void cleanableFixtureCoversLegacyAndCurrentOwnedArtifactLayouts() throws Exception {
+        CliEnvironment nodeEnvironment = CliEnvironment.create(temporaryDirectory.resolve("fixture-inventory/node"), Fixture.CLEANABLE, RuntimeKind.NODE);
+        CliEnvironment javaEnvironment = CliEnvironment.create(temporaryDirectory.resolve("fixture-inventory/java"), Fixture.CLEANABLE, RuntimeKind.JAVA);
+        List<String> nodePaths = LogicalState.capture(nodeEnvironment, RuntimeKind.NODE).artifacts().stream().map(ArtifactSnapshot::relativePath).toList();
+        List<String> javaPaths = LogicalState.capture(javaEnvironment, RuntimeKind.JAVA).artifacts().stream().map(ArtifactSnapshot::relativePath).toList();
+
+        assertTrue(nodePaths.contains("cache/1.21.11/client/fixture/Example.java"), nodePaths::toString);
+        assertTrue(nodePaths.contains("cache"), nodePaths::toString);
+        assertTrue(nodePaths.contains("cache/1.21.11"), nodePaths::toString);
+        assertTrue(nodePaths.contains("cache/1.21.11/jars/1.21.11_unobfuscated.jar"), nodePaths::toString);
+        assertTrue(nodePaths.contains("index/manifest.json"), nodePaths::toString);
+        assertTrue(nodePaths.contains("index/1.21.11/manifest.json"), nodePaths::toString);
+        assertTrue(nodePaths.contains("index/1.21.11/minecraft/fixture.json"), nodePaths::toString);
+        assertTrue(nodePaths.contains("cache/1.21.11/callgraph/callgraph.db"), nodePaths::toString);
+        assertFalse(nodePaths.contains("index/1.21.11/symbols.mv.db"), nodePaths::toString);
+        assertFalse(nodePaths.contains("cache/1.21.11/indexes/callgraph/current.json"), nodePaths::toString);
+
+        assertTrue(javaPaths.contains("cache/1.21.11/client/fixture/Example.java"), javaPaths::toString);
+        assertTrue(javaPaths.contains("cache"), javaPaths::toString);
+        assertTrue(javaPaths.contains("cache/1.21.11"), javaPaths::toString);
+        assertTrue(javaPaths.contains("cache/1.21.11/jars/1.21.11_unobfuscated.jar"), javaPaths::toString);
+        assertTrue(javaPaths.contains("index/1.21.11/symbols.mv.db"), javaPaths::toString);
+        assertTrue(javaPaths.contains("index/1.21.11/symbols.trace.db"), javaPaths::toString);
+        assertTrue(javaPaths.contains("cache/1.21.11/indexes/callgraph/current.json"), javaPaths::toString);
+        assertTrue(javaPaths.contains("cache/1.21.11/indexes/callgraph/generations/fixture/callers.jsonl"), javaPaths::toString);
+        assertFalse(javaPaths.contains("index/1.21.11/manifest.json"), javaPaths::toString);
+        assertFalse(javaPaths.contains("cache/1.21.11/callgraph/callgraph.db"), javaPaths::toString);
+        assertTrue(nodePaths.contains("tmp/1.21.11/fixture.partial"), nodePaths::toString);
+        assertTrue(javaPaths.contains("tmp/1.21.11/fixture.partial"), javaPaths::toString);
+    }
+
+    @Test
+    void rebuildSuccessProducesAnIndexFromTheSameOfflineSourceFixture() throws Exception {
+        CliCase testCase = new CliCase("rebuild-success", List.of("rebuild", "-v", LEGACY_VERSION), Fixture.REBUILDABLE);
+        ExecutionPair pair = execute(testCase);
+
+        assertEquals(0, pair.node().exitCode(), pair.node()::stderr);
+        assertEquals(0, pair.java().exitCode(), pair.java()::stderr);
+        assertEquals("", pair.node().stderr());
+        assertEquals("", pair.java().stderr());
+        String opening = "Rebuilding index for Minecraft " + LEGACY_VERSION + "...\n";
+        assertTrue(pair.node().stdout().startsWith(opening), pair.node()::stdout);
+        assertTrue(pair.java().stdout().startsWith(opening), pair.java()::stdout);
+        assertTrue(pair.node().stdout().contains("✓ Index rebuilt!"), pair.node()::stdout);
+        assertTrue(pair.java().stdout().contains("Indexed "), pair.java()::stdout);
+
+        String source = "cache/" + LEGACY_VERSION + "/client/fixture/Example.java";
+        assertEquals(artifact(pair.nodeBefore(), source), artifact(pair.nodeAfter(), source));
+        assertEquals(artifact(pair.javaBefore(), source), artifact(pair.javaAfter(), source));
+        assertEquals(withoutIndex(pair.nodeBefore()), withoutIndex(pair.nodeAfter()));
+        assertEquals(withoutIndex(pair.javaBefore()), withoutIndex(pair.javaAfter()));
+        assertTrue(hasArtifact(pair.nodeAfter(), "index/" + LEGACY_VERSION + "/manifest.json"));
+        assertTrue(hasArtifact(pair.javaAfter(), "index/" + LEGACY_VERSION + "/symbols.mv.db"));
+    }
+
+    private Stream<DynamicTest> differentialTests(List<CliCase> cases) {
+        return cases.stream().map(testCase -> dynamicTest(testCase.name(), () -> assertMatches(testCase)));
+    }
+
+    private void assertMatches(CliCase testCase) throws Exception {
+        ExecutionPair pair = execute(testCase);
+        LogicalState expectedNode = testCase.stateChange().expected(pair.nodeBefore(), RuntimeKind.NODE);
+        LogicalState expectedJava = testCase.stateChange().expected(pair.javaBefore(), RuntimeKind.JAVA);
+        if (!pair.node().equals(pair.java()) || !expectedNode.equals(pair.nodeAfter()) || !expectedJava.equals(pair.javaAfter())) {
+            Path report = writeMismatchReport(testCase, pair);
+            assertEquals(expectedNode, pair.nodeAfter(), () -> "Node CLI state transition mismatch; report: " + report.toAbsolutePath().normalize());
+            assertEquals(expectedJava, pair.javaAfter(), () -> "Java CLI state transition mismatch; report: " + report.toAbsolutePath().normalize());
+            assertEquals(pair.node(), pair.java(), () -> "CLI parity mismatch; report: " + report.toAbsolutePath().normalize());
+        }
+    }
+
+    private ExecutionPair execute(CliCase testCase) throws Exception {
+        Path caseRoot = temporaryDirectory.resolve(testCase.name());
+        CliEnvironment nodeEnvironment = CliEnvironment.create(caseRoot.resolve("node"), testCase.fixture(), RuntimeKind.NODE);
+        CliEnvironment javaEnvironment = CliEnvironment.create(caseRoot.resolve("java"), testCase.fixture(), RuntimeKind.JAVA);
+
+        LogicalState nodeBefore = LogicalState.capture(nodeEnvironment, RuntimeKind.NODE);
+        ProcessResult node = run(nodeProcess(testCase.arguments(), nodeEnvironment));
+        LogicalState nodeAfter = LogicalState.capture(nodeEnvironment, RuntimeKind.NODE);
+        LogicalState javaBefore = LogicalState.capture(javaEnvironment, RuntimeKind.JAVA);
+        ProcessResult java = run(javaProcess(testCase.arguments(), javaEnvironment));
+        LogicalState javaAfter = LogicalState.capture(javaEnvironment, RuntimeKind.JAVA);
+        return new ExecutionPair(normalize(node, nodeEnvironment), normalize(java, javaEnvironment), nodeBefore, nodeAfter, javaBefore, javaAfter);
+    }
+
+    private ProcessBuilder nodeProcess(List<String> arguments, CliEnvironment environment) {
+        List<String> commandArguments = new ArrayList<>(arguments.size() + 1);
+        commandArguments.add("dist/cli.js");
+        commandArguments.addAll(arguments);
+        ProcessBuilder builder = oracle.nodeProcess(commandArguments.toArray(String[]::new));
+        applyEnvironment(builder, environment);
+        return builder;
+    }
+
+    // Node and Java store their callgraphs differently, but every clean selector removes the same
+    // logical target. These rules prove each process changed exactly its runtime-owned files.
+    private enum StateChange {
+        UNCHANGED, DEFAULT_VERSION, CACHE_ALL, CACHE_VERSION, INDEX_ALL, INDEX_VERSION, CALLGRAPH_ALL, CALLGRAPH_VERSION, ALL_ALL, ALL_VERSION, CONFLICTING_SELECTORS;
+
+        private static boolean javaCallgraph(String path) {
+            return path.equals("cache/" + LEGACY_VERSION + "/indexes") || under(path, "cache/" + LEGACY_VERSION + "/indexes/callgraph");
+        }
+
+        private static boolean under(String path, String root) {
+            return path.equals(root) || path.startsWith(root + "/");
+        }
+
+        private LogicalState expected(LogicalState before, RuntimeKind runtime) {
+            return new LogicalState(before.artifacts().stream().filter(artifact -> !removes(artifact.relativePath(), runtime)).toList());
+        }
+
+        private boolean removes(String path, RuntimeKind runtime) {
+            return switch (this) {
+                case UNCHANGED, CALLGRAPH_ALL -> false;
+                case DEFAULT_VERSION, ALL_VERSION ->
+                        under(path, "cache/" + LEGACY_VERSION) || under(path, "index/" + LEGACY_VERSION);
+                case CACHE_ALL -> under(path, "cache");
+                case CACHE_VERSION -> under(path, "cache/" + LEGACY_VERSION);
+                case INDEX_ALL -> under(path, "index");
+                case INDEX_VERSION -> under(path, "index/" + LEGACY_VERSION);
+                case CALLGRAPH_VERSION ->
+                        runtime == RuntimeKind.NODE ? under(path, "cache/" + LEGACY_VERSION + "/callgraph") : javaCallgraph(path);
+                case ALL_ALL -> under(path, "cache") || under(path, "index") || under(path, "tmp");
+                case CONFLICTING_SELECTORS -> under(path, "cache") || under(path, "index");
+            };
+        }
+    }
+
+    private enum ArtifactType {
+        DIRECTORY, REGULAR_FILE, SYMBOLIC_LINK, OTHER
+    }
+
+    private enum RuntimeKind {
+        NODE, JAVA
+    }
+
+    private enum Fixture {
+        EMPTY {
+            @Override
+            void populate(Path cacheRoot, RuntimeKind runtime) throws IOException {
+                Files.createDirectories(cacheRoot);
+            }
+        }, REBUILDABLE {
+            @Override
+            void populate(Path cacheRoot, RuntimeKind runtime) throws IOException {
+                populateCachedVersion(cacheRoot, LEGACY_VERSION, runtime);
+            }
+        }, LEGACY {
+            @Override
+            void populate(Path cacheRoot, RuntimeKind runtime) throws IOException {
+                populateCachedVersion(cacheRoot, LEGACY_VERSION, runtime);
+                populateLegacyIndex(cacheRoot, LEGACY_VERSION);
+            }
+        }, CLEANABLE {
+            @Override
+            void populate(Path cacheRoot, RuntimeKind runtime) throws IOException {
+                populateCachedVersion(cacheRoot, LEGACY_VERSION, runtime);
+                populateCachedVersion(cacheRoot, SECOND_VERSION, runtime);
+                if (runtime == RuntimeKind.NODE) {
+                    populateUnversionedLegacyIndex(cacheRoot);
+                    populateLegacyIndex(cacheRoot, LEGACY_VERSION);
+                    populateLegacyIndex(cacheRoot, SECOND_VERSION);
+                    populateLegacyCallgraph(cacheRoot, LEGACY_VERSION);
+                    populateLegacyCallgraph(cacheRoot, SECOND_VERSION);
+                }
+                else {
+                    populateH2IndexArtifacts(cacheRoot, LEGACY_VERSION);
+                    populateH2IndexArtifacts(cacheRoot, SECOND_VERSION);
+                    populateJsonlCallgraph(cacheRoot, LEGACY_VERSION);
+                    populateJsonlCallgraph(cacheRoot, SECOND_VERSION);
+                }
+                Files.createDirectories(cacheRoot.resolve("tmp").resolve("fixture"));
+                Files.writeString(cacheRoot.resolve("tmp").resolve("fixture").resolve("marker.txt"), "fixture", StandardCharsets.UTF_8);
+                writeArtifact(cacheRoot.resolve("tmp").resolve(LEGACY_VERSION).resolve("fixture.partial"), "partial");
+                writeArtifact(cacheRoot.resolve("tmp").resolve(SECOND_VERSION).resolve("fixture.partial"), "partial");
+            }
+        };
+
+        static void populateCachedVersion(Path cacheRoot, String version, RuntimeKind runtime) throws IOException {
+            Path source = cacheRoot.resolve("cache").resolve(version).resolve("client").resolve("fixture").resolve("Example.java");
+            writeArtifact(source, "package fixture; final class Example {}\n");
+            Path jars = cacheRoot.resolve("cache").resolve(version).resolve("jars");
+            if (runtime == RuntimeKind.NODE) {
+                writeArtifact(jars.resolve(version + "_unobfuscated.jar"), "unobfuscated");
+                writeArtifact(jars.resolve(version + "_obfuscated.jar"), "obfuscated");
+            }
+            else {
+                writeClassJar(jars.resolve(version + "_unobfuscated.jar"));
+                writeArtifact(jars.resolve("client.jar"), "client");
+                writeArtifact(jars.resolve("client-unobfuscated.jar"), "official-unobfuscated");
+            }
+        }
+
+        static void populateLegacyIndex(Path cacheRoot, String version) throws IOException {
+            Path manifest = cacheRoot.resolve("index").resolve(version).resolve("manifest.json");
+            writeArtifact(manifest, LEGACY_MANIFEST.replace(LEGACY_VERSION, version));
+            writeArtifact(manifest.getParent().resolve("minecraft").resolve("fixture.json"), "{\"package\":\"fixture\",\"classes\":[]}\n");
+            writeArtifact(manifest.getParent().resolve("fabric").resolve("fixture.json"), "{\"package\":\"fixture\",\"classes\":[]}\n");
+        }
+
+        static void populateUnversionedLegacyIndex(Path cacheRoot) throws IOException {
+            Path index = cacheRoot.resolve("index");
+            writeArtifact(index.resolve("manifest.json"), LEGACY_MANIFEST);
+            writeArtifact(index.resolve("minecraft").resolve("fixture.json"), "{\"package\":\"fixture\",\"classes\":[]}\n");
+            writeArtifact(index.resolve("fabric").resolve("fixture.json"), "{\"package\":\"fixture\",\"classes\":[]}\n");
+        }
+
+        static void populateH2IndexArtifacts(Path cacheRoot, String version) throws IOException {
+            Path index = cacheRoot.resolve("index").resolve(version);
+            writeArtifact(index.resolve("symbols.mv.db"), "h2");
+            writeArtifact(index.resolve("symbols.newFile"), "new");
+            writeArtifact(index.resolve("symbols.tempFile"), "temporary");
+            writeArtifact(index.resolve("symbols.trace.db"), "trace");
+            writeArtifact(index.resolve("symbols.trace.db.old"), "old-trace");
+            writeArtifact(index.resolve("symbols.42.temp.db"), "numbered-temporary");
+            writeArtifact(index.resolve("symbols.mv.db.bak"), "backup");
+        }
+
+        static void populateLegacyCallgraph(Path cacheRoot, String version) throws IOException {
+            Path legacyCallgraph = cacheRoot.resolve("cache").resolve(version).resolve("callgraph");
+            writeArtifact(legacyCallgraph.resolve("callgraph.db"), "legacy");
+            writeArtifact(legacyCallgraph.resolve("client-remapped.jar"), "remapped");
+            writeArtifact(legacyCallgraph.resolve("_generator_config").resolve("config.properties"), "output.dir=fixture\n");
+        }
+
+        static void populateJsonlCallgraph(Path cacheRoot, String version) throws IOException {
+            Path generation = cacheRoot.resolve("cache").resolve(version).resolve("indexes").resolve("callgraph").resolve("generations").resolve("fixture");
+            writeArtifact(generation.resolve("manifest.json"), "{}\n");
+            writeArtifact(generation.resolve("callers.jsonl"), "{}\n");
+            writeArtifact(generation.resolve("callers.index.jsonl"), "{}\n");
+            writeArtifact(generation.resolve("callees.jsonl"), "{}\n");
+            writeArtifact(generation.resolve("callees.index.jsonl"), "{}\n");
+            writeArtifact(generation.getParent().getParent().resolve("current.json"), "{}\n");
+        }
+
+        static void writeArtifact(Path path, String contents) throws IOException {
+            Files.createDirectories(path.getParent());
+            Files.writeString(path, contents, StandardCharsets.UTF_8);
+        }
+
+        static void writeClassJar(Path path) throws IOException {
+            Files.createDirectories(path.getParent());
+            ClassDesc type = ClassDesc.of("fixture.Example");
+            MethodTypeDesc initializer = MethodTypeDesc.of(ConstantDescs.CD_void);
+            byte[] classFile = ClassFile.of().build(type, classBuilder -> classBuilder.withFlags(AccessFlag.PUBLIC, AccessFlag.FINAL, AccessFlag.SUPER).with(SourceFileAttribute.of("Example.java")).withMethodBody("<init>", initializer, ClassFile.ACC_PUBLIC, code -> {
+                code.aload(0);
+                code.invokespecial(ConstantDescs.CD_Object, "<init>", initializer);
+                code.return_();
+            }));
+            try (JarOutputStream output = new JarOutputStream(Files.newOutputStream(path))) {
+                output.putNextEntry(new JarEntry("fixture/Example.class"));
+                output.write(classFile);
+                output.closeEntry();
+            }
+        }
+
+        abstract void populate(Path cacheRoot, RuntimeKind runtime) throws IOException;
     }
 
     private static final class ProcessTreeTracker {
@@ -689,48 +834,6 @@ final class DifferentialCliTest {
     private record ArtifactSnapshot(String relativePath, ArtifactType type, long size, String fingerprint) {
     }
 
-    // Node and Java store their callgraphs differently, but every clean selector removes the same
-    // logical target. These rules prove each process changed exactly its runtime-owned files.
-    private enum StateChange {
-        UNCHANGED, DEFAULT_VERSION, CACHE_ALL, CACHE_VERSION, INDEX_ALL, INDEX_VERSION, CALLGRAPH_ALL, CALLGRAPH_VERSION, ALL_ALL, ALL_VERSION, CONFLICTING_SELECTORS;
-
-        private LogicalState expected(LogicalState before, RuntimeKind runtime) {
-            return new LogicalState(before.artifacts().stream().filter(artifact -> !removes(artifact.relativePath(), runtime)).toList());
-        }
-
-        private boolean removes(String path, RuntimeKind runtime) {
-            return switch (this) {
-                case UNCHANGED, CALLGRAPH_ALL -> false;
-                case DEFAULT_VERSION, ALL_VERSION ->
-                        under(path, "cache/" + LEGACY_VERSION) || under(path, "index/" + LEGACY_VERSION);
-                case CACHE_ALL -> under(path, "cache");
-                case CACHE_VERSION -> under(path, "cache/" + LEGACY_VERSION);
-                case INDEX_ALL -> under(path, "index");
-                case INDEX_VERSION -> under(path, "index/" + LEGACY_VERSION);
-                case CALLGRAPH_VERSION ->
-                        runtime == RuntimeKind.NODE ? under(path, "cache/" + LEGACY_VERSION + "/callgraph") : javaCallgraph(path);
-                case ALL_ALL -> under(path, "cache") || under(path, "index") || under(path, "tmp");
-                case CONFLICTING_SELECTORS -> under(path, "cache") || under(path, "index");
-            };
-        }
-
-        private static boolean javaCallgraph(String path) {
-            return path.equals("cache/" + LEGACY_VERSION + "/indexes") || under(path, "cache/" + LEGACY_VERSION + "/indexes/callgraph");
-        }
-
-        private static boolean under(String path, String root) {
-            return path.equals(root) || path.startsWith(root + "/");
-        }
-    }
-
-    private enum ArtifactType {
-        DIRECTORY, REGULAR_FILE, SYMBOLIC_LINK, OTHER
-    }
-
-    private enum RuntimeKind {
-        NODE, JAVA
-    }
-
     private record CliEnvironment(Path root, Path home, Path localApplicationData, Path roamingApplicationData, Path xdgCache, Path temporary) {
         private static CliEnvironment create(Path root, Fixture fixture, RuntimeKind runtime) throws IOException {
             Path absoluteRoot = root.toAbsolutePath().normalize();
@@ -756,129 +859,6 @@ final class DifferentialCliTest {
                 return localApplicationData.resolve("mcdev-mcp").resolve("Cache");
             }
             return xdgCache.resolve("mcdev-mcp");
-        }
-    }
-
-    private enum Fixture {
-        EMPTY {
-            @Override
-            void populate(Path cacheRoot, RuntimeKind runtime) throws IOException {
-                Files.createDirectories(cacheRoot);
-            }
-        }, REBUILDABLE {
-            @Override
-            void populate(Path cacheRoot, RuntimeKind runtime) throws IOException {
-                populateCachedVersion(cacheRoot, LEGACY_VERSION, runtime);
-            }
-        }, LEGACY {
-            @Override
-            void populate(Path cacheRoot, RuntimeKind runtime) throws IOException {
-                populateCachedVersion(cacheRoot, LEGACY_VERSION, runtime);
-                populateLegacyIndex(cacheRoot, LEGACY_VERSION);
-            }
-        }, CLEANABLE {
-            @Override
-            void populate(Path cacheRoot, RuntimeKind runtime) throws IOException {
-                populateCachedVersion(cacheRoot, LEGACY_VERSION, runtime);
-                populateCachedVersion(cacheRoot, SECOND_VERSION, runtime);
-                if (runtime == RuntimeKind.NODE) {
-                    populateUnversionedLegacyIndex(cacheRoot);
-                    populateLegacyIndex(cacheRoot, LEGACY_VERSION);
-                    populateLegacyIndex(cacheRoot, SECOND_VERSION);
-                    populateLegacyCallgraph(cacheRoot, LEGACY_VERSION);
-                    populateLegacyCallgraph(cacheRoot, SECOND_VERSION);
-                }
-                else {
-                    populateH2IndexArtifacts(cacheRoot, LEGACY_VERSION);
-                    populateH2IndexArtifacts(cacheRoot, SECOND_VERSION);
-                    populateJsonlCallgraph(cacheRoot, LEGACY_VERSION);
-                    populateJsonlCallgraph(cacheRoot, SECOND_VERSION);
-                }
-                Files.createDirectories(cacheRoot.resolve("tmp").resolve("fixture"));
-                Files.writeString(cacheRoot.resolve("tmp").resolve("fixture").resolve("marker.txt"), "fixture", StandardCharsets.UTF_8);
-                writeArtifact(cacheRoot.resolve("tmp").resolve(LEGACY_VERSION).resolve("fixture.partial"), "partial");
-                writeArtifact(cacheRoot.resolve("tmp").resolve(SECOND_VERSION).resolve("fixture.partial"), "partial");
-            }
-        };
-
-        abstract void populate(Path cacheRoot, RuntimeKind runtime) throws IOException;
-
-        static void populateCachedVersion(Path cacheRoot, String version, RuntimeKind runtime) throws IOException {
-            Path source = cacheRoot.resolve("cache").resolve(version).resolve("client").resolve("fixture").resolve("Example.java");
-            writeArtifact(source, "package fixture; final class Example {}\n");
-            Path jars = cacheRoot.resolve("cache").resolve(version).resolve("jars");
-            if (runtime == RuntimeKind.NODE) {
-                writeArtifact(jars.resolve(version + "_unobfuscated.jar"), "unobfuscated");
-                writeArtifact(jars.resolve(version + "_obfuscated.jar"), "obfuscated");
-            }
-            else {
-                writeClassJar(jars.resolve(version + "_unobfuscated.jar"));
-                writeArtifact(jars.resolve("client.jar"), "client");
-                writeArtifact(jars.resolve("client-unobfuscated.jar"), "official-unobfuscated");
-            }
-        }
-
-        static void populateLegacyIndex(Path cacheRoot, String version) throws IOException {
-            Path manifest = cacheRoot.resolve("index").resolve(version).resolve("manifest.json");
-            writeArtifact(manifest, LEGACY_MANIFEST.replace(LEGACY_VERSION, version));
-            writeArtifact(manifest.getParent().resolve("minecraft").resolve("fixture.json"), "{\"package\":\"fixture\",\"classes\":[]}\n");
-            writeArtifact(manifest.getParent().resolve("fabric").resolve("fixture.json"), "{\"package\":\"fixture\",\"classes\":[]}\n");
-        }
-
-        static void populateUnversionedLegacyIndex(Path cacheRoot) throws IOException {
-            Path index = cacheRoot.resolve("index");
-            writeArtifact(index.resolve("manifest.json"), LEGACY_MANIFEST);
-            writeArtifact(index.resolve("minecraft").resolve("fixture.json"), "{\"package\":\"fixture\",\"classes\":[]}\n");
-            writeArtifact(index.resolve("fabric").resolve("fixture.json"), "{\"package\":\"fixture\",\"classes\":[]}\n");
-        }
-
-        static void populateH2IndexArtifacts(Path cacheRoot, String version) throws IOException {
-            Path index = cacheRoot.resolve("index").resolve(version);
-            writeArtifact(index.resolve("symbols.mv.db"), "h2");
-            writeArtifact(index.resolve("symbols.newFile"), "new");
-            writeArtifact(index.resolve("symbols.tempFile"), "temporary");
-            writeArtifact(index.resolve("symbols.trace.db"), "trace");
-            writeArtifact(index.resolve("symbols.trace.db.old"), "old-trace");
-            writeArtifact(index.resolve("symbols.42.temp.db"), "numbered-temporary");
-            writeArtifact(index.resolve("symbols.mv.db.bak"), "backup");
-        }
-
-        static void populateLegacyCallgraph(Path cacheRoot, String version) throws IOException {
-            Path legacyCallgraph = cacheRoot.resolve("cache").resolve(version).resolve("callgraph");
-            writeArtifact(legacyCallgraph.resolve("callgraph.db"), "legacy");
-            writeArtifact(legacyCallgraph.resolve("client-remapped.jar"), "remapped");
-            writeArtifact(legacyCallgraph.resolve("_generator_config").resolve("config.properties"), "output.dir=fixture\n");
-        }
-
-        static void populateJsonlCallgraph(Path cacheRoot, String version) throws IOException {
-            Path generation = cacheRoot.resolve("cache").resolve(version).resolve("indexes").resolve("callgraph").resolve("generations").resolve("fixture");
-            writeArtifact(generation.resolve("manifest.json"), "{}\n");
-            writeArtifact(generation.resolve("callers.jsonl"), "{}\n");
-            writeArtifact(generation.resolve("callers.index.jsonl"), "{}\n");
-            writeArtifact(generation.resolve("callees.jsonl"), "{}\n");
-            writeArtifact(generation.resolve("callees.index.jsonl"), "{}\n");
-            writeArtifact(generation.getParent().getParent().resolve("current.json"), "{}\n");
-        }
-
-        static void writeArtifact(Path path, String contents) throws IOException {
-            Files.createDirectories(path.getParent());
-            Files.writeString(path, contents, StandardCharsets.UTF_8);
-        }
-
-        static void writeClassJar(Path path) throws IOException {
-            Files.createDirectories(path.getParent());
-            ClassDesc type = ClassDesc.of("fixture.Example");
-            MethodTypeDesc initializer = MethodTypeDesc.of(ConstantDescs.CD_void);
-            byte[] classFile = ClassFile.of().build(type, classBuilder -> classBuilder.withFlags(AccessFlag.PUBLIC, AccessFlag.FINAL, AccessFlag.SUPER).with(SourceFileAttribute.of("Example.java")).withMethodBody("<init>", initializer, ClassFile.ACC_PUBLIC, code -> {
-                code.aload(0);
-                code.invokespecial(ConstantDescs.CD_Object, "<init>", initializer);
-                code.return_();
-            }));
-            try (JarOutputStream output = new JarOutputStream(Files.newOutputStream(path))) {
-                output.putNextEntry(new JarEntry("fixture/Example.class"));
-                output.write(classFile);
-                output.closeEntry();
-            }
         }
     }
 }

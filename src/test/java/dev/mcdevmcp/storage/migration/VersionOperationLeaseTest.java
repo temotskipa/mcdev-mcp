@@ -8,10 +8,14 @@ import dev.mcdevmcp.storage.model.VersionState;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -28,7 +32,7 @@ class VersionOperationLeaseTest {
             lease.require(paths, VERSION);
             assertFalse(lease.isWrite());
             assertEquals(VERSION, lease.version());
-            assertThrows(java.io.IOException.class, () -> lease.require(new PlatformPaths(temporaryDirectory.resolve("other")), VERSION));
+            assertThrows(IOException.class, () -> lease.require(new PlatformPaths(temporaryDirectory.resolve("other")), VERSION));
             assertThrows(IllegalStateException.class, () -> lease.require(paths, new MinecraftVersion("26.1")));
             assertTrue(executor.submit(() -> {
                 assertThrows(IllegalStateException.class, () -> lease.require(paths, VERSION));
@@ -73,7 +77,7 @@ class VersionOperationLeaseTest {
         Path pending = paths.cacheRoot().resolve("migrations").resolve(VERSION.value()).resolve("pending.json");
         Files.createDirectories(pending.getParent());
         Files.writeString(pending, "{}");
-        assertEquals(java.util.List.of(VERSION), new CacheCleaner(paths).cachedVersions());
+        assertEquals(List.of(VERSION), new CacheCleaner(paths).cachedVersions());
     }
 
     @Test
@@ -100,7 +104,7 @@ class VersionOperationLeaseTest {
                 DirectoryAliasFixture.create(alias, secondParent);
                 lease.require(selected, VERSION);
                 lease.require(first, VERSION);
-                assertThrows(java.io.IOException.class, () -> lease.require(second, VERSION));
+                assertThrows(IOException.class, () -> lease.require(second, VERSION));
                 assertEquals("old", Files.readString(lease.boundary().require(selected.sourceRoot(VERSION).resolve("Old.java"))));
                 try (var next = VersionOperationLease.write(selected, VERSION)) {
                     assertEquals(second.cacheRoot().toRealPath(), next.resolvedPaths().cacheRoot());
@@ -121,7 +125,7 @@ class VersionOperationLeaseTest {
         try (var executor = Executors.newVirtualThreadPerTaskExecutor(); var output = process.inputReader()) {
             try {
                 assertEquals("read-held", executor.submit(output::readLine).get(10, TimeUnit.SECONDS));
-                var started = new java.util.concurrent.CountDownLatch(1);
+                var started = new CountDownLatch(1);
                 var writer = executor.submit(() -> {
                     started.countDown();
                     try (var lease = VersionOperationLease.write(paths, VERSION)) {
@@ -131,7 +135,7 @@ class VersionOperationLeaseTest {
                 });
                 try {
                     assertTrue(started.await(5, TimeUnit.SECONDS));
-                    assertThrows(java.util.concurrent.TimeoutException.class, () -> writer.get(150, TimeUnit.MILLISECONDS));
+                    assertThrows(TimeoutException.class, () -> writer.get(150, TimeUnit.MILLISECONDS));
                 } finally {
                     process.getOutputStream().close();
                 }

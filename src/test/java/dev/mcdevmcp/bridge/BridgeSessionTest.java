@@ -1,13 +1,13 @@
 package dev.mcdevmcp.bridge;
 
-import dev.mcdevmcp.support.AppEnvironment;
 import dev.mcdevmcp.bridge.payload.EmptyBridgePayload;
 import dev.mcdevmcp.storage.model.MinecraftVersion;
+import dev.mcdevmcp.support.AppEnvironment;
 import io.modelcontextprotocol.json.McpJsonDefaults;
 import org.junit.jupiter.api.Test;
 
-import java.nio.file.Path;
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
@@ -23,6 +23,25 @@ import static org.junit.jupiter.api.Assertions.*;
 
 final class BridgeSessionTest {
     private static final BridgeJson JSON = new BridgeJson(McpJsonDefaults.getMapper());
+
+    private static BridgeClient capturingClient(List<BridgeRequest> requests) {
+        Map<String, Object> status = Map.of("version", "1.21.11", "mappingStatus", "mojang", "obfuscated", false, "refs", 0L);
+        return BridgeClient.testing(JSON, request -> {
+            requests.add(request);
+            Object result = request.endpoint().wireName().equals("status") ? status : request.payload();
+            return CompletableFuture.completedFuture(new BridgeResponse(request.id(), true, true, result, null, null));
+        });
+    }
+
+    private static void awaitUntil(BooleanSupplier condition) throws InterruptedException {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+        while (!condition.getAsBoolean()) {
+            if (System.nanoTime() >= deadline) {
+                fail("timed out waiting for structured session work");
+            }
+            Thread.sleep(5);
+        }
+    }
 
     @Test
     void statusDomainPathsRequireNativeAbsolutePaths() throws Exception {
@@ -69,15 +88,6 @@ final class BridgeSessionTest {
         assertEquals(List.of("status", "status"), requests.stream().map(request -> request.endpoint().wireName()).toList());
         assertTrue(requests.stream().allMatch(request -> request.payload().getClass() == EmptyBridgePayload.class));
         session.close();
-    }
-
-    private static BridgeClient capturingClient(List<BridgeRequest> requests) {
-        Map<String, Object> status = Map.of("version", "1.21.11", "mappingStatus", "mojang", "obfuscated", false, "refs", 0L);
-        return BridgeClient.testing(JSON, request -> {
-            requests.add(request);
-            Object result = request.endpoint().wireName().equals("status") ? status : request.payload();
-            return CompletableFuture.completedFuture(new BridgeResponse(request.id(), true, true, result, null, null));
-        });
     }
 
     @Test
@@ -283,16 +293,6 @@ final class BridgeSessionTest {
         assertFalse(session.connectedPort().isPresent());
         assertEquals(remembered, session.sessionInfo().orElseThrow());
         session.close();
-    }
-
-    private static void awaitUntil(BooleanSupplier condition) throws InterruptedException {
-        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
-        while (!condition.getAsBoolean()) {
-            if (System.nanoTime() >= deadline) {
-                fail("timed out waiting for structured session work");
-            }
-            Thread.sleep(5);
-        }
     }
 
     private record TestPayload(int value) implements BridgePayload {

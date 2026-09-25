@@ -11,20 +11,10 @@ import java.nio.CharBuffer;
 import java.nio.charset.CharacterCodingException;
 import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.FileVisitResult;
-import java.nio.file.Files;
-import java.nio.file.LinkOption;
-import java.nio.file.Path;
-import java.nio.file.SimpleFileVisitor;
+import java.nio.file.*;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.time.Duration;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Locale;
-import java.util.Map;
-import java.util.Objects;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -94,62 +84,6 @@ public final class NodeOracleMaterializer implements AutoCloseable {
                 verifyOriginalUnchanged(snapshot, failure);
                 deleteScratchAfterFailure(scratchLayout, scratchDirectory, failure);
             }
-        }
-    }
-
-    /**
-     * Starts a command in the materialized clone with the same locked-down npm environment used to build it.
-     */
-    public ProcessBuilder process(List<String> command) {
-        requireOpen();
-        if (command.isEmpty()) {
-            throw new IllegalArgumentException("Oracle command must not be empty");
-        }
-        ProcessBuilder builder = new ProcessBuilder(command);
-        builder.directory(scratchDirectory.toFile());
-        Map<String, String> environment = builder.environment();
-        environment.clear();
-        environment.putAll(npmEnvironment(npmUserConfig));
-        return builder;
-    }
-
-    public ProcessBuilder nodeProcess(String... arguments) {
-        List<String> command = new ArrayList<>(arguments.length + 1);
-        command.add(isWindows() ? "node.exe" : "node");
-        command.addAll(List.of(arguments));
-        return process(command);
-    }
-
-    @Override
-    public void close() {
-        if (closed) {
-            return;
-        }
-        closed = true;
-        Throwable failure = null;
-        try {
-            originalSnapshot.assertUnchanged();
-        } catch (RuntimeException | Error exception) {
-            failure = exception;
-        }
-        try {
-            deleteScratchDirectory(scratchLayout, scratchDirectory);
-        } catch (IOException | RuntimeException | Error exception) {
-            if (failure == null) {
-                failure = exception;
-            }
-            else {
-                failure.addSuppressed(exception);
-            }
-        }
-        if (failure instanceof RuntimeException runtimeException) {
-            throw runtimeException;
-        }
-        if (failure instanceof Error error) {
-            throw error;
-        }
-        if (failure != null) {
-            throw new IllegalStateException("Unable to clean up Node oracle scratch directory", failure);
         }
     }
 
@@ -346,12 +280,6 @@ public final class NodeOracleMaterializer implements AutoCloseable {
         return environment;
     }
 
-    private void requireOpen() {
-        if (closed) {
-            throw new IllegalStateException("Node oracle materializer is closed");
-        }
-    }
-
     private static String npmExecutable() {
         return isWindows() ? "npm.cmd" : "npm";
     }
@@ -487,6 +415,68 @@ public final class NodeOracleMaterializer implements AutoCloseable {
             return characters.toString();
         } catch (CharacterCodingException exception) {
             throw new IllegalArgumentException("Invalid UTF-8 from " + source, exception);
+        }
+    }
+
+    /**
+     * Starts a command in the materialized clone with the same locked-down npm environment used to build it.
+     */
+    public ProcessBuilder process(List<String> command) {
+        requireOpen();
+        if (command.isEmpty()) {
+            throw new IllegalArgumentException("Oracle command must not be empty");
+        }
+        ProcessBuilder builder = new ProcessBuilder(command);
+        builder.directory(scratchDirectory.toFile());
+        Map<String, String> environment = builder.environment();
+        environment.clear();
+        environment.putAll(npmEnvironment(npmUserConfig));
+        return builder;
+    }
+
+    public ProcessBuilder nodeProcess(String... arguments) {
+        List<String> command = new ArrayList<>(arguments.length + 1);
+        command.add(isWindows() ? "node.exe" : "node");
+        command.addAll(List.of(arguments));
+        return process(command);
+    }
+
+    @Override
+    public void close() {
+        if (closed) {
+            return;
+        }
+        closed = true;
+        Throwable failure = null;
+        try {
+            originalSnapshot.assertUnchanged();
+        } catch (RuntimeException | Error exception) {
+            failure = exception;
+        }
+        try {
+            deleteScratchDirectory(scratchLayout, scratchDirectory);
+        } catch (IOException | RuntimeException | Error exception) {
+            if (failure == null) {
+                failure = exception;
+            }
+            else {
+                failure.addSuppressed(exception);
+            }
+        }
+        if (failure instanceof RuntimeException runtimeException) {
+            throw runtimeException;
+        }
+        if (failure instanceof Error error) {
+            throw error;
+        }
+        if (failure != null) {
+            throw new IllegalStateException("Unable to clean up Node oracle scratch directory", failure);
+        }
+    }
+
+    private void requireOpen() {
+        if (closed) {
+            throw new IllegalStateException("Node oracle materializer is closed");
         }
     }
 

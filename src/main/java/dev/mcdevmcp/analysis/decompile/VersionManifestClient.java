@@ -4,6 +4,7 @@ import dev.mcdevmcp.storage.model.MinecraftVersion;
 import io.modelcontextprotocol.json.McpJsonDefaults;
 import io.modelcontextprotocol.json.McpJsonMapper;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.InetAddress;
@@ -12,10 +13,7 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Objects;
-import java.util.Set;
+import java.util.*;
 
 /**
  * Resolves Mojang's typed version metadata through the SDK JSON mapper.
@@ -46,7 +44,7 @@ public final class VersionManifestClient {
 
     private static byte[] readBounded(InputStream body, URI uri) throws IOException {
         byte[] buffer = new byte[16 * 1024];
-        try (var output = new java.io.ByteArrayOutputStream()) {
+        try (var output = new ByteArrayOutputStream()) {
             int read;
             while (true) {
                 checkInterrupted(uri);
@@ -189,7 +187,7 @@ public final class VersionManifestClient {
         if (mappingDownload == null && unobfuscatedDownload == null && requiresMappings(version)) {
             throw new IOException("Mojang metadata lacks client mappings for mapped version " + version.value());
         }
-        List<DownloadArtifact> libraryArtifacts = new java.util.ArrayList<>();
+        List<DownloadArtifact> libraryArtifacts = new ArrayList<>();
         for (LibraryEntry library : detailBody.libraries()) {
             if (compilerClasspathLibrary(library) && library.downloads() != null && library.downloads().artifact() != null && library.downloads().artifact().url() != null) {
                 try {

@@ -10,21 +10,35 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Executors;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNotEquals;
-import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.*;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 @Tag("parity")
 @Timeout(15)
 class NodeOracleMaterializerTest {
+    private static void assertMalformed(byte[] porcelain, String expectedMessage) {
+        IllegalArgumentException failure = assertThrows(IllegalArgumentException.class, () -> NodeOracleMaterializer.parseWorktreePorcelain(porcelain));
+        assertTrue(failure.getMessage().contains(expectedMessage), failure::getMessage);
+    }
+
+    private static List<String> fixtureCommand(String... arguments) {
+        String configuredJava = System.getProperty("mcdevMcpJava");
+        String java = configuredJava == null || configuredJava.isBlank() ? ProcessHandle.current().info().command().orElseThrow() : configuredJava;
+        var command = new ArrayList<String>(arguments.length + 4);
+        command.add(java);
+        command.add("--enable-preview");
+        command.add("-cp");
+        command.add(System.getProperty("java.class.path"));
+        command.add(McpProcessFixtureMain.class.getName());
+        command.addAll(List.of(arguments));
+        return List.copyOf(command);
+    }
+
     @Test
     void parsesBranchedDetachedAndAdvisoryWorktreeEntries() {
         byte[] porcelain = ("""
@@ -132,23 +146,5 @@ class NodeOracleMaterializerTest {
         assertEquals(0, output.length);
         long childPid = Long.parseLong(Files.readString(childPidFile, StandardCharsets.UTF_8));
         assertFalse(ProcessHandle.of(childPid).map(ProcessHandle::isAlive).orElse(false), "Successful command left its tracked descendant alive");
-    }
-
-    private static void assertMalformed(byte[] porcelain, String expectedMessage) {
-        IllegalArgumentException failure = assertThrows(IllegalArgumentException.class, () -> NodeOracleMaterializer.parseWorktreePorcelain(porcelain));
-        assertTrue(failure.getMessage().contains(expectedMessage), failure::getMessage);
-    }
-
-    private static List<String> fixtureCommand(String... arguments) {
-        String configuredJava = System.getProperty("mcdevMcpJava");
-        String java = configuredJava == null || configuredJava.isBlank() ? ProcessHandle.current().info().command().orElseThrow() : configuredJava;
-        var command = new java.util.ArrayList<String>(arguments.length + 4);
-        command.add(java);
-        command.add("--enable-preview");
-        command.add("-cp");
-        command.add(System.getProperty("java.class.path"));
-        command.add(McpProcessFixtureMain.class.getName());
-        command.addAll(List.of(arguments));
-        return List.copyOf(command);
     }
 }

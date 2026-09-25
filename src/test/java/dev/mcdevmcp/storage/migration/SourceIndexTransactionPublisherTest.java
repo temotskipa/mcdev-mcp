@@ -10,16 +10,39 @@ import org.junit.jupiter.params.provider.ValueSource;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.BasicFileAttributes;
+import java.util.List;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.concurrent.TimeUnit;
-import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 class SourceIndexTransactionPublisherTest {
     @TempDir
     Path temporary;
+
+    @SuppressWarnings("resource") // Explicit finally cleanup verifies subprocess termination.
+    private static int runProcess(SourcePublicationFixture fixture, String event) throws Exception {
+        Process process = new ProcessBuilder(System.getProperty("mcdevMcpJava"), "--enable-preview", "-cp", System.getProperty("java.class.path"), SourcePublicationProcessMain.class.getName(), fixture.paths().cacheRoot().toString(), fixture.transaction().toString(), event).redirectErrorStream(true).redirectOutput(fixture.transaction().resolve("process-" + event + ".log").toFile()).start();
+        try {
+            assertTrue(process.waitFor(30, TimeUnit.SECONDS), "Migration process did not terminate: " + event);
+            return process.exitValue();
+        } finally {
+            if (process.isAlive()) {
+                process.destroyForcibly();
+                assertTrue(process.waitFor(5, TimeUnit.SECONDS));
+            }
+        }
+    }
+
+    private static SourcePublicationResult publish(SourceIndexTransactionPublisher publisher, SourcePublicationFixture fixture, VersionOperationLease lease, SourceIndexSnapshot before, Cancellation cancellation) throws IOException {
+        return publisher.publish(fixture.paths(), fixture.version(), lease, fixture.transaction(), fixture.source(), fixture.database(), fixture.stamp(), before, cancellation);
+    }
+
+    private static Path pending(SourcePublicationFixture fixture) {
+        return fixture.transaction().getParent().resolve("pending.json");
+    }
 
     @ParameterizedTest
     @EnumSource(SourcePublicationPhase.class)
@@ -133,7 +156,7 @@ class SourceIndexTransactionPublisherTest {
     void reusePublishesIndexAndStampWithoutMovingSourceDirectory() throws Exception {
         SourcePublicationFixture fixture = SourcePublicationFixture.create(temporary, true);
         Path source = fixture.paths().sourceRoot(fixture.version());
-        Object originalKey = Files.readAttributes(source, java.nio.file.attribute.BasicFileAttributes.class).fileKey();
+        Object originalKey = Files.readAttributes(source, BasicFileAttributes.class).fileKey();
         SourcePreparationStamp staged = SourceProvenance.read(fixture.stamp()).orElseThrow();
         Files.delete(fixture.stamp());
         SourceProvenance.write(fixture.stamp(), new SourcePreparationStamp(1, SourceOwnership.VALIDATED_EXTERNAL, null, staged.inputs(), SourceTreeInventory.capture(source, Cancellation.none()), new SourceValidation(SourceValidationStatus.VALID, List.of(), List.of("Old.java"), List.of("Old.java"))));
@@ -146,7 +169,7 @@ class SourceIndexTransactionPublisherTest {
             SourceIndexSnapshot before = publisher.captureBefore(fixture.paths(), fixture.version(), lease, Cancellation.none());
             publisher.publish(fixture.paths(), fixture.version(), lease, fixture.transaction(), source, fixture.database(), fixture.stamp(), before, SourcePublicationMode.REUSE_SOURCES, Cancellation.none());
             assertEquals(before.source(), SourceTreeInventory.capture(source, Cancellation.none()));
-            assertEquals(originalKey, Files.readAttributes(source, java.nio.file.attribute.BasicFileAttributes.class).fileKey());
+            assertEquals(originalKey, Files.readAttributes(source, BasicFileAttributes.class).fileKey());
             assertFalse(Files.exists(fixture.transaction().resolve("held/client")));
         }
     }
@@ -323,27 +346,5 @@ class SourceIndexTransactionPublisherTest {
         }
         assertEquals(before.source(), SourceTreeInventory.capture(fixture.transaction().resolve("old/client"), Cancellation.none()));
         assertEquals(before.index(), SourceTreeInventory.capture(fixture.transaction().resolve("old/index"), Cancellation.none()));
-    }
-
-    @SuppressWarnings("resource") // Explicit finally cleanup verifies subprocess termination.
-    private static int runProcess(SourcePublicationFixture fixture, String event) throws Exception {
-        Process process = new ProcessBuilder(System.getProperty("mcdevMcpJava"), "--enable-preview", "-cp", System.getProperty("java.class.path"), SourcePublicationProcessMain.class.getName(), fixture.paths().cacheRoot().toString(), fixture.transaction().toString(), event).redirectErrorStream(true).redirectOutput(fixture.transaction().resolve("process-" + event + ".log").toFile()).start();
-        try {
-            assertTrue(process.waitFor(30, TimeUnit.SECONDS), "Migration process did not terminate: " + event);
-            return process.exitValue();
-        } finally {
-            if (process.isAlive()) {
-                process.destroyForcibly();
-                assertTrue(process.waitFor(5, TimeUnit.SECONDS));
-            }
-        }
-    }
-
-    private static SourcePublicationResult publish(SourceIndexTransactionPublisher publisher, SourcePublicationFixture fixture, VersionOperationLease lease, SourceIndexSnapshot before, Cancellation cancellation) throws IOException {
-        return publisher.publish(fixture.paths(), fixture.version(), lease, fixture.transaction(), fixture.source(), fixture.database(), fixture.stamp(), before, cancellation);
-    }
-
-    private static Path pending(SourcePublicationFixture fixture) {
-        return fixture.transaction().getParent().resolve("pending.json");
     }
 }

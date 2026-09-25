@@ -1,7 +1,9 @@
 package dev.mcdevmcp.storage.h2;
 
+import java.io.IOException;
 import java.nio.file.Path;
 import java.sql.DriverManager;
+import java.sql.SQLException;
 import java.time.Duration;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -34,7 +36,7 @@ final class DatabaseLockProcessMain {
                         //noinspection SqlNoDataSourceInspection,SqlResolve
                         try (var results = statement.executeQuery("SELECT marker_value FROM marker")) {
                             if (!results.next()) {
-                                throw new java.sql.SQLException("marker missing");
+                                throw new SQLException("marker missing");
                             }
                             return results.getString(1);
                         }
@@ -47,11 +49,11 @@ final class DatabaseLockProcessMain {
             case "recover-failing" -> {
                 try {
                     new AtomicH2Database().rebuild(database, Duration.ofSeconds(1), _ -> {
-                        throw new java.sql.SQLException("intentional rebuild failure");
+                        throw new SQLException("intentional rebuild failure");
                     }, _ -> {
                     });
                     throw new AssertionError("rebuild unexpectedly succeeded");
-                } catch (java.sql.SQLException expected) {
+                } catch (SQLException expected) {
                     System.out.println("recovered");
                     System.out.flush();
                 }
@@ -64,7 +66,7 @@ final class DatabaseLockProcessMain {
                         throw new AssertionError("H2 connection unexpectedly closed");
                     }
                     System.out.println("opened");
-                } catch (java.sql.SQLException expected) {
+                } catch (SQLException expected) {
                     System.out.println("blocked");
                 }
                 System.out.flush();
@@ -88,7 +90,7 @@ final class DatabaseLockProcessMain {
         return url.replace("LOCK_TIMEOUT=30000", "LOCK_TIMEOUT=250");
     }
 
-    private static void awaitParentExit() throws java.io.IOException {
+    private static void awaitParentExit() throws IOException {
         int input;
         do {
             input = System.in.read();

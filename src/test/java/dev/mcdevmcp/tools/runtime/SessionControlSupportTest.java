@@ -1,24 +1,27 @@
 package dev.mcdevmcp.tools.runtime;
 
+import com.fasterxml.jackson.annotation.JsonCreator;
 import dev.mcdevmcp.bridge.BridgeMappingStatus;
 import dev.mcdevmcp.bridge.BridgeResponse;
 import dev.mcdevmcp.bridge.BridgeTestHarness;
 import dev.mcdevmcp.bridge.SessionInfo;
-import dev.mcdevmcp.minecraft.MinecraftServerAddress;
 import dev.mcdevmcp.mcp.tool.api.RecordInputSchemaFactory;
 import dev.mcdevmcp.mcp.tool.api.ToolInput;
+import dev.mcdevmcp.minecraft.MinecraftServerAddress;
 import dev.mcdevmcp.storage.model.MinecraftVersion;
 import dev.mcdevmcp.support.AppEnvironment;
 import dev.mcdevmcp.support.Cancellation;
 import io.modelcontextprotocol.json.McpJsonDefaults;
+import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
-import org.junit.jupiter.api.Assumptions;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.lang.reflect.Modifier;
+import java.lang.reflect.RecordComponent;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -26,16 +29,8 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.InstantSource;
-import java.util.AbstractList;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionStage;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.TimeUnit;
+import java.util.*;
+import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
@@ -44,6 +39,24 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class SessionControlSupportTest {
     private static final Path GAME_DIRECTORY = Path.of(RuntimeContractFixtures.gameDirectory());
+
+    private static void assertPropertyCreator(Class<?> type, Class<?>... parameterTypes) {
+        var creators = Arrays.stream(type.getDeclaredMethods()).filter(method -> Modifier.isStatic(method.getModifiers()) && type.equals(method.getReturnType()) && method.isAnnotationPresent(JsonCreator.class)).toList();
+        assertEquals(1, creators.size(), type.getSimpleName());
+        var creator = creators.getFirst();
+        assertEquals(JsonCreator.Mode.PROPERTIES, creator.getAnnotation(JsonCreator.class).mode());
+        assertEquals(List.of(parameterTypes), List.of(creator.getParameterTypes()));
+    }
+
+    private static List<Integer> bridgePorts(Map<String, String> environment) {
+        try (var harness = new BridgeTestHarness(McpJsonDefaults.getMapper(), new AppEnvironment(environment), (_, request) -> CompletableFuture.completedFuture(RuntimeContractFixtures.status(request.id())))) {
+            return new SessionControlSupport(harness.session(), new AppEnvironment(environment)).bridgePortRange();
+        }
+    }
+
+    private static SessionInfo sessionInfo(String version, Path gameDirectory) {
+        return new SessionInfo(9876, new MinecraftVersion(version), BridgeMappingStatus.MOJANG, false, 0, Optional.ofNullable(gameDirectory), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty());
+    }
 
     @Test
     void classifiesJoinedDisconnectedPendingAndStaleWorldTransitions() {
@@ -109,10 +122,10 @@ class SessionControlSupportTest {
 
     @Test
     void exposesExactFinalSessionComponentsAndPropertyCreators() {
-        assertEquals(List.of(MinecraftServerAddress.class, boolean.class, boolean.class, Duration.class), java.util.Arrays.stream(JoinServerArguments.class.getRecordComponents()).map(java.lang.reflect.RecordComponent::getType).toList());
-        assertEquals(List.of(boolean.class, Duration.class), java.util.Arrays.stream(QuitClientArguments.class.getRecordComponents()).map(java.lang.reflect.RecordComponent::getType).toList());
-        assertEquals(List.of(Duration.class, boolean.class), java.util.Arrays.stream(WaitUntilInWorldArguments.class.getRecordComponents()).map(java.lang.reflect.RecordComponent::getType).toList());
-        assertEquals(List.of(MinecraftVersion.class, Duration.class), java.util.Arrays.stream(WaitForBridgeArguments.class.getRecordComponents()).map(java.lang.reflect.RecordComponent::getType).toList());
+        assertEquals(List.of(MinecraftServerAddress.class, boolean.class, boolean.class, Duration.class), Arrays.stream(JoinServerArguments.class.getRecordComponents()).map(RecordComponent::getType).toList());
+        assertEquals(List.of(boolean.class, Duration.class), Arrays.stream(QuitClientArguments.class.getRecordComponents()).map(RecordComponent::getType).toList());
+        assertEquals(List.of(Duration.class, boolean.class), Arrays.stream(WaitUntilInWorldArguments.class.getRecordComponents()).map(RecordComponent::getType).toList());
+        assertEquals(List.of(MinecraftVersion.class, Duration.class), Arrays.stream(WaitForBridgeArguments.class.getRecordComponents()).map(RecordComponent::getType).toList());
         assertPropertyCreator(JoinServerArguments.class, MinecraftServerAddress.class, Boolean.class, Boolean.class, Duration.class);
         assertPropertyCreator(QuitClientArguments.class, Boolean.class, Duration.class);
         assertPropertyCreator(WaitUntilInWorldArguments.class, Duration.class, Boolean.class);
@@ -165,14 +178,6 @@ class SessionControlSupportTest {
         assertThrows(IllegalArgumentException.class, () -> new WaitUntilInWorldArguments(Duration.ofSeconds(-1), false));
         assertThrows(IllegalArgumentException.class, () -> new WaitForBridgeArguments(null, null));
         assertThrows(IllegalArgumentException.class, () -> new WaitForBridgeArguments(null, Duration.ofSeconds(-1)));
-    }
-
-    private static void assertPropertyCreator(Class<?> type, Class<?>... parameterTypes) {
-        var creators = java.util.Arrays.stream(type.getDeclaredMethods()).filter(method -> java.lang.reflect.Modifier.isStatic(method.getModifiers()) && type.equals(method.getReturnType()) && method.isAnnotationPresent(com.fasterxml.jackson.annotation.JsonCreator.class)).toList();
-        assertEquals(1, creators.size(), type.getSimpleName());
-        var creator = creators.getFirst();
-        assertEquals(com.fasterxml.jackson.annotation.JsonCreator.Mode.PROPERTIES, creator.getAnnotation(com.fasterxml.jackson.annotation.JsonCreator.class).mode());
-        assertEquals(List.of(parameterTypes), List.of(creator.getParameterTypes()));
     }
 
     @Test
@@ -252,7 +257,7 @@ class SessionControlSupportTest {
     void cancellingPidProbeDestroysAndClosesTheProcessOnce() throws Exception {
         ProbeProcess process = new ProbeProcess("4242\n");
         {
-            SessionControlSupport.ListeningPidResolver resolver = SessionControlSupport.listeningPidResolver(command -> {
+            SessionControlSupport.ListeningPidResolver resolver = SessionControlSupport.listeningPidResolver(_ -> {
                 process.started.countDown();
                 return process;
             });
@@ -272,7 +277,7 @@ class SessionControlSupportTest {
     void cancellationReturnsPromptlyWhenProcessCloseBlocks() throws Exception {
         ProbeProcess process = ProbeProcess.blocking();
         {
-            SessionControlSupport.ListeningPidResolver resolver = SessionControlSupport.listeningPidResolver(command -> {
+            SessionControlSupport.ListeningPidResolver resolver = SessionControlSupport.listeningPidResolver(_ -> {
                 process.started.countDown();
                 return process;
             });
@@ -301,7 +306,7 @@ class SessionControlSupportTest {
         CountDownLatch starterEntered = new CountDownLatch(1);
         CountDownLatch starterCaughtInterrupt = new CountDownLatch(1);
         CountDownLatch releaseStarter = new CountDownLatch(1);
-        SessionControlSupport.ListeningPidResolver resolver = SessionControlSupport.listeningPidResolver(command -> {
+        SessionControlSupport.ListeningPidResolver resolver = SessionControlSupport.listeningPidResolver(_ -> {
             starterEntered.countDown();
             try {
                 releaseStarter.await();
@@ -331,7 +336,7 @@ class SessionControlSupportTest {
         CountDownLatch starterEntered = new CountDownLatch(1);
         CountDownLatch starterCaughtInterrupt = new CountDownLatch(1);
         CountDownLatch releaseStarter = new CountDownLatch(1);
-        SessionControlSupport.ListeningPidResolver resolver = SessionControlSupport.listeningPidResolver(command -> {
+        var resolver = SessionControlSupport.listeningPidResolver(_ -> {
             starterEntered.countDown();
             try {
                 releaseStarter.await();
@@ -407,7 +412,6 @@ class SessionControlSupportTest {
     }
 
     @Test
-    @SuppressWarnings("resource")
     void successfulPidProbeClosesProcessExactlyOnce() throws Exception {
         ProbeProcess success = new ProbeProcess("4242\n");
         {
@@ -479,7 +483,7 @@ class SessionControlSupportTest {
     @Test
     void scriptLoggerUsesNodePathsCompactJsonlStatsAndRotation(@TempDir Path temporary) throws Exception {
         var mapper = McpJsonDefaults.getMapper();
-        var diagnostics = new java.util.ArrayList<String>();
+        var diagnostics = new ArrayList<String>();
         var logger = new ScriptLogger(temporary, mapper, diagnostics::add, () -> false, InstantSource.fixed(Instant.ofEpochMilli(1234L)));
         logger.log(new ScriptLogger.ScriptLogEntry(Instant.parse("2026-07-28T00:00:00Z"), true, "return 1", true, 1, "ok", null, Duration.ofMillis(5)), false);
         logger.log(new ScriptLogger.ScriptLogEntry(Instant.parse("2026-07-28T00:00:01Z"), false, "badName", false, null, null, "Failure at line 12:34: 'badName'", Duration.ofMillis(7)), false);
@@ -514,18 +518,8 @@ class SessionControlSupportTest {
         // On a POSIX CI runner the expected literal form (C:\\Local\\mcdev-mcp\\Data)
         // cannot be produced, so only assert it when running on Windows.
         var windows = new AppEnvironment(Map.of("LOCALAPPDATA", "C:\\Local"));
-        Assumptions.assumeTrue(System.getProperty("os.name").toLowerCase(java.util.Locale.ROOT).contains("win"), "Windows-local dataDirectory layout only verifiable on a Windows host");
+        Assumptions.assumeTrue(System.getProperty("os.name").toLowerCase(Locale.ROOT).contains("win"), "Windows-local dataDirectory layout only verifiable on a Windows host");
         assertEquals(Path.of("C:\\Local\\mcdev-mcp\\Data"), ScriptLogger.dataDirectory("Windows 11", windows, Path.of("C:\\Home")));
-    }
-
-    private static List<Integer> bridgePorts(Map<String, String> environment) {
-        try (var harness = new BridgeTestHarness(McpJsonDefaults.getMapper(), new AppEnvironment(environment), (_, request) -> CompletableFuture.completedFuture(RuntimeContractFixtures.status(request.id())))) {
-            return new SessionControlSupport(harness.session(), new AppEnvironment(environment)).bridgePortRange();
-        }
-    }
-
-    private static SessionInfo sessionInfo(String version, Path gameDirectory) {
-        return new SessionInfo(9876, new MinecraftVersion(version), BridgeMappingStatus.MOJANG, false, 0, Optional.ofNullable(gameDirectory), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty());
     }
 
     private static final class BlockingNoteList extends AbstractList<String> {

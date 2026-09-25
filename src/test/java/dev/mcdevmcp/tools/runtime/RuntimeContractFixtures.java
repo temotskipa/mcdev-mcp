@@ -11,15 +11,11 @@ import java.nio.charset.CharsetDecoder;
 import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
+import java.util.*;
 
 final class RuntimeContractFixtures {
     private static final String FROZEN_GAME_DIRECTORY = "C:\\Game";
-    private static final boolean WINDOWS_HOST = System.getProperty("os.name", "").toLowerCase(java.util.Locale.ROOT).contains("win");
+    private static final boolean WINDOWS_HOST = System.getProperty("os.name", "").toLowerCase(Locale.ROOT).contains("win");
     private static final String NATIVE_GAME_DIRECTORY = Path.of(System.getProperty("java.io.tmpdir"), "mcdev-runtime-fixture-game").toAbsolutePath().normalize().toString();
 
     private RuntimeContractFixtures() {

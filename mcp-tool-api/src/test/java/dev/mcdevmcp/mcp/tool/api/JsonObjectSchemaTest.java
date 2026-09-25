@@ -1,7 +1,9 @@
 package dev.mcdevmcp.mcp.tool.api;
 
+import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 
+import java.math.BigDecimal;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -35,7 +37,7 @@ class JsonObjectSchemaTest {
         assertThrows(IllegalArgumentException.class, () -> JsonObjectSchema.of(Map.of("type", "object", "properties", Map.of("value", Map.of("type", "string", "pattern", "ignored")))));
         assertThrows(IllegalArgumentException.class, () -> JsonObjectSchema.of(Map.of("type", "object", "additionalProperties", "false")));
         assertThrows(IllegalArgumentException.class, () -> JsonObjectSchema.of(Map.of("type", "object", "properties", Map.of("value", Map.of("type", "number", "enum", List.of())))));
-        assertThrows(IllegalArgumentException.class, () -> JsonObjectSchema.of(Map.of("type", "object", "properties", Map.of("value", Map.of("type", "number", "enum", List.of(1, new java.math.BigDecimal("1.0")))))));
+        assertThrows(IllegalArgumentException.class, () -> JsonObjectSchema.of(Map.of("type", "object", "properties", Map.of("value", Map.of("type", "number", "enum", List.of(1, new BigDecimal("1.0")))))));
         assertThrows(IllegalArgumentException.class, () -> JsonObjectSchema.of(Map.of("type", "object", "description", 1)));
     }
 
@@ -74,11 +76,11 @@ class JsonObjectSchemaTest {
 
         JsonObjectSchema closed = JsonObjectSchema.of(Map.of("type", "object", "additionalProperties", false, "properties", Map.of("known", Map.of("type", "string"))));
         IllegalArgumentException rootException = assertThrows(IllegalArgumentException.class, () -> closed.validateInputTypes(Map.of("known", "value", "unknown", true)));
-        org.junit.jupiter.api.Assertions.assertEquals("'unknown' is not a permitted property", rootException.getMessage());
+        Assertions.assertEquals("'unknown' is not a permitted property", rootException.getMessage());
 
         JsonObjectSchema nested = JsonObjectSchema.of(Map.of("type", "object", "additionalProperties", false, "properties", Map.of("payload", Map.of("type", "object", "additionalProperties", false, "properties", Map.of("known", Map.of("type", "string"))))));
         IllegalArgumentException nestedException = assertThrows(IllegalArgumentException.class, () -> nested.validateInputTypes(Map.of("payload", Map.of("known", "value", "unknown", true))));
-        org.junit.jupiter.api.Assertions.assertEquals("'payload.unknown' is not a permitted property", nestedException.getMessage());
+        Assertions.assertEquals("'payload.unknown' is not a permitted property", nestedException.getMessage());
     }
 
     @Test
@@ -140,7 +142,7 @@ class JsonObjectSchemaTest {
     void comparesNestedConstNumbersByJsonNumericValue() {
         JsonObjectSchema schema = JsonObjectSchema.of(Map.of("type", "object", "properties", Map.of("payload", Map.of("type", "object", "const", Map.of("count", 1, "items", List.of(2, 3))))));
 
-        assertDoesNotThrow(() -> schema.validateInputTypes(Map.of("payload", Map.of("count", new java.math.BigDecimal("1.0"), "items", List.of(2.0, new java.math.BigDecimal("3.00"))))));
+        assertDoesNotThrow(() -> schema.validateInputTypes(Map.of("payload", Map.of("count", new BigDecimal("1.0"), "items", List.of(2.0, new BigDecimal("3.00"))))));
         assertThrows(IllegalArgumentException.class, () -> schema.validateInputTypes(Map.of("payload", Map.of("count", 1, "items", List.of(2, 4)))));
     }
 }

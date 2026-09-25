@@ -4,25 +4,7 @@ import dev.mcdevmcp.bridge.BridgeEndpoint;
 import dev.mcdevmcp.bridge.BridgeJson;
 import dev.mcdevmcp.bridge.BridgePayload;
 import dev.mcdevmcp.bridge.BridgeRequest;
-import dev.mcdevmcp.bridge.payload.BlockDetailsPayload;
-import dev.mcdevmcp.bridge.payload.ChatHistoryPayload;
-import dev.mcdevmcp.bridge.payload.EmptyBridgePayload;
-import dev.mcdevmcp.bridge.payload.EntityDetailsPayload;
-import dev.mcdevmcp.bridge.payload.EntityItemTexturePayload;
-import dev.mcdevmcp.bridge.payload.ExecutePayload;
-import dev.mcdevmcp.bridge.payload.ItemTextureByIdPayload;
-import dev.mcdevmcp.bridge.payload.ItemTexturePayload;
-import dev.mcdevmcp.bridge.payload.JoinServerPayload;
-import dev.mcdevmcp.bridge.payload.LookedAtEntityPayload;
-import dev.mcdevmcp.bridge.payload.NearbyBlocksPayload;
-import dev.mcdevmcp.bridge.payload.NearbyEntitiesPayload;
-import dev.mcdevmcp.bridge.payload.RecordVideoFramePayload;
-import dev.mcdevmcp.bridge.payload.RecordVideoTimedPayload;
-import dev.mcdevmcp.bridge.payload.RunCommandPayload;
-import dev.mcdevmcp.bridge.payload.ScreenInspectPayload;
-import dev.mcdevmcp.bridge.payload.ScreenshotPayload;
-import dev.mcdevmcp.bridge.payload.SetBlockGlowPayload;
-import dev.mcdevmcp.bridge.payload.SetEntityGlowPayload;
+import dev.mcdevmcp.bridge.payload.*;
 import io.modelcontextprotocol.json.McpJsonDefaults;
 import io.modelcontextprotocol.json.TypeRef;
 import org.junit.jupiter.api.Test;
@@ -32,13 +14,12 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
 
-import static org.junit.jupiter.api.Assertions.assertArrayEquals;
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.*;
 
 class NamedBridgePayloadContractTest {
     private static final BridgeJson JSON = new BridgeJson(McpJsonDefaults.getMapper());
@@ -50,50 +31,6 @@ class NamedBridgePayloadContractTest {
     private static final String ORIGINAL_CRLF_SHA256 = "c25de34bb7b3db413f96c8092566dcb4a9e757ee9e8d6739cc6b4ffd3e39f855";
     private static final List<String> SOURCES = List.of("src/main/java/dev/mcdevmcp/bridge/BridgeProbe.java:19", "src/main/java/dev/mcdevmcp/bridge/BridgeSession.java:205", "src/main/java/dev/mcdevmcp/bridge/BridgeSession.java:376", "src/main/java/dev/mcdevmcp/tools/runtime/McSnapshotTool.java:16", "src/main/java/dev/mcdevmcp/tools/runtime/McJoinServerTool.java:31", "src/main/java/dev/mcdevmcp/tools/runtime/SessionControlSupport.java:661", "src/main/java/dev/mcdevmcp/tools/runtime/SessionControlSupport.java:675", "src/main/java/dev/mcdevmcp/tools/runtime/McLeaveServerTool.java:24", "src/main/java/dev/mcdevmcp/tools/runtime/McQuitClientTool.java:34", "src/main/java/dev/mcdevmcp/tools/runtime/McClearBlockGlowTool.java:16", "src/main/java/dev/mcdevmcp/tools/runtime/RuntimeToolSupport.java:168", "src/main/java/dev/mcdevmcp/tools/runtime/RuntimeToolSupport.java:229", "src/main/java/dev/mcdevmcp/tools/runtime/RuntimeToolSupport.java:229", "src/main/java/dev/mcdevmcp/tools/runtime/McNearbyEntitiesTool.java:16", "src/main/java/dev/mcdevmcp/tools/runtime/McNearbyEntitiesTool.java:16", "src/main/java/dev/mcdevmcp/tools/runtime/McNearbyEntitiesTool.java:16", "src/main/java/dev/mcdevmcp/tools/runtime/McNearbyEntitiesTool.java:16", "src/main/java/dev/mcdevmcp/tools/runtime/McNearbyEntitiesTool.java:16", "src/main/java/dev/mcdevmcp/tools/runtime/McNearbyBlocksTool.java:16", "src/main/java/dev/mcdevmcp/tools/runtime/McNearbyBlocksTool.java:16", "src/main/java/dev/mcdevmcp/tools/runtime/McNearbyBlocksTool.java:16", "src/main/java/dev/mcdevmcp/tools/runtime/McNearbyBlocksTool.java:16", "src/main/java/dev/mcdevmcp/tools/runtime/McChatHistoryTool.java:16", "src/main/java/dev/mcdevmcp/tools/runtime/McChatHistoryTool.java:16", "src/main/java/dev/mcdevmcp/tools/runtime/McChatHistoryTool.java:16", "src/main/java/dev/mcdevmcp/tools/runtime/McChatHistoryTool.java:16", "src/main/java/dev/mcdevmcp/tools/runtime/McScreenInspectTool.java:16", "src/main/java/dev/mcdevmcp/tools/runtime/McScreenInspectTool.java:16", "src/main/java/dev/mcdevmcp/tools/runtime/McEntityDetailsTool.java:16", "src/main/java/dev/mcdevmcp/tools/runtime/McBlockDetailsTool.java:16", "src/main/java/dev/mcdevmcp/tools/runtime/McSetEntityGlowTool.java:16", "src/main/java/dev/mcdevmcp/tools/runtime/McSetBlockGlowTool.java:16", "src/main/java/dev/mcdevmcp/tools/runtime/MediaToolSupport.java:41", "src/main/java/dev/mcdevmcp/tools/runtime/MediaToolSupport.java:54", "src/main/java/dev/mcdevmcp/tools/runtime/MediaToolSupport.java:54", "src/main/java/dev/mcdevmcp/tools/runtime/MediaToolSupport.java:77", "src/main/java/dev/mcdevmcp/tools/runtime/MediaToolSupport.java:81", "src/main/java/dev/mcdevmcp/tools/runtime/MediaToolSupport.java:85", "src/main/java/dev/mcdevmcp/tools/runtime/McJoinServerTool.java:35", "src/main/java/dev/mcdevmcp/tools/runtime/McRunCommandTool.java:18");
     private static final List<String> LABELS = List.of("status-bridge-probe", "status-session-open", "status-session-verify", "snapshot-tool", "snapshot-prejoin-gate", "snapshot-poll", "screen-inspect-poll", "disconnect", "quit", "clear-block-glow", "execute-default-timeout", "looked-at-entity-absent", "looked-at-entity-present", "nearby-entities-none", "nearby-entities-range", "nearby-entities-limit", "nearby-entities-both", "nearby-entities-icons", "nearby-blocks-none", "nearby-blocks-range", "nearby-blocks-limit", "nearby-blocks-both", "chat-history-none", "chat-history-limit", "chat-history-json", "chat-history-both", "screen-inspect-false", "screen-inspect-true", "entity-details", "block-details", "set-entity-glow", "set-block-glow", "screenshot", "record-video-frame", "record-video-timed", "item-texture", "entity-item-texture", "item-texture-by-id", "join-server", "run-command");
-
-    @Test
-    void typedPayloadsMatchTheFrozenPreMigrationRequestBytes() throws Exception {
-        List<CorpusRow> rows = loadRows();
-        assertEquals(LABELS, rows.stream().map(CorpusRow::label).toList());
-        assertEquals(SOURCES, rows.stream().map(CorpusRow::source).toList());
-        assertEquals(40, rows.size());
-
-        for (CorpusRow row : rows) {
-            Map<String, Object> embedded = embeddedRequest(row);
-            assertEquals(row.label(), embedded.get("id"), row.label());
-            assertEquals(row.endpoint(), embedded.get("type"), row.label());
-            assertEquals(row.payload(), embedded.get("payload"), row.label());
-            BridgePayload payload = payload(row.label());
-            BridgeRequest request = new BridgeRequest(row.label(), new BridgeEndpoint(row.endpoint()), payload);
-            String actual = JSON.writeRequest(request);
-            assertArrayEquals(row.request().getBytes(StandardCharsets.UTF_8), actual.getBytes(StandardCharsets.UTF_8), row.label());
-            assertEquals(payload.getClass(), expectedType(row.label()), row.label());
-        }
-    }
-
-    @Test
-    void payloadRecordsAreConcreteAndTheEnvelopeHasOnlyTheThreeWireMembers() throws Exception {
-        List<CorpusRow> rows = loadRows();
-        for (CorpusRow row : rows) {
-            Map<String, Object> envelope = McpJsonDefaults.getMapper().readValue(JSON.writeRequest(new BridgeRequest(row.label(), new BridgeEndpoint(row.endpoint()), payload(row.label()))), MAP_TYPE);
-            assertEquals(List.of("id", "type", "payload"), List.copyOf(envelope.keySet()), row.label());
-            assertTrue(!envelope.toString().contains("java.lang") && !envelope.toString().contains("wireName"), row.label());
-        }
-    }
-
-    @Test
-    void frozenCorpusDigestsRetainTheEmbeddedRequestsAndOriginalCrLfProvenance() throws Exception {
-        List<CorpusRow> rows = loadRows();
-        String embeddedRequests = String.join("\n", rows.stream().map(CorpusRow::request).toList()) + "\n";
-        assertEquals(EMBEDDED_REQUESTS_SHA256, sha256(embeddedRequests.getBytes(StandardCharsets.UTF_8)));
-
-        byte[] bytes = Files.readAllBytes(CORPUS);
-        assertEquals(CORPUS_SHA256, sha256(bytes));
-        assertEquals(10_972, bytes.length);
-        assertEquals(0, countCarriageReturns(bytes));
-        assertEquals(40, countLineFeeds(bytes));
-        assertEquals(ORIGINAL_CRLF_SHA256, sha256(withCrLf(bytes)));
-    }
 
     private static Map<String, Object> embeddedRequest(CorpusRow row) throws IOException {
         Map<String, Object> embedded = McpJsonDefaults.getMapper().readValue(row.request(), MAP_TYPE);
@@ -209,9 +146,53 @@ class NamedBridgePayloadContractTest {
     private static String sha256(byte[] bytes) {
         try {
             return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes));
-        } catch (java.security.NoSuchAlgorithmException exception) {
+        } catch (NoSuchAlgorithmException exception) {
             throw new AssertionError("SHA-256 is required", exception);
         }
+    }
+
+    @Test
+    void typedPayloadsMatchTheFrozenPreMigrationRequestBytes() throws Exception {
+        List<CorpusRow> rows = loadRows();
+        assertEquals(LABELS, rows.stream().map(CorpusRow::label).toList());
+        assertEquals(SOURCES, rows.stream().map(CorpusRow::source).toList());
+        assertEquals(40, rows.size());
+
+        for (CorpusRow row : rows) {
+            Map<String, Object> embedded = embeddedRequest(row);
+            assertEquals(row.label(), embedded.get("id"), row.label());
+            assertEquals(row.endpoint(), embedded.get("type"), row.label());
+            assertEquals(row.payload(), embedded.get("payload"), row.label());
+            BridgePayload payload = payload(row.label());
+            BridgeRequest request = new BridgeRequest(row.label(), new BridgeEndpoint(row.endpoint()), payload);
+            String actual = JSON.writeRequest(request);
+            assertArrayEquals(row.request().getBytes(StandardCharsets.UTF_8), actual.getBytes(StandardCharsets.UTF_8), row.label());
+            assertEquals(payload.getClass(), expectedType(row.label()), row.label());
+        }
+    }
+
+    @Test
+    void payloadRecordsAreConcreteAndTheEnvelopeHasOnlyTheThreeWireMembers() throws Exception {
+        List<CorpusRow> rows = loadRows();
+        for (CorpusRow row : rows) {
+            Map<String, Object> envelope = McpJsonDefaults.getMapper().readValue(JSON.writeRequest(new BridgeRequest(row.label(), new BridgeEndpoint(row.endpoint()), payload(row.label()))), MAP_TYPE);
+            assertEquals(List.of("id", "type", "payload"), List.copyOf(envelope.keySet()), row.label());
+            assertTrue(!envelope.toString().contains("java.lang") && !envelope.toString().contains("wireName"), row.label());
+        }
+    }
+
+    @Test
+    void frozenCorpusDigestsRetainTheEmbeddedRequestsAndOriginalCrLfProvenance() throws Exception {
+        List<CorpusRow> rows = loadRows();
+        String embeddedRequests = String.join("\n", rows.stream().map(CorpusRow::request).toList()) + "\n";
+        assertEquals(EMBEDDED_REQUESTS_SHA256, sha256(embeddedRequests.getBytes(StandardCharsets.UTF_8)));
+
+        byte[] bytes = Files.readAllBytes(CORPUS);
+        assertEquals(CORPUS_SHA256, sha256(bytes));
+        assertEquals(10_972, bytes.length);
+        assertEquals(0, countCarriageReturns(bytes));
+        assertEquals(40, countLineFeeds(bytes));
+        assertEquals(ORIGINAL_CRLF_SHA256, sha256(withCrLf(bytes)));
     }
 
     private record CorpusRow(String label, String source, String endpoint, Map<String, Object> payload, String request) {

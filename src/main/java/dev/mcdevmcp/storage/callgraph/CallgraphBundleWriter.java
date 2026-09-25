@@ -205,7 +205,7 @@ public final class CallgraphBundleWriter implements AutoCloseable {
                 throw new IOException("Failed to acquire exclusive bundle lock");
             }
             Path generations = BundleFiles.safeChild(root, "generations");
-            if (Files.exists(generations, java.nio.file.LinkOption.NOFOLLOW_LINKS)) {
+            if (Files.exists(generations, LinkOption.NOFOLLOW_LINKS)) {
                 BundleFiles.requireDirectory(root, generations);
             }
             else {
@@ -215,7 +215,7 @@ public final class CallgraphBundleWriter implements AutoCloseable {
             String previousGeneration = publishedGeneration();
             Path generation = generations.resolve(identity);
             BundleFiles.requireContained(root, generation);
-            if (Files.exists(generation, java.nio.file.LinkOption.NOFOLLOW_LINKS)) {
+            if (Files.exists(generation, LinkOption.NOFOLLOW_LINKS)) {
                 BundleFiles.requireDirectory(root, generation);
                 CallgraphBundleValidator.validateGeneration(root, generation, identity, manifest, cancellation);
                 BundleFiles.deleteTree(staging);
@@ -272,7 +272,7 @@ public final class CallgraphBundleWriter implements AutoCloseable {
             cancellation.throwIfCancelled();
             List<CallgraphDataRecord> sorted = new ArrayList<>(records);
             sorted.sort(direction.comparator());
-            Path run = work.resolve(direction.name().toLowerCase(java.util.Locale.ROOT) + "-run-" + nextRun + ".jsonl");
+            Path run = work.resolve(direction.name().toLowerCase(Locale.ROOT) + "-run-" + nextRun + ".jsonl");
             writeRecords(run, sorted);
             runs.get(direction).add(run);
         }
@@ -287,7 +287,7 @@ public final class CallgraphBundleWriter implements AutoCloseable {
             for (int offset = 0; offset < current.size(); offset += mergeFanIn) {
                 cancellation.throwIfCancelled();
                 List<Path> group = current.subList(offset, Math.min(current.size(), offset + mergeFanIn));
-                Path output = work.resolve(direction.name().toLowerCase(java.util.Locale.ROOT) + "-pass-" + pass + "-" + next.size() + ".jsonl");
+                Path output = work.resolve(direction.name().toLowerCase(Locale.ROOT) + "-pass-" + pass + "-" + next.size() + ".jsonl");
                 mergeRuns(direction, group, output, null);
                 next.add(output);
             }
@@ -385,7 +385,7 @@ public final class CallgraphBundleWriter implements AutoCloseable {
 
     private String publishedGeneration() throws IOException {
         Path current = BundleFiles.safeChild(root, "current.json");
-        if (!Files.exists(current, java.nio.file.LinkOption.NOFOLLOW_LINKS)) {
+        if (!Files.exists(current, LinkOption.NOFOLLOW_LINKS)) {
             return null;
         }
         return CallgraphBundleLayout.resolve(root).identity();
@@ -457,7 +457,7 @@ public final class CallgraphBundleWriter implements AutoCloseable {
                 if (retained.contains(name)) {
                     continue;
                 }
-                if (CallgraphBundleLayout.isInvalidSha256(name) || Files.isSymbolicLink(child) || !Files.isDirectory(child, java.nio.file.LinkOption.NOFOLLOW_LINKS)) {
+                if (CallgraphBundleLayout.isInvalidSha256(name) || Files.isSymbolicLink(child) || !Files.isDirectory(child, LinkOption.NOFOLLOW_LINKS)) {
                     throw new IOException("Unsafe artifact in callgraph generations directory: " + child);
                 }
                 BundleFiles.requireDirectory(root, child);

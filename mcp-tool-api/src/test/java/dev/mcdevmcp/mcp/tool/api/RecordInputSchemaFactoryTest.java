@@ -1,6 +1,6 @@
 package dev.mcdevmcp.mcp.tool.api;
 
-import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.annotation.*;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
@@ -68,6 +68,69 @@ class RecordInputSchemaFactoryTest {
         assertThrows(IllegalArgumentException.class, () -> factory.generate(JsonType.of(DelegatingSubtypeUnionInput.class)));
     }
 
+    private enum DuplicateJsonPropertyEnum {
+        @JsonProperty("same") FIRST, @JsonProperty("same") SECOND
+    }
+
+    private enum DuplicateJsonValueEnum {
+        FIRST, SECOND;
+
+        @JsonValue
+        String wireValue() {
+            return "same";
+        }
+    }
+
+    private enum EquivalentDecimalJsonValueEnum {
+        FIRST(new BigDecimal("1.0")), SECOND(new BigDecimal("1.00"));
+
+        private final BigDecimal wireValue;
+
+        EquivalentDecimalJsonValueEnum(BigDecimal wireValue) {
+            this.wireValue = wireValue;
+        }
+
+        @JsonValue
+        BigDecimal wireValue() {
+            return wireValue;
+        }
+    }
+
+    private enum SignedZeroJsonValueEnum {
+        NEGATIVE_ZERO(-0.0D), POSITIVE_ZERO(0.0D);
+
+        private final double wireValue;
+
+        SignedZeroJsonValueEnum(double wireValue) {
+            this.wireValue = wireValue;
+        }
+
+        @JsonValue
+        double wireValue() {
+            return wireValue;
+        }
+    }
+
+    @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, include = JsonTypeInfo.As.PROPERTY, property = "kind", visible = true)
+    @JsonSubTypes(@JsonSubTypes.Type(value = VisibleUnionValue.class, name = "value"))
+    private sealed interface VisibleUnion permits VisibleUnionValue {
+    }
+
+    @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, include = JsonTypeInfo.As.PROPERTY, property = "kind", defaultImpl = DefaultedUnionValue.class)
+    @JsonSubTypes(@JsonSubTypes.Type(value = DefaultedUnionValue.class, name = "value"))
+    private sealed interface DefaultedUnion permits DefaultedUnionValue {
+    }
+
+    @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, include = JsonTypeInfo.As.PROPERTY, property = "kind", requireTypeIdForSubtypes = OptBoolean.FALSE)
+    @JsonSubTypes(@JsonSubTypes.Type(value = OptionalTypeIdUnionValue.class, name = "value"))
+    private sealed interface OptionalTypeIdUnion permits OptionalTypeIdUnionValue {
+    }
+
+    @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, include = JsonTypeInfo.As.PROPERTY, property = "kind")
+    @JsonSubTypes(@JsonSubTypes.Type(value = DelegatingSubtypeUnionValue.class, name = "value"))
+    private sealed interface DelegatingSubtypeUnion permits DelegatingSubtypeUnionValue {
+    }
+
     private record ObjectComponentInput(Object value) {
     }
 
@@ -100,7 +163,7 @@ class RecordInputSchemaFactoryTest {
     }
 
     private record JsonValueWithoutDelegatingCreator(String value) {
-        @com.fasterxml.jackson.annotation.JsonValue
+        @JsonValue
         String wireValue() {
             return value;
         }
@@ -110,7 +173,7 @@ class RecordInputSchemaFactoryTest {
     }
 
     private record InvalidDelegatingCreator(String first, String second) {
-        @com.fasterxml.jackson.annotation.JsonCreator(mode = com.fasterxml.jackson.annotation.JsonCreator.Mode.DELEGATING)
+        @JsonCreator(mode = JsonCreator.Mode.DELEGATING)
         InvalidDelegatingCreator {
         }
     }
@@ -118,64 +181,16 @@ class RecordInputSchemaFactoryTest {
     private record DuplicateJsonPropertyEnumInput(DuplicateJsonPropertyEnum value) {
     }
 
-    private enum DuplicateJsonPropertyEnum {
-        @JsonProperty("same") FIRST, @JsonProperty("same") SECOND
-    }
-
     private record DuplicateJsonValueEnumInput(DuplicateJsonValueEnum value) {
-    }
-
-    private enum DuplicateJsonValueEnum {
-        FIRST, SECOND;
-
-        @com.fasterxml.jackson.annotation.JsonValue
-        String wireValue() {
-            return "same";
-        }
     }
 
     private record EquivalentDecimalJsonValueEnumInput(EquivalentDecimalJsonValueEnum value) {
     }
 
-    private enum EquivalentDecimalJsonValueEnum {
-        FIRST(new BigDecimal("1.0")), SECOND(new BigDecimal("1.00"));
-
-        private final BigDecimal wireValue;
-
-        EquivalentDecimalJsonValueEnum(BigDecimal wireValue) {
-            this.wireValue = wireValue;
-        }
-
-        @com.fasterxml.jackson.annotation.JsonValue
-        BigDecimal wireValue() {
-            return wireValue;
-        }
-    }
-
     private record SignedZeroJsonValueEnumInput(SignedZeroJsonValueEnum value) {
     }
 
-    private enum SignedZeroJsonValueEnum {
-        NEGATIVE_ZERO(-0.0D), POSITIVE_ZERO(0.0D);
-
-        private final double wireValue;
-
-        SignedZeroJsonValueEnum(double wireValue) {
-            this.wireValue = wireValue;
-        }
-
-        @com.fasterxml.jackson.annotation.JsonValue
-        double wireValue() {
-            return wireValue;
-        }
-    }
-
     private record VisibleUnionInput(VisibleUnion value) {
-    }
-
-    @com.fasterxml.jackson.annotation.JsonTypeInfo(use = com.fasterxml.jackson.annotation.JsonTypeInfo.Id.NAME, include = com.fasterxml.jackson.annotation.JsonTypeInfo.As.PROPERTY, property = "kind", visible = true)
-    @com.fasterxml.jackson.annotation.JsonSubTypes(@com.fasterxml.jackson.annotation.JsonSubTypes.Type(value = VisibleUnionValue.class, name = "value"))
-    private sealed interface VisibleUnion permits VisibleUnionValue {
     }
 
     private record VisibleUnionValue(String value) implements VisibleUnion {
@@ -184,20 +199,10 @@ class RecordInputSchemaFactoryTest {
     private record DefaultedUnionInput(DefaultedUnion value) {
     }
 
-    @com.fasterxml.jackson.annotation.JsonTypeInfo(use = com.fasterxml.jackson.annotation.JsonTypeInfo.Id.NAME, include = com.fasterxml.jackson.annotation.JsonTypeInfo.As.PROPERTY, property = "kind", defaultImpl = DefaultedUnionValue.class)
-    @com.fasterxml.jackson.annotation.JsonSubTypes(@com.fasterxml.jackson.annotation.JsonSubTypes.Type(value = DefaultedUnionValue.class, name = "value"))
-    private sealed interface DefaultedUnion permits DefaultedUnionValue {
-    }
-
     private record DefaultedUnionValue(String value) implements DefaultedUnion {
     }
 
     private record OptionalTypeIdUnionInput(OptionalTypeIdUnion value) {
-    }
-
-    @com.fasterxml.jackson.annotation.JsonTypeInfo(use = com.fasterxml.jackson.annotation.JsonTypeInfo.Id.NAME, include = com.fasterxml.jackson.annotation.JsonTypeInfo.As.PROPERTY, property = "kind", requireTypeIdForSubtypes = com.fasterxml.jackson.annotation.OptBoolean.FALSE)
-    @com.fasterxml.jackson.annotation.JsonSubTypes(@com.fasterxml.jackson.annotation.JsonSubTypes.Type(value = OptionalTypeIdUnionValue.class, name = "value"))
-    private sealed interface OptionalTypeIdUnion permits OptionalTypeIdUnionValue {
     }
 
     private record OptionalTypeIdUnionValue(String value) implements OptionalTypeIdUnion {
@@ -206,13 +211,8 @@ class RecordInputSchemaFactoryTest {
     private record DelegatingSubtypeUnionInput(DelegatingSubtypeUnion value) {
     }
 
-    @com.fasterxml.jackson.annotation.JsonTypeInfo(use = com.fasterxml.jackson.annotation.JsonTypeInfo.Id.NAME, include = com.fasterxml.jackson.annotation.JsonTypeInfo.As.PROPERTY, property = "kind")
-    @com.fasterxml.jackson.annotation.JsonSubTypes(@com.fasterxml.jackson.annotation.JsonSubTypes.Type(value = DelegatingSubtypeUnionValue.class, name = "value"))
-    private sealed interface DelegatingSubtypeUnion permits DelegatingSubtypeUnionValue {
-    }
-
     private record DelegatingSubtypeUnionValue(String value) implements DelegatingSubtypeUnion {
-        @com.fasterxml.jackson.annotation.JsonCreator(mode = com.fasterxml.jackson.annotation.JsonCreator.Mode.DELEGATING)
+        @JsonCreator(mode = JsonCreator.Mode.DELEGATING)
         DelegatingSubtypeUnionValue {
         }
     }

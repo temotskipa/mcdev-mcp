@@ -13,6 +13,7 @@ import io.modelcontextprotocol.spec.McpSchema;
 import io.modelcontextprotocol.spec.McpSchema.*;
 import org.apache.catalina.Context;
 import org.apache.catalina.LifecycleException;
+import org.apache.catalina.Wrapper;
 import org.apache.catalina.startup.Tomcat;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -28,6 +29,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 public final class ConformanceServerMain {
 
@@ -50,24 +52,6 @@ public final class ConformanceServerMain {
 
     // Minimal WAV file (base64 encoded) - 1 sample at 8kHz
     private static final String MINIMAL_WAV = "UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAAB9AAACABAAZGF0YQAAAAA=";
-
-    void main() throws Exception {
-        logger.info("Starting MCP Conformance Tests - Servlet Server");
-        Path shutdownFile = configuredShutdownFile();
-        try (var runtime = ConformanceRuntime.open(shutdownFile)) {
-            try {
-                runtime.tomcat().start();
-                logger.info("Conformance MCP Servlet Server started on port {} with endpoint {}", PORT, MCP_ENDPOINT);
-                logger.info("Server URL: http://127.0.0.1:{}{}", PORT, MCP_ENDPOINT);
-                awaitShutdown(runtime.tomcat(), shutdownFile);
-            } catch (LifecycleException e) {
-                logger.error("Failed to start Tomcat server", e);
-                throw e;
-            } finally {
-                logger.info("Shutting down MCP server...");
-            }
-        }
-    }
 
     private static Path configuredShutdownFile() {
         String configuredPath = System.getProperty(SHUTDOWN_FILE_PROPERTY);
@@ -121,7 +105,7 @@ public final class ConformanceServerMain {
         Context context = tomcat.addContext("", baseDir);
 
         // Add the MCP servlet to Tomcat
-        org.apache.catalina.Wrapper wrapper = context.createWrapper();
+        Wrapper wrapper = context.createWrapper();
         wrapper.setName("mcpServlet");
         wrapper.setServlet(servlet);
         wrapper.setLoadOnStartup(1);
@@ -397,9 +381,9 @@ public final class ConformanceServerMain {
         executor.shutdown();
         boolean interrupted = false;
         try {
-            if (!executor.awaitTermination(EXECUTOR_STOP_TIMEOUT.toNanos(), java.util.concurrent.TimeUnit.NANOSECONDS)) {
+            if (!executor.awaitTermination(EXECUTOR_STOP_TIMEOUT.toNanos(), TimeUnit.NANOSECONDS)) {
                 executor.shutdownNow();
-                if (!executor.awaitTermination(EXECUTOR_STOP_TIMEOUT.toNanos(), java.util.concurrent.TimeUnit.NANOSECONDS)) {
+                if (!executor.awaitTermination(EXECUTOR_STOP_TIMEOUT.toNanos(), TimeUnit.NANOSECONDS)) {
                     failure = addFailure(failure, new IllegalStateException("Conformance executor did not stop"));
                 }
             }
@@ -431,6 +415,24 @@ public final class ConformanceServerMain {
         }
         if (failure != null) {
             throw new IllegalStateException("Unexpected conformance shutdown failure", failure);
+        }
+    }
+
+    void main() throws Exception {
+        logger.info("Starting MCP Conformance Tests - Servlet Server");
+        Path shutdownFile = configuredShutdownFile();
+        try (var runtime = ConformanceRuntime.open(shutdownFile)) {
+            try {
+                runtime.tomcat().start();
+                logger.info("Conformance MCP Servlet Server started on port {} with endpoint {}", PORT, MCP_ENDPOINT);
+                logger.info("Server URL: http://127.0.0.1:{}{}", PORT, MCP_ENDPOINT);
+                awaitShutdown(runtime.tomcat(), shutdownFile);
+            } catch (LifecycleException e) {
+                logger.error("Failed to start Tomcat server", e);
+                throw e;
+            } finally {
+                logger.info("Shutting down MCP server...");
+            }
         }
     }
 

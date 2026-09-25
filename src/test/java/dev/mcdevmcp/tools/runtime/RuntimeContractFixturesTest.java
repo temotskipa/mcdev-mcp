@@ -8,12 +8,20 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.*;
 
 class RuntimeContractFixturesTest {
     private static final McpJsonMapper MAPPER = McpJsonDefaults.getMapper();
+
+    private static void assertRejected(String text, String expectedMessage) {
+        assertRejectedBytes(text.getBytes(StandardCharsets.UTF_8), expectedMessage);
+    }
+
+    private static void assertRejectedBytes(byte[] bytes, String expectedMessage) {
+        var exception = assertThrows(IOException.class, () -> RuntimeContractFixtures.parse(MAPPER, bytes, "test.jsonl", Map.class));
+
+        assertTrue(exception.getMessage().contains(expectedMessage));
+    }
 
     @Test
     void rejectsMissingTerminalLf() {
@@ -49,15 +57,5 @@ class RuntimeContractFixturesTest {
 
         assertEquals(1, documents.size());
         assertEquals("1", documents.getFirst().get("value").toString());
-    }
-
-    private static void assertRejected(String text, String expectedMessage) {
-        assertRejectedBytes(text.getBytes(StandardCharsets.UTF_8), expectedMessage);
-    }
-
-    private static void assertRejectedBytes(byte[] bytes, String expectedMessage) {
-        var exception = assertThrows(IOException.class, () -> RuntimeContractFixtures.parse(MAPPER, bytes, "test.jsonl", Map.class));
-
-        assertTrue(exception.getMessage().contains(expectedMessage));
     }
 }

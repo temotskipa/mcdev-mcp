@@ -24,11 +24,6 @@ public record MinecraftServerAddress(String value) {
         return new MinecraftServerAddress(value);
     }
 
-    @JsonValue
-    public String wireValue() {
-        return value;
-    }
-
     private static String validate(String supplied) {
         if (supplied == null) {
             throw new IllegalArgumentException("Minecraft server address must not be null");
@@ -112,6 +107,11 @@ public record MinecraftServerAddress(String value) {
 
     private static IllegalArgumentException invalid(String spelling, Throwable cause) {
         return new IllegalArgumentException("Invalid Minecraft server address: " + spelling, cause);
+    }
+
+    @JsonValue
+    public String wireValue() {
+        return value;
     }
 
     private record HostPort(String host) {

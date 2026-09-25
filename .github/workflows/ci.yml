@@ -10,54 +10,70 @@ permissions:
   contents: read
 
 jobs:
-  build-java26:
-    name: Build once on Java 26
+  build:
+    name: Build once on the preview JDK
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Read the preview Java feature
+        id: preview-java
+        shell: bash
+        run: |
+          set -euo pipefail
+          feature="$(sed -n 's/^javaFeature=//p' gradle.properties)"
+          test -n "$feature"
+          echo "feature=$feature" >> "$GITHUB_OUTPUT"
       - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
         with:
           distribution: temurin
-          java-version: '26'
+          java-version: ${{ steps.preview-java.outputs.feature }}
           cache: gradle
-      - name: Test and produce the Java 26 provenance payload
+      - name: Test and produce the release provenance payload
         run: >-
           ./gradlew clean test check shadowJar runtimeTestBundle benchmarkBundle
-          java26ArtifactBundle --rerun-tasks --no-build-cache --no-configuration-cache --console=plain
+          releaseArtifactBundle --rerun-tasks --no-build-cache --no-configuration-cache --console=plain
       - name: Verify staged JAR checksum
         shell: bash
         run: |
           set -euo pipefail
-          cd build/artifacts/java26
+          cd build/artifacts/release
           test "$(find . -maxdepth 1 -name 'mcdev-mcp-*.jar' -type f | wc -l)" -eq 1
           test "$(find . -maxdepth 1 -name 'mcdev-mcp-*.jar.sha256' -type f | wc -l)" -eq 1
           sha256sum --check mcdev-mcp-*.jar.sha256
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: java26-build
-          path: build/artifacts/java26/*
+          name: release-build
+          path: build/artifacts/release/*
           if-no-files-found: error
           retention-days: 7
 
   parity:
     name: Frozen Node parity
-    needs: build-java26
+    needs: build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+      - name: Read the preview Java feature
+        id: preview-java
+        shell: bash
+        run: |
+          set -euo pipefail
+          feature="$(sed -n 's/^javaFeature=//p' gradle.properties)"
+          test -n "$feature"
+          echo "feature=$feature" >> "$GITHUB_OUTPUT"
       - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
         with:
           distribution: temurin
-          java-version: '26'
+          java-version: ${{ steps.preview-java.outputs.feature }}
           cache: gradle
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version: '24'
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: java26-build
+          name: release-build
           path: downloaded
       - name: Stage the checksum-verified producer JAR for parity
         shell: bash
@@ -92,25 +108,30 @@ jobs:
           cmp "mcdev-mcp-$version.jar" "$GITHUB_WORKSPACE/downloaded/mcdev-mcp-$version.jar"
 
   runtime-matrix:
-    name: Exact JAR on ${{ matrix.os }} Java ${{ matrix.java }}
-    needs: build-java26
+    name: Exact JAR on ${{ matrix.os }}
+    needs: build
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - os: ubuntu-latest
-            java: '26'
-          - os: macos-latest
-            java: '26'
+        os: [ubuntu-latest, macos-latest]
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Read the preview Java feature
+        id: preview-java
+        shell: bash
+        run: |
+          set -euo pipefail
+          feature="$(sed -n 's/^javaFeature=//p' gradle.properties)"
+          test -n "$feature"
+          echo "feature=$feature" >> "$GITHUB_OUTPUT"
       - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
         with:
           distribution: temurin
-          java-version: ${{ matrix.java }}
+          java-version: ${{ steps.preview-java.outputs.feature }}
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: java26-build
+          name: release-build
           path: downloaded
       - name: Verify and execute the compiled runtime harness
         shell: bash
@@ -141,15 +162,23 @@ jobs:
             "runtime/server/${jars[0]#./}"
 
   mcpb:
-    name: Pack exact Java 26 JAR as MCPB
-    needs: build-java26
+    name: Pack the exact release JAR as MCPB
+    needs: build
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Read the preview Java feature
+        id: preview-java
+        shell: bash
+        run: |
+          set -euo pipefail
+          feature="$(sed -n 's/^javaFeature=//p' gradle.properties)"
+          test -n "$feature"
+          echo "feature=$feature" >> "$GITHUB_OUTPUT"
       - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
         with:
           distribution: temurin
-          java-version: '26'
+          java-version: ${{ steps.preview-java.outputs.feature }}
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version: '24'
@@ -157,7 +186,7 @@ jobs:
           cache-dependency-path: packaging/mcpb/package-lock.json
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: java26-build
+          name: release-build
           path: downloaded
       - name: Pack, extract, and smoke the downloaded bytes
         shell: pwsh
@@ -181,10 +210,18 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Read the preview Java feature
+        id: preview-java
+        shell: bash
+        run: |
+          set -euo pipefail
+          feature="$(sed -n 's/^javaFeature=//p' gradle.properties)"
+          test -n "$feature"
+          echo "feature=$feature" >> "$GITHUB_OUTPUT"
       - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
         with:
           distribution: temurin
-          java-version: '26'
+          java-version: ${{ steps.preview-java.outputs.feature }}
           cache: gradle
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:

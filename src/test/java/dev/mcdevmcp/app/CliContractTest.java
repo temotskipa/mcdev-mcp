@@ -8,6 +8,8 @@ import dev.mcdevmcp.storage.model.MinecraftVersion;
 import dev.mcdevmcp.storage.model.SourceNamespace;
 import dev.mcdevmcp.support.Cancellation;
 import dev.mcdevmcp.support.ProgressSink;
+import dev.mcdevmcp.support.RequiredRuntime;
+import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -36,14 +38,14 @@ final class CliContractTest {
         try {
             Files.createSymbolicLink(link, target);
         } catch (Exception exception) {
-            org.junit.jupiter.api.Assumptions.assumeTrue(false, "Symbolic links are unavailable: " + exception.getMessage());
+            Assumptions.assumeTrue(false, "Symbolic links are unavailable: " + exception.getMessage());
         }
     }
 
     private static CliResult execute(AnalysisOperations operations, PlatformPaths paths, String... arguments) {
         var output = new StringWriter();
         var error = new StringWriter();
-        int exitCode = Main.execute(arguments, 26, new PrintWriter(output), new PrintWriter(error), new CommandContext(operations, paths));
+        int exitCode = Main.execute(arguments, RequiredRuntime.FEATURE, new PrintWriter(output), new PrintWriter(error), new CommandContext(operations, paths));
         return new CliResult(exitCode, output.toString(), error.toString());
     }
 

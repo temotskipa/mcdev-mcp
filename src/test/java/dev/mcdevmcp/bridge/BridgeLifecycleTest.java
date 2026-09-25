@@ -1,7 +1,7 @@
 package dev.mcdevmcp.bridge;
 
-import dev.mcdevmcp.support.AppEnvironment;
 import dev.mcdevmcp.bridge.payload.EmptyBridgePayload;
+import dev.mcdevmcp.support.AppEnvironment;
 import io.modelcontextprotocol.json.McpJsonDefaults;
 import org.junit.jupiter.api.Test;
 
@@ -19,6 +19,16 @@ import static org.junit.jupiter.api.Assertions.*;
 
 final class BridgeLifecycleTest {
     private static final BridgeJson JSON = new BridgeJson(McpJsonDefaults.getMapper());
+
+    private static void awaitUntil(BooleanSupplier condition) throws InterruptedException {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+        while (!condition.getAsBoolean()) {
+            if (System.nanoTime() >= deadline) {
+                fail("timed out waiting for structured session work");
+            }
+            Thread.sleep(5);
+        }
+    }
 
     @Test
     void closeAndPeerFailureRejectEveryPublishedRequestAndBoundDiagnostics() {
@@ -162,15 +172,5 @@ final class BridgeLifecycleTest {
         assertEquals(1, diagnostics.size());
         assertTrue(diagnostics.getFirst().contains("identity changed"));
         session.close();
-    }
-
-    private static void awaitUntil(BooleanSupplier condition) throws InterruptedException {
-        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
-        while (!condition.getAsBoolean()) {
-            if (System.nanoTime() >= deadline) {
-                fail("timed out waiting for structured session work");
-            }
-            Thread.sleep(5);
-        }
     }
 }

@@ -15,14 +15,66 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.*;
 
 @Tag("parity")
 @Timeout(15)
 class McpProcessClientTest {
+    private static McpProcessClient startFixture(String mode) throws IOException {
+        return McpProcessClient.start(fixtureBuilder(mode));
+    }
+
+    private static McpProcessClient startClientTreeFixture(Path childPidFile) throws IOException {
+        return McpProcessClient.start(fixtureBuilder("client-tree-root-exits", childPidFile.toString()));
+    }
+
+    private static McpProcessClient startTimeoutFixture(Duration timeout) throws IOException {
+        return McpProcessClient.start(fixtureBuilder("timeout"), timeout);
+    }
+
+    private static void assertStartRejected(ProcessBuilder builder) {
+        assertThrows(IllegalArgumentException.class, () -> {
+            try (McpProcessClient ignored = McpProcessClient.start(builder)) {
+                throw new AssertionError("Invalid process builder unexpectedly started: " + ignored);
+            }
+        });
+    }
+
+    private static ProcessBuilder fixtureBuilder(String mode) {
+        return fixtureBuilder(mode, new String[0]);
+    }
+
+    private static ProcessBuilder fixtureBuilder(String mode, String... arguments) {
+        String configuredJava = System.getProperty("mcdevMcpJava");
+        String java = configuredJava == null || configuredJava.isBlank() ? ProcessHandle.current().info().command().orElseThrow() : configuredJava;
+        var command = new ArrayList<String>(arguments.length + 5);
+        command.add(java);
+        command.add("--enable-preview");
+        command.add("-cp");
+        command.add(System.getProperty("java.class.path"));
+        command.add(McpProcessFixtureMain.class.getName());
+        command.add(mode);
+        command.addAll(List.of(arguments));
+        return new ProcessBuilder(command);
+    }
+
+    private static void assertProtocolRejected(String mode, String expectedMessage) throws Exception {
+        try (var client = startFixture(mode)) {
+            IOException failure = assertThrows(IOException.class, () -> client.request("fixture/protocol", Map.of()));
+
+            assertTrue(failure.getMessage().contains(expectedMessage), failure::getMessage);
+        }
+    }
+
+    private static Map<String, Object> request(Object id, String method) {
+        Map<String, Object> request = new LinkedHashMap<>();
+        request.put("jsonrpc", "2.0");
+        request.put("id", id);
+        request.put("method", method);
+        request.put("params", Map.of());
+        return request;
+    }
+
     @Test
     void matchesAnAutomaticallyNumberedResponse() throws Exception {
         try (var client = startFixture("echo")) {
@@ -223,60 +275,5 @@ class McpProcessClientTest {
                 throw new AssertionError("Invalid timeout unexpectedly started a process: " + ignored);
             }
         });
-    }
-
-    private static McpProcessClient startFixture(String mode) throws IOException {
-        return McpProcessClient.start(fixtureBuilder(mode));
-    }
-
-    private static McpProcessClient startClientTreeFixture(Path childPidFile) throws IOException {
-        return McpProcessClient.start(fixtureBuilder("client-tree-root-exits", childPidFile.toString()));
-    }
-
-    private static McpProcessClient startTimeoutFixture(Duration timeout) throws IOException {
-        return McpProcessClient.start(fixtureBuilder("timeout"), timeout);
-    }
-
-    private static void assertStartRejected(ProcessBuilder builder) {
-        assertThrows(IllegalArgumentException.class, () -> {
-            try (McpProcessClient ignored = McpProcessClient.start(builder)) {
-                throw new AssertionError("Invalid process builder unexpectedly started: " + ignored);
-            }
-        });
-    }
-
-    private static ProcessBuilder fixtureBuilder(String mode) {
-        return fixtureBuilder(mode, new String[0]);
-    }
-
-    private static ProcessBuilder fixtureBuilder(String mode, String... arguments) {
-        String configuredJava = System.getProperty("mcdevMcpJava");
-        String java = configuredJava == null || configuredJava.isBlank() ? ProcessHandle.current().info().command().orElseThrow() : configuredJava;
-        var command = new ArrayList<String>(arguments.length + 5);
-        command.add(java);
-        command.add("--enable-preview");
-        command.add("-cp");
-        command.add(System.getProperty("java.class.path"));
-        command.add(McpProcessFixtureMain.class.getName());
-        command.add(mode);
-        command.addAll(List.of(arguments));
-        return new ProcessBuilder(command);
-    }
-
-    private static void assertProtocolRejected(String mode, String expectedMessage) throws Exception {
-        try (var client = startFixture(mode)) {
-            IOException failure = assertThrows(IOException.class, () -> client.request("fixture/protocol", Map.of()));
-
-            assertTrue(failure.getMessage().contains(expectedMessage), failure::getMessage);
-        }
-    }
-
-    private static Map<String, Object> request(Object id, String method) {
-        Map<String, Object> request = new LinkedHashMap<>();
-        request.put("jsonrpc", "2.0");
-        request.put("id", id);
-        request.put("method", method);
-        request.put("params", Map.of());
-        return request;
     }
 }

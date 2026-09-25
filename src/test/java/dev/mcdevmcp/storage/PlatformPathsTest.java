@@ -17,7 +17,9 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.Map;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -113,7 +115,7 @@ class PlatformPathsTest {
         Files.createDirectories(database.getParent());
         Files.writeString(database, "database");
         try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
-            java.util.concurrent.Future<Void> clean;
+            Future<Void> clean;
             try (var reader = DatabaseLock.read(database, Duration.ofSeconds(1))) {
                 assertTrue(reader.isHeld());
                 clean = executor.submit(() -> {
@@ -121,7 +123,7 @@ class PlatformPathsTest {
                     return null;
                 });
 
-                assertThrows(java.util.concurrent.TimeoutException.class, () -> clean.get(100, TimeUnit.MILLISECONDS));
+                assertThrows(TimeoutException.class, () -> clean.get(100, TimeUnit.MILLISECONDS));
             }
             clean.get(2, TimeUnit.SECONDS);
         }
@@ -135,7 +137,7 @@ class PlatformPathsTest {
         Files.createDirectories(database.getParent());
         Files.writeString(database, "database");
         try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
-            java.util.concurrent.Future<Void> clean;
+            Future<Void> clean;
             try (var writer = DatabaseLock.write(database, Duration.ofSeconds(1))) {
                 assertTrue(writer.isHeld());
                 clean = executor.submit(() -> {
@@ -143,7 +145,7 @@ class PlatformPathsTest {
                     return null;
                 });
 
-                assertThrows(java.util.concurrent.TimeoutException.class, () -> clean.get(100, TimeUnit.MILLISECONDS));
+                assertThrows(TimeoutException.class, () -> clean.get(100, TimeUnit.MILLISECONDS));
             }
             clean.get(2, TimeUnit.SECONDS);
         }

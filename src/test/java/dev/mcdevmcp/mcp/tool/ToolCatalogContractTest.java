@@ -1,14 +1,7 @@
 package dev.mcdevmcp.mcp.tool;
 
 import dev.mcdevmcp.mcp.McpContractTestSupport;
-import dev.mcdevmcp.mcp.tool.api.ToolBinding;
-import dev.mcdevmcp.mcp.tool.api.ToolCancellation;
-import dev.mcdevmcp.mcp.tool.api.ToolHandlers;
-import dev.mcdevmcp.mcp.tool.api.ToolInput;
-import dev.mcdevmcp.mcp.tool.api.ToolOutput;
-import dev.mcdevmcp.mcp.tool.api.ToolOutputBinding;
-import dev.mcdevmcp.mcp.tool.api.ToolResult;
-import dev.mcdevmcp.mcp.tool.api.JsonValueSchema;
+import dev.mcdevmcp.mcp.tool.api.*;
 import dev.mcdevmcp.support.AppEnvironment;
 import dev.mcdevmcp.support.Cancellation;
 import io.modelcontextprotocol.json.McpJsonDefaults;
@@ -17,26 +10,17 @@ import io.modelcontextprotocol.json.TypeRef;
 import io.modelcontextprotocol.spec.McpSchema;
 import org.junit.jupiter.api.Test;
 
-import java.util.AbstractMap;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertInstanceOf;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertSame;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.*;
 
 class ToolCatalogContractTest {
+    private static final McpJsonMapper MAPPER = McpJsonDefaults.getMapper();
+    private static final ToolInput<TestEmptyArguments> EMPTY_INPUT = ToolInput.of(TestEmptyArguments.class, RecordInputSchemaFactory.standard());
+
     private static String contentText(ToolResult<?> result) {
         return assertInstanceOf(McpSchema.TextContent.class, result.content().getFirst()).text();
     }
-
-    private static final McpJsonMapper MAPPER = McpJsonDefaults.getMapper();
-    private static final ToolInput<TestEmptyArguments> EMPTY_INPUT = ToolInput.of(TestEmptyArguments.class, dev.mcdevmcp.mcp.tool.api.RecordInputSchemaFactory.standard());
 
     private static List<Map<String, Object>> contractTools(String name) throws Exception {
         return MAPPER.convertValue(McpContractTestSupport.readContract(name).get("result"), new TypeRef<Map<String, List<Map<String, Object>>>>() {
@@ -178,7 +162,7 @@ class ToolCatalogContractTest {
         List<ToolDeclaration<?>> missingDeclaration = ToolDeclarations.all().stream().filter(declaration -> !declaration.name().equals("mc_snapshot")).toList();
         assertEquals("Missing typed tool declaration: mc_snapshot", assertThrows(IllegalArgumentException.class, () -> ToolCatalog.load(new AppEnvironment(Map.of()), missingDeclaration, bindings, MAPPER)).getMessage());
 
-        var missingBinding = new java.util.LinkedHashMap<>(bindings);
+        var missingBinding = new LinkedHashMap<>(bindings);
         missingBinding.remove("mc_snapshot");
         assertEquals("Missing tool handler: mc_snapshot", assertThrows(IllegalArgumentException.class, () -> ToolCatalog.load(new AppEnvironment(Map.of()), ToolDeclarations.all(), missingBinding, MAPPER)).getMessage());
     }

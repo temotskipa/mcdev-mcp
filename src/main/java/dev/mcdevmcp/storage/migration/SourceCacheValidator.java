@@ -15,17 +15,13 @@ import java.lang.classfile.Attributes;
 import java.lang.classfile.ClassFile;
 import java.lang.classfile.ClassModel;
 import java.lang.classfile.attribute.InnerClassInfo;
+import java.lang.classfile.constantpool.ClassEntry;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.InvalidPathException;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Locale;
-import java.util.Map;
-import java.util.Set;
-import java.util.TreeMap;
-import java.util.TreeSet;
+import java.util.*;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 
@@ -33,65 +29,6 @@ import java.util.zip.ZipFile;
  * Syntax and class-file ownership checks, without attribution or dependency guessing.
  */
 public final class SourceCacheValidator {
-    public SourceValidation validate(Path sourceRoot, Path remappedJar, Cancellation cancellation) throws IOException {
-        Path root = sourceRoot.toAbsolutePath().normalize();
-        SourceTreeInventory inventory = SourceTreeInventory.capture(root, cancellation);
-        if (!inventory.present()) {
-            return new SourceValidation(SourceValidationStatus.MISSING, List.of("Source root is missing: " + root), List.of(), List.of());
-        }
-        if (!Files.isDirectory(root, java.nio.file.LinkOption.NOFOLLOW_LINKS)) {
-            throw new IOException("Source root must be a directory: " + root);
-        }
-        SourceArtifactIdentity input = SourceArtifactIdentity.capture(remappedJar, cancellation);
-        List<String> unverified = new ArrayList<>();
-        Map<String, RequiredSourceClass> classes = requiredClasses(remappedJar, cancellation, unverified);
-        for (RequiredSourceClass type : classes.values()) {
-            verifyOwner(type, classes, unverified);
-        }
-        List<Path> sources = inventory.entries().stream().filter(entry -> entry.kind() == SourceEntryKind.FILE && entry.relativePath().endsWith(".java")).map(entry -> root.resolve(entry.relativePath())).toList();
-        List<String> invalid = new ArrayList<>();
-        Map<String, ParsedSourceUnit> parsed = parse(root, sources, cancellation, invalid);
-        classes = emittedUnits(classes, parsed);
-        Set<String> required = new TreeSet<>();
-        for (RequiredSourceClass type : classes.values()) {
-            if (type.unit() != null) {
-                required.add(type.unit());
-            }
-        }
-        for (String unit : required) {
-            if (!parsed.containsKey(unit)) {
-                invalid.add("Missing required compilation unit: " + unit);
-            }
-        }
-        for (RequiredSourceClass type : classes.values()) {
-            if (type.unit() == null) {
-                continue;
-            }
-            ParsedSourceUnit unit = parsed.get(type.unit());
-            if (unit == null) {
-                continue;
-            }
-            if (type.module()) {
-                if (!unit.module()) {
-                    invalid.add("Missing module declaration: " + type.unit());
-                }
-            }
-            else if (!unit.packageName().equals(type.packageName())) {
-                invalid.add("Package does not match class-file ownership: " + type.unit() + " expected " + type.packageName());
-            }
-            else if (type.topLevel() && !type.packageInfo() && !unit.declarations().contains(type.simpleName())) {
-                invalid.add("Missing top-level declaration " + type.binaryName() + " in " + type.unit());
-            }
-        }
-        if (!SourceTreeInventory.capture(root, cancellation).equals(inventory) || !SourceArtifactIdentity.capture(remappedJar, cancellation).equals(input)) {
-            throw new IOException("Source tree or remapped JAR changed during source validation");
-        }
-        List<String> diagnostics = new ArrayList<>(invalid);
-        diagnostics.addAll(unverified);
-        SourceValidationStatus status = !invalid.isEmpty() ? SourceValidationStatus.INVALID : !unverified.isEmpty() ? SourceValidationStatus.UNVERIFIED_COMPLETENESS : SourceValidationStatus.VALID;
-        return new SourceValidation(status, diagnostics, List.copyOf(required), List.copyOf(parsed.keySet()));
-    }
-
     private static Map<String, RequiredSourceClass> emittedUnits(Map<String, RequiredSourceClass> classes, Map<String, ParsedSourceUnit> parsed) {
         Map<String, RequiredSourceClass> result = new TreeMap<>();
         for (RequiredSourceClass type : classes.values()) {
@@ -119,7 +56,7 @@ public final class SourceCacheValidator {
     private static Map<String, RequiredSourceClass> requiredClasses(Path remappedJar, Cancellation cancellation, List<String> diagnostics) throws IOException {
         Map<String, RequiredSourceClass> result = new TreeMap<>();
         try (ZipFile zip = new ZipFile(remappedJar.toFile())) {
-            List<? extends ZipEntry> entries = zip.stream().filter(entry -> !entry.isDirectory() && entry.getName().endsWith(".class")).sorted(java.util.Comparator.comparing(ZipEntry::getName)).toList();
+            List<? extends ZipEntry> entries = zip.stream().filter(entry -> !entry.isDirectory() && entry.getName().endsWith(".class")).sorted(Comparator.comparing(ZipEntry::getName)).toList();
             for (ZipEntry entry : entries) {
                 checkCancellation(cancellation);
                 ClassModel model;
@@ -150,7 +87,7 @@ public final class SourceCacheValidator {
                     diagnostics.add("Ambiguous InnerClasses ownership: " + binary);
                 }
                 else if (self.size() == 1) {
-                    owner = self.getFirst().outerClass().map(java.lang.classfile.constantpool.ClassEntry::asInternalName).orElse(null);
+                    owner = self.getFirst().outerClass().map(ClassEntry::asInternalName).orElse(null);
                     if (owner == null && enclosing == null) {
                         diagnostics.add("Inner class has no declaring or enclosing class: " + binary);
                     }
@@ -185,7 +122,7 @@ public final class SourceCacheValidator {
         try {
             Path path = Path.of(source);
             return !path.isAbsolute() && path.getNameCount() == 1 && path.toString().equals(source);
-        } catch (java.nio.file.InvalidPathException exception) {
+        } catch (InvalidPathException exception) {
             return false;
         }
     }
@@ -250,6 +187,65 @@ public final class SourceCacheValidator {
         } catch (InterruptedException exception) {
             throw new InterruptedIOException("Source validation cancelled");
         }
+    }
+
+    public SourceValidation validate(Path sourceRoot, Path remappedJar, Cancellation cancellation) throws IOException {
+        Path root = sourceRoot.toAbsolutePath().normalize();
+        SourceTreeInventory inventory = SourceTreeInventory.capture(root, cancellation);
+        if (!inventory.present()) {
+            return new SourceValidation(SourceValidationStatus.MISSING, List.of("Source root is missing: " + root), List.of(), List.of());
+        }
+        if (!Files.isDirectory(root, LinkOption.NOFOLLOW_LINKS)) {
+            throw new IOException("Source root must be a directory: " + root);
+        }
+        SourceArtifactIdentity input = SourceArtifactIdentity.capture(remappedJar, cancellation);
+        List<String> unverified = new ArrayList<>();
+        Map<String, RequiredSourceClass> classes = requiredClasses(remappedJar, cancellation, unverified);
+        for (RequiredSourceClass type : classes.values()) {
+            verifyOwner(type, classes, unverified);
+        }
+        List<Path> sources = inventory.entries().stream().filter(entry -> entry.kind() == SourceEntryKind.FILE && entry.relativePath().endsWith(".java")).map(entry -> root.resolve(entry.relativePath())).toList();
+        List<String> invalid = new ArrayList<>();
+        Map<String, ParsedSourceUnit> parsed = parse(root, sources, cancellation, invalid);
+        classes = emittedUnits(classes, parsed);
+        Set<String> required = new TreeSet<>();
+        for (RequiredSourceClass type : classes.values()) {
+            if (type.unit() != null) {
+                required.add(type.unit());
+            }
+        }
+        for (String unit : required) {
+            if (!parsed.containsKey(unit)) {
+                invalid.add("Missing required compilation unit: " + unit);
+            }
+        }
+        for (RequiredSourceClass type : classes.values()) {
+            if (type.unit() == null) {
+                continue;
+            }
+            ParsedSourceUnit unit = parsed.get(type.unit());
+            if (unit == null) {
+                continue;
+            }
+            if (type.module()) {
+                if (!unit.module()) {
+                    invalid.add("Missing module declaration: " + type.unit());
+                }
+            }
+            else if (!unit.packageName().equals(type.packageName())) {
+                invalid.add("Package does not match class-file ownership: " + type.unit() + " expected " + type.packageName());
+            }
+            else if (type.topLevel() && !type.packageInfo() && !unit.declarations().contains(type.simpleName())) {
+                invalid.add("Missing top-level declaration " + type.binaryName() + " in " + type.unit());
+            }
+        }
+        if (!SourceTreeInventory.capture(root, cancellation).equals(inventory) || !SourceArtifactIdentity.capture(remappedJar, cancellation).equals(input)) {
+            throw new IOException("Source tree or remapped JAR changed during source validation");
+        }
+        List<String> diagnostics = new ArrayList<>(invalid);
+        diagnostics.addAll(unverified);
+        SourceValidationStatus status = !invalid.isEmpty() ? SourceValidationStatus.INVALID : !unverified.isEmpty() ? SourceValidationStatus.UNVERIFIED_COMPLETENESS : SourceValidationStatus.VALID;
+        return new SourceValidation(status, diagnostics, List.copyOf(required), List.copyOf(parsed.keySet()));
     }
 
 }

@@ -24,6 +24,14 @@ class NodeCorpusCaptureInteropTest {
     @TempDir
     Path temporaryDirectory;
 
+    private static String readLog(Path log) {
+        try {
+            return Files.readString(log);
+        } catch (IOException exception) {
+            return exception.toString();
+        }
+    }
+
     @ParameterizedTest
     @ValueSource(strings = {"1.21.11", "26.1"})
     void workflowCaptureProducesTheTypedBaselineContract(String version) throws Exception {
@@ -105,13 +113,5 @@ class NodeCorpusCaptureInteropTest {
         assertThrows(IOException.class, () -> McpJsonDefaults.getMapper().readValue(objectVersion, NodeCorpusBaseline.class));
         assertTrue(normalized.contains("(.minecraftVersion == $version)"), "Reviewed-baseline comparison must check the scalar version");
         assertFalse(normalized.contains(".minecraftVersion.value"), "Workflow must not read an object-form version");
-    }
-
-    private static String readLog(Path log) {
-        try {
-            return Files.readString(log);
-        } catch (IOException exception) {
-            return exception.toString();
-        }
     }
 }

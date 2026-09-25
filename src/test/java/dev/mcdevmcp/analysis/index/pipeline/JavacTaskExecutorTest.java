@@ -7,12 +7,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Path;
-import java.util.ArrayDeque;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.Deque;
-import java.util.Iterator;
-import java.util.List;
+import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -22,6 +17,52 @@ import static org.junit.jupiter.api.Assertions.*;
 class JavacTaskExecutorTest {
     @TempDir
     Path temporaryDirectory;
+
+    private static Iterator<Callable<Integer>> admittedTasks(Deque<Callable<Integer>> tasks, AtomicInteger admitted) {
+        return new Iterator<>() {
+            @Override
+            public boolean hasNext() {
+                return !tasks.isEmpty();
+            }
+
+            @Override
+            public Callable<Integer> next() {
+                Callable<Integer> task = tasks.removeFirst();
+                admitted.incrementAndGet();
+                return task;
+            }
+        };
+    }
+
+    private static Callable<Integer> blockingWorker(CountDownLatch started, CountDownLatch terminated) {
+        return () -> {
+            started.countDown();
+            try {
+                new CountDownLatch(1).await();
+                return 0;
+            } finally {
+                terminated.countDown();
+            }
+        };
+    }
+
+    private static void await(CountDownLatch latch) throws InterruptedException {
+        assertTrue(latch.await(5, TimeUnit.SECONDS), "Timed out waiting for coordinated executor state");
+    }
+
+    private static void awaitInConsumer(CountDownLatch latch) {
+        try {
+            await(latch);
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            throw new AssertionError("Consumer was interrupted", exception);
+        }
+    }
+
+    private static void terminate(ExecutorService executor) throws InterruptedException {
+        executor.shutdownNow();
+        assertTrue(executor.awaitTermination(5, TimeUnit.SECONDS), "Coordinator did not terminate");
+    }
 
     @Test
     void completedLaterBatchCannotReleaseBlockedFirstBatchWindow() throws Exception {
@@ -246,51 +287,5 @@ class JavacTaskExecutorTest {
     private IndexRequest request(Cancellation cancellation) {
         IndexRequest base = IndexerTestSupport.request(temporaryDirectory, temporaryDirectory.resolve("unused.jar"), temporaryDirectory.resolve("unused.mv.db"), 2);
         return new IndexRequest(base.minecraftVersion(), base.sourceRoots(), base.remappedJar(), base.classpath(), base.outputDatabase(), base.threads(), base.progress(), cancellation);
-    }
-
-    private static Iterator<Callable<Integer>> admittedTasks(Deque<Callable<Integer>> tasks, AtomicInteger admitted) {
-        return new Iterator<>() {
-            @Override
-            public boolean hasNext() {
-                return !tasks.isEmpty();
-            }
-
-            @Override
-            public Callable<Integer> next() {
-                Callable<Integer> task = tasks.removeFirst();
-                admitted.incrementAndGet();
-                return task;
-            }
-        };
-    }
-
-    private static Callable<Integer> blockingWorker(CountDownLatch started, CountDownLatch terminated) {
-        return () -> {
-            started.countDown();
-            try {
-                new CountDownLatch(1).await();
-                return 0;
-            } finally {
-                terminated.countDown();
-            }
-        };
-    }
-
-    private static void await(CountDownLatch latch) throws InterruptedException {
-        assertTrue(latch.await(5, TimeUnit.SECONDS), "Timed out waiting for coordinated executor state");
-    }
-
-    private static void awaitInConsumer(CountDownLatch latch) {
-        try {
-            await(latch);
-        } catch (InterruptedException exception) {
-            Thread.currentThread().interrupt();
-            throw new AssertionError("Consumer was interrupted", exception);
-        }
-    }
-
-    private static void terminate(ExecutorService executor) throws InterruptedException {
-        executor.shutdownNow();
-        assertTrue(executor.awaitTermination(5, TimeUnit.SECONDS), "Coordinator did not terminate");
     }
 }

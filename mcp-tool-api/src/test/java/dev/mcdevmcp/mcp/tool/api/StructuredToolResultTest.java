@@ -7,12 +7,11 @@ import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertSame;
-import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.*;
 
 class StructuredToolResultTest {
     @Test
@@ -41,7 +40,7 @@ class StructuredToolResultTest {
         assertSame(image, result.content().getFirst());
         assertThrows(UnsupportedOperationException.class, () -> result.content().clear());
         assertThrows(NullPointerException.class, () -> new StructuredToolResult<>(null, value, false));
-        assertThrows(NullPointerException.class, () -> new StructuredToolResult<>(java.util.Arrays.asList(image, null), value, false));
+        assertThrows(NullPointerException.class, () -> new StructuredToolResult<>(Arrays.asList(image, null), value, false));
         assertThrows(NullPointerException.class, () -> new StructuredToolResult<>(List.of(image), null, false));
     }
 }

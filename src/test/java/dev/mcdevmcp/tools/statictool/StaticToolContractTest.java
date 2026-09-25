@@ -1,12 +1,14 @@
 package dev.mcdevmcp.tools.statictool;
 
 import dev.mcdevmcp.mcp.tool.CompleteToolBindings;
+import dev.mcdevmcp.mcp.tool.CountingMcpJsonMapper;
 import dev.mcdevmcp.mcp.tool.ToolCatalog;
+import dev.mcdevmcp.mcp.tool.api.ToolBinding;
 import dev.mcdevmcp.mcp.tool.api.ToolResult;
 import dev.mcdevmcp.storage.PlatformPaths;
 import dev.mcdevmcp.storage.h2.SymbolSchema;
-import dev.mcdevmcp.storage.migration.VersionOperationLease;
 import dev.mcdevmcp.storage.migration.DirectoryAliasFixture;
+import dev.mcdevmcp.storage.migration.VersionOperationLease;
 import dev.mcdevmcp.storage.model.ClassSymbol;
 import dev.mcdevmcp.storage.model.MinecraftVersion;
 import dev.mcdevmcp.storage.model.SourceNamespace;
@@ -20,42 +22,44 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import javax.lang.model.element.ElementKind;
+import java.io.IOException;
+import java.math.BigDecimal;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.FileSystemException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.sql.Connection;
 import java.sql.DriverManager;
+import java.sql.PreparedStatement;
+import java.sql.SQLException;
 import java.time.Instant;
 import java.util.*;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 @SuppressWarnings("SqlNoDataSourceInspection")
 class StaticToolContractTest {
-    private static String contentText(ToolResult<?> result) {
-        return assertInstanceOf(McpSchema.TextContent.class, result.content().getFirst()).text();
-    }
-
     private static final MinecraftVersion VERSION = new MinecraftVersion("1.21.5");
-    private static final Map<String, String> PREVIEW_LAUNCH_GUIDANCE = Map.of(
-            "version_set_unknown", "Version 9.9.9 not initialized.\n\nSTOP and ask the USER to run this command in their terminal:\n  java -jar mcdev-mcp-3.0.0.jar init -v 9.9.9\n\nThis will download, decompile, and index Minecraft 9.9.9 sources.",
-            "version_set_unindexed", "Version 1.21.4 not indexed.\n\nSTOP and ask the USER to run this command in their terminal:\n  java -jar mcdev-mcp-3.0.0.jar init -v 1.21.4\n\nThis will index Minecraft 1.21.4 sources.",
-            "search_explicit_missing", "Version 9.9.9 not initialized. STOP and ask the USER to run this command in their terminal:\n  java -jar mcdev-mcp-3.0.0.jar init -v 9.9.9\n\nThis will download, decompile, and index Minecraft 9.9.9 sources (including callgraph).");
+    private static final Map<String, String> PREVIEW_LAUNCH_GUIDANCE = Map.of("version_set_unknown", "Version 9.9.9 not initialized.\n\nSTOP and ask the USER to run this command in their terminal:\n  java -jar mcdev-mcp-3.0.0.jar init -v 9.9.9\n\nThis will download, decompile, and index Minecraft 9.9.9 sources.", "version_set_unindexed", "Version 1.21.4 not indexed.\n\nSTOP and ask the USER to run this command in their terminal:\n  java -jar mcdev-mcp-3.0.0.jar init -v 1.21.4\n\nThis will index Minecraft 1.21.4 sources.", "search_explicit_missing", "Version 9.9.9 not initialized. STOP and ask the USER to run this command in their terminal:\n  java -jar mcdev-mcp-3.0.0.jar init -v 9.9.9\n\nThis will download, decompile, and index Minecraft 9.9.9 sources (including callgraph).");
     private static final Set<String> SCHEMA_INVALID_LABELS = Set.of("version_missing_action", "version_unknown_action", "search_missing_query", "search_malformed_query_number", "search_invalid_enum_wire", "search_fractional_limit", "search_subunit_fractional_limit", "search_max_plus_point_one_limit", "search_nonpositive_limit", "search_nonfinite_string_wire", "class_missing_class_name", "class_wrong_class_name_type", "class_invalid_enum_wire", "method_missing_class_name", "method_missing_method_name", "packages_invalid_enum_wire", "packages_wrong_namespace_type", "packages_fractional_truncation", "packages_subunit_fractional_limit", "packages_max_plus_point_one_limit", "classes_missing_package_path", "classes_subunit_fractional_limit", "classes_max_plus_point_one_limit", "hierarchy_missing_class_name", "hierarchy_missing_direction", "hierarchy_root_missing_direction", "hierarchy_root_sideways_direction", "hierarchy_subunit_fractional_limit", "hierarchy_max_plus_point_one_limit", "hierarchy_invalid_enum_wire", "classes_wrong_package_path_type");
     private final List<ExecutorService> catalogExecutors = new ArrayList<>();
     @TempDir
     Path temporaryDirectory;
 
+    private static String contentText(ToolResult<?> result) {
+        return assertInstanceOf(McpSchema.TextContent.class, result.content().getFirst()).text();
+    }
+
     private static ClassSymbol symbol(Path sourcePath) {
-        return new ClassSymbol(1, SourceNamespace.MINECRAFT, Optional.empty(), "alpha.Alpha", "alpha", "Alpha", javax.lang.model.element.ElementKind.CLASS, Optional.empty(), List.of(), sourcePath, 0, 0, 1, 1);
+        return new ClassSymbol(1, SourceNamespace.MINECRAFT, Optional.empty(), "alpha.Alpha", "alpha", "Alpha", ElementKind.CLASS, Optional.empty(), List.of(), sourcePath, 0, 0, 1, 1);
     }
 
     private static List<Map<String, Object>> jsonLines(String resource) throws Exception {
         try (var input = StaticToolContractTest.class.getClassLoader().getResourceAsStream(resource)) {
-            String contents = new String(Objects.requireNonNull(input).readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+            String contents = new String(Objects.requireNonNull(input).readAllBytes(), StandardCharsets.UTF_8);
             List<Map<String, Object>> documents = new ArrayList<>();
             int start = -1;
             int depth = 0;
@@ -68,7 +72,7 @@ class StaticToolContractTest {
                         continue;
                     }
                     if (character != '{') {
-                        throw new java.io.IOException("Expected a JSON object at offset " + index + " in " + resource);
+                        throw new IOException("Expected a JSON object at offset " + index + " in " + resource);
                     }
                     start = index;
                 }
@@ -98,12 +102,12 @@ class StaticToolContractTest {
                         start = -1;
                     }
                     else if (depth < 0) {
-                        throw new java.io.IOException("Unbalanced JSON at offset " + index + " in " + resource);
+                        throw new IOException("Unbalanced JSON at offset " + index + " in " + resource);
                     }
                 }
             }
             if (start >= 0) {
-                throw new java.io.IOException("Incomplete JSON document in " + resource);
+                throw new IOException("Incomplete JSON document in " + resource);
             }
             return List.copyOf(documents);
         }
@@ -167,7 +171,7 @@ class StaticToolContractTest {
         }
     }
 
-    private static void type(java.sql.PreparedStatement statement, long id, long packageId, String namespace, String fabricVersion, String binaryName, String simpleName, String kind, String superclass, String sourcePath, int startLine, int endLine) throws Exception {
+    private static void type(PreparedStatement statement, long id, long packageId, String namespace, String fabricVersion, String binaryName, String simpleName, String kind, String superclass, String sourcePath, int startLine, int endLine) throws Exception {
         statement.setLong(1, id);
         statement.setLong(2, packageId);
         statement.setString(3, namespace);
@@ -184,10 +188,30 @@ class StaticToolContractTest {
         statement.addBatch();
     }
 
-    private static void insert(java.sql.Connection connection, String sql) throws Exception {
+    private static void insert(Connection connection, String sql) throws Exception {
         try (var statement = connection.createStatement()) {
             statement.executeUpdate(sql);
         }
+    }
+
+    private static String previewLaunchCorpusText(String label, String frozenText) {
+        String approved = PREVIEW_LAUNCH_GUIDANCE.get(label);
+        if (approved == null) {
+            return frozenText;
+        }
+        assertEquals(approved, frozenText, "Unreviewed frozen launcher-guidance change: " + label);
+        return approved.replace("java -jar mcdev-mcp-3.0.0.jar", "java --enable-preview -jar mcdev-mcp-3.0.0.jar");
+    }
+
+    private static Map<String, Object> requestParams(Map<String, Object> request) {
+        return McpJsonDefaults.getMapper().convertValue(McpJsonDefaults.getMapper().convertValue(request.get("request"), new TypeRef<Map<String, Object>>() {
+        }).get("params"), new TypeRef<>() {
+        });
+    }
+
+    private static Map<String, Object> requestArguments(Map<String, Object> params) {
+        return McpJsonDefaults.getMapper().convertValue(params.get("arguments"), new TypeRef<>() {
+        });
     }
 
     @AfterEach
@@ -232,7 +256,7 @@ class StaticToolContractTest {
         try {
             Files.createSymbolicLink(paths.versionCache(new MinecraftVersion("1.21.8")), outside);
             assertEquals(expected, text(catalog, "mc_version", Map.of("action", "list")));
-        } catch (UnsupportedOperationException | java.io.IOException | SecurityException ignored) {
+        } catch (UnsupportedOperationException | IOException | SecurityException ignored) {
             // Windows developer-mode policy can disallow symlink creation in test environments.
         }
     }
@@ -242,7 +266,7 @@ class StaticToolContractTest {
         ToolCatalog catalog = catalog(fixture());
         text(catalog, "mc_version", Map.of("action", "set", "version", "1.21.5"));
 
-        assertEquals("Error executing mc_search: 'limit' must be an integer", text(catalog, "mc_search", Map.of("query", "needle", "limit", new java.math.BigDecimal("3.9"))));
+        assertEquals("Error executing mc_search: 'limit' must be an integer", text(catalog, "mc_search", Map.of("query", "needle", "limit", new BigDecimal("3.9"))));
         String capped = text(catalog, "mc_search", Map.of("query", "needle", "limit", Integer.MAX_VALUE));
         assertTrue(capped.endsWith("Total: 3 result(s)"));
         assertFalse(capped.contains("capped"));
@@ -278,7 +302,7 @@ class StaticToolContractTest {
         try {
             Files.createSymbolicLink(link, outside);
             assertUnsafeSource(support, symbol(Path.of("alpha/escape.java")));
-        } catch (UnsupportedOperationException | java.nio.file.FileSystemException ignored) {
+        } catch (UnsupportedOperationException | FileSystemException ignored) {
             // Windows developer-mode policy can disallow symlink creation in test environments.
         }
     }
@@ -323,10 +347,10 @@ class StaticToolContractTest {
         StaticToolSupport support = new StaticToolSupport(new PlatformPaths(temporaryDirectory));
 
         ToolResult<?> ioFailure = support.execute("mc_get_class", () -> {
-            throw new java.io.IOException("source denied");
+            throw new IOException("source denied");
         });
         ToolResult<?> sqlFailure = support.execute("mc_search", () -> {
-            throw new java.sql.SQLException("index corrupt");
+            throw new SQLException("index corrupt");
         });
 
         assertTrue(ioFailure.isError());
@@ -398,7 +422,7 @@ class StaticToolContractTest {
         assertNotEquals(oldExpected, newExpected);
         Path alias = temporaryDirectory.resolve("selected-parent");
         DirectoryAliasFixture.create(alias, first.cacheRoot().getParent());
-        var retargeted = new java.util.concurrent.atomic.AtomicBoolean();
+        var retargeted = new AtomicBoolean();
         StaticToolSupport support = new StaticToolSupport(new PlatformPaths(alias.resolve("cache-root")), () -> {
             if (retargeted.compareAndSet(false, true)) {
                 try {
@@ -450,7 +474,7 @@ class StaticToolContractTest {
     }
 
     /**
-     * Frozen responses remain unchanged; only three exact launcher-guidance responses adapt to the Java 26 preview policy. The reviewed 31 schema-invalid requests remain explicit pre-mapper exclusions.
+     * Frozen responses remain unchanged; only three exact launcher-guidance responses adapt to the preview launch policy. The reviewed 31 schema-invalid requests remain explicit pre-mapper exclusions.
      */
     @Test
     void replaysSchemaValidFrozenNodeJsonlCorpusExactly() throws Exception {
@@ -458,14 +482,14 @@ class StaticToolContractTest {
         List<Map<String, Object>> responses = jsonLines("contracts/static-tools/responses.jsonl");
         assertEquals(requests.size(), responses.size());
         ToolCatalog catalog = catalog(fixture());
-        Map<String, dev.mcdevmcp.mcp.tool.api.ToolBinding<?>> bindings = StaticToolModule.handlers(new PlatformPaths(temporaryDirectory));
+        Map<String, ToolBinding<?>> bindings = StaticToolModule.handlers(new PlatformPaths(temporaryDirectory));
         Set<String> observedSchemaInvalidLabels = new HashSet<>();
         Set<String> corpusLabels = new HashSet<>();
         for (Map<String, Object> request : requests) {
             String label = (String) request.get("label");
             corpusLabels.add(label);
             Map<String, Object> params = requestParams(request);
-            var mapper = new dev.mcdevmcp.mcp.tool.CountingMcpJsonMapper(McpJsonDefaults.getMapper());
+            var mapper = new CountingMcpJsonMapper(McpJsonDefaults.getMapper());
             try {
                 String toolName = (String) params.get("name");
                 bindings.get(toolName).input().decode(mapper, requestArguments(params));
@@ -498,38 +522,18 @@ class StaticToolContractTest {
             }), Cancellation.none()).toCompletableFuture().join();
             List<Map<String, Object>> content = McpJsonDefaults.getMapper().convertValue(result.get("content"), new TypeRef<>() {
             });
-            String expectedText = java26PreviewCorpusText(label, assertInstanceOf(String.class, content.getFirst().get("text")));
+            String expectedText = previewLaunchCorpusText(label, assertInstanceOf(String.class, content.getFirst().get("text")));
             assertEquals(expectedText, contentText(actual), "corpus line " + index + " " + request.get("label"));
             assertEquals(Boolean.TRUE.equals(result.get("isError")), actual.isError(), "corpus line " + index + " " + request.get("label"));
         }
     }
 
-    private static String java26PreviewCorpusText(String label, String frozenText) {
-        String approved = PREVIEW_LAUNCH_GUIDANCE.get(label);
-        if (approved == null) {
-            return frozenText;
-        }
-        assertEquals(approved, frozenText, "Unreviewed frozen launcher-guidance change: " + label);
-        return approved.replace("java -jar mcdev-mcp-3.0.0.jar", "java --enable-preview -jar mcdev-mcp-3.0.0.jar");
-    }
-
     @Test
     void previewGuidanceAdaptationRejectsChangedTextAndDoesNotNormalizeOtherCases() {
         String frozen = PREVIEW_LAUNCH_GUIDANCE.get("version_set_unknown");
-        assertTrue(java26PreviewCorpusText("version_set_unknown", frozen).contains("java --enable-preview -jar"));
-        assertEquals(frozen, java26PreviewCorpusText("unreviewed_label", frozen));
-        assertThrows(AssertionError.class, () -> java26PreviewCorpusText("version_set_unknown", frozen + " changed"));
-    }
-
-    private static Map<String, Object> requestParams(Map<String, Object> request) {
-        return McpJsonDefaults.getMapper().convertValue(McpJsonDefaults.getMapper().convertValue(request.get("request"), new TypeRef<Map<String, Object>>() {
-        }).get("params"), new TypeRef<>() {
-        });
-    }
-
-    private static Map<String, Object> requestArguments(Map<String, Object> params) {
-        return McpJsonDefaults.getMapper().convertValue(params.get("arguments"), new TypeRef<>() {
-        });
+        assertTrue(previewLaunchCorpusText("version_set_unknown", frozen).contains("java --enable-preview -jar"));
+        assertEquals(frozen, previewLaunchCorpusText("unreviewed_label", frozen));
+        assertThrows(AssertionError.class, () -> previewLaunchCorpusText("version_set_unknown", frozen + " changed"));
     }
 
     private ToolCatalog catalog(PlatformPaths paths) {

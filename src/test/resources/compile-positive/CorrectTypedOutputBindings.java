@@ -1,14 +1,6 @@
 package compilepositive;
 
-import dev.mcdevmcp.mcp.tool.api.BlockingToolOutputHandler;
-import dev.mcdevmcp.mcp.tool.api.ContentToolBinding;
-import dev.mcdevmcp.mcp.tool.api.JsonValueSchema;
-import dev.mcdevmcp.mcp.tool.api.ToolBinding;
-import dev.mcdevmcp.mcp.tool.api.ToolHandlers;
-import dev.mcdevmcp.mcp.tool.api.ToolInput;
-import dev.mcdevmcp.mcp.tool.api.ToolOutput;
-import dev.mcdevmcp.mcp.tool.api.ToolOutputBinding;
-import dev.mcdevmcp.mcp.tool.api.ToolResult;
+import dev.mcdevmcp.mcp.tool.api.*;
 import io.modelcontextprotocol.json.TypeRef;
 
 import java.util.List;
@@ -16,7 +8,7 @@ import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 
 final class CorrectTypedOutputBindings {
-    private static final ToolInput<Arguments> INPUT = ToolInput.of(Arguments.class, dev.mcdevmcp.mcp.tool.api.RecordInputSchemaFactory.standard());
+    private static final ToolInput<Arguments> INPUT = ToolInput.of(Arguments.class, RecordInputSchemaFactory.standard());
     private static final ToolOutput<Summary> SUMMARY_OUTPUT = ToolOutput.of(Summary.class, JsonValueSchema.of(Map.of("type", "object")));
     private static final ToolOutput<List<String>> LIST_OUTPUT = ToolOutput.of(new TypeRef<List<String>>() {
     }, JsonValueSchema.of(Map.of("type", "array", "items", Map.of("type", "string"))));

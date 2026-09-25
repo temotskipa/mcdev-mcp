@@ -2,6 +2,7 @@ package dev.mcdevmcp.storage.h2;
 
 import java.io.IOException;
 import java.nio.file.*;
+import java.util.Arrays;
 
 final class ForcedFallbackMoveStrategy implements DatabaseFileOperations {
     private final int failingFallbackMove;
@@ -39,7 +40,7 @@ final class ForcedFallbackMoveStrategy implements DatabaseFileOperations {
 
     @Override
     public void move(Path source, Path target, CopyOption... options) throws IOException {
-        if (java.util.Arrays.asList(options).contains(StandardCopyOption.ATOMIC_MOVE)) {
+        if (Arrays.asList(options).contains(StandardCopyOption.ATOMIC_MOVE)) {
             if (companionBeforeFallback != null) {
                 Files.writeString(companionBeforeFallback, "unsafe");
             }
@@ -53,7 +54,7 @@ final class ForcedFallbackMoveStrategy implements DatabaseFileOperations {
                 case AFTER_SIDE_EFFECT -> Files.move(source, target, options);
                 case AFTER_PARTIAL_COPY -> {
                     byte[] sourceBytes = Files.readAllBytes(source);
-                    Files.write(target, java.util.Arrays.copyOf(sourceBytes, Math.max(1, sourceBytes.length / 2)));
+                    Files.write(target, Arrays.copyOf(sourceBytes, Math.max(1, sourceBytes.length / 2)));
                 }
                 case AFTER_SOURCE_REMOVAL -> Files.delete(source);
             }

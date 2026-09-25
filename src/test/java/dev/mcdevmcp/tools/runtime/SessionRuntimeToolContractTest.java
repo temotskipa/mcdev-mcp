@@ -6,8 +6,8 @@ import dev.mcdevmcp.bridge.BridgeTestHarness;
 import dev.mcdevmcp.bridge.payload.EmptyBridgePayload;
 import dev.mcdevmcp.bridge.payload.JoinServerPayload;
 import dev.mcdevmcp.bridge.payload.RunCommandPayload;
-import dev.mcdevmcp.mcp.tool.CountingMcpJsonMapper;
 import dev.mcdevmcp.mcp.tool.CompleteToolBindings;
+import dev.mcdevmcp.mcp.tool.CountingMcpJsonMapper;
 import dev.mcdevmcp.mcp.tool.ToolCatalog;
 import dev.mcdevmcp.mcp.tool.api.ToolBinding;
 import dev.mcdevmcp.mcp.tool.api.ToolResult;
@@ -37,13 +37,79 @@ import java.util.concurrent.TimeUnit;
 import static org.junit.jupiter.api.Assertions.*;
 
 class SessionRuntimeToolContractTest {
+    private static final McpJsonMapper MAPPER = McpJsonDefaults.getMapper();
+    private static final AppEnvironment DEFAULT_ENVIRONMENT = new AppEnvironment(Map.of());
+    private static final List<String> SESSION_FIXTURE_LABELS = List.of("join_no_wait", "join_missing_result", "leave_success", "leave_missing_result", "command_strips_one_slash", "command_error");
+
     private static String contentText(ToolResult<?> result) {
         return assertInstanceOf(McpSchema.TextContent.class, result.content().getFirst()).text();
     }
 
-    private static final McpJsonMapper MAPPER = McpJsonDefaults.getMapper();
-    private static final AppEnvironment DEFAULT_ENVIRONMENT = new AppEnvironment(Map.of());
-    private static final List<String> SESSION_FIXTURE_LABELS = List.of("join_no_wait", "join_missing_result", "leave_success", "leave_missing_result", "command_strips_one_slash", "command_error");
+    private static Map<String, Object> mapOf(Object... fields) {
+        var map = new LinkedHashMap<String, Object>();
+        for (int index = 0; index < fields.length; index += 2) {
+            map.put((String) fields[index], fields[index + 1]);
+        }
+        return map;
+    }
+
+    private static CompletableFuture<BridgeResponse> respond(RequestFixture request, BridgeFixture bridge, BridgeRequest wireRequest) {
+        if (wireRequest.endpoint().wireName().equals("status")) {
+            return CompletableFuture.completedFuture(RuntimeContractFixtures.status(wireRequest.id()));
+        }
+        if (!request.endpoint().equals(wireRequest.endpoint().wireName())) {
+            return CompletableFuture.failedFuture(new AssertionError("Unexpected endpoint for " + request.label() + ": " + wireRequest.endpoint().wireName()));
+        }
+        return CompletableFuture.completedFuture(new BridgeResponse(wireRequest.id(), bridge.success(), bridge.resultPresent(), bridge.result(), bridge.output(), bridge.error()));
+    }
+
+    private static BridgeResponse success(BridgeRequest request, Object result) {
+        return new BridgeResponse(request.id(), true, true, result, null, null);
+    }
+
+    private static BridgeResponse disabledStatus(BridgeRequest request) {
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("version", "1.21.11");
+        result.put("mappingStatus", "mojang");
+        result.put("obfuscated", true);
+        result.put("refs", 0);
+        result.put("gameDir", RuntimeContractFixtures.gameDirectory());
+        result.put("sessionControlEnabled", false);
+        return new BridgeResponse(request.id(), true, true, result, null, null);
+    }
+
+    private static ToolResult<?> dispatch(ToolCatalog catalog, String tool, Map<String, Object> arguments) throws Exception {
+        return catalog.dispatch(tool, arguments, Cancellation.none()).toCompletableFuture().get(5, TimeUnit.SECONDS);
+    }
+
+    private static String expectedPaths(Path logDirectory) {
+        return "Script log files:\n" + "  All executions: " + logDirectory.resolve("all.jsonl") + "\n" + "  Errors only:    " + logDirectory.resolve("errors.jsonl") + "\n" + "  Log directory:  " + logDirectory + "\n\n" + "Use the Read tool to view these files. Format: JSON Lines (one JSON object per line).";
+    }
+
+    private static void assertExactText(String expected, ToolResult<?> actual) {
+        assertFalse(actual.isError());
+        assertEquals(1, actual.content().size());
+        assertArrayEquals(expected.getBytes(StandardCharsets.UTF_8), contentText(actual).getBytes(StandardCharsets.UTF_8));
+    }
+
+    private static void assertWireRequest(RequestFixture fixture, List<BridgeRequest> actual) throws IOException {
+        assertEquals(2, actual.size(), fixture.label());
+        assertEquals("status", actual.getFirst().endpoint().wireName(), fixture.label());
+        assertEquals(EmptyBridgePayload.class, actual.getFirst().payload().getClass(), fixture.label());
+        BridgeRequest target = actual.getLast();
+        assertEquals(fixture.endpoint(), target.endpoint().wireName(), fixture.label());
+        assertEquals(expectedPayloadType(fixture.endpoint()), target.payload().getClass(), fixture.label());
+        assertEquals(MAPPER.writeValueAsString(fixture.payload()), MAPPER.writeValueAsString(target.payload()), fixture.label());
+    }
+
+    private static Class<?> expectedPayloadType(String endpoint) {
+        return switch (endpoint) {
+            case "disconnect", "quit" -> EmptyBridgePayload.class;
+            case "joinServer" -> JoinServerPayload.class;
+            case "runCommand" -> RunCommandPayload.class;
+            default -> throw new AssertionError("Unhandled session payload endpoint: " + endpoint);
+        };
+    }
 
     @Test
     void replaysTheFrozenSessionCorpusWithExactPayloadsTimeoutsAndText() throws Exception {
@@ -191,14 +257,6 @@ class SessionRuntimeToolContractTest {
         }
     }
 
-    private static Map<String, Object> mapOf(Object... fields) {
-        var map = new LinkedHashMap<String, Object>();
-        for (int index = 0; index < fields.length; index += 2) {
-            map.put((String) fields[index], fields[index + 1]);
-        }
-        return map;
-    }
-
     @Test
     void reconnectsToTheFirstMatchingBridgeAndQueuesQuitWithoutWaiting() throws Exception {
         try (var bridge = new BridgeTestHarness(MAPPER, DEFAULT_ENVIRONMENT, (_, request) -> CompletableFuture.completedFuture(RuntimeContractFixtures.status(request.id())))) {
@@ -259,7 +317,7 @@ class SessionRuntimeToolContractTest {
             AppEnvironment disabled = new AppEnvironment(Map.of());
             ToolCatalog disabledCatalog = ToolCatalog.load(disabled, CompleteToolBindings.including(MAPPER, RuntimeToolModule.handlers(harness.session(), MAPPER, disabled)), MAPPER);
             assertEquals("2", contentText(dispatch(disabledCatalog, "mc_execute", Map.of("code", "return 2"))));
-            try (var files = java.nio.file.Files.walk(temporary)) {
+            try (var files = Files.walk(temporary)) {
                 assertTrue(files.noneMatch(path -> path.getFileName().toString().equals("script-logs")));
             }
 
@@ -294,20 +352,6 @@ class SessionRuntimeToolContractTest {
             assertEquals("2", contentText(result));
             assertTrue(Files.readString(logger.allLogPath()).contains("\"duration_ms\":1250"));
             assertTrue(Files.readString(logger.allLogPath()).contains(timestamp.toString()));
-        }
-    }
-
-    private static final class SequenceTicker implements MonotonicTicker {
-        private final long[] values;
-        private int index;
-
-        private SequenceTicker(long... values) {
-            this.values = values;
-        }
-
-        @Override
-        public long readNanos() {
-            return values[Math.min(index++, values.length - 1)];
         }
     }
 
@@ -396,62 +440,18 @@ class SessionRuntimeToolContractTest {
         }
     }
 
-    private static CompletableFuture<BridgeResponse> respond(RequestFixture request, BridgeFixture bridge, BridgeRequest wireRequest) {
-        if (wireRequest.endpoint().wireName().equals("status")) {
-            return CompletableFuture.completedFuture(RuntimeContractFixtures.status(wireRequest.id()));
+    private static final class SequenceTicker implements MonotonicTicker {
+        private final long[] values;
+        private int index;
+
+        private SequenceTicker(long... values) {
+            this.values = values;
         }
-        if (!request.endpoint().equals(wireRequest.endpoint().wireName())) {
-            return CompletableFuture.failedFuture(new AssertionError("Unexpected endpoint for " + request.label() + ": " + wireRequest.endpoint().wireName()));
+
+        @Override
+        public long readNanos() {
+            return values[Math.min(index++, values.length - 1)];
         }
-        return CompletableFuture.completedFuture(new BridgeResponse(wireRequest.id(), bridge.success(), bridge.resultPresent(), bridge.result(), bridge.output(), bridge.error()));
-    }
-
-    private static BridgeResponse success(BridgeRequest request, Object result) {
-        return new BridgeResponse(request.id(), true, true, result, null, null);
-    }
-
-    private static BridgeResponse disabledStatus(BridgeRequest request) {
-        Map<String, Object> result = new LinkedHashMap<>();
-        result.put("version", "1.21.11");
-        result.put("mappingStatus", "mojang");
-        result.put("obfuscated", true);
-        result.put("refs", 0);
-        result.put("gameDir", RuntimeContractFixtures.gameDirectory());
-        result.put("sessionControlEnabled", false);
-        return new BridgeResponse(request.id(), true, true, result, null, null);
-    }
-
-    private static ToolResult<?> dispatch(ToolCatalog catalog, String tool, Map<String, Object> arguments) throws Exception {
-        return catalog.dispatch(tool, arguments, Cancellation.none()).toCompletableFuture().get(5, TimeUnit.SECONDS);
-    }
-
-    private static String expectedPaths(Path logDirectory) {
-        return "Script log files:\n" + "  All executions: " + logDirectory.resolve("all.jsonl") + "\n" + "  Errors only:    " + logDirectory.resolve("errors.jsonl") + "\n" + "  Log directory:  " + logDirectory + "\n\n" + "Use the Read tool to view these files. Format: JSON Lines (one JSON object per line).";
-    }
-
-    private static void assertExactText(String expected, ToolResult<?> actual) {
-        assertFalse(actual.isError());
-        assertEquals(1, actual.content().size());
-        assertArrayEquals(expected.getBytes(StandardCharsets.UTF_8), contentText(actual).getBytes(StandardCharsets.UTF_8));
-    }
-
-    private static void assertWireRequest(RequestFixture fixture, List<BridgeRequest> actual) throws IOException {
-        assertEquals(2, actual.size(), fixture.label());
-        assertEquals("status", actual.getFirst().endpoint().wireName(), fixture.label());
-        assertEquals(EmptyBridgePayload.class, actual.getFirst().payload().getClass(), fixture.label());
-        BridgeRequest target = actual.getLast();
-        assertEquals(fixture.endpoint(), target.endpoint().wireName(), fixture.label());
-        assertEquals(expectedPayloadType(fixture.endpoint()), target.payload().getClass(), fixture.label());
-        assertEquals(MAPPER.writeValueAsString(fixture.payload()), MAPPER.writeValueAsString(target.payload()), fixture.label());
-    }
-
-    private static Class<?> expectedPayloadType(String endpoint) {
-        return switch (endpoint) {
-            case "disconnect", "quit" -> EmptyBridgePayload.class;
-            case "joinServer" -> JoinServerPayload.class;
-            case "runCommand" -> RunCommandPayload.class;
-            default -> throw new AssertionError("Unhandled session payload endpoint: " + endpoint);
-        };
     }
 
     private record RequestFixture(String label, String tool, Map<String, Object> arguments, String endpoint, Map<String, Object> payload) {

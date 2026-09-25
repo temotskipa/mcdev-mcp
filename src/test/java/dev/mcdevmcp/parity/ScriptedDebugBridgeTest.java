@@ -19,6 +19,14 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 @Tag("parity")
 @Timeout(10)
 class ScriptedDebugBridgeTest {
+    private static boolean awaitClosed(ScriptedDebugBridge bridge) throws InterruptedException {
+        long deadline = System.nanoTime() + Duration.ofSeconds(2).toNanos();
+        while (!bridge.isClosed() && System.nanoTime() < deadline) {
+            Thread.sleep(Duration.ofMillis(10));
+        }
+        return bridge.isClosed();
+    }
+
     @Test
     void closesASocketAcceptedAfterShutdownBegins(@TempDir Path temporaryDirectory) throws Exception {
         var accepted = new CountDownLatch(1);
@@ -51,13 +59,5 @@ class ScriptedDebugBridgeTest {
         } finally {
             releaseAcceptedSocket.countDown();
         }
-    }
-
-    private static boolean awaitClosed(ScriptedDebugBridge bridge) throws InterruptedException {
-        long deadline = System.nanoTime() + Duration.ofSeconds(2).toNanos();
-        while (!bridge.isClosed() && System.nanoTime() < deadline) {
-            Thread.sleep(Duration.ofMillis(10));
-        }
-        return bridge.isClosed();
     }
 }

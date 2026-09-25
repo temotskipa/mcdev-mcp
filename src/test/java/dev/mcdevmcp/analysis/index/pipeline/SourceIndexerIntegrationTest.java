@@ -1,12 +1,17 @@
 package dev.mcdevmcp.analysis.index.pipeline;
 
 import dev.mcdevmcp.analysis.index.*;
+import dev.mcdevmcp.storage.model.FabricApiVersion;
+import dev.mcdevmcp.storage.model.SourceNamespace;
+import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -35,7 +40,7 @@ class SourceIndexerIntegrationTest {
         Path one = temporaryDirectory.resolve("one.mv.db");
         Path four = temporaryDirectory.resolve("four.mv.db");
 
-        List<SourceRoot> roots = List.of(new SourceRoot(dev.mcdevmcp.storage.model.SourceNamespace.MINECRAFT, Optional.empty(), sources));
+        List<SourceRoot> roots = List.of(new SourceRoot(SourceNamespace.MINECRAFT, Optional.empty(), sources));
         IndexSummary oneSummary = new SourceIndexer().build(IndexerTestSupport.request(roots, jar, List.of(dependency), one, 1));
         IndexSummary fourSummary = new SourceIndexer().build(IndexerTestSupport.request(roots, jar, List.of(dependency), four, 4));
 
@@ -55,7 +60,7 @@ class SourceIndexerIntegrationTest {
         Files.writeString(fabric.resolve("FabricType.java"), "package shared; public class FabricType {}", StandardCharsets.UTF_8);
         Path jar = IndexerTestSupport.createJar(temporaryDirectory.resolve("empty.jar"), Map.of());
         Path database = temporaryDirectory.resolve("identities.mv.db");
-        List<SourceRoot> roots = List.of(new SourceRoot(dev.mcdevmcp.storage.model.SourceNamespace.MINECRAFT, Optional.empty(), minecraft.getParent()), new SourceRoot(dev.mcdevmcp.storage.model.SourceNamespace.FABRIC, Optional.of(new dev.mcdevmcp.storage.model.FabricApiVersion("0.120.0")), fabric.getParent()));
+        List<SourceRoot> roots = List.of(new SourceRoot(SourceNamespace.MINECRAFT, Optional.empty(), minecraft.getParent()), new SourceRoot(SourceNamespace.FABRIC, Optional.of(new FabricApiVersion("0.120.0")), fabric.getParent()));
 
         new SourceIndexer().build(IndexerTestSupport.request(roots, jar, List.of(), database, 2));
         List<String> dump = IndexerTestSupport.dump(database);
@@ -75,8 +80,8 @@ class SourceIndexerIntegrationTest {
         Files.writeString(outside.resolve("Linked.java"), "package linked; public class Linked {}", StandardCharsets.UTF_8);
         try {
             Files.createSymbolicLink(root.getParent().resolve("linked"), outside.getParent());
-        } catch (UnsupportedOperationException | java.io.IOException | SecurityException exception) {
-            org.junit.jupiter.api.Assumptions.abort("Symbolic links unavailable: " + exception.getMessage());
+        } catch (UnsupportedOperationException | IOException | SecurityException exception) {
+            Assumptions.abort("Symbolic links unavailable: " + exception.getMessage());
         }
         Path jar = IndexerTestSupport.createJar(temporaryDirectory.resolve("empty.jar"), Map.of());
         Path database = temporaryDirectory.resolve("nofollow.mv.db");
@@ -154,7 +159,7 @@ class SourceIndexerIntegrationTest {
         Path root = sources.getParent();
         Path jar = IndexerTestSupport.createJar(temporaryDirectory.resolve("empty.jar"), Map.of());
         Path database = temporaryDirectory.resolve("body.mv.db");
-        var progress = new java.util.ArrayList<String>();
+        var progress = new ArrayList<String>();
         IndexRequest base = IndexerTestSupport.request(root, jar, database, 1);
         IndexRequest request = new IndexRequest(base.minecraftVersion(), base.sourceRoots(), base.remappedJar(), base.classpath(), base.outputDatabase(), base.threads(), (_, _, message) -> progress.add(message), base.cancellation());
 
@@ -172,8 +177,8 @@ class SourceIndexerIntegrationTest {
         Files.writeString(entry.resolve("Entry.java"), "package entry; public class Entry { dependency.Dependency value; }", StandardCharsets.UTF_8);
         Files.writeString(dependency.resolve("Dependency.java"), "package dependency; public class Dependency { int broken() { return missingBodyName; } }", StandardCharsets.UTF_8);
         Path jar = IndexerTestSupport.createJar(temporaryDirectory.resolve("on-demand-body-empty.jar"), Map.of());
-        var oneProgress = new java.util.ArrayList<String>();
-        var fourProgress = new java.util.ArrayList<String>();
+        var oneProgress = new ArrayList<String>();
+        var fourProgress = new ArrayList<String>();
         Path oneDatabase = temporaryDirectory.resolve("on-demand-one.mv.db");
         Path fourDatabase = temporaryDirectory.resolve("on-demand-four.mv.db");
 
@@ -241,7 +246,7 @@ class SourceIndexerIntegrationTest {
         Path jar = IndexerTestSupport.fixtureCatalog(temporaryDirectory.resolve("remapped.jar"));
         Path dependency = IndexerTestSupport.fixtureDependency(temporaryDirectory.resolve("dependency.jar"));
         Path database = temporaryDirectory.resolve("symbols.mv.db");
-        IndexRequest request = IndexerTestSupport.request(List.of(new SourceRoot(dev.mcdevmcp.storage.model.SourceNamespace.MINECRAFT, Optional.empty(), sources)), jar, List.of(dependency), database, 4);
+        IndexRequest request = IndexerTestSupport.request(List.of(new SourceRoot(SourceNamespace.MINECRAFT, Optional.empty(), sources)), jar, List.of(dependency), database, 4);
 
         new SourceIndexer().build(request);
         assertMovable(jar);
@@ -250,7 +255,7 @@ class SourceIndexerIntegrationTest {
 
         Path broken = Files.createDirectories(temporaryDirectory.resolve("broken"));
         Files.writeString(broken.resolve("Broken.java"), "class Broken { Missing stored; }", StandardCharsets.UTF_8);
-        assertThrows(IndexBuildException.class, () -> new SourceIndexer().build(IndexerTestSupport.request(List.of(new SourceRoot(dev.mcdevmcp.storage.model.SourceNamespace.MINECRAFT, Optional.empty(), broken)), jar, List.of(dependency), database, 4)));
+        assertThrows(IndexBuildException.class, () -> new SourceIndexer().build(IndexerTestSupport.request(List.of(new SourceRoot(SourceNamespace.MINECRAFT, Optional.empty(), broken)), jar, List.of(dependency), database, 4)));
         assertMovable(jar);
         assertMovable(dependency);
         assertMovable(database);

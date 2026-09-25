@@ -3,14 +3,7 @@ package dev.mcdevmcp.mcp.transport;
 import dev.mcdevmcp.mcp.ServerDefinition;
 import dev.mcdevmcp.mcp.resource.ResourceCatalog;
 import dev.mcdevmcp.mcp.tool.*;
-import dev.mcdevmcp.mcp.tool.api.StructuredToolResult;
-import dev.mcdevmcp.mcp.tool.api.ToolBinding;
-import dev.mcdevmcp.mcp.tool.api.ToolHandlers;
-import dev.mcdevmcp.mcp.tool.api.ToolInput;
-import dev.mcdevmcp.mcp.tool.api.ToolOutput;
-import dev.mcdevmcp.mcp.tool.api.JsonValueSchema;
-import dev.mcdevmcp.mcp.tool.api.RecordInputSchemaFactory;
-import dev.mcdevmcp.mcp.tool.api.ToolResult;
+import dev.mcdevmcp.mcp.tool.api.*;
 import dev.mcdevmcp.support.AppEnvironment;
 import io.modelcontextprotocol.json.McpJsonDefaults;
 import io.modelcontextprotocol.json.McpJsonMapper;
@@ -37,6 +30,17 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class McpSdkAdapterTest {
     private static final McpJsonMapper MAPPER = McpJsonDefaults.getMapper();
+
+    private static ServerDefinition serverDefinition() {
+        var bindings = CompleteToolBindings.including(MAPPER, Map.of());
+        var tools = ToolCatalog.load(new AppEnvironment(Map.of()), bindings, MAPPER);
+        return new ServerDefinition("test", "1", "test", tools, ResourceCatalog.withMapper(MAPPER));
+    }
+
+    @SuppressWarnings("unchecked")
+    private static <A> ToolInput<A> declaredInput() {
+        return (ToolInput<A>) ToolDeclarations.all().stream().filter(declaration -> declaration.name().equals("mc_snapshot")).findFirst().orElseThrow().input();
+    }
 
     @Test
     void resourceReadRunsOnTheSuppliedVirtualExecutorInsteadOfTheSubscribingThread() throws Exception {
@@ -274,17 +278,6 @@ class McpSdkAdapterTest {
                 assertNotNull(capabilities.resources());
             }
         }
-    }
-
-    private static ServerDefinition serverDefinition() {
-        var bindings = CompleteToolBindings.including(MAPPER, Map.of());
-        var tools = ToolCatalog.load(new AppEnvironment(Map.of()), bindings, MAPPER);
-        return new ServerDefinition("test", "1", "test", tools, ResourceCatalog.withMapper(MAPPER));
-    }
-
-    @SuppressWarnings("unchecked")
-    private static <A> ToolInput<A> declaredInput() {
-        return (ToolInput<A>) ToolDeclarations.all().stream().filter(declaration -> declaration.name().equals("mc_snapshot")).findFirst().orElseThrow().input();
     }
 
     private record TestStructuredResult(String itemId, int count) {

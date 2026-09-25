@@ -19,6 +19,14 @@ class CorpusClasspathManifestTest {
     @TempDir
     Path root;
 
+    private static String sha(byte[] bytes, String algorithm) throws Exception {
+        return HexFormat.of().formatHex(MessageDigest.getInstance(algorithm).digest(bytes));
+    }
+
+    private static CorpusClasspathManifest synthetic(List<CorpusClasspathArtifact> artifacts) {
+        return new CorpusClasspathManifest(1, CorpusClasspathKind.SYNTHETIC, ClasspathFixtures.VERSION, CorpusClasspathManifest.SYNTHETIC_METADATA_SHA256, null, artifacts);
+    }
+
     @Test
     void identityHasFixedPortableOrderedFraming() throws Exception {
         var first = new CorpusClasspathArtifact("a/lib.jar", 3, "a".repeat(64));
@@ -142,19 +150,11 @@ class CorpusClasspathManifestTest {
         return Map.of("name", name, "downloads", Map.of("artifact", Map.of("path", artifact.relativePath(), "size", artifact.size(), "sha1", sha(Files.readAllBytes(root.resolve(artifact.relativePath())), "SHA-1"), "url", "https://example.test/" + artifact.relativePath())));
     }
 
-    private static String sha(byte[] bytes, String algorithm) throws Exception {
-        return HexFormat.of().formatHex(MessageDigest.getInstance(algorithm).digest(bytes));
-    }
-
     private CorpusClasspathArtifact artifact(String relative, byte[] bytes) throws Exception {
         Path path = root.resolve(relative);
         Files.createDirectories(path.getParent());
         Files.write(path, bytes);
         return new CorpusClasspathArtifact(relative, bytes.length, AnalysisBenchmarkMain.sha256(path));
-    }
-
-    private static CorpusClasspathManifest synthetic(List<CorpusClasspathArtifact> artifacts) {
-        return new CorpusClasspathManifest(1, CorpusClasspathKind.SYNTHETIC, ClasspathFixtures.VERSION, CorpusClasspathManifest.SYNTHETIC_METADATA_SHA256, null, artifacts);
     }
 
     private Path write(CorpusClasspathManifest manifest) throws Exception {

@@ -11,6 +11,7 @@ import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
 import java.nio.file.attribute.BasicFileAttributes;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
@@ -280,18 +281,18 @@ public final class MinecraftDecompiler {
         }
         Files.walkFileTree(root, new SimpleFileVisitor<>() {
             @Override
-            public java.nio.file.FileVisitResult visitFile(Path file, BasicFileAttributes attributes) throws IOException {
+            public FileVisitResult visitFile(Path file, BasicFileAttributes attributes) throws IOException {
                 Files.delete(file);
-                return java.nio.file.FileVisitResult.CONTINUE;
+                return FileVisitResult.CONTINUE;
             }
 
             @Override
-            public java.nio.file.FileVisitResult postVisitDirectory(Path directory, IOException exception) throws IOException {
+            public FileVisitResult postVisitDirectory(Path directory, IOException exception) throws IOException {
                 if (exception != null) {
                     throw exception;
                 }
                 Files.delete(directory);
-                return java.nio.file.FileVisitResult.CONTINUE;
+                return FileVisitResult.CONTINUE;
             }
         });
     }
@@ -319,13 +320,13 @@ public final class MinecraftDecompiler {
         }
     }
 
+    public static Map<String, String> settings() {
+        return Map.of(IFernflowerPreferences.DECOMPILE_GENERIC_SIGNATURES, "1", IFernflowerPreferences.BYTECODE_SOURCE_MAPPING, "1", IFernflowerPreferences.REMOVE_SYNTHETIC, "1", IFernflowerPreferences.THREADS, Integer.toString(Math.max(1, Runtime.getRuntime().availableProcessors())), IFernflowerPreferences.LOG_LEVEL, "ERROR");
+    }
+
     public Path decompile(Path remappedJar, Path sourceRoot) throws IOException {
         return decompile(remappedJar, sourceRoot, (_, _, _) -> {
         }, Cancellation.none());
-    }
-
-    public static Map<String, String> settings() {
-        return Map.of(IFernflowerPreferences.DECOMPILE_GENERIC_SIGNATURES, "1", IFernflowerPreferences.BYTECODE_SOURCE_MAPPING, "1", IFernflowerPreferences.REMOVE_SYNTHETIC, "1", IFernflowerPreferences.THREADS, Integer.toString(Math.max(1, Runtime.getRuntime().availableProcessors())), IFernflowerPreferences.LOG_LEVEL, "ERROR");
     }
 
     public Path decompile(Path remappedJar, Path sourceRoot, ProgressSink progress, Cancellation cancellation) throws IOException {
@@ -352,7 +353,7 @@ public final class MinecraftDecompiler {
         IResultSaver saver = saver(staging, written, cancellation);
 
         try (saver) {
-            Fernflower fernflower = new Fernflower(saver, new java.util.HashMap<>(settings()), logger);
+            Fernflower fernflower = new Fernflower(saver, new HashMap<>(settings()), logger);
             try {
                 fernflower.addSource(input.toFile());
                 fernflower.decompileContext();

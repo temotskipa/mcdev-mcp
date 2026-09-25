@@ -20,6 +20,7 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
@@ -33,6 +34,97 @@ class MediaRuntimeToolContractTest {
     private static final TypeRef<Map<String, Object>> MAP_TYPE = new TypeRef<>() {
     };
     private static final List<String> MEDIA_FIXTURE_LABELS = List.of("screenshot-success", "screenshot-floating-integral-token", "screenshot-declared-error", "screenshot-missing-result", "screenshot-wrong-primitive", "record-grid-tagged-fixed-seconds", "record-frames-dropped", "record-unknown-mode", "record-malformed-paths", "record-declared-error", "item-texture-success", "item-texture-wrong-primitive", "entity-item-texture-success", "item-texture-by-id-success", "entity-glow-success", "entity-glow-declared-error", "block-glow-success", "clear-block-glow-success", "clear-block-glow-missing-result");
+
+    private static ToolResult<?> dispatch(ToolCatalog catalog, String tool, Map<String, Object> arguments) throws Exception {
+        return catalog.dispatch(tool, arguments, Cancellation.none()).toCompletableFuture().get(5, TimeUnit.SECONDS);
+    }
+
+    private static List<Map<String, Object>> readStrictJsonLines(String resource) throws IOException {
+        var stream = MediaRuntimeToolContractTest.class.getClassLoader().getResourceAsStream(resource);
+        assertNotNull(stream, "Missing fixture " + resource);
+        try (var reader = new BufferedReader(new InputStreamReader(stream, StandardCharsets.UTF_8))) {
+            var documents = new ArrayList<Map<String, Object>>();
+            String line;
+            while ((line = reader.readLine()) != null) {
+                assertFalse(line.isBlank(), "Blank JSONL line in " + resource);
+                assertEquals(line.strip(), line, "JSONL line has surrounding whitespace in " + resource);
+                assertTrue(line.startsWith("{") && line.endsWith("}"), "Each JSONL line must be one object in " + resource);
+                documents.add(MAPPER.readValue(line, MAP_TYPE));
+            }
+            assertEquals(MEDIA_FIXTURE_LABELS.size(), documents.size(), resource);
+            return List.copyOf(documents);
+        }
+    }
+
+    private static CompletableFuture<BridgeResponse> respond(RequestFixture request, BridgeFixture bridge, BridgeRequest wireRequest) {
+        String endpoint = wireRequest.endpoint().wireName();
+        if (endpoint.equals("status")) {
+            return CompletableFuture.completedFuture(RuntimeContractFixtures.status(wireRequest.id()));
+        }
+        if (!request.endpoint().equals(endpoint)) {
+            return CompletableFuture.failedFuture(new IllegalStateException("Unexpected endpoint " + endpoint + " for " + request.label()));
+        }
+        return CompletableFuture.completedFuture(new BridgeResponse(wireRequest.id(), Boolean.TRUE.equals(bridge.success()), Boolean.TRUE.equals(bridge.resultPresent()), RuntimeContractFixtures.nativeResult(bridge.result()), bridge.output(), bridge.error()));
+    }
+
+    private static void assertWireRequest(RequestFixture fixture, List<BridgeRequest> actual) {
+        assertEquals(2, actual.size(), fixture.label());
+        assertEquals("status", actual.getFirst().endpoint().wireName(), fixture.label());
+        assertEquals(new EmptyBridgePayload(), actual.getFirst().payload(), fixture.label());
+        assertEquals(fixture.endpoint(), actual.getLast().endpoint().wireName(), fixture.label());
+        assertEquals(writeJson(fixture.payload()), writeJson(actual.getLast().payload()), fixture.label());
+    }
+
+    private static String writeJson(Object value) {
+        try {
+            return MAPPER.writeValueAsString(value);
+        } catch (IOException exception) {
+            throw new AssertionError("Unable to serialize contract payload", exception);
+        }
+    }
+
+    private static List<Duration> expectedEffectiveTimeouts(RequestFixture fixture) {
+        Duration target = Duration.ofSeconds(10);
+        if (fixture.endpoint().equals("record_video")) {
+            RecordInterval interval = fixture.arguments().get("interval") == null ? null : MAPPER.convertValue(fixture.arguments().get("interval"), RecordInterval.class);
+            int frames = ((Number) fixture.arguments().get("frames")).intValue();
+            Duration requested = MediaToolSupport.recordingDeadline(frames, interval);
+            Duration extended = requested.plusSeconds(5);
+            target = extended.compareTo(Duration.ofMinutes(5)) > 0 ? Duration.ofMinutes(5) : extended;
+        }
+        return List.of(Duration.ofSeconds(10), target);
+    }
+
+    private static void assertContent(ResultFixture expected, ToolResult<?> actual) {
+        assertEquals(expected.isError(), actual.isError(), expected.label());
+        assertEquals(expected.content().size(), actual.content().size(), expected.label());
+        for (int index = 0; index < expected.content().size(); index++) {
+            ContentFixture wanted = expected.content().get(index);
+            McpSchema.Content observed = actual.content().get(index);
+            switch (wanted.type()) {
+                case "TEXT" -> {
+                    var text = assertInstanceOf(McpSchema.TextContent.class, observed, expected.label() + " content " + index);
+                    if (List.of("screenshot-wrong-primitive", "record-unknown-mode", "record-malformed-paths", "item-texture-wrong-primitive").contains(expected.label())) {
+                        assertTrue(text.text().contains("response has invalid result"), expected.label() + " content " + index);
+                    }
+                    else {
+                        assertEquals(RuntimeContractFixtures.fixturePath(wanted.text()), text.text(), expected.label() + " content " + index);
+                    }
+                }
+                case "IMAGE" -> {
+                    var image = assertInstanceOf(McpSchema.ImageContent.class, observed, expected.label() + " content " + index);
+                    assertEquals(wanted.mimeType(), image.mimeType(), expected.label() + " content " + index);
+                    assertEquals(wanted.data(), image.data(), expected.label() + " content " + index);
+                }
+                case "AUDIO" -> {
+                    var audio = assertInstanceOf(McpSchema.AudioContent.class, observed, expected.label() + " content " + index);
+                    assertEquals(wanted.mimeType(), audio.mimeType(), expected.label() + " content " + index);
+                    assertEquals(wanted.data(), audio.data(), expected.label() + " content " + index);
+                }
+                default -> fail("Unknown content type: " + wanted.type());
+            }
+        }
+    }
 
     @Test
     void replaysTheFrozenMediaCorpusWithExactPayloadsTimeoutsAndContent() throws Exception {
@@ -114,97 +206,6 @@ class MediaRuntimeToolContractTest {
             assertEquals(25, names.size());
             assertEquals(mediaNames, names.subList(10, 10 + mediaNames.size()));
             assertDoesNotThrow(handlers::clear);
-        }
-    }
-
-    private static ToolResult<?> dispatch(ToolCatalog catalog, String tool, Map<String, Object> arguments) throws Exception {
-        return catalog.dispatch(tool, arguments, Cancellation.none()).toCompletableFuture().get(5, TimeUnit.SECONDS);
-    }
-
-    private static List<Map<String, Object>> readStrictJsonLines(String resource) throws IOException {
-        var stream = MediaRuntimeToolContractTest.class.getClassLoader().getResourceAsStream(resource);
-        assertNotNull(stream, "Missing fixture " + resource);
-        try (var reader = new BufferedReader(new InputStreamReader(stream, StandardCharsets.UTF_8))) {
-            var documents = new java.util.ArrayList<Map<String, Object>>();
-            String line;
-            while ((line = reader.readLine()) != null) {
-                assertFalse(line.isBlank(), "Blank JSONL line in " + resource);
-                assertEquals(line.strip(), line, "JSONL line has surrounding whitespace in " + resource);
-                assertTrue(line.startsWith("{") && line.endsWith("}"), "Each JSONL line must be one object in " + resource);
-                documents.add(MAPPER.readValue(line, MAP_TYPE));
-            }
-            assertEquals(MEDIA_FIXTURE_LABELS.size(), documents.size(), resource);
-            return List.copyOf(documents);
-        }
-    }
-
-    private static CompletableFuture<BridgeResponse> respond(RequestFixture request, BridgeFixture bridge, BridgeRequest wireRequest) {
-        String endpoint = wireRequest.endpoint().wireName();
-        if (endpoint.equals("status")) {
-            return CompletableFuture.completedFuture(RuntimeContractFixtures.status(wireRequest.id()));
-        }
-        if (!request.endpoint().equals(endpoint)) {
-            return CompletableFuture.failedFuture(new IllegalStateException("Unexpected endpoint " + endpoint + " for " + request.label()));
-        }
-        return CompletableFuture.completedFuture(new BridgeResponse(wireRequest.id(), Boolean.TRUE.equals(bridge.success()), Boolean.TRUE.equals(bridge.resultPresent()), RuntimeContractFixtures.nativeResult(bridge.result()), bridge.output(), bridge.error()));
-    }
-
-    private static void assertWireRequest(RequestFixture fixture, List<BridgeRequest> actual) {
-        assertEquals(2, actual.size(), fixture.label());
-        assertEquals("status", actual.getFirst().endpoint().wireName(), fixture.label());
-        assertEquals(new EmptyBridgePayload(), actual.getFirst().payload(), fixture.label());
-        assertEquals(fixture.endpoint(), actual.getLast().endpoint().wireName(), fixture.label());
-        assertEquals(writeJson(fixture.payload()), writeJson(actual.getLast().payload()), fixture.label());
-    }
-
-    private static String writeJson(Object value) {
-        try {
-            return MAPPER.writeValueAsString(value);
-        } catch (IOException exception) {
-            throw new AssertionError("Unable to serialize contract payload", exception);
-        }
-    }
-
-    private static List<Duration> expectedEffectiveTimeouts(RequestFixture fixture) {
-        Duration target = Duration.ofSeconds(10);
-        if (fixture.endpoint().equals("record_video")) {
-            RecordInterval interval = fixture.arguments().get("interval") == null ? null : MAPPER.convertValue(fixture.arguments().get("interval"), RecordInterval.class);
-            int frames = ((Number) fixture.arguments().get("frames")).intValue();
-            Duration requested = MediaToolSupport.recordingDeadline(frames, interval);
-            Duration extended = requested.plusSeconds(5);
-            target = extended.compareTo(Duration.ofMinutes(5)) > 0 ? Duration.ofMinutes(5) : extended;
-        }
-        return List.of(Duration.ofSeconds(10), target);
-    }
-
-    private static void assertContent(ResultFixture expected, ToolResult<?> actual) {
-        assertEquals(expected.isError(), actual.isError(), expected.label());
-        assertEquals(expected.content().size(), actual.content().size(), expected.label());
-        for (int index = 0; index < expected.content().size(); index++) {
-            ContentFixture wanted = expected.content().get(index);
-            McpSchema.Content observed = actual.content().get(index);
-            switch (wanted.type()) {
-                case "TEXT" -> {
-                    var text = assertInstanceOf(McpSchema.TextContent.class, observed, expected.label() + " content " + index);
-                    if (List.of("screenshot-wrong-primitive", "record-unknown-mode", "record-malformed-paths", "item-texture-wrong-primitive").contains(expected.label())) {
-                        assertTrue(text.text().contains("response has invalid result"), expected.label() + " content " + index);
-                    }
-                    else {
-                        assertEquals(RuntimeContractFixtures.fixturePath(wanted.text()), text.text(), expected.label() + " content " + index);
-                    }
-                }
-                case "IMAGE" -> {
-                    var image = assertInstanceOf(McpSchema.ImageContent.class, observed, expected.label() + " content " + index);
-                    assertEquals(wanted.mimeType(), image.mimeType(), expected.label() + " content " + index);
-                    assertEquals(wanted.data(), image.data(), expected.label() + " content " + index);
-                }
-                case "AUDIO" -> {
-                    var audio = assertInstanceOf(McpSchema.AudioContent.class, observed, expected.label() + " content " + index);
-                    assertEquals(wanted.mimeType(), audio.mimeType(), expected.label() + " content " + index);
-                    assertEquals(wanted.data(), audio.data(), expected.label() + " content " + index);
-                }
-                default -> fail("Unknown content type: " + wanted.type());
-            }
         }
     }
 

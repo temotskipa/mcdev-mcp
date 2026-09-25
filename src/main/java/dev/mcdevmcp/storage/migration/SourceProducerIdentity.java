@@ -8,6 +8,7 @@ import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.attribute.BasicFileAttributes;
+import java.util.Collections;
 import java.util.Map;
 import java.util.Objects;
 import java.util.TreeMap;
@@ -19,7 +20,7 @@ public record SourceProducerIdentity(String implementation, String version, Sour
         Objects.requireNonNull(implementation, "implementation");
         Objects.requireNonNull(version, "version");
         Objects.requireNonNull(artifact, "artifact");
-        settings = java.util.Collections.unmodifiableMap(new TreeMap<>(settings));
+        settings = Collections.unmodifiableMap(new TreeMap<>(settings));
         Objects.requireNonNull(resourcePolicy, "resourcePolicy");
     }
 

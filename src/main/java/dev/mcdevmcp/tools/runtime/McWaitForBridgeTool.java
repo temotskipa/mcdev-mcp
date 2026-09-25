@@ -2,13 +2,18 @@ package dev.mcdevmcp.tools.runtime;
 
 import dev.mcdevmcp.bridge.SessionInfo;
 import dev.mcdevmcp.mcp.tool.ToolDeclaration;
-import dev.mcdevmcp.mcp.tool.api.*;
+import dev.mcdevmcp.mcp.tool.api.ContentToolBinding;
+import dev.mcdevmcp.mcp.tool.api.ContentToolResult;
+import dev.mcdevmcp.mcp.tool.api.ToolHandlers;
+import dev.mcdevmcp.mcp.tool.api.ToolResult;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.ExecutionException;
 
 final class McWaitForBridgeTool {
     static final ToolDeclaration<WaitForBridgeArguments> DECLARATION = ToolDeclaration.of("mc_wait_for_bridge", WaitForBridgeArguments.class);
@@ -51,7 +56,7 @@ final class McWaitForBridgeTool {
     private static String errorWithNotes(Throwable failure, List<String> notes) {
         List<String> noteSnapshot = List.copyOf(notes);
         Throwable current = failure;
-        while ((current instanceof java.util.concurrent.CompletionException || current instanceof java.util.concurrent.ExecutionException) && current.getCause() != null) {
+        while ((current instanceof CompletionException || current instanceof ExecutionException) && current.getCause() != null) {
             current = current.getCause();
         }
         String message = current.getMessage() == null ? current.toString() : current.getMessage();

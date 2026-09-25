@@ -17,6 +17,7 @@ import java.sql.Types;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.*;
+import java.util.stream.Collectors;
 
 final class SymbolIndexWriter {
     private final AtomicH2Database databases;
@@ -158,7 +159,7 @@ final class SymbolIndexWriter {
     }
 
     private static String modifiers(Set<Modifier> modifiers) {
-        return Arrays.stream(Modifier.values()).filter(modifiers::contains).map(modifier -> modifier.name().toLowerCase(Locale.ROOT)).collect(java.util.stream.Collectors.joining(","));
+        return Arrays.stream(Modifier.values()).filter(modifiers::contains).map(modifier -> modifier.name().toLowerCase(Locale.ROOT)).collect(Collectors.joining(","));
     }
 
     private static String sql(String statement) {

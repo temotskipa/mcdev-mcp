@@ -1,7 +1,7 @@
 package dev.mcdevmcp.bridge;
 
-import io.modelcontextprotocol.json.McpJsonDefaults;
 import dev.mcdevmcp.bridge.payload.EmptyBridgePayload;
+import io.modelcontextprotocol.json.McpJsonDefaults;
 import org.junit.jupiter.api.Test;
 
 import java.time.Duration;

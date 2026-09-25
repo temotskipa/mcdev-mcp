@@ -81,7 +81,7 @@ final class NodeParityJsonMapper implements McpJsonMapper {
             var nodeError = new McpSchema.JSONRPCResponse.JSONRPCError(error.code(), "Method not found", error.data());
             return new McpSchema.JSONRPCResponse(jsonrpc, id, null, nodeError);
         }
-        if (error != null && error.code() == RESOURCE_NOT_FOUND && error.data() instanceof java.util.Map<?, ?> data && data.get("uri") instanceof String uri) {
+        if (error != null && error.code() == RESOURCE_NOT_FOUND && error.data() instanceof Map<?, ?> data && data.get("uri") instanceof String uri) {
             String message = uri.isEmpty() && !resourceUriWasPresent ? MISSING_RESOURCE_URI_MESSAGE : "Unknown resource URI: " + uri;
             var nodeError = new McpSchema.JSONRPCResponse.JSONRPCError(-32603, message, null);
             return new McpSchema.JSONRPCResponse(jsonrpc, id, null, nodeError);

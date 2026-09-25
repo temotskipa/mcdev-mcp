@@ -40,6 +40,74 @@ final class MediaToolSupport {
         }
     }
 
+    static ScreenshotResult project(ScreenshotWireResult wire) {
+        return new ScreenshotResult(nativePath(McScreenshotTool.ENDPOINT, wire.path()), wire.width(), wire.height(), wire.sizeBytes(), wire.mimeType());
+    }
+
+    static RecordVideoResult project(RecordVideoWireResult wire) {
+        return switch (wire) {
+            case RecordVideoGridWireResult grid ->
+                    new RecordVideoGridResult(nativePath(McRecordVideoTool.ENDPOINT, grid.path()), grid.width(), grid.height(), grid.sizeBytes(), grid.mimeType(), grid.frameCount(), grid.frameWidth(), grid.frameHeight(), grid.gridCols(), grid.gridRows(), Duration.ofMillis(grid.captureMs()), intervalDuration(grid.intervalMs()), grid.dropped());
+            case RecordVideoFramesWireResult frames ->
+                    new RecordVideoFramesResult(frames.paths().stream().map(path -> nativePath(McRecordVideoTool.ENDPOINT, path)).toList(), frames.frameWidth(), frames.frameHeight(), frames.mimeType(), frames.frameCount(), Duration.ofMillis(frames.captureMs()), intervalDuration(frames.intervalMs()), frames.sizeBytes(), frames.dropped());
+        };
+    }
+
+    private static Path nativePath(BridgeEndpoint endpoint, String lexeme) {
+        Path path = Path.of(lexeme);
+        if (!path.isAbsolute()) {
+            throw new IllegalArgumentException("DebugBridge " + endpoint.wireName() + " path must be absolute on the MCP host");
+        }
+        return path.normalize();
+    }
+
+    static Duration intervalDuration(double intervalMs) {
+        if (!Double.isFinite(intervalMs) || intervalMs < 0 || intervalMs > MAX_INTERVAL_MILLIS) {
+            throw new IllegalArgumentException("DebugBridge record_video intervalMs must be finite and in range 0-" + MAX_INTERVAL_MILLIS + " milliseconds");
+        }
+        return Duration.ofNanos(Math.round(intervalMs * 1_000_000d));
+    }
+
+    private static String renderGrid(RecordVideoGridResult result) {
+        return result.path() + "\n(" + number(result.width()) + "x" + number(result.height()) + " JPEG, " + fixedOne((double) result.sizeBytes() / 1024) + " KB; " + number(result.frameCount()) + " frames @ " + number(result.frameWidth()) + "x" + number(result.frameHeight()) + ", grid " + number(result.gridCols()) + "x" + number(result.gridRows()) + "; capture " + number(result.captureDuration().toMillis()) + "ms, avg " + fixedOne(intervalMillis(result.intervalDuration())) + "ms" + dropNote(result.dropped()) + ")";
+    }
+
+    private static String renderFrames(RecordVideoFramesResult result) {
+        return number(result.frameCount()) + " frames @ " + number(result.frameWidth()) + "x" + number(result.frameHeight()) + " JPEG, " + fixedOne((double) result.sizeBytes() / 1024) + " KB total; capture " + number(result.captureDuration().toMillis()) + "ms, avg " + fixedOne(intervalMillis(result.intervalDuration())) + "ms" + dropNote(result.dropped()) + "\n" + String.join("\n", result.paths().stream().map(Path::toString).toList());
+    }
+
+    private static String render(RecordVideoResult result) {
+        return switch (result) {
+            case RecordVideoGridResult grid -> renderGrid(grid);
+            case RecordVideoFramesResult frames -> renderFrames(frames);
+        };
+    }
+
+    private static double intervalMillis(Duration duration) {
+        return duration.getSeconds() * 1000.0 + duration.getNano() / 1_000_000.0;
+    }
+
+    private static String dropNote(int dropped) {
+        return dropped > 0 ? ", " + number(dropped) + " dropped" : "";
+    }
+
+    private static void checkBase64Bound(String base64, BridgeEndpoint endpoint) {
+        if (base64.length() <= MAX_BASE64_PNG_BYTES) {
+            return;
+        }
+        String size = fixedOne((double) base64.length() / 1024 / 1024);
+        String maximum = fixedOne((double) MAX_BASE64_PNG_BYTES / 1024 / 1024);
+        throw new IllegalArgumentException("Bridge '" + endpoint.wireName() + "' returned a " + size + " MB base64 PNG, exceeding the " + maximum + " MB cap. This usually means a malformed bridge response — please report it.");
+    }
+
+    private static String number(Number value) {
+        return RuntimeToolSupport.nodeNumber(value);
+    }
+
+    private static String fixedOne(double value) {
+        return String.format(Locale.ROOT, "%.1f", value);
+    }
+
     CompletionStage<ContentToolResult<Void>> screenshot(ScreenshotArguments arguments) {
         BridgePayload payload = new ScreenshotPayload(arguments.downscale(), arguments.quality());
         return runtime.request(McScreenshotTool.ENDPOINT, payload, null, response -> {
@@ -109,77 +177,9 @@ final class MediaToolSupport {
         return project(wire);
     }
 
-    static ScreenshotResult project(ScreenshotWireResult wire) {
-        return new ScreenshotResult(nativePath(McScreenshotTool.ENDPOINT, wire.path()), wire.width(), wire.height(), wire.sizeBytes(), wire.mimeType());
-    }
-
     private TextureResult textureResult(BridgeEndpoint endpoint, BridgeResponse response) {
         TextureWireResult wire = runtime.decode(endpoint, RuntimeToolSupport.requireResult(endpoint, response), BridgeResultTypes.TEXTURE);
         return new TextureResult(wire.base64Png(), wire.width(), wire.height(), wire.spriteName());
-    }
-
-    static RecordVideoResult project(RecordVideoWireResult wire) {
-        return switch (wire) {
-            case RecordVideoGridWireResult grid ->
-                    new RecordVideoGridResult(nativePath(McRecordVideoTool.ENDPOINT, grid.path()), grid.width(), grid.height(), grid.sizeBytes(), grid.mimeType(), grid.frameCount(), grid.frameWidth(), grid.frameHeight(), grid.gridCols(), grid.gridRows(), Duration.ofMillis(grid.captureMs()), intervalDuration(grid.intervalMs()), grid.dropped());
-            case RecordVideoFramesWireResult frames ->
-                    new RecordVideoFramesResult(frames.paths().stream().map(path -> nativePath(McRecordVideoTool.ENDPOINT, path)).toList(), frames.frameWidth(), frames.frameHeight(), frames.mimeType(), frames.frameCount(), Duration.ofMillis(frames.captureMs()), intervalDuration(frames.intervalMs()), frames.sizeBytes(), frames.dropped());
-        };
-    }
-
-    private static Path nativePath(BridgeEndpoint endpoint, String lexeme) {
-        Path path = Path.of(lexeme);
-        if (!path.isAbsolute()) {
-            throw new IllegalArgumentException("DebugBridge " + endpoint.wireName() + " path must be absolute on the MCP host");
-        }
-        return path.normalize();
-    }
-
-    static Duration intervalDuration(double intervalMs) {
-        if (!Double.isFinite(intervalMs) || intervalMs < 0 || intervalMs > MAX_INTERVAL_MILLIS) {
-            throw new IllegalArgumentException("DebugBridge record_video intervalMs must be finite and in range 0-" + MAX_INTERVAL_MILLIS + " milliseconds");
-        }
-        return Duration.ofNanos(Math.round(intervalMs * 1_000_000d));
-    }
-
-    private static String renderGrid(RecordVideoGridResult result) {
-        return result.path() + "\n(" + number(result.width()) + "x" + number(result.height()) + " JPEG, " + fixedOne((double) result.sizeBytes() / 1024) + " KB; " + number(result.frameCount()) + " frames @ " + number(result.frameWidth()) + "x" + number(result.frameHeight()) + ", grid " + number(result.gridCols()) + "x" + number(result.gridRows()) + "; capture " + number(result.captureDuration().toMillis()) + "ms, avg " + fixedOne(intervalMillis(result.intervalDuration())) + "ms" + dropNote(result.dropped()) + ")";
-    }
-
-    private static String renderFrames(RecordVideoFramesResult result) {
-        return number(result.frameCount()) + " frames @ " + number(result.frameWidth()) + "x" + number(result.frameHeight()) + " JPEG, " + fixedOne((double) result.sizeBytes() / 1024) + " KB total; capture " + number(result.captureDuration().toMillis()) + "ms, avg " + fixedOne(intervalMillis(result.intervalDuration())) + "ms" + dropNote(result.dropped()) + "\n" + String.join("\n", result.paths().stream().map(Path::toString).toList());
-    }
-
-    private static String render(RecordVideoResult result) {
-        return switch (result) {
-            case RecordVideoGridResult grid -> renderGrid(grid);
-            case RecordVideoFramesResult frames -> renderFrames(frames);
-        };
-    }
-
-    private static double intervalMillis(Duration duration) {
-        return duration.getSeconds() * 1000.0 + duration.getNano() / 1_000_000.0;
-    }
-
-    private static String dropNote(int dropped) {
-        return dropped > 0 ? ", " + number(dropped) + " dropped" : "";
-    }
-
-    private static void checkBase64Bound(String base64, BridgeEndpoint endpoint) {
-        if (base64.length() <= MAX_BASE64_PNG_BYTES) {
-            return;
-        }
-        String size = fixedOne((double) base64.length() / 1024 / 1024);
-        String maximum = fixedOne((double) MAX_BASE64_PNG_BYTES / 1024 / 1024);
-        throw new IllegalArgumentException("Bridge '" + endpoint.wireName() + "' returned a " + size + " MB base64 PNG, exceeding the " + maximum + " MB cap. This usually means a malformed bridge response — please report it.");
-    }
-
-    private static String number(Number value) {
-        return RuntimeToolSupport.nodeNumber(value);
-    }
-
-    private static String fixedOne(double value) {
-        return String.format(Locale.ROOT, "%.1f", value);
     }
 
 }

@@ -42,6 +42,77 @@ public final class SourceIndexTransactionPublisher {
         this.boundary = boundary;
     }
 
+    private static SourceTreeInventory newIndex(SourceTreeInventory before, SourceTreeInventory database) {
+        var entries = new ArrayList<SourceInventoryEntry>();
+        for (SourceInventoryEntry entry : before.entries()) if (!managed(entry.relativePath())) entries.add(entry);
+        if (entries.isEmpty()) entries.add(new SourceInventoryEntry("", SourceEntryKind.DIRECTORY, 0, ""));
+        SourceInventoryEntry file = database.entries().getFirst();
+        entries.add(new SourceInventoryEntry(DATABASE, file.kind(), file.size(), file.sha256()));
+        entries.sort(Comparator.comparing(SourceInventoryEntry::relativePath));
+        return SourceTreeInventory.of(true, entries);
+    }
+
+    private static List<String> managedNames(SourceTreeInventory index) throws IOException {
+        var names = new ArrayList<String>();
+        for (SourceInventoryEntry entry : index.entries()) {
+            if (managed(entry.relativePath())) {
+                if (entry.kind() != SourceEntryKind.FILE || entry.relativePath().contains("/")) {
+                    throw new IOException("Unsafe H2 artifact: " + entry.relativePath());
+                }
+                names.add(entry.relativePath());
+            }
+        }
+        return names;
+    }
+
+    private static boolean managed(String name) {
+        if (Set.of(DATABASE, DATABASE + ".bak", "symbols.newFile", "symbols.tempFile", "symbols.lock.db", "symbols.trace.db", "symbols.trace.db.old").contains(name)) {
+            return true;
+        }
+        if (!name.startsWith("symbols.") || !name.endsWith(".temp.db") || name.length() <= "symbols.".length() + ".temp.db".length()) {
+            return false;
+        }
+        String number = name.substring("symbols.".length(), name.length() - ".temp.db".length());
+        return number.chars().allMatch(Character::isDigit);
+    }
+
+    private static SourceTreeInventory entryInventory(SourceTreeInventory index, String name) {
+        return index.entries().stream().filter(entry -> entry.relativePath().equals(name)).findFirst().map(entry -> SourceTreeInventory.of(true, List.of(new SourceInventoryEntry("", entry.kind(), entry.size(), entry.sha256())))).orElseGet(() -> SourceTreeInventory.of(false, List.of()));
+    }
+
+    private static void requireWrite(PlatformPaths paths, MinecraftVersion version, VersionOperationLease lease) throws IOException {
+        lease.require(paths, version);
+        if (!lease.isWrite()) throw new IOException("Source publication requires version write lease");
+    }
+
+    private static void requireDirectory(SourceTreeInventory inventory, String label) throws IOException {
+        if (!inventory.present() || inventory.entries().getFirst().kind() != SourceEntryKind.DIRECTORY) {
+            throw new IOException("Expected " + label + " directory");
+        }
+    }
+
+    private static void requireFile(SourceTreeInventory inventory, String label) throws IOException {
+        if (!inventory.present() || inventory.entries().size() != 1 || inventory.entries().getFirst().kind() != SourceEntryKind.FILE) {
+            throw new IOException("Expected " + label + " regular file");
+        }
+    }
+
+    private static void verify(Object expected, Object actual, String label) throws IOException {
+        if (!expected.equals(actual)) throw new IOException(label);
+    }
+
+    private static Path migrations(PlatformPaths paths, MinecraftVersion version) {
+        return paths.cacheRoot().resolve("migrations").resolve(version.value());
+    }
+
+    private static Path pendingPath(PlatformPaths paths, MinecraftVersion version) {
+        return migrations(paths, version).resolve("pending.json");
+    }
+
+    private static Path stampPath(PlatformPaths paths, MinecraftVersion version) {
+        return paths.versionCache(version).resolve("source-preparation.json");
+    }
+
     public SourceIndexSnapshot captureBefore(PlatformPaths paths, MinecraftVersion version, VersionOperationLease lease, Cancellation cancellation) throws IOException {
         requireWrite(paths, version, lease);
         if (boundary == null) {
@@ -257,44 +328,6 @@ public final class SourceIndexTransactionPublisher {
         return new SourceIndexSnapshot(source, SourceTreeInventory.capture(paths.indexRoot(version), boundary, cancellation, Set.of(DATABASE_LOCK)), stamp);
     }
 
-    private static SourceTreeInventory newIndex(SourceTreeInventory before, SourceTreeInventory database) {
-        var entries = new ArrayList<SourceInventoryEntry>();
-        for (SourceInventoryEntry entry : before.entries()) if (!managed(entry.relativePath())) entries.add(entry);
-        if (entries.isEmpty()) entries.add(new SourceInventoryEntry("", SourceEntryKind.DIRECTORY, 0, ""));
-        SourceInventoryEntry file = database.entries().getFirst();
-        entries.add(new SourceInventoryEntry(DATABASE, file.kind(), file.size(), file.sha256()));
-        entries.sort(Comparator.comparing(SourceInventoryEntry::relativePath));
-        return SourceTreeInventory.of(true, entries);
-    }
-
-    private static List<String> managedNames(SourceTreeInventory index) throws IOException {
-        var names = new ArrayList<String>();
-        for (SourceInventoryEntry entry : index.entries()) {
-            if (managed(entry.relativePath())) {
-                if (entry.kind() != SourceEntryKind.FILE || entry.relativePath().contains("/")) {
-                    throw new IOException("Unsafe H2 artifact: " + entry.relativePath());
-                }
-                names.add(entry.relativePath());
-            }
-        }
-        return names;
-    }
-
-    private static boolean managed(String name) {
-        if (Set.of(DATABASE, DATABASE + ".bak", "symbols.newFile", "symbols.tempFile", "symbols.lock.db", "symbols.trace.db", "symbols.trace.db.old").contains(name)) {
-            return true;
-        }
-        if (!name.startsWith("symbols.") || !name.endsWith(".temp.db") || name.length() <= "symbols.".length() + ".temp.db".length()) {
-            return false;
-        }
-        String number = name.substring("symbols.".length(), name.length() - ".temp.db".length());
-        return number.chars().allMatch(Character::isDigit);
-    }
-
-    private static SourceTreeInventory entryInventory(SourceTreeInventory index, String name) {
-        return index.entries().stream().filter(entry -> entry.relativePath().equals(name)).findFirst().map(entry -> SourceTreeInventory.of(true, List.of(new SourceInventoryEntry("", entry.kind(), entry.size(), entry.sha256())))).orElseGet(() -> SourceTreeInventory.of(false, List.of()));
-    }
-
     private void verifyRetained(Path transaction, SourceIndexSnapshot before) throws IOException {
         verify(before.source(), inventory(transaction.resolve("old/client"), Cancellation.none()), "Retained source snapshot differs");
         verify(before.index(), inventory(transaction.resolve("old/index"), Cancellation.none()), "Retained index snapshot differs");
@@ -468,27 +501,6 @@ public final class SourceIndexTransactionPublisher {
         checked(normalized);
     }
 
-    private static void requireWrite(PlatformPaths paths, MinecraftVersion version, VersionOperationLease lease) throws IOException {
-        lease.require(paths, version);
-        if (!lease.isWrite()) throw new IOException("Source publication requires version write lease");
-    }
-
-    private static void requireDirectory(SourceTreeInventory inventory, String label) throws IOException {
-        if (!inventory.present() || inventory.entries().getFirst().kind() != SourceEntryKind.DIRECTORY) {
-            throw new IOException("Expected " + label + " directory");
-        }
-    }
-
-    private static void requireFile(SourceTreeInventory inventory, String label) throws IOException {
-        if (!inventory.present() || inventory.entries().size() != 1 || inventory.entries().getFirst().kind() != SourceEntryKind.FILE) {
-            throw new IOException("Expected " + label + " regular file");
-        }
-    }
-
-    private static void verify(Object expected, Object actual, String label) throws IOException {
-        if (!expected.equals(actual)) throw new IOException(label);
-    }
-
     private void refusePending(PlatformPaths paths, MinecraftVersion version) throws IOException {
         if (Files.exists(checked(pendingPath(paths, version)), LinkOption.NOFOLLOW_LINKS)) {
             throw new IOException("Source/index recovery required at " + pendingPath(paths, version));
@@ -602,17 +614,5 @@ public final class SourceIndexTransactionPublisher {
 
     private SourceTreeInventory inventory(Path path, Cancellation cancellation) throws IOException {
         return SourceTreeInventory.capture(path, Objects.requireNonNull(boundary), cancellation);
-    }
-
-    private static Path migrations(PlatformPaths paths, MinecraftVersion version) {
-        return paths.cacheRoot().resolve("migrations").resolve(version.value());
-    }
-
-    private static Path pendingPath(PlatformPaths paths, MinecraftVersion version) {
-        return migrations(paths, version).resolve("pending.json");
-    }
-
-    private static Path stampPath(PlatformPaths paths, MinecraftVersion version) {
-        return paths.versionCache(version).resolve("source-preparation.json");
     }
 }

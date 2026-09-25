@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.io.BufferedReader;
+import java.io.IOException;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -56,7 +57,7 @@ class DatabaseLockProcessTest {
             var first = executor.submit(() -> holdRead(database, acquired, release));
             var second = executor.submit(() -> holdRead(database, acquired, release));
             assertTrue(acquired.await(2, TimeUnit.SECONDS));
-            assertThrows(java.io.IOException.class, () -> {
+            assertThrows(IOException.class, () -> {
                 try (var unexpected = DatabaseLock.write(database, Duration.ofMillis(100))) {
                     assertTrue(unexpected.isHeld(), "writer acquired while readers held the shared lock");
                     throw new AssertionError("writer acquired while readers held the shared lock");
@@ -80,7 +81,7 @@ class DatabaseLockProcessTest {
              var secondOutput = new BufferedReader(new InputStreamReader(second.getInputStream(), StandardCharsets.UTF_8))) {
             assertEquals("locked", firstOutput.readLine());
             assertEquals("locked", secondOutput.readLine());
-            assertThrows(java.io.IOException.class, () -> {
+            assertThrows(IOException.class, () -> {
                 try (var unexpected = DatabaseLock.write(database, Duration.ofMillis(100))) {
                     assertTrue(unexpected.isHeld(), "writer acquired while reader processes held the shared lock");
                     throw new AssertionError("writer acquired while reader processes held the shared lock");
@@ -105,7 +106,7 @@ class DatabaseLockProcessTest {
             try (var lock = DatabaseLock.write(database, Duration.ofMillis(150))) {
                 assertTrue(lock.isHeld(), "exclusive writer acquired while reader process held its shared lock");
                 throw new AssertionError("exclusive writer acquired while reader process held its shared lock");
-            } catch (java.io.IOException expected) {
+            } catch (IOException expected) {
                 assertTrue(expected.getMessage().contains("exclusive database lock"));
             }
 
@@ -136,7 +137,7 @@ class DatabaseLockProcessTest {
             long startedAt = System.nanoTime();
             var writer = executor.submit(() -> {
                 writerStarted.countDown();
-                return assertThrows(java.io.IOException.class, () -> {
+                return assertThrows(IOException.class, () -> {
                     try (var unexpected = DatabaseLock.write(database, Duration.ofMillis(300))) {
                         assertTrue(unexpected.isHeld());
                         throw new AssertionError("writer acquired while external reader held the operating-system lock");
@@ -146,7 +147,7 @@ class DatabaseLockProcessTest {
             assertTrue(writerStarted.await(2, TimeUnit.SECONDS));
             scheduler.schedule(releaseLocalReader::countDown, 180, TimeUnit.MILLISECONDS);
 
-            java.io.IOException timeout = writer.get(2, TimeUnit.SECONDS);
+            IOException timeout = writer.get(2, TimeUnit.SECONDS);
             long elapsedMillis = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startedAt);
             assertTrue(timeout.getMessage().contains("after 300 milliseconds"));
             assertTrue(elapsedMillis < 430, "separate local and OS budgets took " + elapsedMillis + " milliseconds");

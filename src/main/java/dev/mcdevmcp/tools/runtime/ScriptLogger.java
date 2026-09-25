@@ -7,6 +7,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.time.DateTimeException;
 import java.time.Duration;
 import java.time.Instant;
@@ -78,6 +79,46 @@ final class ScriptLogger {
     private static String baseName(Path path) {
         String name = path.getFileName().toString();
         return name.endsWith(".jsonl") ? name.substring(0, name.length() - ".jsonl".length()) : name;
+    }
+
+    private static long epochMillis(Instant instant) {
+        try {
+            return instant.toEpochMilli();
+        } catch (ArithmeticException exception) {
+            return instant.isBefore(Instant.EPOCH) ? Long.MIN_VALUE : Long.MAX_VALUE;
+        }
+    }
+
+    private static boolean hasEpochMilliRepresentation(Instant instant) {
+        try {
+            instant.toEpochMilli();
+            return true;
+        } catch (ArithmeticException exception) {
+            return false;
+        }
+    }
+
+    private static Instant retentionCutoff(Instant now) {
+        try {
+            return now.minus(ROTATION_RETENTION);
+        } catch (DateTimeException | ArithmeticException exception) {
+            return Instant.MIN;
+        }
+    }
+
+    // Parses the epoch-millis suffix from a rotation file name such as "all.1700000000000.jsonl".
+    // The millis start immediately after the "<base>." prefix.
+    private static Instant rotationTimestamp(String name, int baseNameLength) {
+        int start = baseNameLength + 1;
+        int end = name.length() - ".jsonl".length();
+        if (end <= start) {
+            return null;
+        }
+        try {
+            return Instant.ofEpochMilli(Long.parseLong(name.substring(start, end)));
+        } catch (DateTimeException | NumberFormatException exception) {
+            return null;
+        }
     }
 
     synchronized void log(ScriptLogEntry entry, boolean allowRotation) {
@@ -168,7 +209,7 @@ final class ScriptLogger {
     private void append(Path path, ScriptLogEntry entry) {
         try {
             Files.createDirectories(logDirectory);
-            Files.write(path, jsonLine(entry), java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.APPEND);
+            Files.write(path, jsonLine(entry), StandardOpenOption.CREATE, StandardOpenOption.APPEND);
         } catch (IOException | RuntimeException exception) {
             diagnostics.accept("[ScriptLogger] Failed to write log: " + exception);
         }
@@ -191,7 +232,7 @@ final class ScriptLogger {
         }
         values.put("duration_ms", wire.duration_ms());
         byte[] json = mapper.writeValueAsBytes(values);
-        byte[] line = java.util.Arrays.copyOf(json, json.length + 1);
+        byte[] line = Arrays.copyOf(json, json.length + 1);
         line[json.length] = '\n';
         return line;
     }
@@ -224,14 +265,6 @@ final class ScriptLogger {
         return rotated;
     }
 
-    private static long epochMillis(Instant instant) {
-        try {
-            return instant.toEpochMilli();
-        } catch (ArithmeticException exception) {
-            return instant.isBefore(Instant.EPOCH) ? Long.MIN_VALUE : Long.MAX_VALUE;
-        }
-    }
-
     private void cleanOldRotations(Path live, Instant now) throws IOException {
         if (!hasEpochMilliRepresentation(now)) {
             return;
@@ -252,38 +285,6 @@ final class ScriptLogger {
                     }
                 }
             }
-        }
-    }
-
-    private static boolean hasEpochMilliRepresentation(Instant instant) {
-        try {
-            instant.toEpochMilli();
-            return true;
-        } catch (ArithmeticException exception) {
-            return false;
-        }
-    }
-
-    private static Instant retentionCutoff(Instant now) {
-        try {
-            return now.minus(ROTATION_RETENTION);
-        } catch (DateTimeException | ArithmeticException exception) {
-            return Instant.MIN;
-        }
-    }
-
-    // Parses the epoch-millis suffix from a rotation file name such as "all.1700000000000.jsonl".
-    // The millis start immediately after the "<base>." prefix.
-    private static Instant rotationTimestamp(String name, int baseNameLength) {
-        int start = baseNameLength + 1;
-        int end = name.length() - ".jsonl".length();
-        if (end <= start) {
-            return null;
-        }
-        try {
-            return Instant.ofEpochMilli(Long.parseLong(name.substring(start, end)));
-        } catch (DateTimeException | NumberFormatException exception) {
-            return null;
         }
     }
 

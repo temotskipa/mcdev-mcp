@@ -24,23 +24,18 @@ plugins {
     id("org.gradlex.extra-java-module-info")
 }
 
+apply(from = rootProject.file("gradle/java-preview.gradle.kts"))
+
 val applicationVersion = rootProject.providers.gradleProperty("version").get()
 val conformanceJavaLauncher = javaToolchains.launcherFor {
-    languageVersion.set(JavaLanguageVersion.of(26))
-}
-
-java {
-    modularity.inferModulePath.set(true)
-    toolchain {
-        languageVersion.set(JavaLanguageVersion.of(26))
-    }
+    languageVersion.set(providers.gradleProperty("javaFeature").map { JavaLanguageVersion.of(it.toInt()) })
 }
 
 dependencies {
     implementation(project(":"))
     implementation(project(":mcp-tool-api"))
     implementation("io.modelcontextprotocol.sdk:mcp:2.0.1")
-    implementation("org.apache.tomcat.embed:tomcat-embed-core:11.0.25")
+    implementation("org.apache.tomcat.embed:tomcat-embed-core:11.0.26")
     implementation("jakarta.servlet:jakarta.servlet-api:6.1.0")
 }
 
@@ -75,9 +70,7 @@ val applicationExports = listOf(
 )
 
 tasks.withType<JavaCompile>().configureEach {
-    options.release.set(26)
-    options.encoding = "UTF-8"
-    options.compilerArgs.addAll(listOf("-Xlint:all", "-Xlint:-preview", "-Xlint:-requires-automatic", "-Xlint:-requires-transitive-automatic", "-Xlint:-classfile", "-Xlint:-serial", "-Werror", "--enable-preview"))
+    options.compilerArgs.addAll(listOf("-Xlint:-classfile", "-Xlint:-serial"))
     applicationExports.forEach { export ->
         options.compilerArgs.addAll(listOf("--add-exports", export))
     }
@@ -106,7 +99,6 @@ tasks.register<JavaExec>("conformanceRun") {
     mainClass.set(application.mainClass)
     javaLauncher.set(conformanceJavaLauncher)
     jvmArgs(
-        "--enable-preview",
         "--add-opens=java.base/java.lang=ALL-UNNAMED",
         "--add-opens=java.rmi/sun.rmi.transport=ALL-UNNAMED",
         "--add-exports=dev.mcdevmcp/dev.mcdevmcp.mcp=dev.mcdevmcp.conformance",
@@ -123,7 +115,7 @@ tasks.register<JavaExec>("conformanceRun") {
 }
 
 val conformanceJavaExecutable = tasks.register<Utf8TextFileTask>("conformanceJavaExecutable") {
-    description = "Records the Java 26 executable used to launch the conformance harness."
+    description = "Records the preview JDK executable used to launch the conformance harness."
     content.set(conformanceJavaLauncher.map { launcher -> launcher.executablePath.asFile.absolutePath })
     outputFile.set(rootProject.layout.buildDirectory.file("conformance/java-executable.txt"))
 }

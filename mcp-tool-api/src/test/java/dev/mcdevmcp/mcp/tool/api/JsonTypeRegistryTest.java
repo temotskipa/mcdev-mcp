@@ -10,15 +10,55 @@ import java.io.IOException;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
 import java.math.BigDecimal;
-import java.time.Duration;
-import java.time.Instant;
-import java.time.LocalDate;
+import java.net.URI;
+import java.nio.file.Path;
+import java.time.*;
 import java.util.*;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 class JsonTypeRegistryTest {
     private static final JsonValueSchema STRING_SCHEMA = JsonValueSchema.of(Map.of("type", "string"));
+
+    private static JsonLogicalType<?> genericArrayEntry() {
+        return JsonLogicalType.of("generic-array", new TypeRef<List<String>[]>() {
+        }, STRING_SCHEMA, STRING_SCHEMA);
+    }
+
+    private static TypeRef<Object> malformedTypeRef(Class<?> rawType, Type ownerType, Type... arguments) {
+        ParameterizedType parameterizedType = new TestParameterizedType(rawType, ownerType, arguments);
+        return typeRef(parameterizedType);
+    }
+
+    private static TypeRef<Object> cyclicTypeRef() {
+        return typeRef(new CyclicParameterizedType());
+    }
+
+    private static TypeRef<Object> adversarialCycleTypeRef() {
+        EqualParameterizedType first = new EqualParameterizedType();
+        EqualParameterizedType second = new EqualParameterizedType();
+        first.setArgument(second);
+        second.setArgument(first);
+        return typeRef(first);
+    }
+
+    private static TypeRef<Object> typeRef(Type type) {
+        return new TypeRef<>() {
+            @Override
+            public Type getType() {
+                return type;
+            }
+        };
+    }
+
+    private static <T> void assertRejected(String id, TypeRef<T> type, JsonValueSchema schema) {
+        assertThrows(IllegalArgumentException.class, () -> JsonTypeRegistry.of(List.of(JsonLogicalType.of(id, type, schema, schema))));
+    }
+
+    private static <T> JsonLogicalType<T> typeVariableEntry() {
+        return JsonLogicalType.of("type-variable", new TypeRef<>() {
+        }, STRING_SCHEMA, STRING_SCHEMA);
+    }
 
     @Test
     void standardContainsOnlyMapperProvenDirectionalTypes() {
@@ -28,10 +68,10 @@ class JsonTypeRegistryTest {
         assertEquals("jdk.uuid.v1", registry.find(UUID.class).orElseThrow().id());
         assertEquals("jdk.instant.v1", registry.find(Instant.class).orElseThrow().id());
         assertEquals("jdk.local-date.v1", registry.find(LocalDate.class).orElseThrow().id());
-        assertFalse(registry.find(java.time.OffsetDateTime.class).isPresent());
-        assertFalse(registry.find(java.time.LocalTime.class).isPresent());
-        assertFalse(registry.find(java.net.URI.class).isPresent());
-        assertFalse(registry.find(java.nio.file.Path.class).isPresent());
+        assertFalse(registry.find(OffsetDateTime.class).isPresent());
+        assertFalse(registry.find(LocalTime.class).isPresent());
+        assertFalse(registry.find(URI.class).isPresent());
+        assertFalse(registry.find(Path.class).isPresent());
 
         JsonLogicalType<?> duration = registry.find("jdk.duration-seconds.v1").orElseThrow();
         assertEquals(Map.of("type", "number"), duration.inputSchema().orElseThrow().value());
@@ -215,46 +255,6 @@ class JsonTypeRegistryTest {
         assertEquals(uuid, mapper.convertValue(uuid.toString(), UUID.class));
         assertEquals(instant, mapper.convertValue(instant.toString(), Instant.class));
         assertEquals(date, mapper.convertValue(date.toString(), LocalDate.class));
-    }
-
-    private static JsonLogicalType<?> genericArrayEntry() {
-        return JsonLogicalType.of("generic-array", new TypeRef<List<String>[]>() {
-        }, STRING_SCHEMA, STRING_SCHEMA);
-    }
-
-    private static TypeRef<Object> malformedTypeRef(Class<?> rawType, Type ownerType, Type... arguments) {
-        ParameterizedType parameterizedType = new TestParameterizedType(rawType, ownerType, arguments);
-        return typeRef(parameterizedType);
-    }
-
-    private static TypeRef<Object> cyclicTypeRef() {
-        return typeRef(new CyclicParameterizedType());
-    }
-
-    private static TypeRef<Object> adversarialCycleTypeRef() {
-        EqualParameterizedType first = new EqualParameterizedType();
-        EqualParameterizedType second = new EqualParameterizedType();
-        first.setArgument(second);
-        second.setArgument(first);
-        return typeRef(first);
-    }
-
-    private static TypeRef<Object> typeRef(Type type) {
-        return new TypeRef<>() {
-            @Override
-            public Type getType() {
-                return type;
-            }
-        };
-    }
-
-    private static <T> void assertRejected(String id, TypeRef<T> type, JsonValueSchema schema) {
-        assertThrows(IllegalArgumentException.class, () -> JsonTypeRegistry.of(List.of(JsonLogicalType.of(id, type, schema, schema))));
-    }
-
-    private static <T> JsonLogicalType<T> typeVariableEntry() {
-        return JsonLogicalType.of("type-variable", new TypeRef<>() {
-        }, STRING_SCHEMA, STRING_SCHEMA);
     }
 
     private record Token(String value) {

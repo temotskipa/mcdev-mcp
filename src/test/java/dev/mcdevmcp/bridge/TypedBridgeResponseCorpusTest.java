@@ -4,14 +4,16 @@ import io.modelcontextprotocol.json.McpJsonDefaults;
 import io.modelcontextprotocol.json.McpJsonMapper;
 import org.junit.jupiter.api.Test;
 
+import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.MessageDigest;
+import java.util.ArrayList;
+import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
 
@@ -21,6 +23,25 @@ final class TypedBridgeResponseCorpusTest {
     private static final McpJsonMapper MAPPER = McpJsonDefaults.getMapper();
     private static final String RESOURCE = "contracts/runtime-tools/typed-bridge-response-corpus.jsonl";
     private static final String SHA256 = "883cc5164c422a9db879d94a6b0c1f975d05964d8c36a9718897c9d6cdb5a829";
+
+    private static String sha256(byte[] bytes) throws Exception {
+        return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes));
+    }
+
+    private static List<Row> load() throws IOException {
+        try (InputStream stream = TypedBridgeResponseCorpusTest.class.getClassLoader().getResourceAsStream(RESOURCE)) {
+            assertNotNull(stream, RESOURCE);
+            try (var reader = new BufferedReader(new InputStreamReader(stream, StandardCharsets.UTF_8))) {
+                var rows = new ArrayList<Row>();
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    assertFalse(line.isBlank());
+                    rows.add(MAPPER.readValue(line, Row.class));
+                }
+                return List.copyOf(rows);
+            }
+        }
+    }
 
     @Test
     void durableCorpusRecordsSourceProvenanceAndEveryClosedProviderShape() throws Exception {
@@ -66,25 +87,6 @@ final class TypedBridgeResponseCorpusTest {
     void corpusHashIsFrozenForReviewerReproducibility() throws Exception {
         Path path = Path.of("src", "test", "resources", "contracts", "runtime-tools", "typed-bridge-response-corpus.jsonl");
         assertEquals(SHA256, sha256(Files.readAllBytes(path)));
-    }
-
-    private static String sha256(byte[] bytes) throws Exception {
-        return java.util.HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes));
-    }
-
-    private static List<Row> load() throws IOException {
-        try (InputStream stream = TypedBridgeResponseCorpusTest.class.getClassLoader().getResourceAsStream(RESOURCE)) {
-            assertNotNull(stream, RESOURCE);
-            try (var reader = new BufferedReader(new InputStreamReader(stream, StandardCharsets.UTF_8))) {
-                var rows = new java.util.ArrayList<Row>();
-                String line;
-                while ((line = reader.readLine()) != null) {
-                    assertFalse(line.isBlank());
-                    rows.add(MAPPER.readValue(line, Row.class));
-                }
-                return List.copyOf(rows);
-            }
-        }
     }
 
     private record Row(String kind, String corpus, String label, String endpoint, String source, String status, String capture, String providerCommit, String createdAt, String replacementTiming, Map<String, Object> result) {
