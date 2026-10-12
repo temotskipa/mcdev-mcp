@@ -10,7 +10,7 @@ import java.util.Map;
 /**
  * Trusted closed-result schemas selected by server-owned endpoint code.
  */
-public final value class BridgeResultTypes {
+public final class BridgeResultTypes {
     public static final JsonLogicalType<BridgeStatusWire> STATUS = JsonLogicalType.inputOnly("debugbridge.status.v1", BridgeStatusWire.class, object(Map.ofEntries(Map.entry("version", string()), Map.entry("mappingStatus", string()), Map.entry("obfuscated", booleanType()), Map.entry("refs", nonNegativeLong()), Map.entry("gameDir", string()), Map.entry("logsDir", string()), Map.entry("latestLog", string()), Map.entry("latestLogExists", booleanType()), Map.entry("debugLog", string()), Map.entry("debugLogExists", booleanType()), Map.entry("sessionControlEnabled", booleanType()), Map.entry("webUiPort", portInteger())), List.of("version", "mappingStatus", "obfuscated", "refs")));
     public static final JsonLogicalType<LookedAtEntityWireResult> LOOKED_AT_ENTITY = JsonLogicalType.inputOnly("debugbridge.looked-at-entity.v1", LookedAtEntityWireResult.class, object(Map.of("entityId", nullable(integer())), List.of("entityId")));
     public static final JsonLogicalType<ScreenshotWireResult> SCREENSHOT = JsonLogicalType.inputOnly("debugbridge.screenshot.v1", ScreenshotWireResult.class, object(Map.of("path", string(), "width", nonNegativeInt(), "height", nonNegativeInt(), "sizeBytes", nonNegativeLong(), "mimeType", string()), List.of("path", "width", "height", "sizeBytes", "mimeType")));

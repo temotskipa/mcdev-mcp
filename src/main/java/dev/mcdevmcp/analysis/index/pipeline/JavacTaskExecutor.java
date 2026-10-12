@@ -13,7 +13,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 
-final value class JavacTaskExecutor {
+final class JavacTaskExecutor {
     private static final Duration CANCELLATION_POLL = Duration.ofMillis(25);
 
     private JavacTaskExecutor() {

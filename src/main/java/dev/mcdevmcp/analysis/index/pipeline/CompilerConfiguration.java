@@ -10,7 +10,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Locale;
 
-final value class CompilerConfiguration {
+final class CompilerConfiguration {
     private CompilerConfiguration() {
     }
 

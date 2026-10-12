@@ -16,7 +16,7 @@ import java.net.URI;
 import java.util.*;
 import java.util.function.BiConsumer;
 
-final value class JavacPreflight {
+final class JavacPreflight {
     private JavacPreflight() {
     }
 
