@@ -7,7 +7,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
 
-public record JsonObjectSchema(Map<String, Object> value) {
+public value record JsonObjectSchema(Map<String, Object> value) {
     public JsonObjectSchema {
         value = JsonSchemaSupport.immutableObject(value);
         if (!"object".equals(value.get("type"))) {

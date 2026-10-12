@@ -13,7 +13,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.*;
 
-public final class SourceIndexPipeline {
+public final value class SourceIndexPipeline {
     private static final int REPORTED_DIAGNOSTIC_LIMIT = 20;
     private static final int REPORTED_DIAGNOSTIC_CHARACTERS = 512;
 

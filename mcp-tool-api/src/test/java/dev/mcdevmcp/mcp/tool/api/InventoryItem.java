@@ -1,4 +1,4 @@
 package dev.mcdevmcp.mcp.tool.api;
 
-record InventoryItem(String id, int count) {
+value record InventoryItem(String id, int count) {
 }

@@ -14,7 +14,7 @@ import java.util.*;
 /**
  * Cleans contained per-version cache state without following symbolic links.
  */
-public final class CacheCleaner {
+public final value class CacheCleaner {
     private final PlatformPaths paths;
     private final CachePathBoundary boundary;
 

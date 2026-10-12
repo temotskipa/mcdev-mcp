@@ -2,5 +2,5 @@ package dev.mcdevmcp.mcp.tool.api;
 
 import java.time.Duration;
 
-record DurationInput(@InputProperty(required = true) Duration timeoutSeconds) {
+value record DurationInput(@InputProperty(required = true) Duration timeoutSeconds) {
 }

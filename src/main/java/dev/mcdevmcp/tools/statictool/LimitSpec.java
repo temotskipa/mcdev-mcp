@@ -1,6 +1,6 @@
 package dev.mcdevmcp.tools.statictool;
 
-record LimitSpec(int defaultValue, int maximum) {
+value record LimitSpec(int defaultValue, int maximum) {
     LimitSpec {
         if (defaultValue < 1 || maximum < defaultValue) {
             throw new IllegalArgumentException("Invalid limit specification");

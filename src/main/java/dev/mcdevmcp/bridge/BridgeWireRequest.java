@@ -2,7 +2,7 @@ package dev.mcdevmcp.bridge;
 
 import java.util.Objects;
 
-public record BridgeWireRequest(String id, String type, BridgePayload payload) {
+public value record BridgeWireRequest(String id, String type, BridgePayload payload) {
     public BridgeWireRequest {
         id = Objects.requireNonNull(id, "id");
         type = Objects.requireNonNull(type, "type");

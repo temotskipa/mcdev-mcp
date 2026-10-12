@@ -3,7 +3,7 @@ package dev.mcdevmcp.analysis.decompile;
 import java.net.URI;
 import java.util.Objects;
 
-public record DownloadArtifact(URI uri, String sha1, long byteLength, ArtifactKind kind) {
+public value record DownloadArtifact(URI uri, String sha1, long byteLength, ArtifactKind kind) {
     public DownloadArtifact {
         Objects.requireNonNull(uri, "uri");
         sha1 = Objects.requireNonNull(sha1, "sha1");

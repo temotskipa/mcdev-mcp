@@ -9,7 +9,7 @@ import java.util.Objects;
 /**
  * Explicit command composition shared by the Picocli command instances.
  */
-public record CommandContext(AnalysisOperations operations, PlatformPaths paths) implements CommandLine.IFactory {
+public value record CommandContext(AnalysisOperations operations, PlatformPaths paths) implements CommandLine.IFactory {
     public CommandContext {
         Objects.requireNonNull(operations, "operations");
         Objects.requireNonNull(paths, "paths");

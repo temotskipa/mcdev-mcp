@@ -8,7 +8,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 
-public record PlatformPaths(Path cacheRoot) {
+public value record PlatformPaths(Path cacheRoot) {
     public PlatformPaths {
         cacheRoot = Objects.requireNonNull(cacheRoot, "cacheRoot").normalize();
     }

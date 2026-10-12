@@ -7,7 +7,7 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Objects;
 
-public record PreparedSources(MinecraftVersion minecraftVersion, List<SourceRoot> sourceRoots, Path obfuscatedJar, Path unobfuscatedJar, Path remappedJar) {
+public value record PreparedSources(MinecraftVersion minecraftVersion, List<SourceRoot> sourceRoots, Path obfuscatedJar, Path unobfuscatedJar, Path remappedJar) {
     public PreparedSources {
         Objects.requireNonNull(minecraftVersion, "minecraftVersion");
         sourceRoots = List.copyOf(Objects.requireNonNull(sourceRoots, "sourceRoots"));

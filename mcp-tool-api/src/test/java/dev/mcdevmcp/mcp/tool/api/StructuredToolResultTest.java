@@ -13,7 +13,7 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-class StructuredToolResultTest {
+value class StructuredToolResultTest {
     @Test
     void preservesTheTypedJavaValueUntilTheJsonBoundary() throws IOException {
         var value = new InventorySummary(2, List.of(new InventoryItem("minecraft:diamond", 3)));

@@ -5,7 +5,7 @@ import dev.mcdevmcp.minecraft.BlockPosition;
 
 import java.util.Objects;
 
-record BlockDetailsArguments(@InputProperty(required = true) BlockPosition position) {
+value record BlockDetailsArguments(@InputProperty(required = true) BlockPosition position) {
     BlockDetailsArguments {
         Objects.requireNonNull(position, "position");
     }

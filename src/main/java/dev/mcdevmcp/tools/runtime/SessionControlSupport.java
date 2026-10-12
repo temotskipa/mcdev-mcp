@@ -26,7 +26,7 @@ import java.util.function.Supplier;
  * CompletionStage is retained at the boundary; the implementation uses
  * interruptible, sequential code inside structured task scopes.
  */
-final class SessionControlSupport {
+final value class SessionControlSupport {
     static final int BRIDGE_PORT_START = 9876;
     static final int BRIDGE_PORT_END = 9886;
     static final int DEFAULT_JOIN_TIMEOUT_SECONDS = 60;

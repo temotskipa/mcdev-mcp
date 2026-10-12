@@ -7,7 +7,7 @@ import dev.mcdevmcp.storage.model.MinecraftVersion;
 
 import java.time.Duration;
 
-record WaitForBridgeArguments(@InputProperty(description = "Only accept an instance reporting this Minecraft version (e.g. \"1.21.11\"). Overrides the identity remembered from the previous connection — use when deliberately switching instances.") MinecraftVersion expectedVersion, @InputProperty(description = "Give up after this many seconds. Default 120.", minimum = "0", defaultValue = "120") Duration timeoutSeconds) {
+value record WaitForBridgeArguments(@InputProperty(description = "Only accept an instance reporting this Minecraft version (e.g. \"1.21.11\"). Overrides the identity remembered from the previous connection — use when deliberately switching instances.") MinecraftVersion expectedVersion, @InputProperty(description = "Give up after this many seconds. Default 120.", minimum = "0", defaultValue = "120") Duration timeoutSeconds) {
     WaitForBridgeArguments {
         if (timeoutSeconds == null || timeoutSeconds.isNegative()) {
             throw new IllegalArgumentException("'timeoutSeconds' must be a non-negative duration in seconds");

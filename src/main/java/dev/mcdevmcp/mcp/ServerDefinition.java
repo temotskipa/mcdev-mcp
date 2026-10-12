@@ -8,7 +8,7 @@ import java.util.Objects;
 /**
  * Immutable MCP identity and catalog composition shared by every transport.
  */
-public record ServerDefinition(String name, String version, String instructions, ToolCatalog tools, ResourceCatalog resources) {
+public value record ServerDefinition(String name, String version, String instructions, ToolCatalog tools, ResourceCatalog resources) {
     public ServerDefinition {
         Objects.requireNonNull(name, "name");
         Objects.requireNonNull(version, "version");

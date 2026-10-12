@@ -14,7 +14,7 @@ import java.util.*;
 import java.util.concurrent.Callable;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-final class JavacSourceParser {
+final value class JavacSourceParser {
     static final int MAXIMUM_BATCH_UNITS = 512;
     static final int MAXIMUM_BATCH_CHARACTERS = 4_194_304;
     private final Runnable compilerStarted;

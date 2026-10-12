@@ -7,7 +7,7 @@ import java.io.InputStream;
 import java.net.URL;
 import java.util.Properties;
 
-public final class AppVersion {
+public final value class AppVersion {
     public static final String TEST_FALLBACK_PROPERTY = "dev.mcdevmcp.test.versionFallback";
     private static final String ARTIFACT_NAME = "mcdev-mcp";
 

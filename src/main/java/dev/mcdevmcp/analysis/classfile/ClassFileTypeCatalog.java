@@ -16,7 +16,7 @@ import java.util.*;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 
-public final class ClassFileTypeCatalog {
+public final value class ClassFileTypeCatalog {
     private final NavigableMap<String, ClassFileType> types;
 
     private ClassFileTypeCatalog(Map<String, ClassFileType> types) {

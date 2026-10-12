@@ -5,7 +5,7 @@ import dev.mcdevmcp.storage.model.SourceNamespace;
 
 import java.util.Optional;
 
-record PackageIdentity(SourceNamespace namespace, Optional<FabricApiVersion> fabricApiVersion, String packageName) implements Comparable<PackageIdentity> {
+value record PackageIdentity(SourceNamespace namespace, Optional<FabricApiVersion> fabricApiVersion, String packageName) implements Comparable<PackageIdentity> {
     PackageIdentity(ParsedType type) {
         this(type.sourceRoot().namespace(), type.sourceRoot().fabricApiVersion(), type.packageName());
     }

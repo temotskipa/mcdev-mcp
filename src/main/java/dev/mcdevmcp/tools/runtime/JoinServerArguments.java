@@ -7,7 +7,7 @@ import dev.mcdevmcp.minecraft.MinecraftServerAddress;
 
 import java.time.Duration;
 
-record JoinServerArguments(@InputProperty(description = "Server address, \"host\" or \"host:port\" (e.g. \"localhost:25565\")", required = true) MinecraftServerAddress address, @InputProperty(description = "Pre-accept the server resource pack. Default true.", defaultValue = "true") boolean acceptResourcePacks, @JsonProperty("wait") @InputProperty(description = "Poll until in-world / disconnected before returning. Default true.", defaultValue = "true") boolean waitForWorld, @InputProperty(description = "How long to wait for the join to complete. Default 60.", minimum = "0", defaultValue = "60") Duration timeoutSeconds) {
+value record JoinServerArguments(@InputProperty(description = "Server address, \"host\" or \"host:port\" (e.g. \"localhost:25565\")", required = true) MinecraftServerAddress address, @InputProperty(description = "Pre-accept the server resource pack. Default true.", defaultValue = "true") boolean acceptResourcePacks, @JsonProperty("wait") @InputProperty(description = "Poll until in-world / disconnected before returning. Default true.", defaultValue = "true") boolean waitForWorld, @InputProperty(description = "How long to wait for the join to complete. Default 60.", minimum = "0", defaultValue = "60") Duration timeoutSeconds) {
     JoinServerArguments {
         if (address == null) {
             throw new IllegalArgumentException("'address' is required");

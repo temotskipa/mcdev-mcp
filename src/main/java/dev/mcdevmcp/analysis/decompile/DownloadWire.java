@@ -3,7 +3,7 @@ package dev.mcdevmcp.analysis.decompile;
 import java.net.URI;
 import java.util.Objects;
 
-public record DownloadWire(URI url, String sha1, long size) {
+public value record DownloadWire(URI url, String sha1, long size) {
     public DownloadWire {
         Objects.requireNonNull(url, "url");
         sha1 = Objects.requireNonNull(sha1, "sha1");

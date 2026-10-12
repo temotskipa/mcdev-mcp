@@ -1,4 +1,4 @@
 package dev.mcdevmcp.mcp.tool.api;
 
-record UnionInput(@InputProperty(required = true) TestUnion interval) {
+value record UnionInput(@InputProperty(required = true) TestUnion interval) {
 }
