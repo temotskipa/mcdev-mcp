@@ -94,13 +94,11 @@ public final class McpSdkAdapter {
                 throw new IllegalStateException(description + " did not close within " + TRANSPORT_CLOSE_TIMEOUT, exception);
             }
             Throwable cause = ScopeOutcomes.cause(exception);
-            if (cause instanceof Error error) {
-                throw error;
+            switch (cause) {
+                case Error error -> throw error;
+                case RuntimeException runtimeException -> throw runtimeException;
+                default -> throw new IllegalStateException("Unable to close " + description, cause);
             }
-            if (cause instanceof RuntimeException runtimeException) {
-                throw runtimeException;
-            }
-            throw new IllegalStateException("Unable to close " + description, cause);
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
             throw new IllegalStateException("Interrupted while closing " + description, exception);

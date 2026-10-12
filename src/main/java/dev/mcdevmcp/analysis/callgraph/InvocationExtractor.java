@@ -66,16 +66,17 @@ final class InvocationExtractor {
             Integer line = null;
             for (CodeElement element : method.code().orElseThrow()) {
                 cancellation.throwIfCancelled();
-                if (element instanceof LineNumber lineNumber) {
-                    line = lineNumber.line();
-                }
-                else if (element instanceof InvokeInstruction instruction && ORDINARY_OPCODES.contains(instruction.opcode())) {
-                    edges.add(new CallEdge(callerClass, callerMethod, callerDescriptor, instruction.owner().asInternalName().replace('/', '.'), instruction.name().stringValue(), instruction.type().stringValue(), line, encounterOrder++));
-                }
-                else if (element instanceof InvokeDynamicInstruction instruction) {
-                    DynamicTarget target = dynamicTarget(instruction);
-                    if (target != null) {
-                        edges.add(new CallEdge(callerClass, callerMethod, callerDescriptor, target.owner(), target.name(), target.descriptor(), line, encounterOrder++));
+                switch (element) {
+                    case LineNumber lineNumber -> line = lineNumber.line();
+                    case InvokeInstruction instruction when ORDINARY_OPCODES.contains(instruction.opcode()) ->
+                            edges.add(new CallEdge(callerClass, callerMethod, callerDescriptor, instruction.owner().asInternalName().replace('/', '.'), instruction.name().stringValue(), instruction.type().stringValue(), line, encounterOrder++));
+                    case InvokeDynamicInstruction instruction -> {
+                        DynamicTarget target = dynamicTarget(instruction);
+                        if (target != null) {
+                            edges.add(new CallEdge(callerClass, callerMethod, callerDescriptor, target.owner(), target.name(), target.descriptor(), line, encounterOrder++));
+                        }
+                    }
+                    default -> {
                     }
                 }
             }

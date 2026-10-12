@@ -92,10 +92,10 @@ value record CompilerClasspath(List<CompilerClassFile> classes) {
                 try (var input = zip.getInputStream(entry)) {
                     bytes = input.readAllBytes();
                 }
-                var model = (ClassModel) null;
+                ClassModel model;
                 try {
                     model = classFile.parse(bytes);
-                } catch (IllegalArgumentException ignored) {
+                } catch (IllegalArgumentException _) {
                     continue;
                 }
                 if (model.isModuleInfo()) {

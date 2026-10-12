@@ -190,14 +190,11 @@ public final class CallgraphScanner {
                 }
                 return extraction;
             } catch (ExecutionException exception) {
-                Throwable cause = exception.getCause();
-                if (cause instanceof Exception checked) {
-                    throw checked;
+                switch (exception.getCause()) {
+                    case Exception checked -> throw checked;
+                    case Error error -> throw error;
+                    case null, default -> throw exception;
                 }
-                if (cause instanceof Error error) {
-                    throw error;
-                }
-                throw exception;
             } finally {
                 inFlightClassBytes -= pending.byteLength();
             }

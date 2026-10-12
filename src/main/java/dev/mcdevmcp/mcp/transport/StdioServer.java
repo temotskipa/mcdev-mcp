@@ -83,14 +83,12 @@ public final value class StdioServer implements AutoCloseable {
         }
         failure = close(ownedRuntime, failure);
         failure = closeExecutor(blockingExecutor, failure);
-        if (failure instanceof Error error) {
-            throw error;
-        }
-        if (failure instanceof RuntimeException exception) {
-            throw exception;
-        }
-        if (failure != null) {
-            throw new IllegalStateException("Unable to close MCP server", failure);
+        switch (failure) {
+            case null -> {
+            }
+            case Error error -> throw error;
+            case RuntimeException exception -> throw exception;
+            default -> throw new IllegalStateException("Unable to close MCP server", failure);
         }
     }
 }

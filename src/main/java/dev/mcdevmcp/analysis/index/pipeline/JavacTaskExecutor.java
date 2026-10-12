@@ -139,32 +139,22 @@ final value class JavacTaskExecutor {
     }
 
     private static IndexBuildException mappedWorker(Throwable cause) throws IndexBuildException, InterruptedException {
-        if (cause instanceof IndexBuildException buildException) {
-            throw buildException;
+        switch (cause) {
+            case IndexBuildException buildException -> throw buildException;
+            case InterruptedException interruptedException -> throw interruptedException;
+            case Error error -> throw error;
+            default -> throw new IndexBuildException("Javac source worker failed", cause);
         }
-        if (cause instanceof InterruptedException interruptedException) {
-            throw interruptedException;
-        }
-        if (cause instanceof Error error) {
-            throw error;
-        }
-        throw new IndexBuildException("Javac source worker failed", cause);
     }
 
     private static void rethrowCoordinator(Throwable failure) throws IndexBuildException, InterruptedException {
-        if (failure instanceof IndexBuildException buildException) {
-            throw buildException;
+        switch (failure) {
+            case IndexBuildException buildException -> throw buildException;
+            case InterruptedException interruptedException -> throw interruptedException;
+            case Error error -> throw error;
+            case RuntimeException runtimeException -> throw runtimeException;
+            default -> throw new IndexBuildException("Javac source worker failed", failure);
         }
-        if (failure instanceof InterruptedException interruptedException) {
-            throw interruptedException;
-        }
-        if (failure instanceof Error error) {
-            throw error;
-        }
-        if (failure instanceof RuntimeException runtimeException) {
-            throw runtimeException;
-        }
-        throw new IndexBuildException("Javac source worker failed", failure);
     }
 
     @SuppressWarnings("preview")

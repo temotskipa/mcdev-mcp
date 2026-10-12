@@ -79,13 +79,11 @@ public final class AtomicH2Database {
                 } catch (IOException cleanupFailure) {
                     exception.addSuppressed(cleanupFailure);
                 }
-                if (exception instanceof IOException ioException) {
-                    throw ioException;
+                switch (exception) {
+                    case IOException ioException -> throw ioException;
+                    case SQLException sqlException -> throw sqlException;
+                    default -> throw new SQLException("H2 database rebuild failed", exception);
                 }
-                if (exception instanceof SQLException sqlException) {
-                    throw sqlException;
-                }
-                throw new SQLException("H2 database rebuild failed", exception);
             }
         }
     }
