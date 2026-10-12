@@ -4,8 +4,9 @@ notes/
 # Build
 /.gradle/
 /build/
-/buildSrc/.gradle/
-/buildSrc/build/
+/build-logic/.gradle/
+/build-logic/build/
+/build-logic/.kotlin/
 /mcp-tool-binding/build/
 /mcp-tool-api/build/
 /storage-model/build/
@@ -43,4 +44,3 @@ coverage/
 dist-mcpb/
 *.mcpb
 /packaging/mcpb/node_modules/
-/buildSrc/.kotlin/

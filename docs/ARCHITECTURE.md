@@ -47,6 +47,11 @@ root application -> storage-model -> mcp-tool-api
 `mcp-tool-api` and `storage-model` are the production library boundaries.
 The root project produces the only release JAR.
 
+Shared build conventions live in the `build-logic` included build: the Java
+preview toolchain, the generated module descriptors for the MCP SDK, the
+cutover scan, and the custom verification task types. Dependency versions are
+declared once in `gradle/libs.versions.toml`.
+
 `mcp-tool-api` is an explicit JPMS module named
 `dev.mcdevmcp.mcp.tool.api`. Its public descriptor exports generated JSON object
 schemas, `ToolInput<A>` decode tokens, the logical JSON type registry, generic

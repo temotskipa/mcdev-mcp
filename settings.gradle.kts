@@ -1,12 +1,12 @@
 @file:Suppress("UnstableApiUsage")
 
 pluginManagement {
+    includeBuild("build-logic")
     repositories {
         gradlePluginPortal()
         mavenCentral()
     }
     plugins {
-        id("org.gradlex.extra-java-module-info") version "1.14.2"
         id("com.gradleup.shadow") version "9.6.1"
     }
 }
