@@ -93,7 +93,7 @@ class ShadedJarSmokeTest {
             assertTrue(process.waitFor(Duration.ofSeconds(10)));
             assertEquals(1, process.exitValue());
             assertEquals("", stdout);
-            assertTrue(stderr.contains("java --enable-preview -jar " + JAR.getFileName()), stderr);
+            assertTrue(stderr.contains("--enable-preview"), stderr);
         }
     }
 

@@ -1,7 +1,7 @@
 package dev.mcdevmcp.support;
 
 public final class RequiredRuntime {
-    public static final int FEATURE = 27;
+    public static final int FEATURE = 28;
 
     private RequiredRuntime() {
     }

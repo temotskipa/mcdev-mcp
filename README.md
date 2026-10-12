@@ -7,11 +7,12 @@ DebugBridge mod.
 
 ## Requirements
 
-- A released Java 27 JDK, launched with `--enable-preview`.
+- A Java 28 JDK, launched with `--enable-preview`. Java 28 is an early-access
+  build until its general availability in March 2027.
 - No Maven, Gradle, npm, or IDE subscription is required to run a release.
 
 Corpus qualification and index/callgraph benchmarking are required release
-gates. Preview bytecode is specific to Java 27; other JDK feature versions
+gates. Preview bytecode is specific to Java 28; other JDK feature versions
 cannot run this release. The MCPB launcher enables preview automatically;
 direct JAR launches must include the flag.
 
@@ -116,7 +117,7 @@ DebugBridge build compatible with your Minecraft version to use runtime tools.
 
 ## Build From Source
 
-The checked-in Gradle wrapper requires a Java 27 development kit:
+The checked-in Gradle wrapper requires a Java 28 development kit:
 
 ```powershell
 .\gradlew.bat clean check shadowJar --console=plain

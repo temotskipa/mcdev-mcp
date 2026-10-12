@@ -45,3 +45,4 @@ coverage/
 dist-mcpb/
 *.mcpb
 /packaging/mcpb/node_modules/
+/buildSrc/.kotlin/

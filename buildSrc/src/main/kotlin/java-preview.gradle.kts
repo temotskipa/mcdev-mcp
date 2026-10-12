@@ -38,6 +38,16 @@ tasks.withType<JavaCompile>().configureEach {
     )
 }
 
+// Gradle 9.8 writes the module main class by rewriting module-info.class with a
+// bundled ASM that rejects Java 28 class files. Every launch names its main class,
+// so the attribute is not needed.
+pluginManager.withPlugin("application") {
+    tasks.withType<JavaCompile>().configureEach {
+        options.javaModuleMainClass.unsetConvention()
+        options.javaModuleMainClass.unset()
+    }
+}
+
 tasks.withType<Test>().configureEach {
     useJUnitPlatform()
     jvmArgs("--enable-preview")

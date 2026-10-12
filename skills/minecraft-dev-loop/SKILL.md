@@ -10,7 +10,7 @@ resource. **Read it first** through MCP resource access. It is the single source
 of truth; this file is only the trigger and outline.
 
 The client configuration launches `java -jar <absolute-path-to-release.jar> serve`.
-Java 27 with `--enable-preview` is the required runtime. DebugBridge remains a separate,
+Java 28 with `--enable-preview` is the required runtime. DebugBridge remains a separate,
 Minecraft-version-specific Fabric mod; the server's fixture-backed protocol
 baseline is DebugBridge 2.0.0.
 

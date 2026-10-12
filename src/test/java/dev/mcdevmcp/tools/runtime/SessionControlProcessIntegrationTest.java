@@ -15,7 +15,7 @@ import static org.junit.jupiter.api.Assertions.*;
 class SessionControlProcessIntegrationTest {
     private static SessionControlSupport.ListeningPidResolver realChild(AtomicReference<Process> captured, String mode) {
         return SessionControlSupport.listeningPidResolver(_ -> {
-            List<String> childCommand = List.of(javaExecutable(), "-cp", System.getProperty("java.class.path"), SessionControlProcessFixture.class.getName(), mode);
+            List<String> childCommand = List.of(javaExecutable(), "--enable-preview", "-cp", System.getProperty("java.class.path"), SessionControlProcessFixture.class.getName(), mode);
             Process process = new ProcessBuilder(childCommand).start();
             captured.set(process);
             return process;

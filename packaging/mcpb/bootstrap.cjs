@@ -5,7 +5,7 @@ const path = require("node:path");
 
 const jar = path.join(__dirname, "mcdev-mcp.jar");
 const javaCommand = "java";
-const requiredJavaFeature = 27;
+const requiredJavaFeature = 28;
 
 function javaArguments(commandArguments) {
     return commandArguments;
