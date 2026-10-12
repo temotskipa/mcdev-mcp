@@ -35,12 +35,14 @@ public final class BridgeSession implements AutoCloseable {
     private boolean closed;
 
     public BridgeSession() {
-        this(new BridgeJson(McpJsonDefaults.getMapper()), AppEnvironment.system(), defaultConnector(new BridgeJson(McpJsonDefaults.getMapper())), _ -> {
+        BridgeJson json = new BridgeJson(McpJsonDefaults.getMapper());
+        this(json, AppEnvironment.system(), defaultConnector(json), _ -> {
         });
     }
 
     public BridgeSession(HttpClient client, McpJsonMapper mapper, AppEnvironment environment, Consumer<String> diagnostics) {
-        this(new BridgeJson(Objects.requireNonNull(mapper, "mapper")), environment, defaultConnector(Objects.requireNonNull(client, "client"), new BridgeJson(mapper)), diagnostics);
+        BridgeJson json = new BridgeJson(Objects.requireNonNull(mapper, "mapper"));
+        this(json, environment, defaultConnector(Objects.requireNonNull(client, "client"), json), diagnostics);
     }
 
     BridgeSession(BridgeJson json, AppEnvironment environment, Connector connector) {
@@ -339,7 +341,7 @@ public final class BridgeSession implements AutoCloseable {
         BridgeClient open(int port) throws IOException, InterruptedException;
     }
 
-    private record Connected(BridgeClient client, SessionInfo info) {
+    private value record Connected(BridgeClient client, SessionInfo info) {
     }
 
     /**

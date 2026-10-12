@@ -47,10 +47,7 @@ public final class McpServerFactory implements AutoCloseable {
     private final AtomicBoolean closed = new AtomicBoolean();
 
     public McpServerFactory(AppEnvironment environment) {
-        this(environment, defaultComposition(environment));
-    }
-
-    private McpServerFactory(AppEnvironment environment, DefaultComposition composition) {
+        DefaultComposition composition = defaultComposition(environment);
         this(environment, composition.bindings(), composition.definitions(), composition.resourceCatalog(), composition.mapper(), composition.ownedRuntime());
     }
 

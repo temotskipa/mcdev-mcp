@@ -7,7 +7,7 @@ import java.util.Objects;
 /**
  * The single typed declaration for one MCP tool.
  */
-public final class ToolDeclaration<A> {
+public final value class ToolDeclaration<A> {
     private final String name;
     private final ToolInput<A> input;
     private final ToolAvailability availability;

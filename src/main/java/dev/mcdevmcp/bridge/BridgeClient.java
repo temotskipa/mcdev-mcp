@@ -444,7 +444,7 @@ public final class BridgeClient implements AutoCloseable {
         }
     }
 
-    private record TextFragment(String text, boolean last) {
+    private value record TextFragment(String text, boolean last) {
     }
 
     private record PendingRequest(BridgeRequest request, CompletableFuture<BridgeResponse> response) {

@@ -9,17 +9,19 @@ import java.sql.SQLException;
 import java.util.List;
 import java.util.regex.Pattern;
 
-final class H2DatabaseArtifacts {
+final value class H2DatabaseArtifacts {
     final Path target;
     final Path base;
     final Path temporary;
     final Path backup;
 
     H2DatabaseArtifacts(Path target) {
-        this.target = target.toAbsolutePath().normalize();
-        base = H2DatabaseUrls.basePath(this.target);
-        temporary = base.resolveSibling(base.getFileName() + "." + ProcessHandle.current().pid() + ".tmp.mv.db");
-        backup = this.target.resolveSibling(this.target.getFileName() + ".bak");
+        Path normalized = target.toAbsolutePath().normalize();
+        Path databaseBase = H2DatabaseUrls.basePath(normalized);
+        this.target = normalized;
+        base = databaseBase;
+        temporary = databaseBase.resolveSibling(databaseBase.getFileName() + "." + ProcessHandle.current().pid() + ".tmp.mv.db");
+        backup = normalized.resolveSibling(normalized.getFileName() + ".bak");
     }
 
     static void verifyNoCompanions(Path database) throws IOException {
