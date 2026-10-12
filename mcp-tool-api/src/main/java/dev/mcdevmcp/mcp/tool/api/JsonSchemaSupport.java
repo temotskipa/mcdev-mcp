@@ -93,7 +93,7 @@ final class JsonSchemaSupport {
                 if (!(branch instanceof Map<?, ?> branchSchema)) {
                     throw new IllegalArgumentException("Input oneOf alternative must be an object at " + schemaLocation + '[' + index + ']');
                 }
-                validateSupportedSchema(stringObjectMap(branchSchema), schemaLocation + '[' + index + ']');
+                validateSupportedSchema(JsonObjectSchema.stringObjectMap(branchSchema), schemaLocation + '[' + index + ']');
             }
             validateKnownStringFormat(schema, schemaLocation);
             return;
@@ -125,7 +125,7 @@ final class JsonSchemaSupport {
                     if (!(entry.getKey() instanceof String name) || !(entry.getValue() instanceof Map<?, ?> propertySchema)) {
                         throw new IllegalArgumentException("Input schema property must be a named schema at " + schemaLocation);
                     }
-                    validateSupportedSchema(stringObjectMap(propertySchema), schemaLocation + '.' + name);
+                    validateSupportedSchema(JsonObjectSchema.stringObjectMap(propertySchema), schemaLocation + '.' + name);
                 }
             }
             Object required = schema.get("required");
@@ -150,7 +150,7 @@ final class JsonSchemaSupport {
             if (!(items instanceof Map<?, ?> itemSchema)) {
                 throw new IllegalArgumentException("Input array schema requires an item schema at " + schemaLocation);
             }
-            validateSupportedSchema(stringObjectMap(itemSchema), schemaLocation + "[]");
+            validateSupportedSchema(JsonObjectSchema.stringObjectMap(itemSchema), schemaLocation + "[]");
         }
         Object enumValues = schema.get("enum");
         if (schema.containsKey("enum") && !(enumValues instanceof List<?>)) {
@@ -186,7 +186,7 @@ final class JsonSchemaSupport {
         if (!(alternatives instanceof List<?> branches) || branches.isEmpty()) {
             return false;
         }
-        return branches.stream().allMatch(branch -> branch instanceof Map<?, ?> branchSchema && isStringCompatible(stringObjectMap(branchSchema)));
+        return branches.stream().allMatch(branch -> branch instanceof Map<?, ?> branchSchema && isStringCompatible(JsonObjectSchema.stringObjectMap(branchSchema)));
     }
 
     private static boolean containsJsonDuplicates(List<?> values) {
@@ -233,11 +233,6 @@ final class JsonSchemaSupport {
         if (minimum instanceof Number lower && maximum instanceof Number upper && decimal(lower).compareTo(decimal(upper)) > 0) {
             throw new IllegalArgumentException("Input schema maximum must not be below minimum at " + schemaLocation);
         }
-    }
-
-    private static Map<String, Object> stringObjectMap(Map<?, ?> map) {
-        @SuppressWarnings("unchecked") Map<String, Object> typed = (Map<String, Object>) map;
-        return typed;
     }
 
     private static BigDecimal decimal(Number number) {

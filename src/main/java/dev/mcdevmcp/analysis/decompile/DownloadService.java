@@ -25,7 +25,7 @@ import java.util.*;
 /**
  * Downloads verified JAR artifacts without exposing partially written cache entries.
  */
-public final class DownloadService {
+public value class DownloadService {
     private static final int MAXIMUM_REDIRECTS = 5;
     private static final int BUFFER_BYTES = 64 * 1024;
     private static final int MAXIMUM_ERROR_URI_CHARACTERS = 512;

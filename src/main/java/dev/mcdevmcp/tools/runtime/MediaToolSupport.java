@@ -11,7 +11,7 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Locale;
 
-final value class MediaToolSupport {
+value class MediaToolSupport {
     static final int MAX_BASE64_PNG_BYTES = 7 * 1024 * 1024;
     static final long MAX_INTERVAL_MILLIS = 9_223_372_036_854L;
 

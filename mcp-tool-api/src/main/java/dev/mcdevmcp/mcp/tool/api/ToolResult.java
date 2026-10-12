@@ -4,10 +4,10 @@ import io.modelcontextprotocol.spec.McpSchema;
 
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 
 // The result slot is phantom for content-only results, preserving the output
 // type at output-binding handler boundaries without exposing it on the wire.
-@SuppressWarnings("unused")
 public sealed interface ToolResult<O> permits ContentToolResult, StructuredToolResult {
     static <O> ContentToolResult<O> content(List<? extends McpSchema.Content> content, boolean isError) {
         Objects.requireNonNull(content, "content");
@@ -29,4 +29,8 @@ public sealed interface ToolResult<O> permits ContentToolResult, StructuredToolR
     List<McpSchema.Content> content();
 
     boolean isError();
+
+    default Optional<O> structuredValue() {
+        return Optional.empty();
+    }
 }

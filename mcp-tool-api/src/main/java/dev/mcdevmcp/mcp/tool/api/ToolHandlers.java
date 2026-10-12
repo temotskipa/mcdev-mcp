@@ -17,8 +17,7 @@ public final class ToolHandlers {
         return (arguments, cancellation) -> submit(executor, () -> Objects.requireNonNull(handler.handle(arguments, cancellation), "Blocking tool handler result"));
     }
 
-    @SuppressWarnings("overloads")
-    public static <A, O> ToolOutputHandler<A, O> blocking(ExecutorService executor, BlockingToolOutputHandler<A, O> handler) {
+    public static <A, O> ToolOutputHandler<A, O> blockingOutput(ExecutorService executor, BlockingToolOutputHandler<A, O> handler) {
         Objects.requireNonNull(executor, "executor");
         Objects.requireNonNull(handler, "handler");
         return (arguments, cancellation) -> submit(executor, () -> Objects.requireNonNull(handler.handle(arguments, cancellation), "Blocking tool output handler result"));

@@ -27,7 +27,7 @@ import java.util.jar.JarOutputStream;
 /**
  * Runs Tiny Remapper in process and publishes only a verified remapped JAR.
  */
-public final class MinecraftRemapper {
+public value class MinecraftRemapper {
     private static final int INITIAL_CONCURRENT_PROGRESS_PERCENT = 29;
     private static final LocalDateTime REPRODUCIBLE_TIMESTAMP = LocalDateTime.of(1980, 1, 1, 0, 0);
     private final int threads;

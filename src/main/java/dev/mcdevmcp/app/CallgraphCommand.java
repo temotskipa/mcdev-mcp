@@ -4,6 +4,7 @@ import dev.mcdevmcp.storage.PlatformPaths;
 import dev.mcdevmcp.storage.model.MinecraftVersion;
 import dev.mcdevmcp.support.Cancellation;
 import picocli.CommandLine.Command;
+import picocli.CommandLine.Model.CommandSpec;
 import picocli.CommandLine.Option;
 import picocli.CommandLine.Spec;
 
@@ -15,12 +16,10 @@ public final class CallgraphCommand implements Callable<Integer> {
     private final AnalysisOperations operations;
 
     @Option(names = {"-v", "--version"}, required = true, description = "Minecraft version")
-    @SuppressWarnings("unused") // Assigned by picocli.
     private String version;
 
     @Spec
-    @SuppressWarnings("unused") // Assigned by picocli.
-    private picocli.CommandLine.Model.CommandSpec spec;
+    private CommandSpec spec;
 
     public CallgraphCommand(AnalysisOperations operations, PlatformPaths paths) {
         this.operations = Objects.requireNonNull(operations, "operations");

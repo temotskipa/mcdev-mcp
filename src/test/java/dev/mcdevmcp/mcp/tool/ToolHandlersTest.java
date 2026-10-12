@@ -1,6 +1,5 @@
 package dev.mcdevmcp.mcp.tool;
 
-import dev.mcdevmcp.mcp.tool.api.BlockingToolHandler;
 import dev.mcdevmcp.mcp.tool.api.ToolHandler;
 import dev.mcdevmcp.mcp.tool.api.ToolHandlers;
 import dev.mcdevmcp.mcp.tool.api.ToolResult;
@@ -23,7 +22,7 @@ class ToolHandlersTest {
         var virtualThread = new AtomicBoolean();
 
         try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
-            ToolHandler<TestEmptyArguments> handler = ToolHandlers.blocking(executor, (BlockingToolHandler<TestEmptyArguments>) (_, _) -> {
+            ToolHandler<TestEmptyArguments> handler = ToolHandlers.blocking(executor, (_, _) -> {
                 virtualThread.set(Thread.currentThread().isVirtual());
                 started.countDown();
                 try {

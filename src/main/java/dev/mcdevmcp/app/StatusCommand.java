@@ -8,8 +8,8 @@ import dev.mcdevmcp.storage.migration.CachePathBoundary;
 import dev.mcdevmcp.storage.migration.VersionOperationLease;
 import dev.mcdevmcp.storage.model.MinecraftVersion;
 import dev.mcdevmcp.storage.model.VersionState;
-import picocli.CommandLine;
 import picocli.CommandLine.Command;
+import picocli.CommandLine.Model.CommandSpec;
 import picocli.CommandLine.Option;
 import picocli.CommandLine.Spec;
 
@@ -31,7 +31,7 @@ public final class StatusCommand implements Callable<Integer> {
     private String version;
 
     @Spec
-    private CommandLine.Model.CommandSpec spec;
+    private CommandSpec spec;
 
     public StatusCommand(PlatformPaths paths) {
         this.paths = Objects.requireNonNull(paths, "paths");

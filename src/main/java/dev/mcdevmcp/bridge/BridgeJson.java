@@ -8,7 +8,7 @@ import java.io.IOException;
 import java.util.Map;
 import java.util.Objects;
 
-public final value class BridgeJson {
+public value class BridgeJson {
     private final McpJsonMapper mapper;
 
     public BridgeJson(McpJsonMapper mapper) {

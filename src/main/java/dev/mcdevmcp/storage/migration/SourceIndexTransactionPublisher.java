@@ -566,12 +566,12 @@ public final class SourceIndexTransactionPublisher {
     }
 
     private void writeNew(Path path, Object value) throws IOException {
-        byte[] bytes = JSON.writeValueAsBytes(value);
+        var bytes = JSON.writeValueAsBytes(value);
         try (var channel = FileChannel.open(checked(path), StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE)) {
             ByteBuffer buffer = ByteBuffer.wrap(bytes);
-            while (buffer.hasRemaining()) {
-                //noinspection ResultOfMethodCallIgnored
-                channel.write(buffer);
+            int remaining = bytes.length;
+            while (remaining > 0) {
+                remaining -= channel.write(buffer);
             }
             channel.force(true);
         }

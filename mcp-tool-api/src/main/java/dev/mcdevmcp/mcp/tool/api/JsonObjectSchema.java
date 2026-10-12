@@ -147,7 +147,7 @@ public value record JsonObjectSchema(Map<String, Object> value) {
         }
     }
 
-    private static Map<String, Object> stringObjectMap(Map<?, ?> map) {
+    static Map<String, Object> stringObjectMap(Map<?, ?> map) {
         Map<String, Object> typed = new LinkedHashMap<>();
         for (Map.Entry<?, ?> entry : map.entrySet()) {
             if (!(entry.getKey() instanceof String key)) {

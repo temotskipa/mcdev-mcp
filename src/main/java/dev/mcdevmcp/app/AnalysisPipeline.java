@@ -239,7 +239,7 @@ public final class AnalysisPipeline implements AnalysisOperations {
                 previous = Optional.empty();
                 progress.report("migration", 0, "Source stamp is invalid; existing sources retain external ownership");
             }
-            SourceSelection selection = SourceProvenance.select(before.source(), validation, previous, inputs, refreshPolicy == SourceRefreshPolicy.EXPLICIT_REFRESH);
+            SourceSelection selection = SourceProvenance.select(before.source(), validation, previous.orElse(null), inputs, refreshPolicy == SourceRefreshPolicy.EXPLICIT_REFRESH);
             if (selection == SourceSelection.REQUIRE_REFRESH) {
                 throw sourceRefreshRequired(version, validation);
             }
@@ -265,7 +265,7 @@ public final class AnalysisPipeline implements AnalysisOperations {
                 mode = SourcePublicationMode.REPLACE_SOURCES;
             }
             else {
-                stamp = SourceProvenance.observed(inputs, candidateInventory, validation, previous);
+                stamp = SourceProvenance.observed(inputs, candidateInventory, validation, previous.orElse(null));
                 mode = SourcePublicationMode.REUSE_SOURCES;
             }
             Path candidateDatabase = boundary.require(candidate.resolve("index/symbols.mv.db"));

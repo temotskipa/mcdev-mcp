@@ -13,6 +13,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -98,12 +99,18 @@ public final class McpbBundleSmokeMain {
         }
     }
 
-    @SuppressWarnings("unchecked")
     private static Map<String, Object> map(Object value) {
         if (!(value instanceof Map<?, ?> map)) {
             throw new IllegalStateException("Expected JSON object");
         }
-        return (Map<String, Object>) map;
+        Map<String, Object> typed = new LinkedHashMap<>();
+        for (Map.Entry<?, ?> entry : map.entrySet()) {
+            if (!(entry.getKey() instanceof String key)) {
+                throw new IllegalStateException("Expected JSON object keys to be strings");
+            }
+            typed.put(key, entry.getValue());
+        }
+        return typed;
     }
 
     private static List<Map<String, Object>> maps(Object value) {

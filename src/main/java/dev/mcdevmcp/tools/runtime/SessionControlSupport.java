@@ -22,7 +22,7 @@ import java.util.function.Supplier;
  * Blocking, interruptible session control; every wait runs under a structured
  * task scope that owns its deadline.
  */
-final value class SessionControlSupport {
+value class SessionControlSupport {
     static final int BRIDGE_PORT_START = 9876;
     static final int BRIDGE_PORT_END = 9886;
     static final int DEFAULT_JOIN_TIMEOUT_SECONDS = 60;

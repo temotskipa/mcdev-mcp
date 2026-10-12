@@ -1,6 +1,7 @@
 package dev.mcdevmcp.storage.migration;
 
 import dev.mcdevmcp.support.Cancellation;
+import reactor.util.annotation.NonNull;
 
 import java.io.DataOutputStream;
 import java.io.IOException;
@@ -65,8 +66,8 @@ public value record SourceTreeInventory(boolean present, List<SourceInventoryEnt
         var entries = new ArrayList<SourceInventoryEntry>();
         Files.walkFileTree(absolute, new SimpleFileVisitor<>() {
             @Override
-            @SuppressWarnings("NullableProblems")
-            public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) throws IOException {
+            @NonNull
+            public FileVisitResult preVisitDirectory(@NonNull Path dir, @NonNull BasicFileAttributes attrs) throws IOException {
                 checkCancelled(cancellation);
                 checkPath(dir, boundary);
                 entries.add(new SourceInventoryEntry(relative(dir), SourceEntryKind.DIRECTORY, 0, ""));
@@ -74,8 +75,8 @@ public value record SourceTreeInventory(boolean present, List<SourceInventoryEnt
             }
 
             @Override
-            @SuppressWarnings("NullableProblems")
-            public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
+            @NonNull
+            public FileVisitResult visitFile(@NonNull Path file, @NonNull BasicFileAttributes attrs) throws IOException {
                 checkCancelled(cancellation);
                 checkPath(file, boundary);
                 String relative = relative(file);

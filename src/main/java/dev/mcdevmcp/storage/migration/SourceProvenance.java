@@ -1,6 +1,7 @@
 package dev.mcdevmcp.storage.migration;
 
 import io.modelcontextprotocol.json.McpJsonDefaults;
+import reactor.util.annotation.Nullable;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -11,7 +12,6 @@ import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.util.Optional;
 
-@SuppressWarnings("OptionalUsedAsFieldOrParameterType") // Absence is part of the typed provenance decision.
 public final class SourceProvenance {
     private SourceProvenance() {
     }
@@ -35,36 +35,36 @@ public final class SourceProvenance {
         byte[] bytes = McpJsonDefaults.getMapper().writeValueAsBytes(stamp);
         try (var channel = FileChannel.open(target, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE)) {
             var buffer = ByteBuffer.wrap(bytes);
-            while (buffer.hasRemaining()) {
-                //noinspection ResultOfMethodCallIgnored
-                channel.write(buffer);
+            int remaining = bytes.length;
+            while (remaining > 0) {
+                remaining -= channel.write(buffer);
             }
             channel.force(true);
         }
     }
 
-    public static SourceSelection select(SourceTreeInventory inventory, SourceValidation validation, Optional<SourcePreparationStamp> stamp, SourceInputIdentity inputs, boolean explicitRefresh) {
+    public static SourceSelection select(SourceTreeInventory inventory, SourceValidation validation, @Nullable SourcePreparationStamp stamp, SourceInputIdentity inputs, boolean explicitRefresh) {
         if (!inventory.present() || explicitRefresh) {
             return SourceSelection.GENERATE;
         }
         if (validation.valid()) {
             return SourceSelection.REUSE;
         }
-        return trustedGenerated(stamp, inputs, inventory) ? SourceSelection.GENERATE : SourceSelection.REQUIRE_REFRESH;
+        return stamp != null && trustedGenerated(stamp, inputs, inventory) ? SourceSelection.GENERATE : SourceSelection.REQUIRE_REFRESH;
     }
 
     public static SourcePreparationStamp generated(SourceInputIdentity inputs, SourceTreeInventory inventory, SourceValidation validation, SourceProducerIdentity producer) {
         return new SourcePreparationStamp(1, SourceOwnership.GENERATED, producer, inputs, inventory, validation);
     }
 
-    public static SourcePreparationStamp observed(SourceInputIdentity inputs, SourceTreeInventory inventory, SourceValidation validation, Optional<SourcePreparationStamp> prior) {
-        if (trustedGenerated(prior, inputs, inventory)) {
-            return generated(inputs, inventory, validation, prior.orElseThrow().producer());
+    public static SourcePreparationStamp observed(SourceInputIdentity inputs, SourceTreeInventory inventory, SourceValidation validation, @Nullable SourcePreparationStamp prior) {
+        if (prior != null && trustedGenerated(prior, inputs, inventory)) {
+            return generated(inputs, inventory, validation, prior.producer());
         }
         return new SourcePreparationStamp(1, SourceOwnership.VALIDATED_EXTERNAL, null, inputs, inventory, validation);
     }
 
-    private static boolean trustedGenerated(Optional<SourcePreparationStamp> stamp, SourceInputIdentity inputs, SourceTreeInventory inventory) {
-        return stamp.filter(value -> value.ownership() == SourceOwnership.GENERATED && value.inputs().equals(inputs) && value.inventory().equals(inventory)).isPresent();
+    private static boolean trustedGenerated(SourcePreparationStamp stamp, SourceInputIdentity inputs, SourceTreeInventory inventory) {
+        return stamp.ownership() == SourceOwnership.GENERATED && stamp.inputs().equals(inputs) && stamp.inventory().equals(inventory);
     }
 }

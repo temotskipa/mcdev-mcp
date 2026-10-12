@@ -5,7 +5,6 @@ import dev.mcdevmcp.mcp.resource.ResourceCatalog;
 import dev.mcdevmcp.mcp.resource.ResourceRead;
 import dev.mcdevmcp.mcp.tool.ToolCatalog;
 import dev.mcdevmcp.mcp.tool.ToolDefinition;
-import dev.mcdevmcp.mcp.tool.api.StructuredToolResult;
 import dev.mcdevmcp.mcp.tool.api.ToolBinding;
 import dev.mcdevmcp.mcp.tool.api.ToolResult;
 import dev.mcdevmcp.support.ScopeOutcomes;
@@ -25,6 +24,7 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BiFunction;
@@ -205,10 +205,11 @@ public final class McpSdkAdapter {
     McpSchema.CallToolResult toSdkResult(ToolDefinition definition, ToolBinding<?> binding, ToolResult<?> result) {
         Objects.requireNonNull(definition, "definition");
         Objects.requireNonNull(result, "result");
-        if (result instanceof StructuredToolResult<?>) {
+        Optional<?> structured = result.structuredValue();
+        if (structured.isPresent()) {
             binding.output().orElseThrow(() -> new IllegalArgumentException("Structured result has no declared output for tool: " + definition.name()));
         }
-        return sdkResult(result, result instanceof StructuredToolResult<?> structured ? structured.structuredContent() : null);
+        return sdkResult(result, structured.orElse(null));
     }
 
     private McpSchema.CallToolResult sdkResult(ToolResult<?> result, Object structuredContent) {

@@ -15,7 +15,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
 
-final value class TypeResolver {
+value class TypeResolver {
     private final Elements elements;
     private final Types types;
 

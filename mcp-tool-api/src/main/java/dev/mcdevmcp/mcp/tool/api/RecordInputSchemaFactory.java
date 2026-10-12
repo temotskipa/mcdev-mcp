@@ -7,7 +7,7 @@ import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.util.*;
 
-public final value class RecordInputSchemaFactory implements InputSchemaFactory {
+public value class RecordInputSchemaFactory implements InputSchemaFactory {
     private static final RecordInputSchemaFactory STANDARD = new RecordInputSchemaFactory(JsonTypeRegistry.standard());
     private final JsonTypeRegistry registry;
 
@@ -357,7 +357,10 @@ public final value class RecordInputSchemaFactory implements InputSchemaFactory 
 
     private Map<String, Object> discriminatedVariant(Class<?> subtype, String discriminator, String name, Set<Class<?>> activeRecords) {
         Map<String, Object> variant = objectSchema(subtype, activeRecords);
-        @SuppressWarnings("unchecked") Map<String, Object> generatedProperties = (Map<String, Object>) variant.get("properties");
+        if (!(variant.get("properties") instanceof Map<?, ?> generated)) {
+            throw new IllegalStateException("Input record schema has no properties: " + subtype.getTypeName());
+        }
+        Map<String, Object> generatedProperties = JsonObjectSchema.stringObjectMap(generated);
         if (generatedProperties.containsKey(discriminator)) {
             throw new IllegalArgumentException("Input union discriminator collides with a record component: " + discriminator);
         }

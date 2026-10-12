@@ -22,7 +22,7 @@ import java.util.UUID;
 /**
  * Converts every official ProGuard mapping element into deterministic Tiny v2.
  */
-public final class MappingConverter {
+public value class MappingConverter {
     private static void verifyInput(Path input) throws IOException {
         BasicFileAttributes attributes;
         try {

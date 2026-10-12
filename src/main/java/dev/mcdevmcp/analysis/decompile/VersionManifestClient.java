@@ -18,7 +18,7 @@ import java.util.*;
 /**
  * Resolves Mojang's typed version metadata through the SDK JSON mapper.
  */
-public final class VersionManifestClient {
+public value class VersionManifestClient {
     public static final URI PRODUCTION_MANIFEST = URI.create("https://piston-meta.mojang.com/mc/game/version_manifest_v2.json");
     private static final int MAXIMUM_METADATA_BYTES = 2 * 1024 * 1024;
     private static final int MAXIMUM_REDIRECTS = 5;

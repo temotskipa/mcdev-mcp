@@ -9,7 +9,7 @@ import java.sql.SQLException;
 import java.util.List;
 import java.util.regex.Pattern;
 
-final value class H2DatabaseArtifacts {
+value class H2DatabaseArtifacts {
     final Path target;
     final Path base;
     final Path temporary;

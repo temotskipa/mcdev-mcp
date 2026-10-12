@@ -64,6 +64,6 @@ public final class ToolOutputBinding<A, O> implements ToolBinding<A> {
         if (blockingHandler == null) {
             return this;
         }
-        return new ToolOutputBinding<>(input, output, ToolHandlers.blocking(executor, blockingHandler), null);
+        return new ToolOutputBinding<>(input, output, ToolHandlers.blockingOutput(executor, blockingHandler), null);
     }
 }

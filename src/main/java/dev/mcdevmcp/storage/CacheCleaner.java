@@ -5,6 +5,7 @@ import dev.mcdevmcp.storage.h2.IndexCleaner;
 import dev.mcdevmcp.storage.migration.CachePathBoundary;
 import dev.mcdevmcp.storage.migration.VersionOperationLease;
 import dev.mcdevmcp.storage.model.MinecraftVersion;
+import reactor.util.annotation.NonNull;
 
 import java.io.IOException;
 import java.nio.file.*;
@@ -14,7 +15,7 @@ import java.util.*;
 /**
  * Cleans contained per-version cache state without following symbolic links.
  */
-public final value class CacheCleaner {
+public value class CacheCleaner {
     private final PlatformPaths paths;
     private final CachePathBoundary boundary;
 
@@ -152,23 +153,23 @@ public final value class CacheCleaner {
         }
         Files.walkFileTree(root, new SimpleFileVisitor<>() {
             @Override
-            @SuppressWarnings("NullableProblems")
-            public FileVisitResult preVisitDirectory(Path directory, BasicFileAttributes attributes) throws IOException {
+            @NonNull
+            public FileVisitResult preVisitDirectory(@NonNull Path directory, @NonNull BasicFileAttributes attributes) throws IOException {
                 rejectLink(root, directory);
                 return FileVisitResult.CONTINUE;
             }
 
             @Override
-            @SuppressWarnings("NullableProblems")
-            public FileVisitResult visitFile(Path file, BasicFileAttributes attributes) throws IOException {
+            @NonNull
+            public FileVisitResult visitFile(@NonNull Path file, @NonNull BasicFileAttributes attributes) throws IOException {
                 rejectLink(root, file);
                 Files.delete(file);
                 return FileVisitResult.CONTINUE;
             }
 
             @Override
-            @SuppressWarnings("NullableProblems")
-            public FileVisitResult postVisitDirectory(Path directory, IOException failure) throws IOException {
+            @NonNull
+            public FileVisitResult postVisitDirectory(@NonNull Path directory, IOException failure) throws IOException {
                 if (failure != null) {
                     throw failure;
                 }
@@ -189,15 +190,15 @@ public final value class CacheCleaner {
         }
         Files.walkFileTree(root, new SimpleFileVisitor<>() {
             @Override
-            @SuppressWarnings("NullableProblems")
-            public FileVisitResult preVisitDirectory(Path directory, BasicFileAttributes attributes) throws IOException {
+            @NonNull
+            public FileVisitResult preVisitDirectory(@NonNull Path directory, @NonNull BasicFileAttributes attributes) throws IOException {
                 rejectLink(root, directory);
                 return FileVisitResult.CONTINUE;
             }
 
             @Override
-            @SuppressWarnings("NullableProblems")
-            public FileVisitResult visitFile(Path file, BasicFileAttributes attributes) throws IOException {
+            @NonNull
+            public FileVisitResult visitFile(@NonNull Path file, @NonNull BasicFileAttributes attributes) throws IOException {
                 rejectLink(root, file);
                 return FileVisitResult.CONTINUE;
             }

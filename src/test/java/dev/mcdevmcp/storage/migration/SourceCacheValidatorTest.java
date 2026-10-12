@@ -17,7 +17,6 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
 import java.util.jar.JarOutputStream;
@@ -125,30 +124,30 @@ final class SourceCacheValidatorTest {
         SourceValidation validation = new SourceCacheValidator().validate(sources, jar, Cancellation.none());
         var producer = new SourceProducerIdentity("test-producer", "obsolete-version", inputs.remappedJar(), Map.of(), "no resources");
         SourcePreparationStamp generated = SourceProvenance.generated(inputs, initial, validation, producer);
-        assertEquals(SourceSelection.REUSE, SourceProvenance.select(initial, validation, Optional.of(generated), inputs, false));
-        assertEquals(producer, SourceProvenance.observed(inputs, initial, validation, Optional.of(generated)).producer());
+        assertEquals(SourceSelection.REUSE, SourceProvenance.select(initial, validation, generated, inputs, false));
+        assertEquals(producer, SourceProvenance.observed(inputs, initial, validation, generated).producer());
         SourceValidation invalid = new SourceValidation(SourceValidationStatus.INVALID, List.of("invalid output"), validation.requiredUnits(), validation.parsedUnits());
         Files.writeString(sources.resolve("marker.txt"), "user marker");
-        assertEquals(SourceSelection.REQUIRE_REFRESH, SourceProvenance.select(SourceTreeInventory.capture(sources, Cancellation.none()), invalid, Optional.of(generated), inputs, false));
+        assertEquals(SourceSelection.REQUIRE_REFRESH, SourceProvenance.select(SourceTreeInventory.capture(sources, Cancellation.none()), invalid, generated, inputs, false));
         Files.delete(sources.resolve("marker.txt"));
         Files.createDirectory(sources.resolve("empty"));
-        assertEquals(SourceSelection.REQUIRE_REFRESH, SourceProvenance.select(SourceTreeInventory.capture(sources, Cancellation.none()), invalid, Optional.of(generated), inputs, false));
+        assertEquals(SourceSelection.REQUIRE_REFRESH, SourceProvenance.select(SourceTreeInventory.capture(sources, Cancellation.none()), invalid, generated, inputs, false));
         Files.delete(sources.resolve("empty"));
         Files.writeString(sources.resolve("A.java"), "class A { int userEdit; }");
         SourceTreeInventory edited = SourceTreeInventory.capture(sources, Cancellation.none());
         assertNotEquals(initial, edited);
         SourceValidation validEdit = new SourceCacheValidator().validate(sources, jar, Cancellation.none());
-        SourcePreparationStamp external = SourceProvenance.observed(inputs, edited, validEdit, Optional.of(generated));
+        SourcePreparationStamp external = SourceProvenance.observed(inputs, edited, validEdit, generated);
         assertEquals(SourceOwnership.VALIDATED_EXTERNAL, external.ownership());
         assertNull(external.producer());
-        assertEquals(SourceSelection.REUSE, SourceProvenance.select(edited, validEdit, Optional.of(generated), inputs, false));
+        assertEquals(SourceSelection.REUSE, SourceProvenance.select(edited, validEdit, generated, inputs, false));
         Path stampFile = temporary.resolve("source-preparation.json");
         SourceProvenance.write(stampFile, external);
         assertEquals(external, SourceProvenance.read(stampFile).orElseThrow());
-        assertEquals(SourceSelection.GENERATE, SourceProvenance.select(initial, invalid, Optional.of(generated), inputs, false));
-        assertEquals(SourceSelection.REQUIRE_REFRESH, SourceProvenance.select(edited, invalid, Optional.of(generated), inputs, false));
-        assertEquals(SourceSelection.REQUIRE_REFRESH, SourceProvenance.select(edited, invalid, Optional.of(external), inputs, false));
-        assertEquals(SourceSelection.GENERATE, SourceProvenance.select(edited, invalid, Optional.of(external), inputs, true));
+        assertEquals(SourceSelection.GENERATE, SourceProvenance.select(initial, invalid, generated, inputs, false));
+        assertEquals(SourceSelection.REQUIRE_REFRESH, SourceProvenance.select(edited, invalid, generated, inputs, false));
+        assertEquals(SourceSelection.REQUIRE_REFRESH, SourceProvenance.select(edited, invalid, external, inputs, false));
+        assertEquals(SourceSelection.GENERATE, SourceProvenance.select(edited, invalid, external, inputs, true));
     }
 
     @Test
@@ -181,9 +180,9 @@ final class SourceCacheValidatorTest {
         SourceInputIdentity inputs = SourceInputIdentity.capture(jar, List.of(), Cancellation.none());
         Path missing = temporary.resolve("missing");
         var validator = new SourceCacheValidator();
-        assertEquals(SourceSelection.GENERATE, SourceProvenance.select(SourceTreeInventory.capture(missing, Cancellation.none()), validator.validate(missing, jar, Cancellation.none()), Optional.empty(), inputs, false));
+        assertEquals(SourceSelection.GENERATE, SourceProvenance.select(SourceTreeInventory.capture(missing, Cancellation.none()), validator.validate(missing, jar, Cancellation.none()), null, inputs, false));
         Files.createDirectory(missing);
-        assertEquals(SourceSelection.REQUIRE_REFRESH, SourceProvenance.select(SourceTreeInventory.capture(missing, Cancellation.none()), validator.validate(missing, jar, Cancellation.none()), Optional.empty(), inputs, false));
+        assertEquals(SourceSelection.REQUIRE_REFRESH, SourceProvenance.select(SourceTreeInventory.capture(missing, Cancellation.none()), validator.validate(missing, jar, Cancellation.none()), null, inputs, false));
     }
 
     @Test

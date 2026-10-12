@@ -23,7 +23,7 @@ import java.util.jar.Manifest;
 /**
  * Invokes Vineflower directly and atomically publishes a nonempty Java source tree.
  */
-public final class MinecraftDecompiler {
+public value class MinecraftDecompiler {
     private static final LinkOption[] NO_FOLLOW_LINKS = {LinkOption.NOFOLLOW_LINKS};
 
     static Path resolveSourcePath(Path staging, String outputPath, String entryName) throws IOException {

@@ -12,7 +12,7 @@ import java.lang.management.ManagementFactory;
 import java.nio.charset.StandardCharsets;
 import java.util.Objects;
 
-public final class Main {
+public value class Main {
     public static int execute(String[] arguments, int javaFeature, PrintWriter output, PrintWriter error) {
         if (javaFeature != RequiredRuntime.FEATURE) {
             return rejectUnsupportedJava(javaFeature, error);
