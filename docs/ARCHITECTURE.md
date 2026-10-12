@@ -129,6 +129,22 @@ requires Java 28 and starts the bundled JAR with `--enable-preview`. All npm com
 in `scripts/build-mcpb.ps1` run with that directory as their working directory;
 nothing there is part of direct JAR execution.
 
+The `appImage` task wraps that JAR in a jpackage application image with a
+runtime linked from the JDK modules the JAR uses, so an installation needs no
+JDK and no command-line flags. Three details exist only because the server runs
+with preview features over standard streams:
+
+- jlink cannot generate the class-data archive of a preview launch, so the build
+  dumps one into the runtime.
+- The launcher sends JVM logging to standard error; the JVM's default is
+  standard output, which carries the MCP stream.
+- The launcher always names an ahead-of-time cache beside the JAR. A JVM cannot
+  use and record a cache in one run, and accepts one only for the exact JAR file
+  it was recorded with, so `StartupCache` starts a short `StartupCacheTrainer`
+  process when the cache is missing or its recorded identity no longer matches
+  the JAR. The trainer serves one scripted session in-process, ends the
+  recording and publishes the cache atomically.
+
 The release workflow builds the JAR once on Java 28, records its hash, and
 runs that exact artifact on Java 28. The MCPB is packed around the same bytes. A
 read-only verification job admits exactly three publishable assets: JAR,

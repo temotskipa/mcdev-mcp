@@ -182,6 +182,74 @@ jobs:
             dev.mcdevmcp.packaging.RuntimeArtifactSmokeMain \
             "runtime/server/${jars[0]#./}"
 
+  app-image:
+    name: Application image on ${{ matrix.os }}
+    needs: build
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Read the preview Java feature
+        id: preview-java
+        shell: bash
+        run: |
+          set -euo pipefail
+          feature="$(sed -n 's/^javaFeature=//p' gradle.properties | tr -d '\r')"
+          test -n "$feature"
+          early_access="$(sed -n 's/^javaEarlyAccess=//p' gradle.properties | tr -d '\r')"
+          if [ "$early_access" = "true" ]; then
+            version="$feature-ea"
+          else
+            version="$feature"
+          fi
+          echo "feature=$feature" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
+        with:
+          distribution: temurin
+          java-version: ${{ steps.preview-java.outputs.version }}
+          cache: gradle
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: release-build
+          path: downloaded
+      - name: Wrap the build-once JAR in an application image
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          jars=(downloaded/mcdev-mcp-[0-9]*.jar)
+          test "${#jars[@]}" -eq 1
+          ./gradlew appImageZip "-PprebuiltReleaseJar=${jars[0]}" --no-configuration-cache --console=plain
+      - name: Exercise the launcher before and after it records its startup cache
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          bundles=(downloaded/mcdev-mcp-runtime-test-*.zip)
+          test "${#bundles[@]}" -eq 1
+          rm -rf runtime
+          mkdir runtime
+          unzip -q "${bundles[0]}" -d runtime
+          jars=(runtime/server/mcdev-mcp-*.jar)
+          test "${#jars[@]}" -eq 1
+          version="$(sed -n 's/^version=//p' gradle.properties | tr -d '\r')"
+          separator=":"
+          if [ "$RUNNER_OS" = "Windows" ]; then separator=";"; fi
+          java --enable-preview \
+            -cp "runtime/harness${separator}${jars[0]}" \
+            dev.mcdevmcp.packaging.AppImageSmokeMain \
+            build/packaging/image "$version" build/packaging/smoke
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: app-image-${{ matrix.os }}
+          path: build/distributions/mcdev-mcp-*-*.zip
+          if-no-files-found: error
+          retention-days: 7
+
   mcpb:
     name: Pack the exact release JAR as MCPB
     needs: build

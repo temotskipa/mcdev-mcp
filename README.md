@@ -7,13 +7,15 @@ DebugBridge mod.
 
 ## Requirements
 
-- A Java 28 JDK, launched with `--enable-preview`. Java 28 is an early-access
-  build until its general availability in March 2027.
+- The self-contained application image needs nothing installed: it carries
+  its own Java runtime and a native launcher.
+- The plain JAR needs a Java 28 JDK, launched with `--enable-preview`. Java 28
+  is an early-access build until its general availability in March 2027.
 - No Maven, Gradle, npm, or IDE subscription is required to run a release.
 
 Preview bytecode is specific to Java 28; other JDK feature versions
-cannot run this release. The MCPB launcher enables preview automatically;
-direct JAR launches must include the flag.
+cannot run this release. The application image and the MCPB launcher enable
+preview automatically; direct JAR launches must include the flag.
 
 ## Install
 
@@ -120,6 +122,34 @@ The checked-in Gradle wrapper requires a Java 28 development kit:
 ```powershell
 .\gradlew.bat clean check shadowJar --console=plain
 ```
+
+### Self-contained application image
+
+```powershell
+.\gradlew.bat appImageZip appImageSmoke --console=plain
+```
+
+This links a trimmed Java runtime, wraps it and the release JAR in a jpackage
+application image, and writes `build/distributions/mcdev-mcp-<version>-<platform>.zip`.
+The image is built for the platform it is built on. Unpack it anywhere writable
+and point an MCP client at the launcher; no `java` command or flag is involved:
+
+```json
+{
+  "mcpServers": {
+    "mcdev-mcp": {
+      "command": "C:/tools/mcdev-mcp/mcdev-mcp.exe",
+      "args": ["serve"]
+    }
+  }
+}
+```
+
+The launcher is `mcdev-mcp/bin/mcdev-mcp` on Linux and
+`mcdev-mcp.app/Contents/MacOS/mcdev-mcp` on macOS. The first `serve` session
+records a startup cache next to the JAR in the background; later sessions start
+from it and answer about three times sooner. CI builds and exercises the image
+on Linux, Windows and macOS; the release workflow does not publish it yet.
 
 See [Architecture](docs/ARCHITECTURE.md), [multi-version storage](docs/MULTIVER.md),
 and [Vineflower integration](docs/VF.md) for implementation details.

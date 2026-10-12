@@ -1,6 +1,9 @@
 import com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar
+import dev.mcdevmcp.buildlogic.AppImageTask
 import dev.mcdevmcp.buildlogic.DependencyPolicyCheck
 import dev.mcdevmcp.buildlogic.McpSdkSnapshotCheck
+import dev.mcdevmcp.buildlogic.PackagingTools
+import dev.mcdevmcp.buildlogic.RuntimeImageTask
 import dev.mcdevmcp.buildlogic.Sha256FileTask
 
 plugins {
@@ -212,6 +215,78 @@ tasks.register<Sync>("releaseArtifactBundle") {
     }
     from(runtimeTestBundle)
     duplicatesStrategy = DuplicatesStrategy.FAIL
+}
+
+// The JDK modules the shaded JAR uses, as reported by jdeps, plus jdk.management for ending the
+// startup-cache recording and java.naming, which the application module requires.
+val runtimeModules = listOf(
+    "java.base", "java.desktop", "java.management", "java.naming", "java.net.http", "java.sql", "jdk.compiler", "jdk.management"
+)
+val packagingJdkHome = javaToolchains.launcherFor {
+    languageVersion.set(JavaLanguageVersion.of(providers.gradleProperty("javaFeature").get().toInt()))
+}.map { launcher -> launcher.metadata.installationPath.asFile.absolutePath }
+val bundleVersion = applicationVersion
+
+val runtimeImage = tasks.register<RuntimeImageTask>("runtimeImage") {
+    group = "distribution"
+    description = "Links the JDK modules the server needs into its own runtime, with a preview class-data archive."
+    jdkHome.set(packagingJdkHome)
+    modules.set(runtimeModules)
+    image.set(layout.buildDirectory.dir("packaging/runtime"))
+}
+
+val appImage = tasks.register<AppImageTask>("appImage") {
+    group = "distribution"
+    description = "Builds the self-contained application image: a native launcher, the runtime and the exact release JAR."
+    jdkHome.set(packagingJdkHome)
+    runtimeImage.set(tasks.named<RuntimeImageTask>("runtimeImage").flatMap { task -> task.image })
+    // CI wraps the JAR that was built and tested once instead of building another one per platform.
+    val prebuilt = providers.gradleProperty("prebuiltReleaseJar")
+    if (prebuilt.isPresent) {
+        mainJar.set(layout.projectDirectory.file(prebuilt))
+    } else {
+        dependsOn(stageReleaseJar)
+        mainJar.set(releaseJar)
+    }
+    applicationName.set("mcdev-mcp")
+    applicationVersion.set(bundleVersion)
+    mainClass.set(application.mainClass)
+    // The JVM logs to standard output unless told otherwise, which would corrupt the MCP stream.
+    // A missing or outdated startup cache is expected and handled by the server itself.
+    javaOptions.set(
+        listOf(
+            "--enable-preview",
+            "-Xlog:disable",
+            "-Xlog:all=warning,aot=off,cds=off:stderr",
+            $$"-XX:AOTCache=$APPDIR$${File.separator}mcdev-mcp.aot"
+        )
+    )
+    destination.set(layout.buildDirectory.dir("packaging/image"))
+}
+
+tasks.register<Zip>("appImageZip") {
+    group = "distribution"
+    description = "Archives the application image built for this platform."
+    from(appImage.flatMap { task -> task.destination })
+    archiveBaseName.set("mcdev-mcp")
+    archiveVersion.set(bundleVersion)
+    archiveClassifier.set(PackagingTools.platform)
+    destinationDirectory.set(layout.buildDirectory.dir("distributions"))
+    useFileSystemPermissions()
+}
+
+tasks.register<JavaExec>("appImageSmoke") {
+    group = "verification"
+    description = "Launches the application image as an MCP client would, before and after it records its startup cache."
+    dependsOn(tasks.named(runtimeTest.classesTaskName), appImage)
+    classpath = runtimeTest.runtimeClasspath
+    mainClass.set("dev.mcdevmcp.packaging.AppImageSmokeMain")
+    val image = appImage.flatMap { task -> task.destination }
+    val work = layout.buildDirectory.dir("packaging/smoke")
+    val version = bundleVersion
+    argumentProviders.add(CommandLineArgumentProvider {
+        listOf(image.get().asFile.absolutePath, version, work.get().asFile.absolutePath)
+    })
 }
 
 tasks.register<JavaExec>("runtimeArtifactSmoke") {
