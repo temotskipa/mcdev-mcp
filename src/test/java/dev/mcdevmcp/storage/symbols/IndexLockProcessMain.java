@@ -7,7 +7,6 @@ import java.time.Duration;
 /**
  * Subprocess entry point for real multi-process lock, query, and recovery tests.
  */
-@SuppressWarnings("JavaPrintToLogpoint")
 final class IndexLockProcessMain {
     private IndexLockProcessMain() {
     }

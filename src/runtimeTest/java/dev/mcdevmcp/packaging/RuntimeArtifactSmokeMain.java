@@ -13,6 +13,7 @@ import dev.mcdevmcp.support.RequiredRuntime;
 import dev.mcdevmcp.support.ScopeOutcomes;
 import io.modelcontextprotocol.json.McpJsonDefaults;
 import io.modelcontextprotocol.json.TypeRef;
+import reactor.util.annotation.NonNull;
 
 import javax.tools.JavaCompiler;
 import javax.tools.ToolProvider;
@@ -362,20 +363,21 @@ public final class RuntimeArtifactSmokeMain {
         return Path.of(System.getProperty("java.home"), "bin", suffix).toString();
     }
 
-    @SuppressWarnings("NullableProblems")
     private static void deleteTree(Path root) throws IOException {
         if (!Files.exists(root)) {
             return;
         }
         Files.walkFileTree(root, new SimpleFileVisitor<>() {
             @Override
-            public FileVisitResult visitFile(Path file, BasicFileAttributes attributes) throws IOException {
+            @NonNull
+            public FileVisitResult visitFile(@NonNull Path file, @NonNull BasicFileAttributes attributes) throws IOException {
                 Files.delete(file);
                 return FileVisitResult.CONTINUE;
             }
 
             @Override
-            public FileVisitResult postVisitDirectory(Path directory, IOException exception) throws IOException {
+            @NonNull
+            public FileVisitResult postVisitDirectory(@NonNull Path directory, IOException exception) throws IOException {
                 if (exception != null) {
                     throw exception;
                 }

@@ -3,9 +3,9 @@ package dev.mcdevmcp.storage.migration;
 import dev.mcdevmcp.storage.PlatformPaths;
 import dev.mcdevmcp.storage.model.MinecraftVersion;
 
+import java.io.OutputStream;
 import java.nio.file.Path;
 
-@SuppressWarnings("JavaPrintToLogpoint")
 final class VersionOperationLeaseProcessMain {
     private VersionOperationLeaseProcessMain() {
     }
@@ -17,10 +17,8 @@ final class VersionOperationLeaseProcessMain {
             lease.require(paths, version);
             System.out.println("read-held");
             System.out.flush();
-            //noinspection StatementWithEmptyBody
-            while (System.in.read() != -1) {
-                // Parent closes stdin to release the operation lease.
-            }
+            // Parent closes stdin to release the operation lease.
+            System.in.transferTo(OutputStream.nullOutputStream());
         }
     }
 }

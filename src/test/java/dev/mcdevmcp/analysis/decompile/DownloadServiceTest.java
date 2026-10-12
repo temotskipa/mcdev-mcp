@@ -30,7 +30,6 @@ import java.util.zip.ZipOutputStream;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-@SuppressWarnings("HttpUrlsUsage")
 final class DownloadServiceTest {
     @TempDir
     Path temporaryDirectory;

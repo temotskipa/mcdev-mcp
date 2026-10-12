@@ -19,7 +19,6 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-@SuppressWarnings({"HttpUrlsUsage", "UnusedReturnValue"})
 final class VersionManifestClientTest {
     private static final String SHA1 = "0000000000000000000000000000000000000000";
 
