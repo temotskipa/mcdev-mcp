@@ -2,9 +2,8 @@ package dev.mcdevmcp.tools.runtime;
 
 import dev.mcdevmcp.mcp.tool.ToolAvailability;
 import dev.mcdevmcp.mcp.tool.ToolDeclaration;
-import dev.mcdevmcp.mcp.tool.api.ContentToolBinding;
+import dev.mcdevmcp.mcp.tool.api.BlockingToolHandler;
 import dev.mcdevmcp.mcp.tool.api.ContentToolResult;
-import dev.mcdevmcp.mcp.tool.api.ToolHandlers;
 import dev.mcdevmcp.mcp.tool.api.ToolResult;
 
 import java.util.List;
@@ -15,8 +14,8 @@ final class McScriptLogsTool {
     private McScriptLogsTool() {
     }
 
-    static ContentToolBinding<ScriptLogsArguments> binding(ScriptLogger logger) {
-        return DECLARATION.bind((arguments, _) -> ToolHandlers.completed(render(logger, arguments)));
+    static BlockingToolHandler<ScriptLogsArguments> handler(ScriptLogger logger) {
+        return (arguments, _) -> render(logger, arguments);
     }
 
     private static ContentToolResult<Void> render(ScriptLogger logger, ScriptLogsArguments arguments) {

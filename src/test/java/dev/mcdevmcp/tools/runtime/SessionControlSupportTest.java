@@ -1,10 +1,7 @@
 package dev.mcdevmcp.tools.runtime;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
-import dev.mcdevmcp.bridge.BridgeMappingStatus;
-import dev.mcdevmcp.bridge.BridgeResponse;
-import dev.mcdevmcp.bridge.BridgeTestHarness;
-import dev.mcdevmcp.bridge.SessionInfo;
+import dev.mcdevmcp.bridge.*;
 import dev.mcdevmcp.mcp.tool.api.RecordInputSchemaFactory;
 import dev.mcdevmcp.mcp.tool.api.ToolInput;
 import dev.mcdevmcp.minecraft.MinecraftServerAddress;
@@ -34,18 +31,10 @@ import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.concurrent.locks.LockSupport;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 class SessionControlSupportTest {
-    private static void pauseBriefly() throws InterruptedException {
-        LockSupport.parkNanos(TimeUnit.MILLISECONDS.toNanos(10));
-        if (Thread.interrupted()) {
-            throw new InterruptedException();
-        }
-    }
-
     private static final Path GAME_DIRECTORY = Path.of(RuntimeContractFixtures.gameDirectory());
 
     private static void assertPropertyCreator(Class<?> type, Class<?>... parameterTypes) {
@@ -57,7 +46,7 @@ class SessionControlSupportTest {
     }
 
     private static List<Integer> bridgePorts(Map<String, String> environment) {
-        try (var harness = new BridgeTestHarness(McpJsonDefaults.getMapper(), new AppEnvironment(environment), (_, request) -> CompletableFuture.completedFuture(RuntimeContractFixtures.status(request.id())))) {
+        try (var harness = new BridgeTestHarness(McpJsonDefaults.getMapper(), new AppEnvironment(environment), (_, request) -> RuntimeContractFixtures.status(request.id()))) {
             return new SessionControlSupport(harness.session(), new AppEnvironment(environment)).bridgePortRange();
         }
     }
@@ -199,19 +188,21 @@ class SessionControlSupportTest {
     }
 
     @Test
-    void cancellationPreventsAComposedSideEffectFromStarting() {
-        var first = new CompletableFuture<Integer>();
-        var invoked = new AtomicBoolean();
-        CompletableFuture<Integer> composed = SessionControlSupport.composeCancellable(first, value -> {
-            invoked.set(true);
-            return CompletableFuture.completedFuture(value + 1);
-        }).toCompletableFuture();
+    void cancellingAGatedToolWhileItAwaitsSessionStatusNeverSendsItsSideEffect() throws Exception {
+        var status = new CompletableFuture<BridgeResponse>();
+        var environment = new AppEnvironment(Map.of());
+        try (var harness = new BridgeTestHarness(McpJsonDefaults.getMapper(), environment, (_, request) -> request.endpoint().wireName().equals("status") ? status.get() : new BridgeResponse(request.id(), true, true, Map.of(), null, null))) {
+            var join = McJoinServerTool.handler(new RuntimeToolSupport(harness.session(), McpJsonDefaults.getMapper()), new SessionControlSupport(harness.session(), environment));
+            var call = BlockingCalls.start(() -> join.handle(new JoinServerArguments(new MinecraftServerAddress("example.test"), true, false, Duration.ofSeconds(1)), Cancellation.none()));
+            BlockingCalls.awaitUntil(() -> harness.requests().size() == 1);
 
-        assertTrue(composed.cancel(true));
-        first.complete(1);
+            assertTrue(call.cancel());
+            call.awaitStopped();
+            status.complete(RuntimeContractFixtures.status("req_1"));
 
-        assertFalse(invoked.get());
-        assertTrue(first.isCancelled());
+            BlockingCalls.awaitUntil(() -> harness.session().connectedPort().isPresent());
+            assertEquals(List.of("status"), harness.requests().stream().map(request -> request.endpoint().wireName()).toList());
+        }
     }
 
     @Test
@@ -226,19 +217,19 @@ class SessionControlSupportTest {
     @Test
     void waitExpiryUsesMonotonicNanosecondsAcrossSignedWrap() throws Exception {
         try (var harness = new BridgeTestHarness(McpJsonDefaults.getMapper(), new AppEnvironment(Map.of()), (_, request) -> switch (request.endpoint().wireName()) {
-            case "status" -> CompletableFuture.completedFuture(RuntimeContractFixtures.status(request.id()));
+            case "status" -> RuntimeContractFixtures.status(request.id());
             case "snapshot" ->
-                    CompletableFuture.completedFuture(new BridgeResponse(request.id(), true, true, Map.of(), null, null));
+                    new BridgeResponse(request.id(), true, true, Map.of(), null, null);
             case "screenInspect" ->
-                    CompletableFuture.completedFuture(new BridgeResponse(request.id(), true, true, Map.of("type", "ChatScreen"), null, null));
+                    new BridgeResponse(request.id(), true, true, Map.of("type", "ChatScreen"), null, null);
             default ->
-                    CompletableFuture.failedFuture(new AssertionError("Unexpected endpoint: " + request.endpoint().wireName()));
+                    throw new AssertionError("Unexpected endpoint: " + request.endpoint().wireName());
         })) {
-            harness.session().connect(null).toCompletableFuture().get(5, TimeUnit.SECONDS);
+            harness.session().connect(null);
             var ticker = new SequenceTicker(Long.MAX_VALUE - 5, Long.MIN_VALUE + 5);
-            var support = new SessionControlSupport(harness.session(), new AppEnvironment(Map.of()), ticker, _ -> CompletableFuture.completedFuture(false), _ -> CompletableFuture.completedFuture(null));
+            var support = new SessionControlSupport(harness.session(), new AppEnvironment(Map.of()), ticker, _ -> false, _ -> null);
 
-            InWorldWaitResult result = support.waitUntilInWorld(Duration.ofNanos(10), false, Cancellation.none()).toCompletableFuture().get(5, TimeUnit.SECONDS);
+            InWorldWaitResult result = support.waitUntilInWorld(Duration.ofNanos(10), false, Cancellation.none());
 
             assertEquals(InWorldWaitResult.State.TIMEOUT, result.state());
             assertEquals(0.0, result.elapsedSeconds());
@@ -246,14 +237,14 @@ class SessionControlSupportTest {
     }
 
     @Test
-    void asynchronousPidProbeReadsOutputBeforeClosingTheProcess() throws Exception {
+    void pidProbeReadsOutputBeforeClosingTheProcess() throws Exception {
         ProbeProcess process = new ProbeProcess("4242\n");
         {
             SessionControlSupport.ListeningPidResolver resolver = SessionControlSupport.listeningPidResolver(_ -> process);
-            CompletionStage<Long> pid = resolver.resolve(9876);
+            var pid = BlockingCalls.start(() -> resolver.resolve(9876));
             process.exited.complete(process);
 
-            assertEquals(4242L, pid.toCompletableFuture().get(5, TimeUnit.SECONDS));
+            assertEquals(4242L, pid.get());
             assertEquals(1, process.closeCount.get());
             assertTrue(process.stdoutConsumed.get());
             assertFalse(process.destroyed.get());
@@ -269,43 +260,40 @@ class SessionControlSupportTest {
                 process.started.countDown();
                 return process;
             });
-            CompletableFuture<Long> pid = resolver.resolve(9876).toCompletableFuture();
+            var pid = BlockingCalls.start(() -> resolver.resolve(9876));
 
             assertTrue(process.started.await(1, TimeUnit.SECONDS));
             assertTrue(process.probeEntered.await(1, TimeUnit.SECONDS));
-            assertTrue(pid.cancel(true));
+            assertTrue(pid.cancel());
             assertTrue(process.destroyedLatch.await(1, TimeUnit.SECONDS));
             assertTrue(process.closeEntered.await(1, TimeUnit.SECONDS));
+            pid.awaitStopped();
             assertEquals(1, process.closeCount.get());
         }
     }
 
     @Test
     @SuppressWarnings("resource")
-    void cancellationReturnsPromptlyWhenProcessCloseBlocks() throws Exception {
+    void cancellationReportsPromptlyButTheCallerStopsOnlyAfterProcessCloseFinishes() throws Exception {
         ProbeProcess process = ProbeProcess.blocking();
         {
             SessionControlSupport.ListeningPidResolver resolver = SessionControlSupport.listeningPidResolver(_ -> {
                 process.started.countDown();
                 return process;
             });
-            CompletableFuture<Long> pid = resolver.resolve(9876).toCompletableFuture();
+            var pid = BlockingCalls.start(() -> resolver.resolve(9876));
 
             assertTrue(process.started.await(1, TimeUnit.SECONDS));
             assertTrue(process.probeEntered.await(1, TimeUnit.SECONDS));
-            assertTrue(pid.cancel(true));
+            assertTrue(pid.cancel());
             assertTrue(process.destroyedLatch.await(1, TimeUnit.SECONDS));
             assertTrue(process.closeEntered.await(1, TimeUnit.SECONDS));
-            assertTrue(pid.isCancelled());
+            assertTrue(pid.task().isCancelled());
             assertEquals(1, process.closeCount.get());
-            assertFalse(SessionControlSupport.ownerStopped(pid));
+            assertTrue(pid.thread().isAlive());
             process.releaseClose.countDown();
             assertTrue(process.closeFinished.await(1, TimeUnit.SECONDS));
-            long ownerDeadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(1);
-            while (!SessionControlSupport.ownerStopped(pid) && System.nanoTime() < ownerDeadline) {
-                pauseBriefly();
-            }
-            assertTrue(SessionControlSupport.ownerStopped(pid));
+            pid.awaitStopped();
         }
     }
 
@@ -326,16 +314,12 @@ class SessionControlSupportTest {
             throw new IOException("starter released for cancellation test");
         });
 
-        CompletableFuture<Long> pid = resolver.resolve(9876).toCompletableFuture();
+        var pid = BlockingCalls.start(() -> resolver.resolve(9876));
         assertTrue(starterEntered.await(1, TimeUnit.SECONDS));
-        assertTrue(pid.cancel(true));
-        assertTrue(pid.isCancelled());
+        assertTrue(pid.cancel());
+        assertTrue(starterCaughtInterrupt.await(1, TimeUnit.SECONDS));
         releaseStarter.countDown();
-        long ownerDeadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(1);
-        while (!SessionControlSupport.ownerStopped(pid) && System.nanoTime() < ownerDeadline) {
-            pauseBriefly();
-        }
-        assertTrue(SessionControlSupport.ownerStopped(pid));
+        pid.awaitStopped();
     }
 
     @Test
@@ -369,19 +353,15 @@ class SessionControlSupportTest {
             return process;
         });
 
-        CompletableFuture<Long> pid = resolver.resolve(9876).toCompletableFuture();
+        var pid = BlockingCalls.start(() -> resolver.resolve(9876));
         assertTrue(starterEntered.await(1, TimeUnit.SECONDS));
-        assertTrue(pid.cancel(true));
+        assertTrue(pid.cancel());
         assertTrue(starterCaughtInterrupt.await(1, TimeUnit.SECONDS));
         releaseStarter.countDown();
         assertTrue(process.destroyedLatch.await(1, TimeUnit.SECONDS));
         assertTrue(process.closeEntered.await(1, TimeUnit.SECONDS));
         assertEquals(1, process.probeEntered.getCount());
-        long ownerDeadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(1);
-        while (!SessionControlSupport.ownerStopped(pid) && System.nanoTime() < ownerDeadline) {
-            pauseBriefly();
-        }
-        assertTrue(SessionControlSupport.ownerStopped(pid));
+        pid.awaitStopped();
     }
 
     @Test
@@ -390,7 +370,7 @@ class SessionControlSupportTest {
         TimeoutProcess process = new TimeoutProcess();
         SessionControlSupport.ListeningPidResolver resolver = SessionControlSupport.listeningPidResolver(_ -> process);
         long started = System.nanoTime();
-        Long pid = resolver.resolve(9876).toCompletableFuture().get(6, TimeUnit.SECONDS);
+        Long pid = resolver.resolve(9876);
         long elapsed = System.nanoTime() - started;
 
         assertNull(pid);
@@ -401,24 +381,20 @@ class SessionControlSupportTest {
     }
 
     @Test
-    void composeCancellationBeforeResolverInvocationPreventsStarterAndOwnerStops() throws Exception {
+    void anAlreadyInterruptedCallerNeverStartsThePidProbe() throws Exception {
         AtomicBoolean starterInvoked = new AtomicBoolean();
         SessionControlSupport.ListeningPidResolver resolver = SessionControlSupport.listeningPidResolver(_ -> {
             starterInvoked.set(true);
             throw new IOException("starter must not run");
         });
-        CompletableFuture<Integer> cancelledInput = new CompletableFuture<>();
-        cancelledInput.cancel(false);
 
-        CompletableFuture<Long> composed = SessionControlSupport.composeCancellable(cancelledInput, ignored -> resolver.resolve(9876)).toCompletableFuture();
+        var pid = BlockingCalls.start(() -> {
+            Thread.currentThread().interrupt();
+            return resolver.resolve(9876);
+        });
 
+        assertInstanceOf(InterruptedException.class, pid.failure());
         assertFalse(starterInvoked.get());
-        long ownerDeadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(1);
-        while (!SessionControlSupport.ownerStopped(composed) && System.nanoTime() < ownerDeadline) {
-            pauseBriefly();
-        }
-        assertTrue(SessionControlSupport.ownerStopped(composed));
-        assertTrue(composed.isCancelled());
     }
 
     @Test
@@ -426,9 +402,9 @@ class SessionControlSupportTest {
         ProbeProcess success = new ProbeProcess("4242\n");
         {
             SessionControlSupport.ListeningPidResolver resolver = SessionControlSupport.listeningPidResolver(_ -> success);
-            CompletableFuture<Long> pid = resolver.resolve(9876).toCompletableFuture();
+            var pid = BlockingCalls.start(() -> resolver.resolve(9876));
             success.exited.complete(success);
-            assertEquals(4242L, pid.get(1, TimeUnit.SECONDS));
+            assertEquals(4242L, pid.get());
             assertEquals(1, success.closeCount.get());
         }
 
@@ -439,10 +415,10 @@ class SessionControlSupportTest {
         for (ProbeProcess process : List.of(ProbeProcess.nonzero(), ProbeProcess.readFailure())) {
             {
                 SessionControlSupport.ListeningPidResolver resolver = SessionControlSupport.listeningPidResolver(_ -> process);
-                CompletableFuture<Long> pid = resolver.resolve(9876).toCompletableFuture();
+                var pid = BlockingCalls.start(() -> resolver.resolve(9876));
                 process.exited.complete(process);
 
-                assertNull(pid.get(1, TimeUnit.SECONDS));
+                assertNull(pid.get());
                 assertTrue(process.closeEntered.await(1, TimeUnit.SECONDS));
                 assertEquals(1, process.closeCount.get());
             }
@@ -451,9 +427,9 @@ class SessionControlSupportTest {
 
     @Test
     void portCloseFallbackAndProcessClassificationAreConservative() throws Exception {
-        try (var harness = new BridgeTestHarness(McpJsonDefaults.getMapper(), new AppEnvironment(Map.of()), (_, request) -> CompletableFuture.completedFuture(RuntimeContractFixtures.status(request.id())))) {
-            var support = new SessionControlSupport(harness.session(), new AppEnvironment(Map.of()), MonotonicTicker.system(), _ -> CompletableFuture.completedFuture(false), _ -> CompletableFuture.completedFuture(null));
-            ClientExitResult result = support.waitForClientExit(9876, null, Duration.ofSeconds(2), Cancellation.none()).toCompletableFuture().get(2, TimeUnit.SECONDS);
+        try (var harness = new BridgeTestHarness(McpJsonDefaults.getMapper(), new AppEnvironment(Map.of()), (_, request) -> RuntimeContractFixtures.status(request.id()))) {
+            var support = new SessionControlSupport(harness.session(), new AppEnvironment(Map.of()), MonotonicTicker.system(), _ -> false, _ -> null);
+            ClientExitResult result = support.waitForClientExit(9876, null, Duration.ofSeconds(2), Cancellation.none());
             assertEquals(new ClientExitResult.Exited(false), result);
         }
         assertTrue(SessionControlSupport.processAlive(ProcessHandle.current().pid()));
@@ -467,25 +443,19 @@ class SessionControlSupportTest {
         try (var harness = new BridgeTestHarness(McpJsonDefaults.getMapper(), new AppEnvironment(Map.of()), (_, _) -> {
             CompletableFuture<BridgeResponse> pending = new CompletableFuture<>();
             response.set(pending);
-            return pending;
+            return pending.get();
         })) {
-            var support = new SessionControlSupport(harness.session(), new AppEnvironment(Map.of()), MonotonicTicker.system(), _ -> CompletableFuture.completedFuture(false), _ -> CompletableFuture.completedFuture(null));
+            var support = new SessionControlSupport(harness.session(), new AppEnvironment(Map.of()), MonotonicTicker.system(), _ -> false, _ -> null);
             var expected = new ExpectedInstance(Optional.of(new MinecraftVersion("different")), Optional.empty());
-            CompletableFuture<FoundBridge> wait = support.waitForBridge(expected, Duration.ofMillis(250), notes, Cancellation.none()).toCompletableFuture();
+            var wait = BlockingCalls.start(() -> support.waitForBridge(expected, Duration.ofMillis(250), notes, Cancellation.none()));
 
-            long responseDeadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(1);
-            CompletableFuture<BridgeResponse> pending;
-            while ((pending = response.get()) == null && System.nanoTime() < responseDeadline) {
-                pauseBriefly();
-            }
-            assertNotNull(pending);
-            CompletableFuture<BridgeResponse> ready = pending;
+            BlockingCalls.awaitUntil(() -> response.get() != null);
+            CompletableFuture<BridgeResponse> ready = response.get();
             Thread mismatch = Thread.ofPlatform().start(() -> ready.complete(RuntimeContractFixtures.status("req_1")));
             assertTrue(notes.addEntered.await(1, TimeUnit.SECONDS));
             notes.releaseAdd.countDown();
             mismatch.join();
-            ExecutionException failure = assertThrows(ExecutionException.class, () -> wait.get(1, TimeUnit.SECONDS));
-            assertTrue(failure.getCause().getMessage().contains("Other instances answered: port 9876"));
+            assertTrue(wait.failure().getMessage().contains("Other instances answered: port 9876"));
             assertEquals(1, notes.size());
         }
     }

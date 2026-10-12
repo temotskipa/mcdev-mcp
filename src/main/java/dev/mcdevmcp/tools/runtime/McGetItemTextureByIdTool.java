@@ -2,7 +2,7 @@ package dev.mcdevmcp.tools.runtime;
 
 import dev.mcdevmcp.bridge.BridgeEndpoint;
 import dev.mcdevmcp.mcp.tool.ToolDeclaration;
-import dev.mcdevmcp.mcp.tool.api.ContentToolBinding;
+import dev.mcdevmcp.mcp.tool.api.BlockingToolHandler;
 
 final class McGetItemTextureByIdTool {
     static final ToolDeclaration<ItemTextureByIdArguments> DECLARATION = ToolDeclaration.of("mc_get_item_texture_by_id", ItemTextureByIdArguments.class);
@@ -12,7 +12,7 @@ final class McGetItemTextureByIdTool {
     private McGetItemTextureByIdTool() {
     }
 
-    static ContentToolBinding<ItemTextureByIdArguments> binding(MediaToolSupport support) {
-        return DECLARATION.bind((arguments, _) -> support.itemTextureById(arguments));
+    static BlockingToolHandler<ItemTextureByIdArguments> handler(MediaToolSupport support) {
+        return (arguments, _) -> support.itemTextureById(arguments);
     }
 }

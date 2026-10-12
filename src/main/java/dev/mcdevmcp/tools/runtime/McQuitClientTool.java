@@ -5,10 +5,8 @@ import dev.mcdevmcp.bridge.BridgeResponse;
 import dev.mcdevmcp.mcp.tool.ToolDeclaration;
 import dev.mcdevmcp.mcp.tool.api.*;
 
+import java.io.IOException;
 import java.util.Locale;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionException;
-import java.util.concurrent.CompletionStage;
 
 final class McQuitClientTool {
     static final ToolDeclaration<QuitClientArguments> DECLARATION = ToolDeclaration.of("mc_quit_client", QuitClientArguments.class);
@@ -18,43 +16,47 @@ final class McQuitClientTool {
     private McQuitClientTool() {
     }
 
-    static ContentToolBinding<QuitClientArguments> binding(SessionControlSupport support) {
-        return DECLARATION.bind((arguments, cancellation) -> SessionControlSupport.recoverTool(SessionControlSupport.composeCancellable(support.checkSessionControlEnabled(), disabled -> {
-            if (disabled != null) {
-                return ToolHandlers.completed(ToolResult.error(disabled));
+    static BlockingToolHandler<QuitClientArguments> handler(SessionControlSupport support) {
+        return (arguments, cancellation) -> {
+            try {
+                String disabled = support.checkSessionControlEnabled();
+                if (disabled != null) {
+                    return ToolResult.error(disabled);
+                }
+                int port = (int) support.connectedPort().orElse(-1);
+                boolean wait = arguments.waitForExit() && port > 0;
+                Long pid = wait ? support.resolveListeningPid(port) : null;
+                ContentToolResult<Void> refused = quit(support);
+                if (refused != null) {
+                    return refused;
+                }
+                support.disconnect();
+                if (!wait) {
+                    return ToolResult.text("Quit queued — the client is shutting down. Use mc_wait_for_bridge after relaunching to reconnect.");
+                }
+                return renderExit(support.waitForClientExit(port, pid, arguments.timeoutSeconds(), cancellation), port, pid, arguments);
+            } catch (IOException | RuntimeException failure) {
+                return ToolResult.error(SessionControlSupport.message(failure));
             }
-            long port = support.connectedPort().orElse(-1);
-            boolean wait = arguments.waitForExit() && port > 0;
-            CompletionStage<Long> pid = wait ? support.resolveListeningPid((int) port) : CompletableFuture.completedFuture(null);
-            return SessionControlSupport.composeCancellable(pid, resolvedPid -> quit(support, arguments, cancellation, (int) port, wait, resolvedPid));
-        })));
+        };
     }
 
-    private static CompletionStage<ContentToolResult<Void>> quit(SessionControlSupport support, QuitClientArguments arguments, ToolCancellation cancellation, int port, boolean wait, Long pid) {
-        CompletionStage<QuitAck> ack = SessionControlSupport.handleCancellable(support.send(ENDPOINT, RuntimeToolSupport.EMPTY_PAYLOAD, null), McQuitClientTool::classifyAck);
-        return SessionControlSupport.composeCancellable(ack, result -> {
-            if (result.failure() != null) {
-                return ToolHandlers.completed(result.failure());
-            }
-            support.disconnect();
-            if (!wait) {
-                return ToolHandlers.completed(ToolResult.text("Quit queued — the client is shutting down. Use mc_wait_for_bridge after relaunching to reconnect."));
-            }
-            return SessionControlSupport.mapCancellable(support.waitForClientExit(port, pid, arguments.timeoutSeconds(), cancellation), exit -> renderExit(exit, port, pid, arguments));
-        });
-    }
-
-    private static QuitAck classifyAck(BridgeResponse response, Throwable failure) {
-        if (failure != null) {
-            String message = failureMessage(failure);
-            String lower = message.toLowerCase(Locale.ROOT);
+    /**
+     * Returns the bridge's declared failure, or null once the quit is acknowledged,
+     * including by the client closing the connection while it shuts down.
+     */
+    private static ContentToolResult<Void> quit(SessionControlSupport support) throws IOException, InterruptedException {
+        BridgeResponse response;
+        try {
+            response = support.send(ENDPOINT, RuntimeToolSupport.EMPTY_PAYLOAD, null);
+        } catch (IOException | RuntimeException failure) {
+            String lower = SessionControlSupport.message(failure).toLowerCase(Locale.ROOT);
             if (lower.contains("connection closed") || lower.contains("peer closed") || lower.contains("debugbridge closed")) {
-                return new QuitAck(null);
+                return null;
             }
-            throw new CompletionException(failure);
+            throw failure;
         }
-        ContentToolResult<Void> declaredFailure = RuntimeToolSupport.declaredFailure(response);
-        return new QuitAck(declaredFailure);
+        return RuntimeToolSupport.declaredFailure(response);
     }
 
     private static ContentToolResult<Void> renderExit(ClientExitResult result, int port, Long pid, QuitClientArguments arguments) {
@@ -64,16 +66,5 @@ final class McQuitClientTool {
         }
         ClientExitResult.Exited exited = (ClientExitResult.Exited) result;
         return exited.pidConfirmed() ? ToolResult.text("Client shut down — port " + port + " closed and process " + pid + " exited. Safe to relaunch immediately; use mc_wait_for_bridge to reconnect afterwards.") : ToolResult.text("Client shut down — port " + port + " closed. Couldn't resolve the client PID to also confirm process exit, and the JVM can outlive the port by a few seconds — if the launcher tracks the instance (Prism ignores --launch while the old process lives), confirm it exited (pgrep / kill -0) before relaunching. Use mc_wait_for_bridge to reconnect afterwards.");
-    }
-
-    private static String failureMessage(Throwable failure) {
-        Throwable current = failure;
-        while (current instanceof CompletionException && current.getCause() != null) {
-            current = current.getCause();
-        }
-        return current.getMessage() == null ? current.toString() : current.getMessage();
-    }
-
-    private record QuitAck(ContentToolResult<Void> failure) {
     }
 }

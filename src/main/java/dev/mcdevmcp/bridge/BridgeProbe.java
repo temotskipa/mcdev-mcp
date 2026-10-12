@@ -2,10 +2,10 @@ package dev.mcdevmcp.bridge;
 
 import dev.mcdevmcp.bridge.payload.EmptyBridgePayload;
 
+import java.io.IOException;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.OptionalInt;
-import java.util.concurrent.CompletionStage;
 
 public final class BridgeProbe {
     private static final BridgeEndpoint STATUS = new BridgeEndpoint("status");
@@ -16,7 +16,7 @@ public final class BridgeProbe {
         this.session = Objects.requireNonNull(session, "session");
     }
 
-    public CompletionStage<BridgeResponse> status() {
+    public BridgeResponse status() throws IOException, InterruptedException {
         return session.send(STATUS, new EmptyBridgePayload(), null);
     }
 

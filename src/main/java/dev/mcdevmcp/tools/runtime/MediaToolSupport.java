@@ -10,7 +10,6 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
 import java.util.Locale;
-import java.util.concurrent.CompletionStage;
 
 final value class MediaToolSupport {
     static final int MAX_BASE64_PNG_BYTES = 7 * 1024 * 1024;
@@ -108,7 +107,7 @@ final value class MediaToolSupport {
         return String.format(Locale.ROOT, "%.1f", value);
     }
 
-    CompletionStage<ContentToolResult<Void>> screenshot(ScreenshotArguments arguments) {
+    ContentToolResult<Void> screenshot(ScreenshotArguments arguments) throws InterruptedException {
         BridgePayload payload = new ScreenshotPayload(arguments.downscale(), arguments.quality());
         return runtime.request(McScreenshotTool.ENDPOINT, payload, null, response -> {
             ContentToolResult<Void> failure = RuntimeToolSupport.declaredFailure(response);
@@ -121,7 +120,7 @@ final value class MediaToolSupport {
         });
     }
 
-    CompletionStage<ContentToolResult<Void>> recordVideo(RecordVideoArguments arguments) {
+    ContentToolResult<Void> recordVideo(RecordVideoArguments arguments) throws InterruptedException {
         BridgePayload payload = switch (arguments.interval()) {
             case RecordInterval.Frame ignored ->
                     new RecordVideoFramePayload(arguments.frames(), "frame", arguments.output() == RecordVideoOutput.GRID ? "grid" : "frames", arguments.gridCols(), arguments.downscale(), arguments.quality());
@@ -138,19 +137,19 @@ final value class MediaToolSupport {
         });
     }
 
-    CompletionStage<ContentToolResult<Void>> itemTexture(ItemTextureArguments arguments) {
+    ContentToolResult<Void> itemTexture(ItemTextureArguments arguments) throws InterruptedException {
         return texture(McGetItemTextureTool.ENDPOINT, new ItemTexturePayload(arguments.slot()));
     }
 
-    CompletionStage<ContentToolResult<Void>> entityItemTexture(EntityItemTextureArguments arguments) {
+    ContentToolResult<Void> entityItemTexture(EntityItemTextureArguments arguments) throws InterruptedException {
         return texture(McGetEntityItemTextureTool.ENDPOINT, new EntityItemTexturePayload(arguments.entityId(), arguments.slot().bridgeValue()));
     }
 
-    CompletionStage<ContentToolResult<Void>> itemTextureById(ItemTextureByIdArguments arguments) {
+    ContentToolResult<Void> itemTextureById(ItemTextureByIdArguments arguments) throws InterruptedException {
         return texture(McGetItemTextureByIdTool.ENDPOINT, new ItemTextureByIdPayload(arguments.itemId().wireValue()));
     }
 
-    CompletionStage<ContentToolResult<Void>> acknowledgement(BridgeEndpoint endpoint, BridgePayload payload) {
+    ContentToolResult<Void> acknowledgement(BridgeEndpoint endpoint, BridgePayload payload) throws InterruptedException {
         return runtime.request(endpoint, payload, null, response -> {
             ContentToolResult<Void> failure = RuntimeToolSupport.declaredFailure(response);
             if (failure != null) {
@@ -160,7 +159,7 @@ final value class MediaToolSupport {
         });
     }
 
-    private CompletionStage<ContentToolResult<Void>> texture(BridgeEndpoint endpoint, BridgePayload payload) {
+    private ContentToolResult<Void> texture(BridgeEndpoint endpoint, BridgePayload payload) throws InterruptedException {
         return runtime.request(endpoint, payload, null, response -> {
             ContentToolResult<Void> failure = RuntimeToolSupport.declaredFailure(response);
             if (failure != null) {

@@ -5,7 +5,6 @@ import io.modelcontextprotocol.json.McpJsonMapper;
 
 import java.time.Duration;
 import java.util.List;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
@@ -29,7 +28,7 @@ public final class BridgeTestHarness implements AutoCloseable {
             }, ignored -> {
             }, effectiveTimeouts::add);
             activeClient.set(client);
-            return CompletableFuture.completedFuture(client);
+            return client;
         });
     }
 

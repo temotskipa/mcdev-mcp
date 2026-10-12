@@ -21,7 +21,6 @@ import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.nio.file.Path;
 import java.util.*;
-import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -187,7 +186,9 @@ class HandlerCompletenessTest {
         var handlers = new LinkedHashMap<String, ToolBinding<?>>();
 
         StaticToolModule.handlers(PlatformPaths.forEnvironment("Linux", environment.values(), temporaryDirectory)).forEach((name, binding) -> assertNull(handlers.put(name, binding), () -> "duplicate static handler: " + name));
-        try (var bridge = new BridgeTestHarness(MAPPER, environment, (_, _) -> new CompletableFuture<>())) {
+        try (var bridge = new BridgeTestHarness(MAPPER, environment, (_, _) -> {
+            throw new AssertionError("The bridge is never called");
+        })) {
             RuntimeToolModule.handlers(bridge.session(), MAPPER, environment).forEach((name, binding) -> assertNull(handlers.put(name, binding), () -> "duplicate runtime handler: " + name));
         }
 

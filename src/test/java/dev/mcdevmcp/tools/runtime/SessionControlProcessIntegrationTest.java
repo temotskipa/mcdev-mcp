@@ -1,14 +1,13 @@
 package dev.mcdevmcp.tools.runtime;
 
+import dev.mcdevmcp.bridge.BlockingCalls;
 import org.junit.jupiter.api.Test;
 
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.concurrent.locks.LockSupport;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -26,13 +25,6 @@ class SessionControlProcessIntegrationTest {
         return Path.of(System.getProperty("java.home"), "bin", "java").toString();
     }
 
-    private static void pauseBriefly() throws InterruptedException {
-        LockSupport.parkNanos(TimeUnit.MILLISECONDS.toNanos(10));
-        if (Thread.interrupted()) {
-            throw new InterruptedException();
-        }
-    }
-
     private static void assertNotNullProcess(Process process) {
         assertNotNull(process, "child process was never started");
     }
@@ -42,9 +34,7 @@ class SessionControlProcessIntegrationTest {
         AtomicReference<Process> captured = new AtomicReference<>();
         SessionControlSupport.ListeningPidResolver resolver = realChild(captured, "success");
 
-        CompletableFuture<Long> result = resolver.resolve(9876).toCompletableFuture();
-
-        assertEquals(4242L, result.get(5, TimeUnit.SECONDS));
+        assertEquals(4242L, resolver.resolve(9876));
         Process process = captured.get();
         assertNotNullProcess(process);
         assertFalse(process.isAlive());
@@ -56,7 +46,7 @@ class SessionControlProcessIntegrationTest {
         SessionControlSupport.ListeningPidResolver resolver = realChild(captured, "hang");
         long started = System.nanoTime();
 
-        assertNull(resolver.resolve(9876).toCompletableFuture().get(6, TimeUnit.SECONDS));
+        assertNull(resolver.resolve(9876));
         assertTrue(System.nanoTime() - started >= Duration.ofSeconds(3).toNanos());
         Process process = captured.get();
         assertNotNullProcess(process);
@@ -68,21 +58,13 @@ class SessionControlProcessIntegrationTest {
     void cancellationDestroysARealRunningChildAndWaitsForOwnerCleanup() throws Exception {
         AtomicReference<Process> captured = new AtomicReference<>();
         SessionControlSupport.ListeningPidResolver resolver = realChild(captured, "hang");
-        CompletableFuture<Long> result = resolver.resolve(9876).toCompletableFuture();
-        long childDeadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
-        while (captured.get() == null && System.nanoTime() < childDeadline) {
-            pauseBriefly();
-        }
+        var result = BlockingCalls.start(() -> resolver.resolve(9876));
+        BlockingCalls.awaitUntil(() -> captured.get() != null);
         Process process = captured.get();
         assertNotNullProcess(process);
-        assertTrue(result.cancel(true));
-        assertTrue(result.isCancelled());
+        assertTrue(result.cancel());
         assertTrue(process.waitFor(1, TimeUnit.SECONDS));
         assertFalse(process.isAlive());
-        long ownerDeadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(1);
-        while (!SessionControlSupport.ownerStopped(result) && System.nanoTime() < ownerDeadline) {
-            pauseBriefly();
-        }
-        assertTrue(SessionControlSupport.ownerStopped(result));
+        result.awaitStopped();
     }
 }

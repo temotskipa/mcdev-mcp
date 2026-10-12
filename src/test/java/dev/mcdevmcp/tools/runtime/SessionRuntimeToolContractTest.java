@@ -31,7 +31,6 @@ import java.time.InstantSource;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -53,14 +52,14 @@ class SessionRuntimeToolContractTest {
         return map;
     }
 
-    private static CompletableFuture<BridgeResponse> respond(RequestFixture request, BridgeFixture bridge, BridgeRequest wireRequest) {
+    private static BridgeResponse respond(RequestFixture request, BridgeFixture bridge, BridgeRequest wireRequest) {
         if (wireRequest.endpoint().wireName().equals("status")) {
-            return CompletableFuture.completedFuture(RuntimeContractFixtures.status(wireRequest.id()));
+            return RuntimeContractFixtures.status(wireRequest.id());
         }
         if (!request.endpoint().equals(wireRequest.endpoint().wireName())) {
-            return CompletableFuture.failedFuture(new AssertionError("Unexpected endpoint for " + request.label() + ": " + wireRequest.endpoint().wireName()));
+            throw new AssertionError("Unexpected endpoint for " + request.label() + ": " + wireRequest.endpoint().wireName());
         }
-        return CompletableFuture.completedFuture(new BridgeResponse(wireRequest.id(), bridge.success(), bridge.resultPresent(), bridge.result(), bridge.output(), bridge.error()));
+        return new BridgeResponse(wireRequest.id(), bridge.success(), bridge.resultPresent(), bridge.result(), bridge.output(), bridge.error());
     }
 
     private static BridgeResponse success(BridgeRequest request, Object result) {
@@ -146,10 +145,10 @@ class SessionRuntimeToolContractTest {
     @Test
     void rendersImmediateJoinedAndDisconnectedPollOutcomes() throws Exception {
         try (var joined = new BridgeTestHarness(MAPPER, DEFAULT_ENVIRONMENT, (_, request) -> switch (request.endpoint().wireName()) {
-            case "status" -> CompletableFuture.completedFuture(RuntimeContractFixtures.status(request.id()));
-            case "snapshot" -> CompletableFuture.completedFuture(success(request, Map.of("player", Map.of("x", 0))));
+            case "status" -> RuntimeContractFixtures.status(request.id());
+            case "snapshot" -> success(request, Map.of("player", Map.of("x", 0)));
             default ->
-                    CompletableFuture.failedFuture(new AssertionError("Unexpected endpoint: " + request.endpoint().wireName()));
+                    throw new AssertionError("Unexpected endpoint: " + request.endpoint().wireName());
         })) {
             ToolResult<?> result = dispatch(ToolCatalog.load(DEFAULT_ENVIRONMENT, CompleteToolBindings.including(MAPPER, RuntimeToolModule.handlers(joined.session(), MAPPER)), MAPPER), "mc_wait_until_in_world", Map.of());
             assertEquals("In-world after 0s.", contentText(result));
@@ -159,12 +158,12 @@ class SessionRuntimeToolContractTest {
         }
 
         try (var disconnected = new BridgeTestHarness(MAPPER, DEFAULT_ENVIRONMENT, (_, request) -> switch (request.endpoint().wireName()) {
-            case "status" -> CompletableFuture.completedFuture(RuntimeContractFixtures.status(request.id()));
-            case "snapshot" -> CompletableFuture.completedFuture(success(request, Map.of()));
+            case "status" -> RuntimeContractFixtures.status(request.id());
+            case "snapshot" -> success(request, Map.of());
             case "screenInspect" ->
-                    CompletableFuture.completedFuture(success(request, Map.of("type", "net.minecraft.client.gui.screens.DisconnectedScreen", "title", "Connection refused")));
+                    success(request, Map.of("type", "net.minecraft.client.gui.screens.DisconnectedScreen", "title", "Connection refused"));
             default ->
-                    CompletableFuture.failedFuture(new AssertionError("Unexpected endpoint: " + request.endpoint().wireName()));
+                    throw new AssertionError("Unexpected endpoint: " + request.endpoint().wireName());
         })) {
             ToolResult<?> result = dispatch(ToolCatalog.load(DEFAULT_ENVIRONMENT, CompleteToolBindings.including(MAPPER, RuntimeToolModule.handlers(disconnected.session(), MAPPER)), MAPPER), "mc_wait_until_in_world", Map.of());
             assertEquals("Join failed — DisconnectedScreen shown.\nReason: Connection refused", contentText(result));
@@ -178,12 +177,12 @@ class SessionRuntimeToolContractTest {
     void joinPreflightAndJoinDispatchUseTheProductionEmptyAndNamedPayloads() throws Exception {
         int[] snapshots = {0};
         try (var harness = new BridgeTestHarness(MAPPER, DEFAULT_ENVIRONMENT, (_, request) -> switch (request.endpoint().wireName()) {
-            case "status" -> CompletableFuture.completedFuture(RuntimeContractFixtures.status(request.id()));
+            case "status" -> RuntimeContractFixtures.status(request.id());
             case "snapshot" ->
-                    CompletableFuture.completedFuture(success(request, snapshots[0]++ == 0 ? Map.of() : Map.of("player", Map.of("x", 0))));
-            case "joinServer" -> CompletableFuture.completedFuture(success(request, Map.of("status", "connecting")));
+                    success(request, snapshots[0]++ == 0 ? Map.of() : Map.of("player", Map.of("x", 0)));
+            case "joinServer" -> success(request, Map.of("status", "connecting"));
             default ->
-                    CompletableFuture.failedFuture(new AssertionError("Unexpected endpoint: " + request.endpoint().wireName()));
+                    throw new AssertionError("Unexpected endpoint: " + request.endpoint().wireName());
         })) {
             ToolCatalog catalog = ToolCatalog.load(DEFAULT_ENVIRONMENT, CompleteToolBindings.including(MAPPER, RuntimeToolModule.handlers(harness.session(), MAPPER)), MAPPER);
             ToolResult<?> result = dispatch(catalog, "mc_join_server", Map.of("address", "localhost:25565", "wait", true));
@@ -201,7 +200,7 @@ class SessionRuntimeToolContractTest {
 
     @Test
     void rejectsDisabledSessionControlBeforeCallingAGatedEndpoint() throws Exception {
-        try (var harness = new BridgeTestHarness(MAPPER, DEFAULT_ENVIRONMENT, (_, request) -> CompletableFuture.completedFuture(disabledStatus(request)))) {
+        try (var harness = new BridgeTestHarness(MAPPER, DEFAULT_ENVIRONMENT, (_, request) -> disabledStatus(request))) {
             ToolCatalog catalog = ToolCatalog.load(DEFAULT_ENVIRONMENT, CompleteToolBindings.including(MAPPER, RuntimeToolModule.handlers(harness.session(), MAPPER)), MAPPER);
 
             ToolResult<?> result = dispatch(catalog, "mc_join_server", Map.of("address", "localhost", "wait", false));
@@ -216,7 +215,9 @@ class SessionRuntimeToolContractTest {
     void rejectsInvalidSessionInputsBeforeMapperConversionOrBridgeDispatch() {
         List<Map.Entry<String, Map<String, Object>>> invalid = List.of(Map.entry("mc_join_server", Map.of("address", "example.test", "timeoutSeconds", -1)), Map.entry("mc_join_server", mapOf("address", "example.test", "acceptResourcePacks", null)), Map.entry("mc_join_server", Map.of("address", "example.test", "wait", "false")), Map.entry("mc_join_server", Map.of("address", "example.test", "timeoutSeconds", Double.NaN)), Map.entry("mc_join_server", Map.of("address", "example.test", "unknown", true)), Map.entry("mc_wait_until_in_world", Map.of("timeoutSeconds", -0.1)), Map.entry("mc_wait_until_in_world", mapOf("requireAbsenceFirst", null)), Map.entry("mc_quit_client", Map.of("timeoutSeconds", "30")), Map.entry("mc_quit_client", mapOf("waitForExit", null)), Map.entry("mc_wait_for_bridge", Map.of("expectedVersion", "1.21.11", "timeoutSeconds", Double.POSITIVE_INFINITY)), Map.entry("mc_wait_for_bridge", mapOf("expectedVersion", null)));
 
-        try (var harness = new BridgeTestHarness(MAPPER, DEFAULT_ENVIRONMENT, (_, _) -> CompletableFuture.failedFuture(new AssertionError("No bridge call should occur for invalid session input")))) {
+        try (var harness = new BridgeTestHarness(MAPPER, DEFAULT_ENVIRONMENT, (_, _) -> {
+            throw new AssertionError("No bridge call should occur for invalid session input");
+        })) {
             Map<String, ToolBinding<?>> bindings = RuntimeToolModule.handlers(harness.session(), MAPPER, DEFAULT_ENVIRONMENT);
             for (Map.Entry<String, Map<String, Object>> testCase : invalid) {
                 CountingMcpJsonMapper mapper = new CountingMcpJsonMapper(MAPPER);
@@ -229,7 +230,9 @@ class SessionRuntimeToolContractTest {
 
     @Test
     void rejectsMissingAndDomainInvalidJoinAddressesWithoutBridgeDispatch() {
-        try (var harness = new BridgeTestHarness(MAPPER, DEFAULT_ENVIRONMENT, (_, _) -> CompletableFuture.failedFuture(new AssertionError("No bridge call should occur for invalid join address")))) {
+        try (var harness = new BridgeTestHarness(MAPPER, DEFAULT_ENVIRONMENT, (_, _) -> {
+            throw new AssertionError("No bridge call should occur for invalid join address");
+        })) {
             ToolBinding<?> binding = RuntimeToolModule.handlers(harness.session(), MAPPER, DEFAULT_ENVIRONMENT).get("mc_join_server");
             List<Map.Entry<Map<String, Object>, Integer>> invalid = List.of(Map.entry(Map.of(), 0), Map.entry(Map.of("address", "[example.test]"), 1));
             for (Map.Entry<Map<String, Object>, Integer> testCase : invalid) {
@@ -244,10 +247,10 @@ class SessionRuntimeToolContractTest {
     @Test
     void projectsTheValidatedAddressScalarAndPrimitiveResourcePackFlagAtTheBridgeBoundary() throws Exception {
         try (var harness = new BridgeTestHarness(MAPPER, DEFAULT_ENVIRONMENT, (_, request) -> switch (request.endpoint().wireName()) {
-            case "status" -> CompletableFuture.completedFuture(RuntimeContractFixtures.status(request.id()));
-            case "joinServer" -> CompletableFuture.completedFuture(success(request, Map.of("status", "connecting")));
+            case "status" -> RuntimeContractFixtures.status(request.id());
+            case "joinServer" -> success(request, Map.of("status", "connecting"));
             default ->
-                    CompletableFuture.failedFuture(new AssertionError("Unexpected endpoint: " + request.endpoint().wireName()));
+                    throw new AssertionError("Unexpected endpoint: " + request.endpoint().wireName());
         })) {
             ToolCatalog catalog = ToolCatalog.load(DEFAULT_ENVIRONMENT, CompleteToolBindings.including(MAPPER, RuntimeToolModule.handlers(harness.session(), MAPPER)), MAPPER);
             ToolResult<?> result = dispatch(catalog, "mc_join_server", Map.of("address", "  example.test:25565  ", "acceptResourcePacks", false, "wait", false));
@@ -259,7 +262,7 @@ class SessionRuntimeToolContractTest {
 
     @Test
     void reconnectsToTheFirstMatchingBridgeAndQueuesQuitWithoutWaiting() throws Exception {
-        try (var bridge = new BridgeTestHarness(MAPPER, DEFAULT_ENVIRONMENT, (_, request) -> CompletableFuture.completedFuture(RuntimeContractFixtures.status(request.id())))) {
+        try (var bridge = new BridgeTestHarness(MAPPER, DEFAULT_ENVIRONMENT, (_, request) -> RuntimeContractFixtures.status(request.id()))) {
             ToolResult<?> result = dispatch(ToolCatalog.load(DEFAULT_ENVIRONMENT, CompleteToolBindings.including(MAPPER, RuntimeToolModule.handlers(bridge.session(), MAPPER)), MAPPER), "mc_wait_for_bridge", Map.of());
             assertEquals("Connected: Minecraft 1.21.11 on port 9876.\nGame dir: " + RuntimeContractFixtures.gameDirectory() + "\nSession control: enabled", contentText(result));
             assertEquals(List.of(9876, 9876), bridge.openedPorts());
@@ -267,10 +270,10 @@ class SessionRuntimeToolContractTest {
         }
 
         try (var quitting = new BridgeTestHarness(MAPPER, DEFAULT_ENVIRONMENT, (_, request) -> switch (request.endpoint().wireName()) {
-            case "status" -> CompletableFuture.completedFuture(RuntimeContractFixtures.status(request.id()));
-            case "quit" -> CompletableFuture.completedFuture(success(request, Map.of("status", "quitting")));
+            case "status" -> RuntimeContractFixtures.status(request.id());
+            case "quit" -> success(request, Map.of("status", "quitting"));
             default ->
-                    CompletableFuture.failedFuture(new AssertionError("Unexpected endpoint: " + request.endpoint().wireName()));
+                    throw new AssertionError("Unexpected endpoint: " + request.endpoint().wireName());
         })) {
             ToolResult<?> result = dispatch(ToolCatalog.load(DEFAULT_ENVIRONMENT, CompleteToolBindings.including(MAPPER, RuntimeToolModule.handlers(quitting.session(), MAPPER)), MAPPER), "mc_quit_client", Map.of("waitForExit", false));
             assertEquals("Quit queued — the client is shutting down. Use mc_wait_for_bridge after relaunching to reconnect.", contentText(result));
@@ -283,7 +286,7 @@ class SessionRuntimeToolContractTest {
 
     @Test
     void appendsFiveSessionAndTwoAlwaysBoundDevHandlersWithEnvironmentGatedCatalogVisibility() throws Exception {
-        try (var harness = new BridgeTestHarness(MAPPER, DEFAULT_ENVIRONMENT, (_, request) -> CompletableFuture.completedFuture(RuntimeContractFixtures.status(request.id())))) {
+        try (var harness = new BridgeTestHarness(MAPPER, DEFAULT_ENVIRONMENT, (_, request) -> RuntimeContractFixtures.status(request.id()))) {
             Map<String, ?> handlers = RuntimeToolModule.handlers(harness.session(), MAPPER);
             List<String> names = List.copyOf(handlers.keySet());
             List<String> taskNames = List.of("mc_join_server", "mc_leave_server", "mc_wait_until_in_world", "mc_quit_client", "mc_wait_for_bridge", "mc_script_logs", "mc_run_command");
@@ -307,10 +310,10 @@ class SessionRuntimeToolContractTest {
     @Test
     void executePerformsNoLogIoUntilTheScriptLogGateIsOptedIn(@TempDir Path temporary) throws Exception {
         try (var harness = new BridgeTestHarness(MAPPER, DEFAULT_ENVIRONMENT, (_, request) -> switch (request.endpoint().wireName()) {
-            case "status" -> CompletableFuture.completedFuture(RuntimeContractFixtures.status(request.id()));
-            case "execute" -> CompletableFuture.completedFuture(success(request, 2));
+            case "status" -> RuntimeContractFixtures.status(request.id());
+            case "execute" -> success(request, 2);
             default ->
-                    CompletableFuture.failedFuture(new AssertionError("Unexpected endpoint: " + request.endpoint().wireName()));
+                    throw new AssertionError("Unexpected endpoint: " + request.endpoint().wireName());
         })) {
             // Session logging is opt-in. Without MCDEV_SESSION_LOG_DIR, the logger is not
             // constructed, and no script-log files are written anywhere.
@@ -335,19 +338,19 @@ class SessionRuntimeToolContractTest {
     @Test
     void executeDurationUsesMonotonicTickerWhileLogTimestampUsesWallSource(@TempDir Path temporary) throws Exception {
         try (var harness = new BridgeTestHarness(MAPPER, DEFAULT_ENVIRONMENT, (_, request) -> switch (request.endpoint().wireName()) {
-            case "status" -> CompletableFuture.completedFuture(RuntimeContractFixtures.status(request.id()));
-            case "execute" -> CompletableFuture.completedFuture(success(request, 2));
+            case "status" -> RuntimeContractFixtures.status(request.id());
+            case "execute" -> success(request, 2);
             default ->
-                    CompletableFuture.failedFuture(new AssertionError("Unexpected endpoint: " + request.endpoint().wireName()));
+                    throw new AssertionError("Unexpected endpoint: " + request.endpoint().wireName());
         })) {
-            harness.session().connect(null).toCompletableFuture().get(5, TimeUnit.SECONDS);
+            harness.session().connect(null);
             var ticker = new SequenceTicker(10L, 1_250_000_010L);
             var support = new RuntimeToolSupport(harness.session(), MAPPER, ticker);
             Instant timestamp = Instant.parse("2026-09-03T00:00:00Z");
             var logger = new ScriptLogger(temporary, MAPPER, ignored -> {
             }, () -> false, InstantSource.fixed(timestamp));
 
-            ToolResult<?> result = support.execute(new ExecuteArguments("return 2", Duration.ofSeconds(10)), logger, true).toCompletableFuture().get(5, TimeUnit.SECONDS);
+            ToolResult<?> result = support.execute(new ExecuteArguments("return 2", Duration.ofSeconds(10)), logger, true);
 
             assertEquals("2", contentText(result));
             assertTrue(Files.readString(logger.allLogPath()).contains("\"duration_ms\":1250"));
@@ -357,7 +360,7 @@ class SessionRuntimeToolContractTest {
 
     @Test
     void scriptLogsPreserveExactDisabledErrorsStatsAndPathsText(@TempDir Path temporary) throws Exception {
-        ToolBinding<?> disabledBinding = McScriptLogsTool.binding(null);
+        ToolBinding<?> disabledBinding = CompleteToolBindings.blocking(McScriptLogsTool.DECLARATION.bindBlocking(McScriptLogsTool.handler(null)));
         CountingMcpJsonMapper disabledMapper = new CountingMcpJsonMapper(MAPPER);
         ToolResult<?> disabled = disabledBinding.invoke(disabledMapper, Map.of(), Cancellation.none()).toCompletableFuture().get(5, TimeUnit.SECONDS);
         assertExactText("Session logging is disabled. Set MCDEV_SCRIPT_LOGS=1 or MCDEV_SESSION_LOG_DIR to enable it.", disabled);
@@ -367,7 +370,7 @@ class SessionRuntimeToolContractTest {
         }, () -> false, InstantSource.fixed(Instant.ofEpochMilli(1_700_000_000_000L)));
         Instant timestamp = Instant.parse("2026-09-03T00:00:00Z");
         logger.log(new ScriptLogger.ScriptLogEntry(timestamp, false, "return 1", false, null, null, "boom", Duration.ofMillis(12)), false);
-        ToolBinding<?> binding = McScriptLogsTool.binding(logger);
+        ToolBinding<?> binding = CompleteToolBindings.blocking(McScriptLogsTool.DECLARATION.bindBlocking(McScriptLogsTool.handler(logger)));
 
         CountingMcpJsonMapper errorsMapper = new CountingMcpJsonMapper(MAPPER);
         ToolResult<?> errors = binding.invoke(errorsMapper, Map.of("mode", "errors", "limit", 20), Cancellation.none()).toCompletableFuture().get(5, TimeUnit.SECONDS);
@@ -400,10 +403,10 @@ class SessionRuntimeToolContractTest {
             Path defaultLog = dataDirectory.resolve("script-logs").resolve("all.jsonl");
 
             try (var harness = new BridgeTestHarness(MAPPER, environment, (_, request) -> switch (request.endpoint().wireName()) {
-                case "status" -> CompletableFuture.completedFuture(RuntimeContractFixtures.status(request.id()));
-                case "execute" -> CompletableFuture.completedFuture(success(request, 2));
+                case "status" -> RuntimeContractFixtures.status(request.id());
+                case "execute" -> success(request, 2);
                 default ->
-                        CompletableFuture.failedFuture(new AssertionError("Unexpected endpoint: " + request.endpoint().wireName()));
+                        throw new AssertionError("Unexpected endpoint: " + request.endpoint().wireName());
             })) {
                 ToolCatalog catalog = ToolCatalog.load(environment, CompleteToolBindings.including(MAPPER, RuntimeToolModule.handlers(harness.session(), MAPPER, environment)), MAPPER);
 
@@ -418,10 +421,10 @@ class SessionRuntimeToolContractTest {
             values.put("MCDEV_SESSION_LOG_DIR", explicitDirectory.toString());
             AppEnvironment explicitEnvironment = new AppEnvironment(values);
             try (var harness = new BridgeTestHarness(MAPPER, explicitEnvironment, (_, request) -> switch (request.endpoint().wireName()) {
-                case "status" -> CompletableFuture.completedFuture(RuntimeContractFixtures.status(request.id()));
-                case "execute" -> CompletableFuture.completedFuture(success(request, 3));
+                case "status" -> RuntimeContractFixtures.status(request.id());
+                case "execute" -> success(request, 3);
                 default ->
-                        CompletableFuture.failedFuture(new AssertionError("Unexpected endpoint: " + request.endpoint().wireName()));
+                        throw new AssertionError("Unexpected endpoint: " + request.endpoint().wireName());
             })) {
                 ToolCatalog catalog = ToolCatalog.load(explicitEnvironment, CompleteToolBindings.including(MAPPER, RuntimeToolModule.handlers(harness.session(), MAPPER, explicitEnvironment)), MAPPER);
 

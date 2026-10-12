@@ -14,9 +14,7 @@ import java.math.BigDecimal;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.*;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
-import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ExecutionException;
 import java.util.function.Function;
 import java.util.function.Supplier;
@@ -136,60 +134,55 @@ final class RuntimeToolSupport {
         target.repeat("  ", depth);
     }
 
-    CompletionStage<ContentToolResult<Void>> connect(ConnectArguments arguments) {
+    ContentToolResult<Void> connect(ConnectArguments arguments) throws InterruptedException {
         Objects.requireNonNull(arguments, "arguments");
         if (arguments.reset()) {
             session.reset();
         }
         if (!arguments.reset() && arguments.port() == null && session.connectedPort().isPresent()) {
             SessionInfo info = session.sessionInfo().orElseThrow(() -> new IllegalStateException("DebugBridge connected without session information"));
-            return CompletableFuture.completedFuture(ToolResult.text("Already connected.\n" + formatSessionInfo(info, session.connectedPort().orElse(info.port())) + "\n\nUse reset=true to reconnect."));
+            return ToolResult.text("Already connected.\n" + formatSessionInfo(info, session.connectedPort().orElse(info.port())) + "\n\nUse reset=true to reconnect.");
         }
-        return mapStage(() -> session.connect(arguments.port()), info -> ToolResult.text("Connected!\n" + formatSessionInfo(info, session.connectedPort().orElse(info.port()))), failure -> connectFailure(arguments.port(), failure));
+        SessionInfo info;
+        try {
+            info = session.connect(arguments.port());
+        } catch (IOException | RuntimeException failure) {
+            return connectFailure(arguments.port(), message(failure));
+        }
+        return rendered(() -> ToolResult.text("Connected!\n" + formatSessionInfo(info, session.connectedPort().orElse(info.port()))));
     }
 
-    CompletionStage<ContentToolResult<Void>> execute(ExecuteArguments arguments, ScriptLogger scriptLogger, boolean scriptLogsEnabled) {
+    ContentToolResult<Void> execute(ExecuteArguments arguments, ScriptLogger scriptLogger, boolean scriptLogsEnabled) throws InterruptedException {
         long started = ticker.readNanos();
         Duration timeout = arguments.timeoutSeconds();
         BridgePayload payload = new ExecutePayload(arguments.code(), timeout.toMillis());
-        CompletionStage<BridgeResponse> sent;
+        BridgeResponse response;
         try {
-            sent = session.send(McExecuteTool.ENDPOINT, payload, timeout);
-        } catch (RuntimeException exception) {
+            response = session.send(McExecuteTool.ENDPOINT, payload, timeout);
+        } catch (IOException | RuntimeException exception) {
+            String failure = message(exception);
             if (scriptLogsEnabled) {
-                scriptLogger.logFailed(arguments.code(), message(exception), elapsed(started));
+                scriptLogger.logFailed(arguments.code(), failure, elapsed(started));
             }
-            return CompletableFuture.completedFuture(ToolResult.error(message(exception)));
+            return ToolResult.error(failure);
         }
-        return sent.handle((response, exception) -> {
-            Duration duration = elapsed(started);
-            if (exception != null) {
-                String failure = message(exception);
-                if (scriptLogsEnabled) {
-                    scriptLogger.logFailed(arguments.code(), failure, duration);
-                }
-                return ToolResult.error(failure);
+        if (scriptLogsEnabled) {
+            scriptLogger.logCompleted(response.success(), arguments.code(), response.resultPresent(), response.result(), response.output(), response.error(), elapsed(started));
+        }
+        return rendered(() -> {
+            ContentToolResult<Void> failure = declaredFailure(response);
+            if (failure != null) {
+                return failure;
             }
-            if (scriptLogsEnabled) {
-                scriptLogger.logCompleted(response.success(), arguments.code(), response.resultPresent(), response.result(), response.output(), response.error(), duration);
+            StringBuilder text = new StringBuilder();
+            if (response.output() != null && !response.output().isEmpty()) {
+                text.append(response.output()).append('\n');
             }
-            try {
-                ContentToolResult<Void> failure = declaredFailure(response);
-                if (failure != null) {
-                    return failure;
-                }
-                StringBuilder text = new StringBuilder();
-                if (response.output() != null && !response.output().isEmpty()) {
-                    text.append(response.output()).append('\n');
-                }
-                if (response.resultPresent() && jsonTruthy(response.result())) {
-                    text.append(prettyJson(response.result()));
-                }
-                String rendered = text.toString().strip();
-                return ToolResult.text(rendered.isEmpty() ? "(no output)" : rendered);
-            } catch (RuntimeException renderingFailure) {
-                return ToolResult.error(message(renderingFailure));
+            if (response.resultPresent() && jsonTruthy(response.result())) {
+                text.append(prettyJson(response.result()));
             }
+            String output = text.toString().strip();
+            return ToolResult.text(output.isEmpty() ? "(no output)" : output);
         });
     }
 
@@ -197,7 +190,7 @@ final class RuntimeToolSupport {
         return Duration.ofNanos(ticker.readNanos() - started);
     }
 
-    CompletionStage<ContentToolResult<Void>> container(BridgeEndpoint endpoint, BridgePayload payload) {
+    ContentToolResult<Void> container(BridgeEndpoint endpoint, BridgePayload payload) throws InterruptedException {
         return request(endpoint, payload, null, response -> {
             ContentToolResult<Void> failure = declaredFailure(response);
             if (failure != null) {
@@ -211,7 +204,7 @@ final class RuntimeToolSupport {
         });
     }
 
-    CompletionStage<ContentToolResult<Void>> lookedAtEntity(LookedAtEntityArguments arguments) {
+    ContentToolResult<Void> lookedAtEntity(LookedAtEntityArguments arguments) throws InterruptedException {
         BridgePayload payload = new LookedAtEntityPayload(arguments.range());
         return request(McLookedAtEntityTool.ENDPOINT, payload, null, response -> {
             ContentToolResult<Void> failure = declaredFailure(response);
@@ -223,31 +216,26 @@ final class RuntimeToolSupport {
         });
     }
 
-    CompletionStage<ContentToolResult<Void>> request(BridgeEndpoint endpoint, BridgePayload payload, Duration timeout, Function<BridgeResponse, ContentToolResult<Void>> renderer) {
-        return mapStage(() -> session.send(endpoint, payload, timeout), renderer, ToolResult::error);
+    ContentToolResult<Void> request(BridgeEndpoint endpoint, BridgePayload payload, Duration timeout, Function<BridgeResponse, ContentToolResult<Void>> renderer) throws InterruptedException {
+        BridgeResponse response;
+        try {
+            response = session.send(endpoint, payload, timeout);
+        } catch (IOException | RuntimeException failure) {
+            return ToolResult.error(message(failure));
+        }
+        return rendered(() -> renderer.apply(response));
     }
 
     <T> T decode(BridgeEndpoint endpoint, Object result, JsonLogicalType<T> resultType) {
         return resultDecoder.decode(endpoint, result, resultType);
     }
 
-    private <T> CompletionStage<ContentToolResult<Void>> mapStage(Supplier<CompletionStage<T>> operation, Function<T, ContentToolResult<Void>> success, Function<String, ContentToolResult<Void>> failure) {
-        CompletionStage<T> stage;
+    private static ContentToolResult<Void> rendered(Supplier<ContentToolResult<Void>> renderer) {
         try {
-            stage = Objects.requireNonNull(operation.get(), "Runtime operation returned no completion stage");
-        } catch (RuntimeException exception) {
-            return CompletableFuture.completedFuture(failure.apply(message(exception)));
+            return renderer.get();
+        } catch (RuntimeException renderingFailure) {
+            return ToolResult.error(message(renderingFailure));
         }
-        return stage.handle((value, exception) -> {
-            if (exception != null) {
-                return failure.apply(message(exception));
-            }
-            try {
-                return success.apply(value);
-            } catch (RuntimeException renderingFailure) {
-                return ToolResult.error(message(renderingFailure));
-            }
-        });
     }
 
     private ContentToolResult<Void> connectFailure(Integer explicitPort, String failure) {

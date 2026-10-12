@@ -1,5 +1,6 @@
 package dev.mcdevmcp.bridge;
 
+import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.WebSocket;
@@ -8,11 +9,12 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Consumer;
-import java.util.function.Function;
 
 public final class BridgeClient implements AutoCloseable {
     private static final Duration DEFAULT_ENDPOINT_TIMEOUT = Duration.ofSeconds(10);
@@ -40,57 +42,84 @@ public final class BridgeClient implements AutoCloseable {
         this.timeoutObserver = Objects.requireNonNull(timeoutObserver, "timeoutObserver");
     }
 
-    public static CompletionStage<BridgeClient> connect(HttpClient client, URI uri, BridgeJson json) {
+    /**
+     * Opens a WebSocket client. An interrupted caller leaves the handshake to the HTTP
+     * client, which aborts a socket that opens afterwards.
+     */
+    public static BridgeClient connect(HttpClient client, URI uri, BridgeJson json) throws IOException, InterruptedException {
         Objects.requireNonNull(client, "client");
         Objects.requireNonNull(uri, "uri");
         ConnectionListener listener = new ConnectionListener();
-        return client.newWebSocketBuilder().buildAsync(uri, listener).thenApply(socket -> {
-            BridgeClient connected = new BridgeClient(new WebSocketTransport(socket), json, ignored -> {
-            }, ignored -> {
-            });
-            Throwable earlyFailure = listener.attach(connected);
-            if (earlyFailure != null) {
-                throw new CompletionException(earlyFailure);
-            }
-            return connected;
+        CompletableFuture<WebSocket> opening = client.newWebSocketBuilder().buildAsync(uri, listener);
+        WebSocket socket;
+        try {
+            socket = opening.get();
+        } catch (InterruptedException exception) {
+            opening.thenAccept(WebSocket::abort);
+            throw exception;
+        } catch (ExecutionException exception) {
+            throw failure(exception.getCause());
+        }
+        BridgeClient connected = overWebSocket(socket, json);
+        Throwable earlyFailure = listener.attach(connected);
+        if (earlyFailure != null) {
+            throw failure(earlyFailure);
+        }
+        return connected;
+    }
+
+    static BridgeClient overWebSocket(WebSocket socket, BridgeJson json) {
+        return new BridgeClient(new WebSocketTransport(Objects.requireNonNull(socket, "socket")), json, ignored -> {
+        }, ignored -> {
         });
     }
 
-    static BridgeClient testing(BridgeJson json, Function<BridgeRequest, CompletionStage<BridgeResponse>> responder) {
-        return testing(json, responder, ignored -> {
+    static BridgeClient testing(BridgeJson json, Peer peer) {
+        return testing(json, peer, ignored -> {
         });
     }
 
-    static BridgeClient testing(BridgeJson json, Function<BridgeRequest, CompletionStage<BridgeResponse>> responder, Consumer<String> diagnostics) {
-        return testing(json, responder, diagnostics, ignored -> {
+    static BridgeClient testing(BridgeJson json, Peer peer, Consumer<String> diagnostics) {
+        return testing(json, peer, diagnostics, ignored -> {
         });
     }
 
-    static BridgeClient testing(BridgeJson json, Function<BridgeRequest, CompletionStage<BridgeResponse>> responder, Consumer<String> diagnostics, Consumer<Duration> timeoutObserver) {
-        Objects.requireNonNull(responder, "responder");
+    /**
+     * A client whose peer answers every request on its own thread, independently of the
+     * caller waiting for the response, as a real DebugBridge does.
+     */
+    static BridgeClient testing(BridgeJson json, Peer peer, Consumer<String> diagnostics, Consumer<Duration> timeoutObserver) {
+        Objects.requireNonNull(peer, "peer");
         AtomicReference<BridgeClient> reference = new AtomicReference<>();
-        // noinspection Convert2Lambda
+        Set<Thread> answering = ConcurrentHashMap.newKeySet();
         Transport transport = new Transport() {
             @Override
-            public CompletionStage<?> send(BridgeRequest request, String ignored) {
+            public void send(BridgeRequest request, String text, Duration timeout) {
                 BridgeClient client = reference.get();
-                try {
-                    CompletionStage<BridgeResponse> response = responder.apply(request);
-                    if (response == null) {
-                        return CompletableFuture.failedFuture(new IllegalStateException("DebugBridge test responder returned null"));
-                    }
-                    response.whenComplete((value, failure) -> {
-                        if (failure != null) {
-                            client.completeById(request.id(), failure);
+                Thread answer = Thread.ofVirtual().name("debugbridge-test-peer").unstarted(() -> {
+                    try {
+                        BridgeResponse response = peer.answer(request);
+                        if (response == null) {
+                            client.fail(request.id(), new IllegalStateException("DebugBridge test peer returned null"));
                         }
                         else {
-                            client.completeById(request.id(), value);
+                            client.complete(request.id(), response);
                         }
-                    });
-                    return CompletableFuture.completedFuture(null);
-                } catch (RuntimeException exception) {
-                    return CompletableFuture.failedFuture(exception);
-                }
+                    } catch (InterruptedException ignored) {
+                        // The client closed while the peer was still answering.
+                    } catch (Throwable failure) {
+                        client.fail(request.id(), failure);
+                    } finally {
+                        answering.remove(Thread.currentThread());
+                    }
+                });
+                answering.add(answer);
+                answer.start();
+            }
+
+            @Override
+            public void close() {
+                answering.forEach(Thread::interrupt);
             }
         };
         BridgeClient client = new BridgeClient(transport, json, diagnostics, timeoutObserver);
@@ -123,60 +152,50 @@ public final class BridgeClient implements AutoCloseable {
         }
     }
 
-    @SuppressWarnings("preview")
-    private Thread timeoutWatcher(String id, PendingRequest pendingRequest, Duration requested, Duration effective) {
-        return Thread.ofVirtual().name("debugbridge-timeout").unstarted(() -> {
-            try (var scope = StructuredTaskScope.open(StructuredTaskScope.Joiner.awaitAllSuccessfulOrThrow(), config -> config.withName("debugbridge-timeout").withTimeout(effective))) {
-                scope.fork(() -> {
-                    Thread.sleep(Long.MAX_VALUE);
-                    return null;
-                });
-                scope.join();
-            } catch (ExecutionException ignored) {
-                completeExceptionally(id, pendingRequest, new IllegalStateException(timeoutMessage(requested, effective)));
-            } catch (InterruptedException | CancellationException ignored) {
-                // The request completed, was cancelled, or the client closed.
-            }
-        });
+    private static long remainingNanos(long deadline) {
+        return Math.max(0, deadline - System.nanoTime());
     }
 
-    public CompletionStage<BridgeResponse> send(BridgeEndpoint endpoint, BridgePayload payload, Duration endpointTimeout) {
+    static IOException failure(Throwable cause) {
+        return switch (cause) {
+            case IOException io -> io;
+            case RuntimeException runtime -> throw runtime;
+            case Error error -> throw error;
+            default -> new IOException(cause);
+        };
+    }
+
+    /**
+     * Sends one request and blocks until its response arrives, the effective timeout
+     * elapses or the caller is interrupted; the request is unpublished on every exit.
+     */
+    public BridgeResponse send(BridgeEndpoint endpoint, BridgePayload payload, Duration endpointTimeout) throws IOException, InterruptedException {
         Objects.requireNonNull(endpoint, "endpoint");
         Duration effectiveTimeout = effectiveTimeout(endpointTimeout);
         timeoutObserver.accept(effectiveTimeout);
-        BridgeRequest request;
         PendingRequest pendingRequest;
         synchronized (stateLock) {
             if (closed) {
-                return CompletableFuture.failedFuture(new IllegalStateException("DebugBridge client is closed"));
+                throw new IllegalStateException("DebugBridge client is closed");
             }
-            request = new BridgeRequest("req_" + requestCounter.incrementAndGet(), endpoint, payload);
+            BridgeRequest request = new BridgeRequest("req_" + requestCounter.incrementAndGet(), endpoint, payload);
             pendingRequest = new PendingRequest(request, new CompletableFuture<>());
             pending.put(request.id(), pendingRequest);
-            pendingRequest.future.whenComplete((_, _) -> {
-                if (pendingRequest.future.isCancelled() && pending.remove(request.id(), pendingRequest)) {
-                    pendingRequest.cancelTimeout();
-                }
-            });
-            pendingRequest.timeout = timeoutWatcher(request.id(), pendingRequest, endpointTimeout, effectiveTimeout);
-            pendingRequest.timeout.start();
         }
+        long deadline = System.nanoTime() + effectiveTimeout.toNanos();
         try {
-            CompletionStage<?> sent = transport.send(request, json.writeRequest(request));
-            if (sent == null) {
-                completeExceptionally(request.id(), pendingRequest, new IllegalStateException("DebugBridge transport returned no send stage"));
+            if (Thread.interrupted()) {
+                throw new InterruptedException("DebugBridge send cancelled");
             }
-            else {
-                sent.whenComplete((ignored, failure) -> {
-                    if (failure != null) {
-                        completeExceptionally(request.id(), pendingRequest, failure);
-                    }
-                });
-            }
-        } catch (RuntimeException exception) {
-            completeExceptionally(request.id(), pendingRequest, exception);
+            transport.send(pendingRequest.request(), json.writeRequest(pendingRequest.request()), effectiveTimeout);
+            return pendingRequest.response().get(remainingNanos(deadline), TimeUnit.NANOSECONDS);
+        } catch (TimeoutException exception) {
+            throw new IllegalStateException(timeoutMessage(endpointTimeout, effectiveTimeout));
+        } catch (ExecutionException exception) {
+            throw failure(exception.getCause());
+        } finally {
+            pending.remove(pendingRequest.request().id(), pendingRequest);
         }
-        return pendingRequest.future;
     }
 
     void receiveText(CharSequence text, boolean last) {
@@ -210,7 +229,7 @@ public final class BridgeClient implements AutoCloseable {
     void receiveMessage(String message) {
         try {
             BridgeResponse response = json.readResponse(message);
-            completeById(response.id(), response);
+            complete(response.id(), response);
         } catch (IllegalArgumentException exception) {
             diagnostics.accept("Ignoring malformed DebugBridge response: " + BridgePayloadValidator.safeDisplay(exception.getMessage()));
         }
@@ -247,35 +266,22 @@ public final class BridgeClient implements AutoCloseable {
         terminate(new IllegalStateException("DebugBridge client is closed"));
     }
 
-    private void completeById(String id, Object value) {
-        PendingRequest pendingRequest = pending.get(id);
+    private void complete(String id, BridgeResponse response) {
+        PendingRequest pendingRequest = pending.remove(id);
         if (pendingRequest == null) {
             diagnostics.accept("Ignoring unmatched DebugBridge response " + BridgePayloadValidator.safeDisplay(id));
             return;
         }
-        if (value instanceof BridgeResponse response) {
-            complete(id, pendingRequest, response);
-        }
-        else if (value instanceof Throwable failure) {
-            completeExceptionally(id, pendingRequest, failure);
-        }
-        else {
-            completeExceptionally(id, pendingRequest, new IllegalStateException("DebugBridge test transport completed with an invalid value"));
-        }
+        pendingRequest.response().complete(response);
     }
 
-    private void complete(String id, PendingRequest pendingRequest, BridgeResponse response) {
-        if (pending.remove(id, pendingRequest)) {
-            pendingRequest.future.complete(response);
-            pendingRequest.cancelTimeout();
+    private void fail(String id, Throwable failure) {
+        PendingRequest pendingRequest = pending.remove(id);
+        if (pendingRequest == null) {
+            diagnostics.accept("Ignoring unmatched DebugBridge response " + BridgePayloadValidator.safeDisplay(id));
+            return;
         }
-    }
-
-    private void completeExceptionally(String id, PendingRequest pendingRequest, Throwable failure) {
-        if (pending.remove(id, pendingRequest)) {
-            pendingRequest.future.completeExceptionally(failure);
-            pendingRequest.cancelTimeout();
-        }
+        pendingRequest.response().completeExceptionally(failure);
     }
 
     private void terminate(Throwable failure) {
@@ -290,7 +296,9 @@ public final class BridgeClient implements AutoCloseable {
             callback = closedCallback;
         }
         for (PendingRequest pendingRequest : outstanding) {
-            completeExceptionally(pendingRequest.request.id(), pendingRequest, failure);
+            if (pending.remove(pendingRequest.request().id(), pendingRequest)) {
+                pendingRequest.response().completeExceptionally(failure);
+            }
         }
         try {
             transport.close();
@@ -300,8 +308,13 @@ public final class BridgeClient implements AutoCloseable {
         callback.accept(this);
     }
 
+    @FunctionalInterface
+    interface Peer {
+        BridgeResponse answer(BridgeRequest request) throws Exception;
+    }
+
     interface Transport {
-        CompletionStage<?> send(BridgeRequest request, String text);
+        void send(BridgeRequest request, String text, Duration timeout) throws IOException, InterruptedException, TimeoutException;
 
         default void close() {
         }
@@ -342,13 +355,13 @@ public final class BridgeClient implements AutoCloseable {
             else {
                 socket.request(1);
             }
-            return CompletableFuture.completedFuture(null);
+            return null;
         }
 
         @Override
         public CompletionStage<?> onClose(WebSocket socket, int statusCode, String reason) {
             terminate(new IllegalStateException("DebugBridge closed: " + statusCode));
-            return CompletableFuture.completedFuture(null);
+            return null;
         }
 
         @Override
@@ -391,10 +404,38 @@ public final class BridgeClient implements AutoCloseable {
         }
     }
 
-    private record WebSocketTransport(WebSocket socket) implements Transport {
+    /**
+     * WebSocket permits one outstanding text send, so sends are serialized, and a send
+     * abandoned by a timed-out or interrupted caller is awaited by the next sender.
+     */
+    private static final class WebSocketTransport implements Transport {
+        private final WebSocket socket;
+        private final ReentrantLock sendLock = new ReentrantLock();
+        private CompletableFuture<WebSocket> lastSend = CompletableFuture.completedFuture(null);
+
+        private WebSocketTransport(WebSocket socket) {
+            this.socket = socket;
+        }
+
         @Override
-        public CompletionStage<?> send(BridgeRequest request, String text) {
-            return socket.sendText(text, true);
+        public void send(BridgeRequest request, String text, Duration timeout) throws IOException, InterruptedException, TimeoutException {
+            long deadline = System.nanoTime() + timeout.toNanos();
+            if (!sendLock.tryLock(timeout.toNanos(), TimeUnit.NANOSECONDS)) {
+                throw new TimeoutException();
+            }
+            try {
+                try {
+                    lastSend.get(remainingNanos(deadline), TimeUnit.NANOSECONDS);
+                } catch (ExecutionException ignored) {
+                    // The abandoned send failed; its own caller has already given up.
+                }
+                lastSend = socket.sendText(text, true);
+                lastSend.get(remainingNanos(deadline), TimeUnit.NANOSECONDS);
+            } catch (ExecutionException exception) {
+                throw failure(exception.getCause());
+            } finally {
+                sendLock.unlock();
+            }
         }
 
         @Override
@@ -406,20 +447,6 @@ public final class BridgeClient implements AutoCloseable {
     private record TextFragment(String text, boolean last) {
     }
 
-    private static final class PendingRequest {
-        private final BridgeRequest request;
-        private final CompletableFuture<BridgeResponse> future;
-        private Thread timeout;
-
-        private PendingRequest(BridgeRequest request, CompletableFuture<BridgeResponse> future) {
-            this.request = request;
-            this.future = future;
-        }
-
-        private void cancelTimeout() {
-            if (timeout != null) {
-                timeout.interrupt();
-            }
-        }
+    private record PendingRequest(BridgeRequest request, CompletableFuture<BridgeResponse> response) {
     }
 }

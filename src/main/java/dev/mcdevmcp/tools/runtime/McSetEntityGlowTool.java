@@ -3,7 +3,7 @@ package dev.mcdevmcp.tools.runtime;
 import dev.mcdevmcp.bridge.BridgeEndpoint;
 import dev.mcdevmcp.bridge.payload.SetEntityGlowPayload;
 import dev.mcdevmcp.mcp.tool.ToolDeclaration;
-import dev.mcdevmcp.mcp.tool.api.ContentToolBinding;
+import dev.mcdevmcp.mcp.tool.api.BlockingToolHandler;
 
 final class McSetEntityGlowTool {
     static final ToolDeclaration<EntityGlowArguments> DECLARATION = ToolDeclaration.of("mc_set_entity_glow", EntityGlowArguments.class);
@@ -13,7 +13,7 @@ final class McSetEntityGlowTool {
     private McSetEntityGlowTool() {
     }
 
-    static ContentToolBinding<EntityGlowArguments> binding(MediaToolSupport support) {
-        return DECLARATION.bind((arguments, _) -> support.acknowledgement(ENDPOINT, new SetEntityGlowPayload(arguments.entityId(), arguments.glow())));
+    static BlockingToolHandler<EntityGlowArguments> handler(MediaToolSupport support) {
+        return (arguments, _) -> support.acknowledgement(ENDPOINT, new SetEntityGlowPayload(arguments.entityId(), arguments.glow()));
     }
 }

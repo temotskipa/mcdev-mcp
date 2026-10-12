@@ -2,7 +2,7 @@ package dev.mcdevmcp.tools.runtime;
 
 import dev.mcdevmcp.bridge.BridgeEndpoint;
 import dev.mcdevmcp.mcp.tool.ToolDeclaration;
-import dev.mcdevmcp.mcp.tool.api.ContentToolBinding;
+import dev.mcdevmcp.mcp.tool.api.BlockingToolHandler;
 
 final class McSnapshotTool {
     static final ToolDeclaration<RuntimeEmptyArguments> DECLARATION = ToolDeclaration.of("mc_snapshot", RuntimeEmptyArguments.class);
@@ -12,7 +12,7 @@ final class McSnapshotTool {
     private McSnapshotTool() {
     }
 
-    static ContentToolBinding<RuntimeEmptyArguments> binding(RuntimeToolSupport support) {
-        return DECLARATION.bind((_, _) -> support.container(ENDPOINT, RuntimeToolSupport.EMPTY_PAYLOAD));
+    static BlockingToolHandler<RuntimeEmptyArguments> handler(RuntimeToolSupport support) {
+        return (_, _) -> support.container(ENDPOINT, RuntimeToolSupport.EMPTY_PAYLOAD);
     }
 }

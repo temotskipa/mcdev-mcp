@@ -1,4 +1,4 @@
 /**
- * DebugBridge v2 wire envelopes and the nonblocking Minecraft-session boundary.
+ * DebugBridge v2 wire envelopes and the blocking Minecraft-session boundary.
  */
 package dev.mcdevmcp.bridge;

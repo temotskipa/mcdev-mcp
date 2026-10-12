@@ -1,7 +1,7 @@
 package dev.mcdevmcp.tools.runtime;
 
 import dev.mcdevmcp.mcp.tool.ToolDeclaration;
-import dev.mcdevmcp.mcp.tool.api.ContentToolBinding;
+import dev.mcdevmcp.mcp.tool.api.BlockingToolHandler;
 import dev.mcdevmcp.mcp.tool.api.ContentToolResult;
 import dev.mcdevmcp.mcp.tool.api.ToolResult;
 
@@ -11,8 +11,14 @@ final class McWaitUntilInWorldTool {
     private McWaitUntilInWorldTool() {
     }
 
-    static ContentToolBinding<WaitUntilInWorldArguments> binding(SessionControlSupport support) {
-        return DECLARATION.bind((arguments, cancellation) -> SessionControlSupport.recoverTool(SessionControlSupport.mapCancellable(support.waitUntilInWorld(arguments.timeoutSeconds(), arguments.requireAbsenceFirst(), cancellation), McWaitUntilInWorldTool::render)));
+    static BlockingToolHandler<WaitUntilInWorldArguments> handler(SessionControlSupport support) {
+        return (arguments, cancellation) -> {
+            try {
+                return render(support.waitUntilInWorld(arguments.timeoutSeconds(), arguments.requireAbsenceFirst(), cancellation));
+            } catch (RuntimeException failure) {
+                return ToolResult.error(SessionControlSupport.message(failure));
+            }
+        };
     }
 
     private static ContentToolResult<Void> render(InWorldWaitResult outcome) {

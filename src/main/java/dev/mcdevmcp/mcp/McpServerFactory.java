@@ -5,7 +5,7 @@ import dev.mcdevmcp.mcp.resource.ResourceCatalog;
 import dev.mcdevmcp.mcp.tool.ToolCatalog;
 import dev.mcdevmcp.mcp.tool.ToolDeclarations;
 import dev.mcdevmcp.mcp.tool.ToolDefinition;
-import dev.mcdevmcp.mcp.tool.api.ContentToolBinding;
+import dev.mcdevmcp.mcp.tool.api.BlockingToolHandler;
 import dev.mcdevmcp.mcp.tool.api.ToolBinding;
 import dev.mcdevmcp.mcp.transport.McpSdkAdapter;
 import dev.mcdevmcp.mcp.transport.StdioServer;
@@ -335,7 +335,7 @@ public final class McpServerFactory implements AutoCloseable {
         }
 
         private <A> void addLazyBinding(Map<String, ToolBinding<?>> bindings, RuntimeBindingDeclaration<A> declaration) {
-            bindings.put(declaration.name(), declaration.lazyBinding(() -> activeBinding(declaration)));
+            bindings.put(declaration.name(), declaration.lazyBinding(() -> activeHandler(declaration)));
         }
 
         private synchronized void activate() {
@@ -381,9 +381,9 @@ public final class McpServerFactory implements AutoCloseable {
             return context != null;
         }
 
-        private <A> ContentToolBinding<A> activeBinding(RuntimeBindingDeclaration<A> declaration) {
+        private synchronized <A> BlockingToolHandler<A> activeHandler(RuntimeBindingDeclaration<A> declaration) {
             activate();
-            return declaration.activeBinding();
+            return declaration.activeHandler();
         }
 
 

@@ -1,13 +1,13 @@
 package dev.mcdevmcp.tools.runtime;
 
 import dev.mcdevmcp.bridge.BridgeEndpoint;
+import dev.mcdevmcp.bridge.BridgeResponse;
 import dev.mcdevmcp.bridge.payload.JoinServerPayload;
 import dev.mcdevmcp.mcp.tool.ToolDeclaration;
 import dev.mcdevmcp.mcp.tool.api.*;
 
+import java.io.IOException;
 import java.time.Duration;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionStage;
 
 final class McJoinServerTool {
     static final ToolDeclaration<JoinServerArguments> DECLARATION = ToolDeclaration.of("mc_join_server", JoinServerArguments.class);
@@ -18,31 +18,41 @@ final class McJoinServerTool {
     private McJoinServerTool() {
     }
 
-    static ContentToolBinding<JoinServerArguments> binding(RuntimeToolSupport runtime, SessionControlSupport sessionControl) {
-        return DECLARATION.bind((arguments, cancellation) -> SessionControlSupport.recoverTool(SessionControlSupport.composeCancellable(sessionControl.checkSessionControlEnabled(), disabled -> {
-            if (disabled != null) {
-                return ToolHandlers.completed(ToolResult.error(disabled));
+    static BlockingToolHandler<JoinServerArguments> handler(RuntimeToolSupport runtime, SessionControlSupport sessionControl) {
+        return (arguments, cancellation) -> {
+            try {
+                String disabled = sessionControl.checkSessionControlEnabled();
+                if (disabled != null) {
+                    return ToolResult.error(disabled);
+                }
+                boolean requireAbsenceFirst = arguments.waitForWorld() && inWorldBeforeJoin(sessionControl);
+                return sendJoin(runtime, sessionControl, arguments, cancellation, requireAbsenceFirst);
+            } catch (IOException | RuntimeException failure) {
+                return ToolResult.error(SessionControlSupport.message(failure));
             }
-            CompletionStage<Boolean> absenceGate = arguments.waitForWorld() ? preJoinAbsenceGate(sessionControl) : CompletableFuture.completedFuture(false);
-            return SessionControlSupport.composeCancellable(absenceGate, requireAbsenceFirst -> sendJoin(runtime, sessionControl, arguments, cancellation, requireAbsenceFirst));
-        })));
+        };
     }
 
-    private static CompletionStage<Boolean> preJoinAbsenceGate(SessionControlSupport sessionControl) {
-        return SessionControlSupport.handleCancellable(sessionControl.send(SNAPSHOT, RuntimeToolSupport.EMPTY_PAYLOAD, null), (response, failure) -> failure == null && response.success() && SessionControlSupport.classifyInWorldPoll(response.result(), null) instanceof InWorldPollResult.Joined);
+    private static boolean inWorldBeforeJoin(SessionControlSupport sessionControl) throws InterruptedException {
+        BridgeResponse response;
+        try {
+            response = sessionControl.send(SNAPSHOT, RuntimeToolSupport.EMPTY_PAYLOAD, null);
+        } catch (IOException | RuntimeException ignored) {
+            return false;
+        }
+        return response.success() && SessionControlSupport.classifyInWorldPoll(response.result(), null) instanceof InWorldPollResult.Joined;
     }
 
-    private static CompletionStage<ContentToolResult<Void>> sendJoin(RuntimeToolSupport runtime, SessionControlSupport sessionControl, JoinServerArguments arguments, ToolCancellation cancellation, boolean requireAbsenceFirst) {
-        return SessionControlSupport.composeCancellable(sessionControl.send(ENDPOINT, new JoinServerPayload(arguments.address().value(), arguments.acceptResourcePacks()), Duration.ofSeconds(65)), response -> {
-            ContentToolResult<Void> failure = RuntimeToolSupport.declaredFailure(response);
-            if (failure != null) {
-                return ToolHandlers.completed(failure);
-            }
-            if (!arguments.waitForWorld()) {
-                return ToolHandlers.completed(ToolResult.text("Join accepted (connect started): " + McLeaveServerTool.safeResult(runtime, response) + "\nUse mc_wait_until_in_world to confirm the outcome."));
-            }
-            return SessionControlSupport.mapCancellable(sessionControl.waitUntilInWorld(arguments.timeoutSeconds(), requireAbsenceFirst, cancellation), outcome -> renderOutcome(arguments.address().value(), outcome));
-        });
+    private static ContentToolResult<Void> sendJoin(RuntimeToolSupport runtime, SessionControlSupport sessionControl, JoinServerArguments arguments, ToolCancellation cancellation, boolean requireAbsenceFirst) throws IOException, InterruptedException {
+        BridgeResponse response = sessionControl.send(ENDPOINT, new JoinServerPayload(arguments.address().value(), arguments.acceptResourcePacks()), Duration.ofSeconds(65));
+        ContentToolResult<Void> failure = RuntimeToolSupport.declaredFailure(response);
+        if (failure != null) {
+            return failure;
+        }
+        if (!arguments.waitForWorld()) {
+            return ToolResult.text("Join accepted (connect started): " + McLeaveServerTool.safeResult(runtime, response) + "\nUse mc_wait_until_in_world to confirm the outcome.");
+        }
+        return renderOutcome(arguments.address().value(), sessionControl.waitUntilInWorld(arguments.timeoutSeconds(), requireAbsenceFirst, cancellation));
     }
 
     private static ContentToolResult<Void> renderOutcome(String address, InWorldWaitResult outcome) {

@@ -23,7 +23,6 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -56,15 +55,15 @@ class MediaRuntimeToolContractTest {
         }
     }
 
-    private static CompletableFuture<BridgeResponse> respond(RequestFixture request, BridgeFixture bridge, BridgeRequest wireRequest) {
+    private static BridgeResponse respond(RequestFixture request, BridgeFixture bridge, BridgeRequest wireRequest) {
         String endpoint = wireRequest.endpoint().wireName();
         if (endpoint.equals("status")) {
-            return CompletableFuture.completedFuture(RuntimeContractFixtures.status(wireRequest.id()));
+            return RuntimeContractFixtures.status(wireRequest.id());
         }
         if (!request.endpoint().equals(endpoint)) {
-            return CompletableFuture.failedFuture(new IllegalStateException("Unexpected endpoint " + endpoint + " for " + request.label()));
+            throw new IllegalStateException("Unexpected endpoint " + endpoint + " for " + request.label());
         }
-        return CompletableFuture.completedFuture(new BridgeResponse(wireRequest.id(), Boolean.TRUE.equals(bridge.success()), Boolean.TRUE.equals(bridge.resultPresent()), RuntimeContractFixtures.nativeResult(bridge.result()), bridge.output(), bridge.error()));
+        return new BridgeResponse(wireRequest.id(), Boolean.TRUE.equals(bridge.success()), Boolean.TRUE.equals(bridge.resultPresent()), RuntimeContractFixtures.nativeResult(bridge.result()), bridge.output(), bridge.error());
     }
 
     private static void assertWireRequest(RequestFixture fixture, List<BridgeRequest> actual) {
@@ -166,9 +165,9 @@ class MediaRuntimeToolContractTest {
         String oversized = "a".repeat(MediaToolSupport.MAX_BASE64_PNG_BYTES + 1);
         try (var harness = new BridgeTestHarness(MAPPER, ENVIRONMENT, (_, request) -> {
             if (request.endpoint().wireName().equals("status")) {
-                return CompletableFuture.completedFuture(RuntimeContractFixtures.status(request.id()));
+                return RuntimeContractFixtures.status(request.id());
             }
-            return CompletableFuture.completedFuture(new BridgeResponse(request.id(), true, true, Map.of("base64Png", oversized, "width", 16, "height", 16, "spriteName", "minecraft:item/diamond"), null, null));
+            return new BridgeResponse(request.id(), true, true, Map.of("base64Png", oversized, "width", 16, "height", 16, "spriteName", "minecraft:item/diamond"), null, null);
         })) {
             ToolCatalog catalog = ToolCatalog.load(ENVIRONMENT, CompleteToolBindings.including(MAPPER, RuntimeToolModule.handlers(harness.session(), MAPPER)), MAPPER);
 
@@ -198,7 +197,7 @@ class MediaRuntimeToolContractTest {
 
     @Test
     void appendsExactlyEightMutableMediaBindingsAfterTheCoreGroup() {
-        try (var harness = new BridgeTestHarness(MAPPER, ENVIRONMENT, (_, request) -> CompletableFuture.completedFuture(RuntimeContractFixtures.status(request.id())))) {
+        try (var harness = new BridgeTestHarness(MAPPER, ENVIRONMENT, (_, request) -> RuntimeContractFixtures.status(request.id()))) {
             Map<String, ?> handlers = RuntimeToolModule.handlers(harness.session(), MAPPER);
             List<String> names = List.copyOf(handlers.keySet());
             List<String> mediaNames = List.of("mc_screenshot", "mc_record_video", "mc_get_item_texture", "mc_get_entity_item_texture", "mc_get_item_texture_by_id", "mc_set_entity_glow", "mc_set_block_glow", "mc_clear_block_glow");

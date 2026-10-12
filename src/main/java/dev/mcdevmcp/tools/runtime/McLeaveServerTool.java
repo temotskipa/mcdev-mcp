@@ -3,11 +3,11 @@ package dev.mcdevmcp.tools.runtime;
 import dev.mcdevmcp.bridge.BridgeEndpoint;
 import dev.mcdevmcp.bridge.BridgeResponse;
 import dev.mcdevmcp.mcp.tool.ToolDeclaration;
-import dev.mcdevmcp.mcp.tool.api.ContentToolBinding;
+import dev.mcdevmcp.mcp.tool.api.BlockingToolHandler;
 import dev.mcdevmcp.mcp.tool.api.ContentToolResult;
-import dev.mcdevmcp.mcp.tool.api.ToolHandlers;
 import dev.mcdevmcp.mcp.tool.api.ToolResult;
 
+import java.io.IOException;
 
 final class McLeaveServerTool {
     static final ToolDeclaration<RuntimeEmptyArguments> DECLARATION = ToolDeclaration.of("mc_leave_server", RuntimeEmptyArguments.class);
@@ -17,16 +17,20 @@ final class McLeaveServerTool {
     private McLeaveServerTool() {
     }
 
-    static ContentToolBinding<RuntimeEmptyArguments> binding(RuntimeToolSupport runtime, SessionControlSupport sessionControl) {
-        return DECLARATION.bind((_, _) -> SessionControlSupport.recoverTool(SessionControlSupport.composeCancellable(sessionControl.checkSessionControlEnabled(), disabled -> {
-            if (disabled != null) {
-                return ToolHandlers.completed(ToolResult.error(disabled));
-            }
-            return SessionControlSupport.mapCancellable(sessionControl.send(ENDPOINT, RuntimeToolSupport.EMPTY_PAYLOAD, null), response -> {
+    static BlockingToolHandler<RuntimeEmptyArguments> handler(RuntimeToolSupport runtime, SessionControlSupport sessionControl) {
+        return (_, _) -> {
+            try {
+                String disabled = sessionControl.checkSessionControlEnabled();
+                if (disabled != null) {
+                    return ToolResult.error(disabled);
+                }
+                BridgeResponse response = sessionControl.send(ENDPOINT, RuntimeToolSupport.EMPTY_PAYLOAD, null);
                 ContentToolResult<Void> failure = RuntimeToolSupport.declaredFailure(response);
                 return failure == null ? ToolResult.text("Disconnect queued: " + safeResult(runtime, response)) : failure;
-            });
-        })));
+            } catch (IOException | RuntimeException failure) {
+                return ToolResult.error(SessionControlSupport.message(failure));
+            }
+        };
     }
 
     static String safeResult(RuntimeToolSupport runtime, BridgeResponse response) {

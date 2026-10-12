@@ -2,18 +2,14 @@ package dev.mcdevmcp.tools.runtime;
 
 import dev.mcdevmcp.bridge.SessionInfo;
 import dev.mcdevmcp.mcp.tool.ToolDeclaration;
-import dev.mcdevmcp.mcp.tool.api.ContentToolBinding;
+import dev.mcdevmcp.mcp.tool.api.BlockingToolHandler;
 import dev.mcdevmcp.mcp.tool.api.ContentToolResult;
-import dev.mcdevmcp.mcp.tool.api.ToolHandlers;
 import dev.mcdevmcp.mcp.tool.api.ToolResult;
 
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
-import java.util.concurrent.CompletionException;
-import java.util.concurrent.CompletionStage;
-import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.concurrent.ExecutionException;
 
 final class McWaitForBridgeTool {
     static final ToolDeclaration<WaitForBridgeArguments> DECLARATION = ToolDeclaration.of("mc_wait_for_bridge", WaitForBridgeArguments.class);
@@ -21,19 +17,20 @@ final class McWaitForBridgeTool {
     private McWaitForBridgeTool() {
     }
 
-    static ContentToolBinding<WaitForBridgeArguments> binding(SessionControlSupport support) {
-        return DECLARATION.bind((arguments, cancellation) -> {
-            List<String> notes = new CopyOnWriteArrayList<>();
+    static BlockingToolHandler<WaitForBridgeArguments> handler(SessionControlSupport support) {
+        return (arguments, cancellation) -> {
+            List<String> notes = new ArrayList<>();
             ExpectedInstance expected = expectedInstance(support, arguments);
-            CompletionStage<FoundBridge> wait = support.waitForBridge(expected, arguments.timeoutSeconds(), notes, cancellation);
-            CompletionStage<WaitAttempt> attempted = SessionControlSupport.handleCancellable(wait, WaitAttempt::new);
-            return SessionControlSupport.composeCancellable(attempted, attempt -> {
-                if (attempt.failure() != null) {
-                    return ToolHandlers.completed(ToolResult.error(errorWithNotes(attempt.failure(), notes)));
-                }
-                return SessionControlSupport.handleCancellable(support.adoptPort(attempt.found().port()), (info, failure) -> failure == null ? renderSuccess(info, attempt.found().port(), notes) : ToolResult.error(errorWithNotes(failure, notes)));
-            });
-        });
+            FoundBridge found;
+            SessionInfo info;
+            try {
+                found = support.waitForBridge(expected, arguments.timeoutSeconds(), notes, cancellation);
+                info = support.adoptPort(found.port());
+            } catch (IOException | RuntimeException failure) {
+                return ToolResult.error(errorWithNotes(failure, notes));
+            }
+            return renderSuccess(info, found.port(), notes);
+        };
     }
 
     private static ExpectedInstance expectedInstance(SessionControlSupport support, WaitForBridgeArguments arguments) {
@@ -44,25 +41,16 @@ final class McWaitForBridgeTool {
     }
 
     private static ContentToolResult<Void> renderSuccess(SessionInfo info, int port, List<String> notes) {
-        List<String> noteSnapshot = List.copyOf(notes);
         List<String> lines = new ArrayList<>();
         lines.add("Connected: Minecraft " + info.version().value() + " on port " + port + ".");
         info.gameDir().ifPresent(path -> lines.add("Game dir: " + path));
         info.sessionControlEnabled().ifPresent(enabled -> lines.add("Session control: " + (enabled ? "enabled" : "disabled")));
-        noteSnapshot.forEach(note -> lines.add("Note: " + note));
+        notes.forEach(note -> lines.add("Note: " + note));
         return ToolResult.text(String.join("\n", lines));
     }
 
     private static String errorWithNotes(Throwable failure, List<String> notes) {
-        List<String> noteSnapshot = List.copyOf(notes);
-        Throwable current = failure;
-        while ((current instanceof CompletionException || current instanceof ExecutionException) && current.getCause() != null) {
-            current = current.getCause();
-        }
-        String message = current.getMessage() == null ? current.toString() : current.getMessage();
-        return noteSnapshot.isEmpty() ? message : message + "\n" + String.join("\n", noteSnapshot.stream().map(note -> "Note: " + note).toList());
-    }
-
-    private record WaitAttempt(FoundBridge found, Throwable failure) {
+        String message = SessionControlSupport.message(failure);
+        return notes.isEmpty() ? message : message + "\n" + String.join("\n", notes.stream().map(note -> "Note: " + note).toList());
     }
 }

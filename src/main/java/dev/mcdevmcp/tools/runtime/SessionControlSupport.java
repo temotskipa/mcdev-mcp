@@ -1,9 +1,7 @@
 package dev.mcdevmcp.tools.runtime;
 
 import dev.mcdevmcp.bridge.*;
-import dev.mcdevmcp.mcp.tool.api.ContentToolResult;
 import dev.mcdevmcp.mcp.tool.api.ToolCancellation;
-import dev.mcdevmcp.mcp.tool.api.ToolResult;
 import dev.mcdevmcp.storage.model.MinecraftVersion;
 import dev.mcdevmcp.support.AppEnvironment;
 import dev.mcdevmcp.support.ScopeOutcomes;
@@ -18,13 +16,11 @@ import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.function.BiFunction;
-import java.util.function.Function;
 import java.util.function.Supplier;
 
 /**
- * CompletionStage is retained at the boundary; the implementation uses
- * interruptible, sequential code inside structured task scopes.
+ * Blocking, interruptible session control; every wait runs under a structured
+ * task scope that owns its deadline.
  */
 final value class SessionControlSupport {
     static final int BRIDGE_PORT_START = 9876;
@@ -35,7 +31,6 @@ final value class SessionControlSupport {
 
     private static final Duration POLL_INTERVAL = Duration.ofSeconds(1);
     private static final Duration PROCESS_POLL_INTERVAL = Duration.ofMillis(250);
-    private static final Duration CANCELLATION_POLL_INTERVAL = Duration.ofMillis(50);
     private static final Duration PID_PROBE_TIMEOUT = Duration.ofSeconds(4);
     private static final BridgeEndpoint SNAPSHOT = new BridgeEndpoint("snapshot");
     private static final BridgeEndpoint SCREEN_INSPECT = new BridgeEndpoint("screenInspect");
@@ -58,50 +53,6 @@ final value class SessionControlSupport {
         this.listeningPidResolver = Objects.requireNonNull(listeningPidResolver, "listeningPidResolver");
     }
 
-    static <T, R> CompletionStage<R> mapCancellable(CompletionStage<T> stage, Function<T, R> mapper) {
-        Objects.requireNonNull(stage, "stage");
-        Objects.requireNonNull(mapper, "mapper");
-        return async(stage, () -> {
-            T value = await(stage);
-            checkInterrupted();
-            return mapper.apply(value);
-        });
-    }
-
-    static <T, R> CompletionStage<R> composeCancellable(CompletionStage<T> stage, Function<T, CompletionStage<R>> mapper) {
-        Objects.requireNonNull(stage, "stage");
-        Objects.requireNonNull(mapper, "mapper");
-        return async(stage, () -> {
-            T value = await(stage);
-            checkInterrupted();
-            return await(Objects.requireNonNull(mapper.apply(value), "Composed runtime operation returned no stage"));
-        });
-    }
-
-    static <T, R> CompletionStage<R> handleCancellable(CompletionStage<T> stage, BiFunction<T, Throwable, R> handler) {
-        Objects.requireNonNull(stage, "stage");
-        Objects.requireNonNull(handler, "handler");
-        return async(stage, () -> {
-            T value = null;
-            Throwable failure = null;
-            try {
-                value = await(stage);
-            } catch (ExecutionException exception) {
-                failure = exception.getCause();
-            } catch (CancellationException exception) {
-                // Upstream cancellation is an input to the handler. Interruption
-                // of this operation is not, and propagates out of await().
-                failure = exception;
-            }
-            checkInterrupted();
-            return handler.apply(value, failure);
-        });
-    }
-
-    static CompletionStage<ContentToolResult<Void>> recoverTool(CompletionStage<ContentToolResult<Void>> stage) {
-        return handleCancellable(stage, (value, failure) -> failure == null ? value : ToolResult.error(message(failure)));
-    }
-
     private static String bridgeTimeoutMessage(ExpectedInstance expected, Duration timeout, Map<Integer, String> mismatches) {
         String expectedDescription = expected.gameDirectory().map(Path::toString).orElseGet(() -> expected.version().map(MinecraftVersion::value).orElse("any instance"));
         String seen = mismatches.isEmpty() ? "" : " Other instances answered: " + String.join(", ", mismatches.entrySet().stream().map(entry -> "port " + entry.getKey() + " → " + entry.getValue()).toList()) + ".";
@@ -110,31 +61,22 @@ final value class SessionControlSupport {
     }
 
     /**
-     * Race the operation against tool cancellation with a scope-owned timeout.
-     * A failure must win just like a success; anySuccessfulOrThrow would leave
-     * the cancellation watcher running after a failed operation.
+     * Run the operation under a scope-owned deadline. Cancelling the tool call interrupts
+     * the caller, and closing the scope interrupts and joins the operation.
      */
     @SuppressWarnings("preview")
-    private static <T> T inScope(Duration timeout, ToolCancellation cancellation, Callable<T> work, Supplier<T> timedOut) throws Exception {
+    private static <T> T withinDeadline(Duration timeout, ToolCancellation cancellation, Callable<T> work, Supplier<T> timedOut) throws InterruptedException {
         checkCancelled(cancellation);
         long nanos = saturatedNanos(timeout);
         if (nanos == 0) {
             return timedOut.get();
         }
-        try (var scope = StructuredTaskScope.open(new FirstCompleted<T>(), config -> config.withName("session-control").withTimeout(Duration.ofNanos(nanos)))) {
+        try (var scope = StructuredTaskScope.open(StructuredTaskScope.Joiner.<T>anySuccessfulOrThrow(), config -> config.withName("session-control").withTimeout(Duration.ofNanos(nanos)))) {
             scope.fork(work);
-            if (cancellation != null) {
-                scope.fork(() -> {
-                    while (!cancellation.isCancelled()) {
-                        Thread.sleep(CANCELLATION_POLL_INTERVAL);
-                    }
-                    throw new CancellationException("Tool operation cancelled");
-                });
-            }
             return scope.join();
         } catch (ExecutionException exception) {
             if (ScopeOutcomes.timedOut(exception)) {
-                // close() has already joined the children; timeout reporting may
+                // close() has already joined the operation; timeout reporting may
                 // safely inspect state such as the phase or accumulated mismatches.
                 return timedOut.get();
             }
@@ -163,48 +105,6 @@ final value class SessionControlSupport {
         }
     }
 
-    /**
-     * Adapt existing async dependencies without blocking a platform thread.
-     * Cancellation of an arbitrary CompletionStage remains best-effort: its
-     * implementation must actually stop its work when its future is canceled.
-     */
-    private static <T> T await(CompletionStage<T> stage) throws InterruptedException, ExecutionException {
-        CompletableFuture<T> future = stage.toCompletableFuture();
-        try {
-            checkInterrupted();
-            return future.get();
-        } catch (InterruptedException exception) {
-            future.cancel(true);
-            throw exception;
-        } finally {
-            if (future.isCancelled() && future instanceof AsyncOperation<?> operation) {
-                // Our own adapters additionally guarantee that their resource
-                // cleanup has finished before an interrupted parent continues.
-                operation.awaitStopped();
-            }
-        }
-    }
-
-    private static <T> CompletionStage<T> async(Callable<T> work) {
-        return async(work, () -> {
-        });
-    }
-
-    private static <T> CompletionStage<T> async(CompletionStage<?> dependency, Callable<T> work) {
-        Objects.requireNonNull(dependency, "dependency");
-        return async(work, () -> dependency.toCompletableFuture().cancel(true));
-    }
-
-    private static <T> CompletionStage<T> async(Callable<T> work, Runnable cancelDependency) {
-        var result = new AsyncOperation<>(work, cancelDependency);
-        result.worker.start();
-        return result;
-    }
-
-    static boolean ownerStopped(CompletionStage<?> stage) {
-        return stage instanceof AsyncOperation<?> operation && operation.stopped.getCount() == 0;
-    }
-
     private static Throwable unwrap(Throwable failure) {
         Throwable current = failure;
         while ((current instanceof CompletionException || current instanceof ExecutionException) && current.getCause() != null) {
@@ -213,13 +113,13 @@ final value class SessionControlSupport {
         return current;
     }
 
-    private static String message(Throwable failure) {
+    static String message(Throwable failure) {
         Throwable cause = unwrap(failure);
         return cause.getMessage() == null ? cause.toString() : cause.getMessage();
     }
 
     private static PortListeningProbe defaultPortListeningProbe() {
-        return port -> async(() -> inScope(Duration.ofMillis(800), null, () -> {
+        return port -> Boolean.TRUE.equals(withinDeadline(Duration.ofMillis(800), null, () -> {
             checkInterrupted();
             // SocketChannel.connect is interruptible on virtual threads and the
             // scope retains the old 800ms per-port bound.
@@ -243,7 +143,7 @@ final value class SessionControlSupport {
         Objects.requireNonNull(processStarter, "processStarter");
         return port -> {
             List<String> command = listeningPidCommand(port);
-            return async(() -> inScope(PID_PROBE_TIMEOUT, null, () -> {
+            return withinDeadline(PID_PROBE_TIMEOUT, null, () -> {
                 checkInterrupted();
                 Process process;
                 try {
@@ -268,7 +168,7 @@ final value class SessionControlSupport {
                         Thread.currentThread().interrupt();
                     }
                 }
-            }, () -> null));
+            }, () -> null);
         };
     }
 
@@ -440,19 +340,19 @@ final value class SessionControlSupport {
         }
     }
 
-    CompletionStage<String> checkSessionControlEnabled() {
-        CompletionStage<SessionInfo> info = session.connectedPort().isPresent() ? CompletableFuture.completedFuture(session.sessionInfo().orElseThrow(() -> new IllegalStateException("DebugBridge connected without session information"))) : session.connect(null);
-        return mapCancellable(info, sessionInfo -> sessionInfo.sessionControlEnabled().filter(enabled -> !enabled).map(ignored -> sessionControlDisabledMessage(sessionInfo.gameDir().orElse(null))).orElse(null));
+    String checkSessionControlEnabled() throws IOException, InterruptedException {
+        SessionInfo info = session.connectedPort().isPresent() ? session.sessionInfo().orElseThrow(() -> new IllegalStateException("DebugBridge connected without session information")) : session.connect(null);
+        return info.sessionControlEnabled().filter(enabled -> !enabled).map(_ -> sessionControlDisabledMessage(info.gameDir().orElse(null))).orElse(null);
     }
 
-    CompletionStage<InWorldWaitResult> waitUntilInWorld(Duration timeout, boolean requireAbsenceFirst, ToolCancellation cancellation) {
+    InWorldWaitResult waitUntilInWorld(Duration timeout, boolean requireAbsenceFirst, ToolCancellation cancellation) throws InterruptedException {
         Objects.requireNonNull(cancellation, "cancellation");
         long started = ticker.readNanos();
         long budget = saturatedNanos(timeout);
-        return async(() -> inScope(remaining(started, budget), cancellation, () -> pollInWorld(started, budget, requireAbsenceFirst, cancellation), () -> inWorldResult(InWorldWaitResult.State.TIMEOUT, null, started)));
+        return withinDeadline(remaining(started, budget), cancellation, () -> pollInWorld(started, budget, requireAbsenceFirst, cancellation), () -> inWorldResult(InWorldWaitResult.State.TIMEOUT, null, started));
     }
 
-    CompletionStage<FoundBridge> waitForBridge(ExpectedInstance expected, Duration timeout, List<String> notes, ToolCancellation cancellation) {
+    FoundBridge waitForBridge(ExpectedInstance expected, Duration timeout, List<String> notes, ToolCancellation cancellation) throws InterruptedException {
         Objects.requireNonNull(expected, "expected");
         Objects.requireNonNull(notes, "notes");
         Objects.requireNonNull(cancellation, "cancellation");
@@ -462,22 +362,22 @@ final value class SessionControlSupport {
         Supplier<FoundBridge> timedOut = () -> {
             throw new IllegalStateException(bridgeTimeoutMessage(expected, timeout, mismatches));
         };
-        return async(() -> inScope(remaining(started, budget), cancellation, () -> pollBridge(expected, notes, mismatches, started, budget, cancellation, timedOut), timedOut));
+        return withinDeadline(remaining(started, budget), cancellation, () -> pollBridge(expected, notes, mismatches, started, budget, cancellation, timedOut), timedOut);
     }
 
-    CompletionStage<ClientExitResult> waitForClientExit(int port, Long pid, Duration timeout, ToolCancellation cancellation) {
+    ClientExitResult waitForClientExit(int port, Long pid, Duration timeout, ToolCancellation cancellation) throws InterruptedException {
         Objects.requireNonNull(cancellation, "cancellation");
         long started = ticker.readNanos();
         long budget = saturatedNanos(timeout);
         var phase = new AtomicReference<>(ClientExitResult.Phase.PORT);
-        return async(() -> inScope(remaining(started, budget), cancellation, () -> pollClientExit(port, pid, started, budget, cancellation, phase), () -> new ClientExitResult.Timeout(phase.get())));
+        return withinDeadline(remaining(started, budget), cancellation, () -> pollClientExit(port, pid, started, budget, cancellation, phase), () -> new ClientExitResult.Timeout(phase.get()));
     }
 
-    CompletionStage<Long> resolveListeningPid(int port) {
+    Long resolveListeningPid(int port) throws InterruptedException {
         return listeningPidResolver.resolve(port);
     }
 
-    CompletionStage<BridgeResponse> send(BridgeEndpoint endpoint, BridgePayload payload, Duration timeout) {
+    BridgeResponse send(BridgeEndpoint endpoint, BridgePayload payload, Duration timeout) throws IOException, InterruptedException {
         return session.send(endpoint, payload, timeout);
     }
 
@@ -490,7 +390,7 @@ final value class SessionControlSupport {
         return port.isPresent() ? OptionalLong.of(port.orElseThrow()) : OptionalLong.empty();
     }
 
-    CompletionStage<SessionInfo> adoptPort(int port) {
+    SessionInfo adoptPort(int port) throws IOException, InterruptedException {
         return session.adoptPort(port);
     }
 
@@ -526,9 +426,9 @@ final value class SessionControlSupport {
 
     private Object queryResult(BridgeEndpoint endpoint) throws InterruptedException {
         try {
-            BridgeResponse response = await(session.send(endpoint, RuntimeToolSupport.EMPTY_PAYLOAD, null));
+            BridgeResponse response = session.send(endpoint, RuntimeToolSupport.EMPTY_PAYLOAD, null);
             return response.success() ? response.result() : null;
-        } catch (ExecutionException | CancellationException ignored) {
+        } catch (IOException | RuntimeException ignored) {
             checkInterrupted();
             return null;
         }
@@ -549,8 +449,8 @@ final value class SessionControlSupport {
                 }
                 SessionInfo info;
                 try {
-                    info = await(session.probe(port));
-                } catch (ExecutionException | CancellationException ignored) {
+                    info = session.probe(port);
+                } catch (IOException | RuntimeException ignored) {
                     checkInterrupted();
                     continue;
                 }
@@ -575,8 +475,8 @@ final value class SessionControlSupport {
             }
             boolean listening;
             try {
-                listening = Boolean.TRUE.equals(await(portListeningProbe.isListening(port)));
-            } catch (ExecutionException | CancellationException ignored) {
+                listening = portListeningProbe.isListening(port);
+            } catch (RuntimeException ignored) {
                 checkInterrupted();
                 listening = true; // A failed probe is not evidence that the port closed.
             }
@@ -634,121 +534,17 @@ final value class SessionControlSupport {
 
     @FunctionalInterface
     interface PortListeningProbe {
-        CompletionStage<Boolean> isListening(int port);
+        boolean isListening(int port) throws InterruptedException;
     }
 
     @FunctionalInterface
     interface ListeningPidResolver {
-        CompletionStage<Long> resolve(int port);
+        Long resolve(int port) throws InterruptedException;
     }
 
     @FunctionalInterface
     interface ProcessStarter {
         Process start(List<String> command) throws IOException;
-    }
-
-    @SuppressWarnings("preview")
-    private static final class FirstCompleted<T> implements StructuredTaskScope.Joiner<T, T, ExecutionException> {
-        private final AtomicReference<Outcome<T>> first = new AtomicReference<>();
-
-        @Override
-        public boolean onComplete(StructuredTaskScope.Subtask<T> subtask) {
-            // Capture here: the preview API permits reading a subtask's result
-            // or exception from its onComplete callback.
-            Outcome<T> outcome = switch (subtask.state()) {
-                case SUCCESS -> new Outcome<>(subtask.get(), null);
-                case FAILED -> new Outcome<>(null, subtask.exception());
-                case UNAVAILABLE -> throw new IllegalArgumentException("Subtask is unavailable");
-            };
-            return first.compareAndSet(null, outcome);
-        }
-
-        @Override
-        public T result() throws ExecutionException {
-            var outcome = Objects.requireNonNull(first.get(), "No subtask completed");
-            if (outcome.failure() != null) {
-                throw new ExecutionException(outcome.failure());
-            }
-            return outcome.value();
-        }
-
-        @Override
-        public T timeout() throws ExecutionException {
-            throw new ExecutionException(new StructuredTaskScope.CancelledByTimeoutException());
-        }
-
-        private value record Outcome<T>(T value, Throwable failure) {
-        }
-    }
-
-    /**
-     * The only unstructured boundary, required by the existing CompletionStage API.
-     */
-    private static final class AsyncOperation<T> extends CompletableFuture<T> {
-        private final Thread worker;
-        private final Runnable cancelDependency;
-        private final CountDownLatch stopped = new CountDownLatch(1);
-
-        private AsyncOperation(Callable<T> work, Runnable cancelDependency) {
-            this.cancelDependency = Objects.requireNonNull(cancelDependency, "cancelDependency");
-            worker = Thread.ofVirtual().name("session-control-owner").unstarted(() -> {
-                try {
-                    T value;
-                    try {
-                        value = work.call();
-                    } finally {
-                        stopped.countDown();
-                    }
-                    super.complete(value);
-                } catch (InterruptedException exception) {
-                    Thread.currentThread().interrupt();
-                    super.cancel(false);
-                } catch (CancellationException exception) {
-                    // Cancellation is part of the CompletionStage contract, not
-                    // an exceptional result.  This also makes scope-owned
-                    // cancellation indistinguishable from caller cancellation.
-                    super.cancel(false);
-                } catch (Throwable failure) {
-                    super.completeExceptionally(unwrap(failure));
-                }
-            });
-            // Preserve cleanup when callers complete the future themselves,
-            // including through orTimeout()/completeOnTimeout(), not only cancel().
-            whenComplete((ignoredValue, ignoredFailure) -> {
-                if (Thread.currentThread() != worker) {
-                    worker.interrupt();
-                }
-            });
-        }
-
-        @Override
-        public boolean cancel(boolean mayInterruptIfRunning) {
-            boolean cancelled = super.cancel(mayInterruptIfRunning);
-            if (cancelled) {
-                // Preserve the old class's policy: cancelling the result also
-                // cancels its work, including when cancel(false) is requested.
-                cancelDependency.run();
-                worker.interrupt();
-            }
-            return cancelled;
-        }
-
-        private void awaitStopped() {
-            boolean interrupted = false;
-            while (true) {
-                try {
-                    // Wait for resource cleanup, not arbitrary callbacks that
-                    // might execute synchronously when the result is published.
-                    stopped.await();
-                    break;
-                } catch (InterruptedException ignored) {
-                    interrupted = true;
-                }
-            }
-            if (interrupted || Thread.currentThread().isInterrupted()) {
-                Thread.currentThread().interrupt();
-            }
-        }
     }
 
     static final class InWorldWaitProgress {

@@ -6,6 +6,7 @@ import dev.mcdevmcp.support.AppEnvironment;
 import io.modelcontextprotocol.json.McpJsonDefaults;
 import io.modelcontextprotocol.json.McpJsonMapper;
 
+import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.nio.file.Path;
@@ -17,16 +18,16 @@ import java.util.function.Consumer;
 public final class BridgeSession implements AutoCloseable {
     private static final int DEFAULT_PORT = 9876;
     private static final int PORTS_TO_SCAN = 11;
+    private static final Duration PROBE_TIMEOUT = Duration.ofMillis(1_500);
     private static final BridgeEndpoint STATUS = new BridgeEndpoint("status");
 
     private final AppEnvironment environment;
     private final Connector connector;
     private final Consumer<String> diagnostics;
     private final BridgeResultDecoder resultDecoder;
-    private final Set<CompletableFuture<SessionInfo>> connectionAttempts = Collections.newSetFromMap(new IdentityHashMap<>());
-    private final Set<CompletableFuture<BridgeClient>> inFlightOpenings = Collections.newSetFromMap(new IdentityHashMap<>());
+    private final Set<ConnectAttempt> connectionAttempts = Collections.newSetFromMap(new IdentityHashMap<>());
     private final Set<BridgeClient> candidates = Collections.newSetFromMap(new IdentityHashMap<>());
-    private CompletableFuture<SessionInfo> implicitConnect;
+    private ConnectAttempt implicitConnect;
     private Connected connected;
     private SessionInfo lastSessionInfo;
     private Integer configuredPort;
@@ -53,12 +54,6 @@ public final class BridgeSession implements AutoCloseable {
         this.connector = Objects.requireNonNull(connector, "connector");
         this.diagnostics = Objects.requireNonNull(diagnostics, "diagnostics");
         this.resultDecoder = new BridgeResultDecoder(json.mapper());
-    }
-
-    private static void closeQuietly(BridgeClient client) {
-        if (client != null) {
-            client.close();
-        }
     }
 
     private static Connector defaultConnector(BridgeJson json) {
@@ -96,89 +91,65 @@ public final class BridgeSession implements AutoCloseable {
         return "port " + info.port() + ", game " + BridgePayloadValidator.safeDisplay(info.gameDir().map(Path::toString).orElse(info.version().value()));
     }
 
-    private static <T> T await(CompletionStage<T> stage) throws InterruptedException, ExecutionException {
-        CompletableFuture<T> future = stage.toCompletableFuture();
-        try {
-            return future.get();
-        } catch (InterruptedException exception) {
-            future.cancel(true);
-            throw exception;
-        }
-    }
-
-    private static <T> T awaitWithoutCancel(CompletionStage<T> stage) throws InterruptedException, ExecutionException {
-        return stage.toCompletableFuture().get();
-    }
-
-    private static Throwable unwrap(Throwable failure) {
-        Throwable current = failure;
-        while ((current instanceof CompletionException || current instanceof ExecutionException) && current.getCause() != null) {
-            current = current.getCause();
-        }
-        return current;
-    }
-
-    public synchronized CompletionStage<SessionInfo> connect(Integer explicitPort) {
-        ensureOpen();
+    /**
+     * Connects to an explicit port, pinning it until reset, or joins the shared implicit
+     * connect. Interrupting a caller abandons an explicit attempt but leaves a shared one
+     * running for the other callers.
+     */
+    public SessionInfo connect(Integer explicitPort) throws IOException, InterruptedException {
         if (explicitPort != null) {
-            int port = requireExplicitPort(explicitPort);
-            supersede();
-            configuredPort = port;
-            long token = generation;
-            CompletionStage<BridgeClient> opening = openCandidate(port);
-            return startConnect(() -> connectPort(token, port, opening));
-        }
-        if (connected != null) {
-            return CompletableFuture.completedFuture(connected.info());
-        }
-        if (implicitConnect != null) {
-            return implicitConnect;
-        }
-        long token = generation;
-        Integer pinned = configuredPort;
-        AsyncAttempt<SessionInfo> started;
-        if (pinned == null) {
-            int base = basePort();
-            CompletionStage<BridgeClient> firstOpening = openCandidate(base);
-            started = newAttempt(() -> scanPorts(token, base, firstOpening));
-        }
-        else {
-            CompletionStage<BridgeClient> opening = openCandidate(pinned);
-            started = newAttempt(() -> connectPort(token, pinned, opening));
-        }
-        implicitConnect = started;
-        return started.start();
-    }
-
-    public synchronized CompletionStage<SessionInfo> adoptPort(int port) {
-        ensureOpen();
-        int explicit = requireExplicitPort(port);
-        Integer preservedConfiguredPort = configuredPort;
-        disconnect();
-        configuredPort = preservedConfiguredPort;
-        long token = generation;
-        CompletionStage<BridgeClient> opening = openCandidate(explicit);
-        return startConnect(() -> connectPort(token, explicit, opening));
-    }
-
-    @SuppressWarnings("resource")
-    public CompletionStage<BridgeResponse> send(BridgeEndpoint endpoint, BridgePayload payload, Duration endpointTimeout) {
-        Objects.requireNonNull(endpoint, "endpoint");
-        return new AsyncAttempt<>(() -> {
-            SessionInfo connectedInfo = awaitWithoutCancel(connect(null));
-            Objects.requireNonNull(connectedInfo, "DebugBridge connect returned no session");
-            if (Thread.currentThread().isInterrupted()) {
-                throw new InterruptedException("DebugBridge send cancelled");
-            }
-            BridgeClient client;
+            ConnectAttempt owned;
             synchronized (this) {
-                if (connected == null) {
-                    throw new IllegalStateException("DebugBridge session is disconnected");
-                }
-                client = connected.client();
+                ensureOpen();
+                int port = requireExplicitPort(explicitPort);
+                supersede();
+                configuredPort = port;
+                long token = generation;
+                owned = startAttempt(() -> connectPort(token, port));
             }
-            return await(client.send(endpoint, payload, endpointTimeout));
-        }).start();
+            return owned.awaitOwned();
+        }
+        ConnectAttempt shared;
+        synchronized (this) {
+            ensureOpen();
+            if (connected != null) {
+                return connected.info();
+            }
+            if (implicitConnect == null) {
+                long token = generation;
+                Integer pinned = configuredPort;
+                implicitConnect = pinned == null ? startAttempt(() -> scanPorts(token, basePort())) : startAttempt(() -> connectPort(token, pinned));
+            }
+            shared = implicitConnect;
+        }
+        return shared.awaitShared();
+    }
+
+    public SessionInfo adoptPort(int port) throws IOException, InterruptedException {
+        ConnectAttempt owned;
+        synchronized (this) {
+            ensureOpen();
+            int explicit = requireExplicitPort(port);
+            Integer preservedConfiguredPort = configuredPort;
+            disconnect();
+            configuredPort = preservedConfiguredPort;
+            long token = generation;
+            owned = startAttempt(() -> connectPort(token, explicit));
+        }
+        return owned.awaitOwned();
+    }
+
+    public BridgeResponse send(BridgeEndpoint endpoint, BridgePayload payload, Duration endpointTimeout) throws IOException, InterruptedException {
+        Objects.requireNonNull(endpoint, "endpoint");
+        connect(null);
+        BridgeClient client;
+        synchronized (this) {
+            if (connected == null) {
+                throw new IllegalStateException("DebugBridge session is disconnected");
+            }
+            client = connected.client();
+        }
+        return client.send(endpoint, payload, endpointTimeout);
     }
 
     public synchronized OptionalInt connectedPort() {
@@ -190,31 +161,26 @@ public final class BridgeSession implements AutoCloseable {
     }
 
     @SuppressWarnings("preview")
-    public CompletionStage<SessionInfo> probe(int port) {
+    public SessionInfo probe(int port) throws IOException, InterruptedException {
         int explicit = requireExplicitPort(port);
-        return new AsyncAttempt<>(() -> {
-            try (var scope = StructuredTaskScope.open(StructuredTaskScope.Joiner.awaitAllSuccessfulOrThrow(), config -> config.withName("debugbridge-probe").withTimeout(Duration.ofMillis(1_500)))) {
-                var subtask = scope.fork(() -> probePort(explicit));
-                scope.join();
-                return subtask.get();
-            }
-        }).start();
+        try (var scope = StructuredTaskScope.open(StructuredTaskScope.Joiner.<SessionInfo>anySuccessfulOrThrow(), config -> config.withName("debugbridge-probe").withTimeout(PROBE_TIMEOUT))) {
+            scope.fork(() -> probePort(explicit));
+            return scope.join();
+        } catch (ExecutionException exception) {
+            throw BridgeClient.failure(exception.getCause());
+        }
     }
 
     public synchronized void disconnect() {
         generation++;
         implicitConnect = null;
-        Set<CompletableFuture<SessionInfo>> pendingAttempts = Set.copyOf(connectionAttempts);
+        List<ConnectAttempt> pendingAttempts = List.copyOf(connectionAttempts);
         connectionAttempts.clear();
-        Set<BridgeClient> pendingCandidates = Set.copyOf(candidates);
+        List<BridgeClient> pendingCandidates = List.copyOf(candidates);
         candidates.clear();
         Connected previous = connected;
         connected = null;
-        CancellationException cancellation = new CancellationException("DebugBridge session disconnected");
-        pendingAttempts.forEach(attempt -> attempt.completeExceptionally(cancellation));
-        Set<CompletableFuture<BridgeClient>> pendingOpenings = Set.copyOf(inFlightOpenings);
-        inFlightOpenings.clear();
-        pendingOpenings.forEach(opening -> opening.whenComplete((client, _) -> closeQuietly(client)));
+        pendingAttempts.forEach(ConnectAttempt::cancel);
         pendingCandidates.forEach(BridgeClient::close);
         if (previous != null) {
             previous.client().close();
@@ -236,52 +202,47 @@ public final class BridgeSession implements AutoCloseable {
         reset();
     }
 
-    private SessionInfo scanPorts(long token, int base, CompletionStage<BridgeClient> firstOpening) throws Exception {
+    private SessionInfo scanPorts(long token, int base) throws InterruptedException {
         for (int offset = 0; offset < PORTS_TO_SCAN; offset++) {
             if (stale(token)) {
                 throw new CancellationException("DebugBridge session changed during scan");
             }
-            int port = base + offset;
             try {
-                CompletionStage<BridgeClient> opening = offset == 0 ? firstOpening : openCandidate(port);
-                return connectPort(token, port, opening);
-            } catch (CancellationException | InterruptedException exception) {
+                return connectPort(token, base + offset);
+            } catch (CancellationException exception) {
                 throw exception;
-            } catch (Exception ignored) {
+            } catch (IOException | RuntimeException ignored) {
                 // Try the next port in the documented scan window.
             }
         }
         throw new IllegalStateException("No DebugBridge instance accepted status on ports " + base + "-" + (base + PORTS_TO_SCAN - 1));
     }
 
-    private SessionInfo connectPort(long token, int port, CompletionStage<BridgeClient> opening) throws Exception {
-        BridgeClient client = awaitOpening(opening);
+    private SessionInfo connectPort(long token, int port) throws IOException, InterruptedException {
+        BridgeClient client = openCandidate(port);
         boolean adopted = false;
         try {
-            if (stale(token) || candidateRejected(token, client)) {
+            if (candidateRejected(token, client)) {
                 throw new CancellationException("DebugBridge session changed during connect");
             }
             client.onClosed(this::clearDeadClient);
-            BridgeResponse response = await(client.send(STATUS, new EmptyBridgePayload(), null));
+            BridgeResponse response = client.send(STATUS, new EmptyBridgePayload(), null);
             SessionInfo info = acceptStatus(token, port, client, response);
             adopted = true;
             return info;
         } finally {
             if (!adopted) {
                 releaseCandidate(client);
-                closeQuietly(client);
+                client.close();
             }
         }
     }
 
-    private SessionInfo probePort(int port) throws Exception {
-        BridgeClient client = awaitOpening(openCandidate(port));
-        try {
-            BridgeResponse response = await(client.send(STATUS, new EmptyBridgePayload(), Duration.ofMillis(1_500)));
+    private SessionInfo probePort(int port) throws IOException, InterruptedException {
+        try (BridgeClient client = openCandidate(port)) {
+            BridgeResponse response = client.send(STATUS, new EmptyBridgePayload(), PROBE_TIMEOUT);
             BridgeStatusWire wire = resultDecoder.decode(STATUS, BridgePayloadValidator.requireResult("status", response), BridgeResultTypes.STATUS);
             return toSessionInfo(port, wire);
-        } finally {
-            closeQuietly(client);
         }
     }
 
@@ -309,12 +270,28 @@ public final class BridgeSession implements AutoCloseable {
         }
     }
 
+    private BridgeClient openCandidate(int port) throws IOException, InterruptedException {
+        BridgeClient client = connector.open(port);
+        if (client == null) {
+            throw new IllegalStateException("DebugBridge connector returned no client for port " + port);
+        }
+        return client;
+    }
+
     private synchronized boolean stale(long token) {
         return closed || generation != token;
     }
 
-    private synchronized void clearImplicit(CompletableFuture<SessionInfo> result) {
-        if (implicitConnect == result) {
+    private synchronized ConnectAttempt startAttempt(Callable<SessionInfo> work) {
+        ConnectAttempt attempt = new ConnectAttempt(work);
+        connectionAttempts.add(attempt);
+        attempt.start();
+        return attempt;
+    }
+
+    private synchronized void finished(ConnectAttempt attempt) {
+        connectionAttempts.remove(attempt);
+        if (implicitConnect == attempt) {
             implicitConnect = null;
         }
     }
@@ -327,26 +304,8 @@ public final class BridgeSession implements AutoCloseable {
         }
     }
 
-    private synchronized CompletionStage<SessionInfo> startConnect(Callable<SessionInfo> work) {
-        return newAttempt(work).start();
-    }
-
-    private synchronized AsyncAttempt<SessionInfo> newAttempt(Callable<SessionInfo> work) {
-        AsyncAttempt<SessionInfo> attempt = new AsyncAttempt<>(work);
-        connectionAttempts.add(attempt);
-        attempt.whenComplete((_, _) -> {
-            removeAttempt(attempt);
-            clearImplicit(attempt);
-        });
-        return attempt;
-    }
-
-    private synchronized void removeAttempt(CompletableFuture<SessionInfo> attempt) {
-        connectionAttempts.remove(attempt);
-    }
-
     private synchronized boolean candidateRejected(long token, BridgeClient client) {
-        if (closed || generation != token) {
+        if (stale(token)) {
             return true;
         }
         candidates.add(client);
@@ -355,27 +314,6 @@ public final class BridgeSession implements AutoCloseable {
 
     private synchronized void releaseCandidate(BridgeClient client) {
         candidates.remove(client);
-    }
-
-    private CompletionStage<BridgeClient> openCandidate(int port) {
-        try {
-            CompletionStage<BridgeClient> opened = connector.open(port);
-            if (opened == null) {
-                return CompletableFuture.failedFuture(new IllegalStateException("DebugBridge connector returned no stage for port " + port));
-            }
-            CompletableFuture<BridgeClient> future = opened.toCompletableFuture();
-            synchronized (this) {
-                inFlightOpenings.add(future);
-            }
-            future.whenComplete((_, _) -> {
-                synchronized (this) {
-                    inFlightOpenings.remove(future);
-                }
-            });
-            return future;
-        } catch (RuntimeException exception) {
-            return CompletableFuture.failedFuture(exception);
-        }
     }
 
     private int basePort() {
@@ -392,76 +330,59 @@ public final class BridgeSession implements AutoCloseable {
         }
     }
 
-    private BridgeClient awaitOpening(CompletionStage<BridgeClient> stage) throws InterruptedException, ExecutionException {
-        CompletableFuture<BridgeClient> future = stage.toCompletableFuture();
-        synchronized (this) {
-            inFlightOpenings.add(future);
-        }
-        try {
-            return future.get();
-        } catch (InterruptedException exception) {
-            future.whenComplete((client, _) -> closeQuietly(client));
-            throw exception;
-        } finally {
-            synchronized (this) {
-                inFlightOpenings.remove(future);
-            }
-        }
-    }
-
+    /**
+     * Opens a client for a port, blocking. An interrupted connector throws and
+     * closes a client that finishes opening afterwards.
+     */
     @FunctionalInterface
     interface Connector {
-        CompletionStage<BridgeClient> open(int port);
+        BridgeClient open(int port) throws IOException, InterruptedException;
     }
 
     private record Connected(BridgeClient client, SessionInfo info) {
     }
 
     /**
-     * The unstructured CompletionStage boundary. Work inside the owner is sequential
-     * and interruptible; send cancellation does not cancel a shared connect.
+     * A connection attempt owned by the session, not by a caller: callers only wait for it,
+     * so a shared implicit connect outlives a cancelled sender, and disconnect cancels it.
      */
-    private static final class AsyncAttempt<T> extends CompletableFuture<T> {
-        private final Thread worker;
+    private final class ConnectAttempt {
+        private final FutureTask<SessionInfo> task;
 
-        private AsyncAttempt(Callable<T> work) {
-            worker = Thread.ofVirtual().name("debugbridge-session").unstarted(() -> {
-                try {
-                    super.complete(work.call());
-                } catch (InterruptedException exception) {
-                    Thread.currentThread().interrupt();
-                    super.cancel(false);
-                } catch (CancellationException exception) {
-                    super.cancel(false);
-                } catch (ExecutionException exception) {
-                    super.completeExceptionally(unwrap(exception.getCause() == null ? exception : exception.getCause()));
-                } catch (Throwable exception) {
-                    super.completeExceptionally(unwrap(exception));
+        private ConnectAttempt(Callable<SessionInfo> work) {
+            task = new FutureTask<>(work) {
+                @Override
+                protected void done() {
+                    finished(ConnectAttempt.this);
                 }
-            });
+            };
         }
 
-        private AsyncAttempt<T> start() {
-            worker.start();
-            return this;
+        private void start() {
+            Thread.ofVirtual().name("debugbridge-connect").start(task);
         }
 
-        @Override
-        public boolean cancel(boolean mayInterruptIfRunning) {
-            boolean cancelled = super.cancel(mayInterruptIfRunning);
-            if (cancelled) {
-                worker.interrupt();
+        private void cancel() {
+            task.cancel(true);
+        }
+
+        private SessionInfo awaitShared() throws IOException, InterruptedException {
+            try {
+                return task.get();
+            } catch (CancellationException exception) {
+                throw new CancellationException("DebugBridge session disconnected");
+            } catch (ExecutionException exception) {
+                throw BridgeClient.failure(exception.getCause());
             }
-            return cancelled;
         }
 
-        @Override
-        public boolean completeExceptionally(Throwable ex) {
-            boolean completed = super.completeExceptionally(ex);
-            if (completed) {
-                worker.interrupt();
+        private SessionInfo awaitOwned() throws IOException, InterruptedException {
+            try {
+                return awaitShared();
+            } catch (InterruptedException exception) {
+                cancel();
+                throw exception;
             }
-            return completed;
         }
     }
 }

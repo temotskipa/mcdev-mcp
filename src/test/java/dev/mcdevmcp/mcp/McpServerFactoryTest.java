@@ -18,6 +18,7 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -96,6 +97,11 @@ class McpServerFactoryTest {
 
     private static IllegalStateException failure(FailurePoint failurePoint) {
         return new IllegalStateException(failurePoint.name() + " failure");
+    }
+
+    private static Throwable invocationFailure(ToolBinding<?> binding, McpJsonMapper mapper) {
+        CompletionException failure = assertThrows(CompletionException.class, () -> CompleteToolBindings.blocking(binding).invoke(mapper, Map.of(), Cancellation.none()).toCompletableFuture().join());
+        return failure.getCause();
     }
 
     private static long pollThreadCount() {
@@ -222,13 +228,13 @@ class McpServerFactoryTest {
         assertFalse(composition.runtimeActivated());
         assertInstanceOf(ContentToolBinding.class, scriptLogs.binding(), "runtime declarations must retain their typed content binding");
 
-        ToolResult<?> result = scriptLogs.binding().invoke(mapper, Map.of(), Cancellation.none()).toCompletableFuture().join();
+        ToolResult<?> result = CompleteToolBindings.blocking(scriptLogs.binding()).invoke(mapper, Map.of(), Cancellation.none()).toCompletableFuture().join();
 
         assertFalse(result.isError());
         assertEquals(1, mapper.convertValueCalls(), "lazy wrapper must not decode a typed input twice");
         assertTrue(composition.runtimeActivated());
         composition.close();
-        assertThrows(IllegalStateException.class, () -> scriptLogs.binding().invoke(mapper, Map.of(), Cancellation.none()));
+        assertInstanceOf(IllegalStateException.class, invocationFailure(scriptLogs.binding(), mapper));
     }
 
     @Test
@@ -254,7 +260,7 @@ class McpServerFactoryTest {
         var mapper = new CountingMcpJsonMapper(MAPPER);
         try (var composition = McpServerFactory.declarativeComposition(new AppEnvironment(Map.of()), mapper, counting);
              var executor = Executors.newVirtualThreadPerTaskExecutor()) {
-            ToolBinding<?> binding = composition.definitions().stream().filter(definition -> definition.name().equals("mc_script_logs")).findFirst().orElseThrow().binding();
+            ToolBinding<?> binding = CompleteToolBindings.blocking(composition.definitions().stream().filter(definition -> definition.name().equals("mc_script_logs")).findFirst().orElseThrow().binding());
             var first = executor.submit(() -> binding.invoke(mapper, Map.of(), Cancellation.none()).toCompletableFuture().join());
             var second = executor.submit(() -> binding.invoke(mapper, Map.of(), Cancellation.none()).toCompletableFuture().join());
 
@@ -272,7 +278,7 @@ class McpServerFactoryTest {
             var composition = McpServerFactory.declarativeComposition(new AppEnvironment(Map.of()), MAPPER, failing);
             ToolBinding<?> binding = composition.definitions().stream().filter(definition -> definition.name().equals("mc_script_logs")).findFirst().orElseThrow().binding();
 
-            IllegalStateException first = assertThrows(IllegalStateException.class, () -> binding.invoke(MAPPER, Map.of(), Cancellation.none()));
+            IllegalStateException first = assertInstanceOf(IllegalStateException.class, invocationFailure(binding, MAPPER));
             assertTrue(first.getMessage().contains(failurePoint.name()));
             assertFalse(composition.runtimeActivated());
             assertEquals(failurePoint == FailurePoint.CLIENT ? 0 : 1, failing.clientCloseCount());
@@ -280,7 +286,7 @@ class McpServerFactoryTest {
             int clientCreations = failing.clientCreateCount();
             int sessionCreations = failing.sessionCreateCount();
             int bindingCreations = failing.bindingCreateCount();
-            assertThrows(IllegalStateException.class, () -> binding.invoke(MAPPER, Map.of(), Cancellation.none()));
+            assertInstanceOf(IllegalStateException.class, invocationFailure(binding, MAPPER));
             assertEquals(clientCreations, failing.clientCreateCount(), failurePoint.name());
             assertEquals(sessionCreations, failing.sessionCreateCount(), failurePoint.name());
             assertEquals(bindingCreations, failing.bindingCreateCount(), failurePoint.name());
@@ -295,7 +301,7 @@ class McpServerFactoryTest {
         try (var composition = McpServerFactory.declarativeComposition(new AppEnvironment(Map.of()), MAPPER, failing)) {
             ToolBinding<?> binding = composition.definitions().stream().filter(definition -> definition.name().equals("mc_script_logs")).findFirst().orElseThrow().binding();
 
-            IllegalStateException failure = assertThrows(IllegalStateException.class, () -> binding.invoke(MAPPER, Map.of(), Cancellation.none()));
+            IllegalStateException failure = assertInstanceOf(IllegalStateException.class, invocationFailure(binding, MAPPER));
 
             assertEquals("BINDINGS failure", failure.getMessage());
             assertEquals(1, failing.clientCloseCount());
@@ -314,14 +320,14 @@ class McpServerFactoryTest {
         var composition = McpServerFactory.declarativeComposition(new AppEnvironment(Map.of()), MAPPER, blocking);
         ToolBinding<?> binding = composition.definitions().stream().filter(definition -> definition.name().equals("mc_script_logs")).findFirst().orElseThrow().binding();
         try (composition; var executor = Executors.newVirtualThreadPerTaskExecutor()) {
-            var invocation = executor.submit(() -> binding.invoke(MAPPER, Map.of(), Cancellation.none()).toCompletableFuture().join());
+            var invocation = executor.submit(() -> CompleteToolBindings.blocking(binding).invoke(MAPPER, Map.of(), Cancellation.none()).toCompletableFuture().join());
             assertTrue(entered.await(5, TimeUnit.SECONDS));
             var closing = executor.submit(composition::close);
             assertFalse(closing.isDone(), "close must wait for in-flight activation");
             release.countDown();
             assertFalse(invocation.get().isError());
             closing.get(5, TimeUnit.SECONDS);
-            assertThrows(IllegalStateException.class, () -> binding.invoke(MAPPER, Map.of(), Cancellation.none()));
+            assertInstanceOf(IllegalStateException.class, invocationFailure(binding, MAPPER));
         }
     }
 

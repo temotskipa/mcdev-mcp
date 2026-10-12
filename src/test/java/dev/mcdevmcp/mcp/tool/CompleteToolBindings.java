@@ -12,17 +12,29 @@ import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
-import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 public final class CompleteToolBindings {
+    private static final ExecutorService BLOCKING_EXECUTOR = Executors.newVirtualThreadPerTaskExecutor();
+
     private CompleteToolBindings() {
+    }
+
+    /**
+     * Assigns the executor that production catalog loading assigns to blocking bindings.
+     */
+    public static <A> ToolBinding<A> blocking(ToolBinding<A> binding) {
+        return binding.withBlockingExecutor(BLOCKING_EXECUTOR);
     }
 
     public static Map<String, ToolBinding<?>> including(McpJsonMapper mapper, Map<String, ToolBinding<?>> selectedBindings) {
         AppEnvironment environment = new AppEnvironment(Map.of());
         var bindings = new LinkedHashMap<String, ToolBinding<?>>();
         StaticToolModule.handlers(PlatformPaths.forEnvironment("Linux", environment.values(), Path.of(System.getProperty("user.home")))).forEach((name, binding) -> add(bindings, name, binding));
-        try (var bridge = new BridgeTestHarness(mapper, environment, (_, _) -> new CompletableFuture<>())) {
+        try (var bridge = new BridgeTestHarness(mapper, environment, (_, _) -> {
+            throw new AssertionError("The bridge is never called");
+        })) {
             RuntimeToolModule.handlers(bridge.session(), mapper, environment).forEach((name, binding) -> add(bindings, name, binding));
         }
         selectedBindings.forEach((name, binding) -> {
@@ -31,6 +43,7 @@ public final class CompleteToolBindings {
             }
             bindings.put(name, Objects.requireNonNull(binding, "Tool binding: " + name));
         });
+        bindings.replaceAll((_, binding) -> blocking(binding));
         return Map.copyOf(bindings);
     }
 

@@ -4,6 +4,7 @@ import dev.mcdevmcp.bridge.BridgeResponse;
 import dev.mcdevmcp.bridge.BridgeTestHarness;
 import dev.mcdevmcp.bridge.payload.SetBlockGlowPayload;
 import dev.mcdevmcp.bridge.payload.SetEntityGlowPayload;
+import dev.mcdevmcp.mcp.tool.CompleteToolBindings;
 import dev.mcdevmcp.mcp.tool.CountingMcpJsonMapper;
 import dev.mcdevmcp.mcp.tool.api.ToolBinding;
 import dev.mcdevmcp.mcp.tool.api.ToolInput;
@@ -16,7 +17,6 @@ import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Method;
 import java.util.*;
-import java.util.concurrent.CompletableFuture;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -27,11 +27,11 @@ class EntityBlockDomainTest {
     private static BridgeTestHarness harness() {
         return new BridgeTestHarness(MAPPER, new AppEnvironment(Map.of()), (_, request) -> {
             if (request.endpoint().wireName().equals("status")) {
-                return CompletableFuture.completedFuture(RuntimeContractFixtures.status(request.id()));
+                return RuntimeContractFixtures.status(request.id());
             }
             Map<String, Object> payload = MAPPER.convertValue(request.payload(), new TypeRef<>() {
             });
-            return CompletableFuture.completedFuture(new BridgeResponse(request.id(), true, true, payload, null, null));
+            return new BridgeResponse(request.id(), true, true, payload, null, null);
         });
     }
 
@@ -108,8 +108,8 @@ class EntityBlockDomainTest {
             assertEquals(-2, accessor(decodedPosition, "z"));
             assertEquals(1, blockMapper.convertValueCalls());
 
-            bindings.get("mc_set_entity_glow").invoke(MAPPER, Map.of("entityId", 7, "glow", true), Cancellation.none()).toCompletableFuture().join();
-            bindings.get("mc_set_block_glow").invoke(MAPPER, Map.of("position", position(), "glow", true), Cancellation.none()).toCompletableFuture().join();
+            CompleteToolBindings.blocking(bindings.get("mc_set_entity_glow")).invoke(MAPPER, Map.of("entityId", 7, "glow", true), Cancellation.none()).toCompletableFuture().join();
+            CompleteToolBindings.blocking(bindings.get("mc_set_block_glow")).invoke(MAPPER, Map.of("position", position(), "glow", true), Cancellation.none()).toCompletableFuture().join();
             assertEquals(new SetEntityGlowPayload(7, true), harness.requests().get(1).payload());
             assertEquals(new SetBlockGlowPayload(1, 64, -2, true), harness.requests().get(2).payload());
         }

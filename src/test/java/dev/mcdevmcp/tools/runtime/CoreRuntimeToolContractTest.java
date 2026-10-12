@@ -18,7 +18,6 @@ import java.io.IOException;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -36,18 +35,18 @@ class CoreRuntimeToolContractTest {
         return catalog.dispatch(tool, arguments, Cancellation.none()).toCompletableFuture().get(5, TimeUnit.SECONDS);
     }
 
-    private static CompletableFuture<BridgeResponse> respond(RequestFixture request, BridgeFixture bridge, BridgeRequest wireRequest) {
+    private static BridgeResponse respond(RequestFixture request, BridgeFixture bridge, BridgeRequest wireRequest) {
         String endpoint = wireRequest.endpoint().wireName();
         if (!request.endpoint().equals("status") && endpoint.equals("status")) {
-            return CompletableFuture.completedFuture(RuntimeContractFixtures.status(wireRequest.id()));
+            return RuntimeContractFixtures.status(wireRequest.id());
         }
         if (!request.endpoint().equals(endpoint)) {
-            return CompletableFuture.failedFuture(new IllegalStateException("Unexpected endpoint " + endpoint + " for " + request.label()));
+            throw new IllegalStateException("Unexpected endpoint " + endpoint + " for " + request.label());
         }
         if (bridge.failure() != null) {
-            return CompletableFuture.failedFuture(new IllegalStateException(bridge.failure()));
+            throw new IllegalStateException(bridge.failure());
         }
-        return CompletableFuture.completedFuture(new BridgeResponse(wireRequest.id(), Boolean.TRUE.equals(bridge.success()), Boolean.TRUE.equals(bridge.resultPresent()), RuntimeContractFixtures.nativeResult(bridge.result()), bridge.output(), bridge.error()));
+        return new BridgeResponse(wireRequest.id(), Boolean.TRUE.equals(bridge.success()), Boolean.TRUE.equals(bridge.resultPresent()), RuntimeContractFixtures.nativeResult(bridge.result()), bridge.output(), bridge.error());
     }
 
     private static void assertWireRequest(RequestFixture fixture, List<BridgeRequest> actual) {
@@ -122,9 +121,9 @@ class CoreRuntimeToolContractTest {
     void lookedAtEntityIgnoresAdditiveProviderFieldsWhenRendering() throws Exception {
         try (var harness = new BridgeTestHarness(MAPPER, ENVIRONMENT, (_, request) -> {
             if (request.endpoint().wireName().equals("status")) {
-                return CompletableFuture.completedFuture(RuntimeContractFixtures.status(request.id()));
+                return RuntimeContractFixtures.status(request.id());
             }
-            return CompletableFuture.completedFuture(new BridgeResponse(request.id(), true, true, Map.of("entityId", 7, "futureField", "ignored"), null, null));
+            return new BridgeResponse(request.id(), true, true, Map.of("entityId", 7, "futureField", "ignored"), null, null);
         })) {
             ToolCatalog catalog = ToolCatalog.load(ENVIRONMENT, CompleteToolBindings.including(MAPPER, RuntimeToolModule.handlers(harness.session(), MAPPER)), MAPPER);
             ToolResult<?> result = dispatch(catalog, "mc_looked_at_entity", Map.of());
@@ -139,9 +138,9 @@ class CoreRuntimeToolContractTest {
         for (Object malformed : List.of(7, Map.of(), Map.of("entityId", "7"), Map.of("entityId", 7.5), Map.of("entityId", true))) {
             try (var harness = new BridgeTestHarness(MAPPER, ENVIRONMENT, (_, request) -> {
                 if (request.endpoint().wireName().equals("status")) {
-                    return CompletableFuture.completedFuture(RuntimeContractFixtures.status(request.id()));
+                    return RuntimeContractFixtures.status(request.id());
                 }
-                return CompletableFuture.completedFuture(new BridgeResponse(request.id(), true, true, malformed, null, null));
+                return new BridgeResponse(request.id(), true, true, malformed, null, null);
             })) {
                 ToolCatalog catalog = ToolCatalog.load(ENVIRONMENT, CompleteToolBindings.including(MAPPER, RuntimeToolModule.handlers(harness.session(), MAPPER)), MAPPER);
                 ToolResult<?> result = dispatch(catalog, "mc_looked_at_entity", Map.of());
@@ -156,9 +155,9 @@ class CoreRuntimeToolContractTest {
     void reconnectsAfterPeerDisconnectionAndResetCreatesANewSession() throws Exception {
         try (var harness = new BridgeTestHarness(MAPPER, ENVIRONMENT, (connection, request) -> {
             if (request.endpoint().wireName().equals("status")) {
-                return CompletableFuture.completedFuture(RuntimeContractFixtures.status(request.id()));
+                return RuntimeContractFixtures.status(request.id());
             }
-            return CompletableFuture.completedFuture(new BridgeResponse(request.id(), true, true, Map.of("connection", connection), null, null));
+            return new BridgeResponse(request.id(), true, true, Map.of("connection", connection), null, null);
         })) {
             ToolCatalog catalog = ToolCatalog.load(ENVIRONMENT, CompleteToolBindings.including(MAPPER, RuntimeToolModule.handlers(harness.session(), MAPPER)), MAPPER);
 
@@ -175,7 +174,7 @@ class CoreRuntimeToolContractTest {
 
     @Test
     void reportsAlreadyConnectedWithoutAnotherBridgeRequest() throws Exception {
-        try (var harness = new BridgeTestHarness(MAPPER, ENVIRONMENT, (_, request) -> CompletableFuture.completedFuture(RuntimeContractFixtures.status(request.id())))) {
+        try (var harness = new BridgeTestHarness(MAPPER, ENVIRONMENT, (_, request) -> RuntimeContractFixtures.status(request.id()))) {
             ToolCatalog catalog = ToolCatalog.load(ENVIRONMENT, CompleteToolBindings.including(MAPPER, RuntimeToolModule.handlers(harness.session(), MAPPER)), MAPPER);
 
             assertTrue(contentText(dispatch(catalog, "mc_connect", Map.of())).startsWith("Connected!"));
@@ -189,7 +188,7 @@ class CoreRuntimeToolContractTest {
 
     @Test
     void exposesAllCoreRuntimeBindingsInOrderAndRejectsInvalidArgumentsBeforeSending() throws Exception {
-        try (var harness = new BridgeTestHarness(MAPPER, ENVIRONMENT, (_, request) -> CompletableFuture.completedFuture(RuntimeContractFixtures.status(request.id())))) {
+        try (var harness = new BridgeTestHarness(MAPPER, ENVIRONMENT, (_, request) -> RuntimeContractFixtures.status(request.id()))) {
             Map<String, ?> handlers = RuntimeToolModule.handlers(harness.session(), MAPPER);
             List<String> coreNames = List.of("mc_connect", "mc_execute", "mc_snapshot", "mc_nearby_entities", "mc_entity_details", "mc_nearby_blocks", "mc_block_details", "mc_looked_at_entity", "mc_chat_history", "mc_screen_inspect");
             assertEquals(coreNames, List.copyOf(handlers.keySet()).subList(0, coreNames.size()));

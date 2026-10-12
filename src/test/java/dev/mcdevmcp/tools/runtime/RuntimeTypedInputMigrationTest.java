@@ -28,7 +28,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.*;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Stream;
 
@@ -117,7 +116,7 @@ class RuntimeTypedInputMigrationTest {
             ToolBinding<?> binding = RuntimeToolModule.handlers(harness.session(), MAPPER, ENVIRONMENT).get(toolName);
             assertNotNull(binding, "Missing binding: " + toolName);
 
-            ToolResult<?> result = binding.invoke(mapper, arguments, Cancellation.none()).toCompletableFuture().get(5, TimeUnit.SECONDS);
+            ToolResult<?> result = CompleteToolBindings.blocking(binding).invoke(mapper, arguments, Cancellation.none()).toCompletableFuture().get(5, TimeUnit.SECONDS);
 
             assertFalse(result.isError(), toolName);
             assertFalse(result.content().isEmpty(), toolName + " result content");
@@ -138,7 +137,7 @@ class RuntimeTypedInputMigrationTest {
             ToolBinding<?> binding = RuntimeToolModule.handlers(harness.session(), MAPPER, ENVIRONMENT).get(toolName);
             assertNotNull(binding, "Missing binding: " + toolName);
 
-            ToolResult<?> result = binding.invoke(mapper, arguments, Cancellation.none()).toCompletableFuture().get(5, TimeUnit.SECONDS);
+            ToolResult<?> result = CompleteToolBindings.blocking(binding).invoke(mapper, arguments, Cancellation.none()).toCompletableFuture().get(5, TimeUnit.SECONDS);
 
             assertFalse(result.isError(), toolName);
             assertFalse(result.content().isEmpty(), toolName + " result content");
@@ -157,7 +156,7 @@ class RuntimeTypedInputMigrationTest {
         var mapper = new CountingMcpJsonMapper(MAPPER);
         try (var harness = new BridgeTestHarness(MAPPER, ENVIRONMENT, (_, request) -> successfulRecordVideoResponse(request))) {
             ToolBinding<?> binding = RuntimeToolModule.handlers(harness.session(), MAPPER, ENVIRONMENT).get("mc_record_video");
-            ToolResult<?> result = binding.invoke(mapper, arguments, Cancellation.none()).toCompletableFuture().get(5, TimeUnit.SECONDS);
+            ToolResult<?> result = CompleteToolBindings.blocking(binding).invoke(mapper, arguments, Cancellation.none()).toCompletableFuture().get(5, TimeUnit.SECONDS);
 
             assertFalse(result.isError());
             assertEquals(1, mapper.convertValueCalls());
@@ -195,31 +194,31 @@ class RuntimeTypedInputMigrationTest {
         };
     }
 
-    private static CompletableFuture<BridgeResponse> successfulResponse(BridgeRequest request) {
+    private static BridgeResponse successfulResponse(BridgeRequest request) {
         return switch (request.endpoint().wireName()) {
-            case "status" -> CompletableFuture.completedFuture(RuntimeContractFixtures.status(request.id()));
+            case "status" -> RuntimeContractFixtures.status(request.id());
             case "getItemTexture", "getEntityItemTexture", "getItemTextureById" ->
-                    CompletableFuture.completedFuture(new BridgeResponse(request.id(), true, true, Map.of("base64Png", "iVBORw0KGgo=", "width", 16, "height", 16, "spriteName", "minecraft:item/diamond"), null, null));
+                    new BridgeResponse(request.id(), true, true, Map.of("base64Png", "iVBORw0KGgo=", "width", 16, "height", 16, "spriteName", "minecraft:item/diamond"), null, null);
             case "screenshot" ->
-                    CompletableFuture.completedFuture(new BridgeResponse(request.id(), true, true, Map.of("path", RuntimeContractFixtures.fixturePath("C:\\Game\\shot.jpg"), "width", 1920, "height", 1080, "sizeBytes", 1536, "mimeType", "image/jpeg"), null, null));
+                    new BridgeResponse(request.id(), true, true, Map.of("path", RuntimeContractFixtures.fixturePath("C:\\Game\\shot.jpg"), "width", 1920, "height", 1080, "sizeBytes", 1536, "mimeType", "image/jpeg"), null, null);
             default ->
-                    CompletableFuture.completedFuture(new BridgeResponse(request.id(), true, true, Map.of("ok", true), null, null));
+                    new BridgeResponse(request.id(), true, true, Map.of("ok", true), null, null);
         };
     }
 
-    private static CompletableFuture<BridgeResponse> successfulQueryResponse(BridgeRequest request) {
+    private static BridgeResponse successfulQueryResponse(BridgeRequest request) {
         if (request.endpoint().wireName().equals("status")) {
-            return CompletableFuture.completedFuture(RuntimeContractFixtures.status(request.id()));
+            return RuntimeContractFixtures.status(request.id());
         }
         Object result = request.endpoint().wireName().equals("lookedAtEntity") ? Map.of("entityId", 7) : Map.of("ok", true);
-        return CompletableFuture.completedFuture(new BridgeResponse(request.id(), true, true, result, null, null));
+        return new BridgeResponse(request.id(), true, true, result, null, null);
     }
 
-    private static CompletableFuture<BridgeResponse> successfulRecordVideoResponse(BridgeRequest request) {
+    private static BridgeResponse successfulRecordVideoResponse(BridgeRequest request) {
         if (request.endpoint().wireName().equals("status")) {
-            return CompletableFuture.completedFuture(RuntimeContractFixtures.status(request.id()));
+            return RuntimeContractFixtures.status(request.id());
         }
-        return CompletableFuture.completedFuture(new BridgeResponse(request.id(), true, true, Map.ofEntries(Map.entry("mode", "grid"), Map.entry("path", RuntimeContractFixtures.fixturePath("C:\\Game\\grid.jpg")), Map.entry("mimeType", "image/jpeg"), Map.entry("width", 640), Map.entry("height", 360), Map.entry("sizeBytes", 2560), Map.entry("frameCount", 4), Map.entry("frameWidth", 320), Map.entry("frameHeight", 180), Map.entry("gridCols", 2), Map.entry("gridRows", 2), Map.entry("captureMs", 200), Map.entry("intervalMs", 50), Map.entry("dropped", 0)), null, null));
+        return new BridgeResponse(request.id(), true, true, Map.ofEntries(Map.entry("mode", "grid"), Map.entry("path", RuntimeContractFixtures.fixturePath("C:\\Game\\grid.jpg")), Map.entry("mimeType", "image/jpeg"), Map.entry("width", 640), Map.entry("height", 360), Map.entry("sizeBytes", 2560), Map.entry("frameCount", 4), Map.entry("frameWidth", 320), Map.entry("frameHeight", 180), Map.entry("gridCols", 2), Map.entry("gridRows", 2), Map.entry("captureMs", 200), Map.entry("intervalMs", 50), Map.entry("dropped", 0)), null, null);
     }
 
     private static void assertInvalidArgumentsReject(ToolCatalog catalog, BridgeTestHarness harness, String tool, Map<String, Object> arguments) throws Exception {
@@ -230,7 +229,9 @@ class RuntimeTypedInputMigrationTest {
 
     @Test
     void migratedRuntimeBindingsExposeFinalInputTypesAndCompletePropertySchemas() {
-        try (var harness = new BridgeTestHarness(MAPPER, ENVIRONMENT, (_, _) -> CompletableFuture.failedFuture(new AssertionError("No bridge call should occur in this test")))) {
+        try (var harness = new BridgeTestHarness(MAPPER, ENVIRONMENT, (_, _) -> {
+            throw new AssertionError("No bridge call should occur in this test");
+        })) {
             Map<String, ToolBinding<?>> bindings = RuntimeToolModule.handlers(harness.session(), MAPPER, ENVIRONMENT);
 
             allMigratedBindings().forEach(expectation -> assertTypedInputBinding(bindings, expectation));
@@ -239,7 +240,9 @@ class RuntimeTypedInputMigrationTest {
 
     @Test
     void sessionBindingsDecodeValidInputsWithExactlyOneMapperConversion() {
-        try (var harness = new BridgeTestHarness(MAPPER, ENVIRONMENT, (_, _) -> CompletableFuture.failedFuture(new AssertionError("Decode-only guard must not call the bridge")))) {
+        try (var harness = new BridgeTestHarness(MAPPER, ENVIRONMENT, (_, _) -> {
+            throw new AssertionError("Decode-only guard must not call the bridge");
+        })) {
             Map<String, ToolBinding<?>> bindings = RuntimeToolModule.handlers(harness.session(), MAPPER, ENVIRONMENT);
             Map<String, Map<String, Object>> valid = Map.of("mc_join_server", Map.of("address", "localhost:25565", "acceptResourcePacks", false, "wait", false, "timeoutSeconds", new BigDecimal("1.25")), "mc_wait_until_in_world", Map.of("timeoutSeconds", new BigDecimal("0.5"), "requireAbsenceFirst", true), "mc_quit_client", Map.of("timeoutSeconds", 0, "waitForExit", false), "mc_wait_for_bridge", Map.of("expectedVersion", "1.21.11", "timeoutSeconds", 0));
             for (BindingExpectation expectation : SESSION_BINDINGS) {
@@ -292,7 +295,9 @@ class RuntimeTypedInputMigrationTest {
 
     @Test
     void connectAndExecuteUseTypedDefaultsBoundsAndSeconds() {
-        try (var harness = new BridgeTestHarness(MAPPER, ENVIRONMENT, (_, _) -> CompletableFuture.failedFuture(new AssertionError("No bridge call should occur in this test")))) {
+        try (var harness = new BridgeTestHarness(MAPPER, ENVIRONMENT, (_, _) -> {
+            throw new AssertionError("No bridge call should occur in this test");
+        })) {
             Map<String, ToolBinding<?>> bindings = RuntimeToolModule.handlers(harness.session(), MAPPER, ENVIRONMENT);
 
             ToolInput<ConnectArguments> connectInput = typedInput(bindings.get("mc_connect"), ConnectArguments.class);
@@ -328,7 +333,9 @@ class RuntimeTypedInputMigrationTest {
         assertThrows(IllegalArgumentException.class, () -> new ScreenshotArguments(2, 0.049));
         assertThrows(IllegalArgumentException.class, () -> new ScreenshotArguments(2, 1.001));
 
-        try (var harness = new BridgeTestHarness(MAPPER, ENVIRONMENT, (_, _) -> CompletableFuture.failedFuture(new AssertionError("No bridge call should occur in this test")))) {
+        try (var harness = new BridgeTestHarness(MAPPER, ENVIRONMENT, (_, _) -> {
+            throw new AssertionError("No bridge call should occur in this test");
+        })) {
             ToolInput<ScreenshotArguments> input = typedInput(RuntimeToolModule.handlers(harness.session(), MAPPER, ENVIRONMENT).get("mc_screenshot"), ScreenshotArguments.class);
             Map<String, Object> schema = input.schema().value();
             Map<?, ?> properties = assertInstanceOf(Map.class, schema.get("properties"));
@@ -347,7 +354,9 @@ class RuntimeTypedInputMigrationTest {
 
     @Test
     void screenshotRejectsInvalidInputBeforeMappingOrBridgeDispatch() {
-        try (var harness = new BridgeTestHarness(MAPPER, ENVIRONMENT, (_, _) -> CompletableFuture.failedFuture(new AssertionError("No bridge call should occur on invalid screenshot arguments")))) {
+        try (var harness = new BridgeTestHarness(MAPPER, ENVIRONMENT, (_, _) -> {
+            throw new AssertionError("No bridge call should occur on invalid screenshot arguments");
+        })) {
             ToolBinding<?> binding = RuntimeToolModule.handlers(harness.session(), MAPPER, ENVIRONMENT).get("mc_screenshot");
             List<Map<String, Object>> invalid = List.of(nullArgument("downscale"), nullArgument("quality"), Map.of("downscale", 1.5), Map.of("downscale", 0), Map.of("quality", 0.049), Map.of("quality", 1.001), Map.of("quality", Double.NaN), Map.of("downscale", "2"), Map.of("quality", "0.75"), Map.of("unknown", true));
             for (Map<String, Object> arguments : invalid) {
@@ -373,7 +382,9 @@ class RuntimeTypedInputMigrationTest {
         assertEquals(boolean.class, ChatHistoryArguments.class.getRecordComponents()[1].getType());
         assertEquals(boolean.class, ScreenInspectArguments.class.getRecordComponents()[0].getType());
 
-        try (var harness = new BridgeTestHarness(MAPPER, ENVIRONMENT, (_, _) -> CompletableFuture.failedFuture(new AssertionError("No bridge call should occur in this test")))) {
+        try (var harness = new BridgeTestHarness(MAPPER, ENVIRONMENT, (_, _) -> {
+            throw new AssertionError("No bridge call should occur in this test");
+        })) {
             Map<String, ToolBinding<?>> bindings = RuntimeToolModule.handlers(harness.session(), MAPPER, ENVIRONMENT);
 
             assertQuerySchema(bindings.get("mc_connect"), ConnectArguments.class, Map.of("port", Map.of("type", "integer", "description", "WebSocket port. Default: scan 9876-9886", "minimum", BigDecimal.ONE, "maximum", new BigDecimal("65535")), "reset", Map.of("type", "boolean", "description", "Disconnect and clear state before connecting (for switching instances)", "default", false)));
@@ -407,7 +418,9 @@ class RuntimeTypedInputMigrationTest {
 
     @Test
     void queryInputsRejectNullFractionalWrongTypeAndBoundsBeforeBridgeDispatch() {
-        try (var harness = new BridgeTestHarness(MAPPER, ENVIRONMENT, (_, _) -> CompletableFuture.failedFuture(new AssertionError("No bridge call should occur on invalid query arguments")))) {
+        try (var harness = new BridgeTestHarness(MAPPER, ENVIRONMENT, (_, _) -> {
+            throw new AssertionError("No bridge call should occur on invalid query arguments");
+        })) {
             Map<String, ToolBinding<?>> bindings = RuntimeToolModule.handlers(harness.session(), MAPPER, ENVIRONMENT);
             List<Map.Entry<String, Map<String, Object>>> invalid = List.of(Map.entry("mc_connect", nullArgument("port")), Map.entry("mc_connect", Map.of("port", 1.5)), Map.entry("mc_connect", Map.of("port", 0)), Map.entry("mc_connect", Map.of("port", 65536)), Map.entry("mc_connect", nullArgument("reset")), Map.entry("mc_nearby_entities", nullArgument("range")), Map.entry("mc_nearby_entities", Map.of("range", -0.1)), Map.entry("mc_nearby_entities", Map.of("limit", 1.5)), Map.entry("mc_nearby_entities", Map.of("limit", -1)), Map.entry("mc_nearby_entities", nullArgument("includeIcons")), Map.entry("mc_nearby_blocks", Map.of("range", -0.1)), Map.entry("mc_nearby_blocks", Map.of("limit", 1.5)), Map.entry("mc_nearby_blocks", Map.of("limit", -1)), Map.entry("mc_looked_at_entity", Map.of("range", -0.1)), Map.entry("mc_chat_history", Map.of("limit", 1.5)), Map.entry("mc_chat_history", Map.of("limit", -1)), Map.entry("mc_chat_history", nullArgument("includeJson")), Map.entry("mc_screen_inspect", nullArgument("includeIcons")), Map.entry("mc_screen_inspect", Map.of("includeIcons", "false")));
             for (Map.Entry<String, Map<String, Object>> testCase : invalid) {
@@ -423,7 +436,9 @@ class RuntimeTypedInputMigrationTest {
 
     @Test
     void itemTextureSchemasPreserveDescriptionsAndBounds() {
-        try (var harness = new BridgeTestHarness(MAPPER, ENVIRONMENT, (_, _) -> CompletableFuture.failedFuture(new AssertionError("No bridge call should occur in this test")))) {
+        try (var harness = new BridgeTestHarness(MAPPER, ENVIRONMENT, (_, _) -> {
+            throw new AssertionError("No bridge call should occur in this test");
+        })) {
             ToolInput<ItemTextureArguments> itemInput = typedInput(RuntimeToolModule.handlers(harness.session(), MAPPER, ENVIRONMENT).get("mc_get_item_texture"), ItemTextureArguments.class);
             Map<String, Object> itemSchema = itemInput.schema().value();
             assertEquals(false, itemSchema.get("additionalProperties"));
@@ -442,7 +457,9 @@ class RuntimeTypedInputMigrationTest {
 
     @Test
     void entityItemTextureUsesIntegerIdAndAllLowercaseEquipmentSlots() {
-        try (var harness = new BridgeTestHarness(MAPPER, ENVIRONMENT, (_, _) -> CompletableFuture.failedFuture(new AssertionError("No bridge call should occur in this test")))) {
+        try (var harness = new BridgeTestHarness(MAPPER, ENVIRONMENT, (_, _) -> {
+            throw new AssertionError("No bridge call should occur in this test");
+        })) {
             ToolInput<?> input = RuntimeToolModule.handlers(harness.session(), MAPPER, ENVIRONMENT).get("mc_get_entity_item_texture").input();
             Class<?> inputClass = input.type().rawClass();
             assertNotNull(inputClass);
@@ -474,7 +491,9 @@ class RuntimeTypedInputMigrationTest {
 
     @Test
     void scriptLogsUsesDirectLowercaseEnumInputWithValidatedIntegerDefault() {
-        try (var harness = new BridgeTestHarness(MAPPER, ENVIRONMENT, (_, _) -> CompletableFuture.failedFuture(new AssertionError("No bridge call should occur in this test")))) {
+        try (var harness = new BridgeTestHarness(MAPPER, ENVIRONMENT, (_, _) -> {
+            throw new AssertionError("No bridge call should occur in this test");
+        })) {
             ToolInput<?> input = RuntimeToolModule.handlers(harness.session(), MAPPER, ENVIRONMENT).get("mc_script_logs").input();
             assertEquals(ScriptLogsArguments.class, input.type().rawClass());
             Map<String, Object> schema = input.schema().value();
@@ -496,7 +515,9 @@ class RuntimeTypedInputMigrationTest {
 
     @Test
     void scriptLogsEmptyArgumentsDecodeDefaultsThroughOneMapperConversion() {
-        try (var harness = new BridgeTestHarness(MAPPER, ENVIRONMENT, (_, _) -> CompletableFuture.failedFuture(new AssertionError("No bridge call should occur in this test")))) {
+        try (var harness = new BridgeTestHarness(MAPPER, ENVIRONMENT, (_, _) -> {
+            throw new AssertionError("No bridge call should occur in this test");
+        })) {
             ToolInput<?> input = RuntimeToolModule.handlers(harness.session(), MAPPER, ENVIRONMENT).get("mc_script_logs").input();
             CountingMcpJsonMapper mapper = new CountingMcpJsonMapper(MAPPER);
 
@@ -510,7 +531,9 @@ class RuntimeTypedInputMigrationTest {
 
     @Test
     void entityTextureAndScriptLogsRejectMalformedPropertiesBeforeMapperConversion() {
-        try (var harness = new BridgeTestHarness(MAPPER, ENVIRONMENT, (_, _) -> CompletableFuture.failedFuture(new AssertionError("No bridge call should occur on invalid arguments")))) {
+        try (var harness = new BridgeTestHarness(MAPPER, ENVIRONMENT, (_, _) -> {
+            throw new AssertionError("No bridge call should occur on invalid arguments");
+        })) {
             Map<String, ToolBinding<?>> bindings = RuntimeToolModule.handlers(harness.session(), MAPPER, ENVIRONMENT);
             List<Map.Entry<String, Map<String, Object>>> invalid = List.of(Map.entry("mc_get_entity_item_texture", Map.of()), Map.entry("mc_get_entity_item_texture", Map.of("entityId", "7", "slot", "mainhand")), Map.entry("mc_get_entity_item_texture", Map.of("entityId", 7.5, "slot", "mainhand")), Map.entry("mc_get_entity_item_texture", Map.of("entityId", 7, "slot", "unknown")), Map.entry("mc_get_entity_item_texture", Map.of("entityId", 7, "slot", "mainhand", "unknown", true)), Map.entry("mc_script_logs", Map.of("mode", "bogus")), Map.entry("mc_script_logs", Map.of("limit", 0)), Map.entry("mc_script_logs", Map.of("limit", -1)), Map.entry("mc_script_logs", Map.of("limit", 1.5)), Map.entry("mc_script_logs", Map.of("limit", "20")), Map.entry("mc_script_logs", Map.of("unknown", true)));
             for (Map.Entry<String, Map<String, Object>> testCase : invalid) {
@@ -530,7 +553,7 @@ class RuntimeTypedInputMigrationTest {
         try (var harness = new BridgeTestHarness(MAPPER, ENVIRONMENT, (_, request) -> successfulResponse(request))) {
             ToolBinding<?> binding = RuntimeToolModule.handlers(harness.session(), MAPPER, ENVIRONMENT).get("mc_execute");
 
-            ToolResult<?> result = binding.invoke(mapper, Map.of("code", "return 1", "timeoutSeconds", new BigDecimal("1.25")), Cancellation.none()).toCompletableFuture().get(5, TimeUnit.SECONDS);
+            ToolResult<?> result = CompleteToolBindings.blocking(binding).invoke(mapper, Map.of("code", "return 1", "timeoutSeconds", new BigDecimal("1.25")), Cancellation.none()).toCompletableFuture().get(5, TimeUnit.SECONDS);
 
             assertFalse(result.isError());
             assertEquals(1, mapper.convertValueCalls());
@@ -541,7 +564,9 @@ class RuntimeTypedInputMigrationTest {
 
     @Test
     void connectAndExecuteRejectMalformedLegacyArgumentsBeforeMappingOrBridge() {
-        try (var harness = new BridgeTestHarness(MAPPER, ENVIRONMENT, (_, _) -> CompletableFuture.failedFuture(new AssertionError("No bridge call should occur on invalid arguments")))) {
+        try (var harness = new BridgeTestHarness(MAPPER, ENVIRONMENT, (_, _) -> {
+            throw new AssertionError("No bridge call should occur on invalid arguments");
+        })) {
             Map<String, ToolBinding<?>> bindings = RuntimeToolModule.handlers(harness.session(), MAPPER, ENVIRONMENT);
             List<Map.Entry<String, Map<String, Object>>> invalid = List.of(Map.entry("mc_connect", Map.of("port", 0)), Map.entry("mc_connect", Map.of("port", 65536)), Map.entry("mc_connect", Map.of("port", 1.5)), Map.entry("mc_connect", Map.of("port", "9876")), Map.entry("mc_connect", Map.of("reset", "false")), Map.entry("mc_execute", Map.of()), Map.entry("mc_execute", Map.of("code", "return 1", "timeoutSeconds", 0.5)), Map.entry("mc_execute", Map.of("code", "return 1", "timeoutSeconds", 300.1)), Map.entry("mc_execute", Map.of("code", "return 1", "timeoutSeconds", "1.25")), Map.entry("mc_execute", Map.of("code", "return 1", "timeoutMs", 1000)));
             for (Map.Entry<String, Map<String, Object>> testCase : invalid) {
@@ -555,7 +580,9 @@ class RuntimeTypedInputMigrationTest {
 
     @Test
     void recordVideoBindingExposesTaggedDurationIntervalAndPrimitiveInput() {
-        try (var harness = new BridgeTestHarness(MAPPER, ENVIRONMENT, (_, _) -> CompletableFuture.failedFuture(new AssertionError("No bridge call should occur in this test")))) {
+        try (var harness = new BridgeTestHarness(MAPPER, ENVIRONMENT, (_, _) -> {
+            throw new AssertionError("No bridge call should occur in this test");
+        })) {
             ToolBinding<?> binding = RuntimeToolModule.handlers(harness.session(), MAPPER, ENVIRONMENT).get("mc_record_video");
             assertNotNull(binding);
             ToolInput<?> input = binding.input();
@@ -578,7 +605,9 @@ class RuntimeTypedInputMigrationTest {
 
     @Test
     void recordVideoDecodesSemanticIntervalVariantsAndRejectsUnknownDiscriminatorsBeforeMapping() throws Exception {
-        try (var harness = new BridgeTestHarness(MAPPER, ENVIRONMENT, (_, _) -> CompletableFuture.failedFuture(new AssertionError("No bridge call should occur in this test")))) {
+        try (var harness = new BridgeTestHarness(MAPPER, ENVIRONMENT, (_, _) -> {
+            throw new AssertionError("No bridge call should occur in this test");
+        })) {
             ToolInput<?> input = RuntimeToolModule.handlers(harness.session(), MAPPER, ENVIRONMENT).get("mc_record_video").input();
 
             RecordVideoArguments fixed = (RecordVideoArguments) input.decode(MAPPER, Map.of("frames", 2, "interval", Map.of("kind", "fixed", "intervalSeconds", 0.05)));
@@ -598,7 +627,9 @@ class RuntimeTypedInputMigrationTest {
 
     @Test
     void recordVideoMaterializesDefaultsAndUsesExactFinalComponentTypes() {
-        try (var harness = new BridgeTestHarness(MAPPER, ENVIRONMENT, (_, _) -> CompletableFuture.failedFuture(new AssertionError("No bridge call should occur in this test")))) {
+        try (var harness = new BridgeTestHarness(MAPPER, ENVIRONMENT, (_, _) -> {
+            throw new AssertionError("No bridge call should occur in this test");
+        })) {
             ToolInput<?> input = RuntimeToolModule.handlers(harness.session(), MAPPER, ENVIRONMENT).get("mc_record_video").input();
             var mapper = new CountingMcpJsonMapper(MAPPER);
             RecordVideoArguments arguments = (RecordVideoArguments) input.decode(mapper, Map.of("frames", 5));
@@ -638,7 +669,9 @@ class RuntimeTypedInputMigrationTest {
 
     @Test
     void recordVideoRejectsInvalidRootAndNestedValuesBeforeMappingOrBridgeDispatch() {
-        try (var harness = new BridgeTestHarness(MAPPER, ENVIRONMENT, (_, _) -> CompletableFuture.failedFuture(new AssertionError("No bridge call should occur on invalid record-video arguments")))) {
+        try (var harness = new BridgeTestHarness(MAPPER, ENVIRONMENT, (_, _) -> {
+            throw new AssertionError("No bridge call should occur on invalid record-video arguments");
+        })) {
             ToolBinding<?> binding = RuntimeToolModule.handlers(harness.session(), MAPPER, ENVIRONMENT).get("mc_record_video");
             List<Map<String, Object>> invalid = List.of(Map.of("frames", "4"), Map.of("frames", 1.5), Map.of("frames", 0), Map.of("frames", 301), mapWithNull("frames"), Map.of("frames", 2, "interval", "frame"), Map.of("frames", 2, "interval", Map.of("kind", "fixed")), Map.of("frames", 2, "interval", Map.of("kind", "fixed", "intervalSeconds", 0.0009)), Map.of("frames", 2, "interval", Map.of("kind", "fixed", "intervalSeconds", 0.05, "unknown", true)), mapWithNull("interval"), Map.of("frames", 2, "output", "GRID"), mapWithNull("output"), Map.of("frames", 2, "gridCols", 0), Map.of("frames", 2, "gridCols", 3), Map.of("frames", 2, "gridCols", 1.5), mapWithNull("gridCols"), Map.of("frames", 2, "downscale", 0), Map.of("frames", 2, "downscale", 1.5), mapWithNull("downscale"), Map.of("frames", 2, "quality", 0.049), Map.of("frames", 2, "quality", 1.001), Map.of("frames", 2, "quality", Double.NaN), Map.of("frames", 2, "quality", "0.75"), mapWithNull("quality"), Map.of("frames", 2, "unknown", true));
             for (Map<String, Object> arguments : invalid) {
@@ -653,7 +686,9 @@ class RuntimeTypedInputMigrationTest {
 
     @Test
     void itemTextureBindingsRejectInvalidRuntimePropertiesBeforeMappingAndBridgeDispatch() {
-        try (var harness = new BridgeTestHarness(MAPPER, ENVIRONMENT, (_, _) -> CompletableFuture.failedFuture(new AssertionError("No bridge call should occur on invalid item texture arguments")))) {
+        try (var harness = new BridgeTestHarness(MAPPER, ENVIRONMENT, (_, _) -> {
+            throw new AssertionError("No bridge call should occur on invalid item texture arguments");
+        })) {
             Map<String, ToolBinding<?>> bindings = RuntimeToolModule.handlers(harness.session(), MAPPER, ENVIRONMENT);
             List<Map.Entry<String, Map<String, Object>>> invalid = List.of(Map.entry("mc_get_item_texture", Map.of()), Map.entry("mc_get_item_texture", Map.of("slot", "0")), Map.entry("mc_get_item_texture", Map.of("slot", 1.5)), Map.entry("mc_get_item_texture", Map.of("slot", -1)), Map.entry("mc_get_item_texture", Map.of("slot", 41)), Map.entry("mc_get_item_texture", Map.of("slot", 0, "unknown", true)), Map.entry("mc_get_item_texture_by_id", Map.of()), Map.entry("mc_get_item_texture_by_id", Map.of("itemId", 41)), Map.entry("mc_get_item_texture_by_id", Map.of("itemId", "minecraft:diamond", "unknown", true)), Map.entry("mc_get_item_texture_by_id", itemIdArguments(null)), Map.entry("mc_get_item_texture_by_id", itemIdArguments("")), Map.entry("mc_get_item_texture_by_id", itemIdArguments("Minecraft:diamond")), Map.entry("mc_get_item_texture_by_id", itemIdArguments("one:two:three")), Map.entry("mc_get_item_texture_by_id", itemIdArguments(":diamond")), Map.entry("mc_get_item_texture_by_id", itemIdArguments("minecraft:")), Map.entry("mc_get_item_texture_by_id", itemIdArguments("minecraft:diamond?")));
             for (Map.Entry<String, Map<String, Object>> invalidCase : invalid) {
@@ -678,7 +713,9 @@ class RuntimeTypedInputMigrationTest {
 
     @Test
     void itemTextureByIdDecodesResourceIdentifierAndProjectsItsCanonicalValue() {
-        try (var harness = new BridgeTestHarness(MAPPER, ENVIRONMENT, (_, _) -> CompletableFuture.failedFuture(new AssertionError("No bridge call should occur in this test")))) {
+        try (var harness = new BridgeTestHarness(MAPPER, ENVIRONMENT, (_, _) -> {
+            throw new AssertionError("No bridge call should occur in this test");
+        })) {
             ToolInput<ItemTextureByIdArguments> input = typedInput(RuntimeToolModule.handlers(harness.session(), MAPPER, ENVIRONMENT).get("mc_get_item_texture_by_id"), ItemTextureByIdArguments.class);
 
             ItemTextureByIdArguments arguments = input.decode(MAPPER, Map.of("itemId", "diamond"));
@@ -689,7 +726,9 @@ class RuntimeTypedInputMigrationTest {
 
     @Test
     void outOfSchemaValuesFailBeforeAnyBridgeCall() throws Exception {
-        try (var harness = new BridgeTestHarness(MAPPER, ENVIRONMENT, (_, _) -> CompletableFuture.failedFuture(new AssertionError("No bridge call should occur on invalid arguments")))) {
+        try (var harness = new BridgeTestHarness(MAPPER, ENVIRONMENT, (_, _) -> {
+            throw new AssertionError("No bridge call should occur on invalid arguments");
+        })) {
             ToolCatalog catalog = ToolCatalog.load(ENVIRONMENT, CompleteToolBindings.including(MAPPER, RuntimeToolModule.handlers(harness.session(), MAPPER, ENVIRONMENT)), MAPPER);
 
             assertInvalidArgumentsReject(catalog, harness, "mc_run_command", Map.of());
@@ -744,7 +783,9 @@ class RuntimeTypedInputMigrationTest {
 
     @Test
     void unknownRuntimePropertiesFailBeforeMapperConversion() {
-        try (var harness = new BridgeTestHarness(MAPPER, ENVIRONMENT, (_, _) -> CompletableFuture.failedFuture(new AssertionError("No bridge call should occur on unknown arguments")))) {
+        try (var harness = new BridgeTestHarness(MAPPER, ENVIRONMENT, (_, _) -> {
+            throw new AssertionError("No bridge call should occur on unknown arguments");
+        })) {
             Map<String, ToolBinding<?>> bindings = RuntimeToolModule.handlers(harness.session(), MAPPER, ENVIRONMENT);
             List<Map.Entry<String, Map<String, Object>>> cases = List.of(Map.entry("mc_snapshot", Map.of("unknown", true)), Map.entry("mc_nearby_entities", Map.of("unknown", true)), Map.entry("mc_record_video", Map.of("frames", 2, "interval", Map.of("kind", "frame", "unknown", true))));
             for (Map.Entry<String, Map<String, Object>> testCase : cases) {
