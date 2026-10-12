@@ -95,13 +95,12 @@ public final value class CacheCleaner {
         boolean foundScaffold = false;
         try (var descendants = Files.walk(versionRoot)) {
             for (Path candidate : descendants.skip(1).toList()) {
-                boundary.require(candidate);
-                Path relative = versionRoot.relativize(candidate);
-                if (isPersistentLockScaffold(relative, candidate, indexRoot)) {
-                    foundScaffold = true;
-                    continue;
+                // Other entries are content, unsafe ones too: cleaning that version rejects them.
+                if (!isPersistentLockScaffold(versionRoot.relativize(candidate), candidate, indexRoot)) {
+                    return false;
                 }
-                return false;
+                boundary.require(candidate);
+                foundScaffold = true;
             }
         }
         return foundScaffold;
