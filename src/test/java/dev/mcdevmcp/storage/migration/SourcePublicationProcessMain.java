@@ -28,7 +28,7 @@ public final class SourcePublicationProcessMain {
             }
             else {
                 SourceIndexSnapshot before = publisher.captureBefore(paths, version, lease, Cancellation.none());
-                publisher.publish(paths, version, lease, transaction, transaction.resolve("candidate/client"), transaction.resolve("candidate/symbols.mv.db"), transaction.resolve("candidate/source-preparation.json"), before, Cancellation.none());
+                publisher.publish(paths, version, lease, transaction, transaction.resolve("candidate/client"), transaction.resolve("candidate/symbols.jsonl"), transaction.resolve("candidate/source-preparation.json"), before, Cancellation.none());
             }
         }
     }

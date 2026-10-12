@@ -39,7 +39,7 @@ class IndexerFailureAtomicityTest {
         Path jar = IndexerTestSupport.createJar(temporaryDirectory.resolve("empty.jar"), Map.of());
         Path valid = Files.createDirectories(temporaryDirectory.resolve("valid/ok"));
         Files.writeString(valid.resolve("Valid.java"), "package ok; public class Valid {}", StandardCharsets.UTF_8);
-        Path database = temporaryDirectory.resolve("symbols.mv.db");
+        Path database = temporaryDirectory.resolve("symbols.jsonl");
         new SourceIndexer().build(IndexerTestSupport.request(valid.getParent(), jar, database, 1));
         byte[] original = IndexerTestSupport.bytes(database);
 
@@ -93,7 +93,7 @@ class IndexerFailureAtomicityTest {
         Path jar = IndexerTestSupport.createJar(temporaryDirectory.resolve("package-error-empty.jar"), Map.of());
         Path valid = Files.createDirectories(temporaryDirectory.resolve("package-error-valid/ok"));
         Files.writeString(valid.resolve("Valid.java"), "package ok; public class Valid {}", StandardCharsets.UTF_8);
-        Path database = temporaryDirectory.resolve("package-error.mv.db");
+        Path database = temporaryDirectory.resolve("package-error.jsonl");
         new SourceIndexer().build(IndexerTestSupport.request(valid.getParent(), jar, database, 1));
         byte[] original = IndexerTestSupport.bytes(database);
         Path broken = Files.createDirectories(temporaryDirectory.resolve("package-error-broken/broken"));
@@ -109,7 +109,7 @@ class IndexerFailureAtomicityTest {
         Path jar = IndexerTestSupport.createJar(temporaryDirectory.resolve("module-error-empty.jar"), Map.of());
         Path valid = Files.createDirectories(temporaryDirectory.resolve("module-error-valid/ok"));
         Files.writeString(valid.resolve("Valid.java"), "package ok; public class Valid {}", StandardCharsets.UTF_8);
-        Path database = temporaryDirectory.resolve("module-error.mv.db");
+        Path database = temporaryDirectory.resolve("module-error.jsonl");
         new SourceIndexer().build(IndexerTestSupport.request(valid.getParent(), jar, database, 1));
         byte[] original = IndexerTestSupport.bytes(database);
         Path broken = Files.createDirectories(temporaryDirectory.resolve("module-error-broken"));
@@ -125,7 +125,7 @@ class IndexerFailureAtomicityTest {
         Path jar = IndexerTestSupport.createJar(temporaryDirectory.resolve("compiler-cancel-empty.jar"), Map.of());
         Path sourceRoot = Files.createDirectories(temporaryDirectory.resolve("compiler-cancel/source"));
         Files.writeString(sourceRoot.resolve("Current.java"), "class Current {}", StandardCharsets.UTF_8);
-        Path database = temporaryDirectory.resolve("compiler-cancel.mv.db");
+        Path database = temporaryDirectory.resolve("compiler-cancel.jsonl");
         new SourceIndexer().build(IndexerTestSupport.request(sourceRoot, jar, database, 1));
         byte[] original = IndexerTestSupport.bytes(database);
         CountDownLatch compilerStarted = new CountDownLatch(1);

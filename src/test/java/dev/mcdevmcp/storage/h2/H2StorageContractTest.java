@@ -14,11 +14,11 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class H2StorageContractTest {
     @Test
-    void usesTypedVersionsAndExactH2DatabasePaths() {
+    void usesTypedVersionsAndExactIndexPaths() {
         var version = new MinecraftVersion("1.21.5");
         var paths = new PlatformPaths(Path.of("/cache/mcdev-mcp"));
 
-        assertEquals(Path.of("/cache/mcdev-mcp/index/1.21.5/symbols.mv.db"), paths.symbolDatabase(version));
+        assertEquals(Path.of("/cache/mcdev-mcp/index/1.21.5/symbols.jsonl"), paths.symbolDatabase(version));
         assertEquals(Path.of("/cache/mcdev-mcp/cache/1.21.5/indexes/callgraph"), paths.callgraphBundle(version));
         assertEquals("minecraft", SourceNamespace.MINECRAFT.wireName());
         assertEquals(SourceNamespace.FABRIC, SourceNamespace.fromWireName("fabric"));

@@ -1,8 +1,10 @@
 package dev.mcdevmcp.analysis.index.pipeline;
 
+import dev.mcdevmcp.analysis.classfile.ClassDescriptors;
 import dev.mcdevmcp.analysis.index.IndexRequest;
 import dev.mcdevmcp.analysis.index.PublishedSourceRoot;
-import dev.mcdevmcp.storage.h2.SymbolSchema;
+import dev.mcdevmcp.storage.h2.SymbolIndexData;
+import dev.mcdevmcp.storage.h2.SymbolIndexFiles;
 import dev.mcdevmcp.storage.model.ElementKindCodec;
 import dev.mcdevmcp.storage.model.FabricApiVersion;
 import dev.mcdevmcp.storage.model.MinecraftVersion;
@@ -11,16 +13,12 @@ import dev.mcdevmcp.storage.model.SourceNamespace;
 import javax.lang.model.element.Modifier;
 import java.lang.constant.ClassDesc;
 import java.lang.constant.MethodTypeDesc;
+import java.io.IOException;
 import java.nio.file.Path;
-import java.sql.Connection;
-import java.sql.ResultSet;
-import java.sql.SQLException;
-import java.sql.Statement;
 import java.time.Instant;
-import java.time.OffsetDateTime;
 import java.util.*;
+import java.util.stream.Collectors;
 
-@SuppressWarnings({"SqlNoDataSourceInspection", "SqlResolve"})
 value record SymbolIndexSnapshot(SymbolIndexMetadata metadata, List<IndexedPackageSnapshot> packages, List<IndexedTypeSnapshot> types, List<IndexedInterfaceSnapshot> interfaces, List<IndexedFieldSnapshot> fields, List<IndexedMethodSnapshot> methods, List<IndexedParameterSnapshot> parameters) {
     SymbolIndexSnapshot {
         packages = List.copyOf(packages);
@@ -32,7 +30,7 @@ value record SymbolIndexSnapshot(SymbolIndexMetadata metadata, List<IndexedPacka
     }
 
     static SymbolIndexSnapshot expected(IndexRequest request, String remappedJarSha256, Instant builtAt, List<IndexedPackage> packages, List<ParsedType> parsedTypes, PublishedSourceRoot publishedSourceRoot) {
-        SymbolIndexMetadata metadata = new SymbolIndexMetadata(true, SymbolSchema.VERSION, request.minecraftVersion(), publishedSourceRoot.path(), remappedJarSha256, builtAt);
+        SymbolIndexMetadata metadata = new SymbolIndexMetadata(true, SymbolIndexData.FORMAT, request.minecraftVersion(), publishedSourceRoot.path(), remappedJarSha256, builtAt);
         List<IndexedPackageSnapshot> expectedPackages = packages.stream().map(indexedPackage -> new IndexedPackageSnapshot(indexedPackage.id(), indexedPackage.namespace(), indexedPackage.fabricApiVersion(), indexedPackage.fabricApiVersion().map(FabricApiVersion::value).orElse(""), indexedPackage.name())).toList();
         List<IndexedTypeSnapshot> expectedTypes = new ArrayList<>();
         List<IndexedInterfaceSnapshot> expectedInterfaces = new ArrayList<>();
@@ -64,65 +62,30 @@ value record SymbolIndexSnapshot(SymbolIndexMetadata metadata, List<IndexedPacka
         return new SymbolIndexSnapshot(metadata, expectedPackages, expectedTypes, expectedInterfaces, expectedFields, expectedMethods, expectedParameters);
     }
 
-    private static SymbolIndexSnapshot read(Connection connection) throws SQLException {
-        SymbolIndexMetadata metadata;
-        try (Statement statement = connection.createStatement();
-             ResultSet results = statement.executeQuery("SELECT singleton, schema_version, minecraft_version, source_root, remapped_jar_sha256, built_at FROM metadata ORDER BY singleton")) {
-            if (!results.next()) {
-                throw new SQLException("Missing symbol metadata row");
-            }
-            metadata = new SymbolIndexMetadata(results.getBoolean(1), results.getInt(2), new MinecraftVersion(results.getString(3)), Path.of(results.getString(4)), results.getString(5), results.getObject(6, OffsetDateTime.class).toInstant());
-            if (results.next()) {
-                throw new SQLException("Unexpected additional symbol metadata row");
-            }
-        }
-        List<IndexedPackageSnapshot> packages = new ArrayList<>();
-        try (Statement statement = connection.createStatement();
-             ResultSet results = statement.executeQuery("SELECT id, source_namespace, fabric_api_version, fabric_api_version_key, name FROM packages ORDER BY id")) {
-            while (results.next()) {
-                packages.add(new IndexedPackageSnapshot(results.getLong(1), SourceNamespace.fromWireName(results.getString(2)), optionalVersion(results.getString(3)), results.getString(4), results.getString(5)));
-            }
-        }
+    private static SymbolIndexSnapshot from(SymbolIndexData data) {
+        SymbolIndexData.Header header = data.header();
+        SymbolIndexMetadata metadata = new SymbolIndexMetadata(true, header.format(), new MinecraftVersion(header.minecraftVersion()), Path.of(header.sourceRoot()), header.remappedJarSha256(), Instant.parse(header.builtAt()));
+        List<IndexedPackageSnapshot> packages = data.packages().stream().map(row -> new IndexedPackageSnapshot(row.id(), SourceNamespace.fromWireName(row.namespace()), optionalVersion(row.fabricApiVersion()), versionKey(row.fabricApiVersion()), row.name())).toList();
         List<IndexedTypeSnapshot> types = new ArrayList<>();
-        try (Statement statement = connection.createStatement();
-             ResultSet results = statement.executeQuery("SELECT id, package_id, source_namespace, fabric_api_version, fabric_api_version_key, binary_name, simple_name, kind, superclass_binary_name, source_path, start_offset, end_offset, start_line, end_line FROM types ORDER BY id")) {
-            while (results.next()) {
-                types.add(new IndexedTypeSnapshot(results.getLong(1), results.getLong(2), SourceNamespace.fromWireName(results.getString(3)), optionalVersion(results.getString(4)), results.getString(5), results.getString(6), results.getString(7), ElementKindCodec.fromWireName(results.getString(8)), optionalClass(results.getString(9)), new PortablePath(Path.of(results.getString(10))), range(results, 11)));
-            }
-        }
         List<IndexedInterfaceSnapshot> interfaces = new ArrayList<>();
-        try (Statement statement = connection.createStatement();
-             ResultSet results = statement.executeQuery("SELECT type_id, ordinal, interface_binary_name FROM type_interfaces ORDER BY type_id, ordinal")) {
-            while (results.next()) {
-                interfaces.add(new IndexedInterfaceSnapshot(results.getLong(1), results.getInt(2), ClassDesc.of(results.getString(3))));
+        for (SymbolIndexData.TypeRow row : data.types()) {
+            types.add(new IndexedTypeSnapshot(row.id(), row.packageId(), SourceNamespace.fromWireName(row.namespace()), optionalVersion(row.fabricApiVersion()), versionKey(row.fabricApiVersion()), row.binaryName(), row.simpleName(), ElementKindCodec.fromWireName(row.kind()), optionalClass(row.superclass()), new PortablePath(Path.of(row.sourcePath())), new SourceRange(row.startOffset(), row.endOffset(), row.startLine(), row.endLine())));
+            for (int ordinal = 0; ordinal < row.interfaces().size(); ordinal++) {
+                interfaces.add(new IndexedInterfaceSnapshot(row.id(), ordinal, ClassDesc.of(row.interfaces().get(ordinal))));
             }
         }
-        List<IndexedFieldSnapshot> fields = new ArrayList<>();
-        try (Statement statement = connection.createStatement();
-             ResultSet results = statement.executeQuery("SELECT id, type_id, ordinal, name, type, modifiers, start_offset, end_offset, start_line, end_line FROM fields ORDER BY id")) {
-            while (results.next()) {
-                fields.add(new IndexedFieldSnapshot(results.getLong(1), results.getLong(2), results.getInt(3), results.getString(4), results.getString(5), modifiers(results.getString(6)), range(results, 7)));
-            }
-        }
-        List<IndexedMethodSnapshot> methods = new ArrayList<>();
-        try (Statement statement = connection.createStatement();
-             ResultSet results = statement.executeQuery("SELECT id, type_id, ordinal, name, descriptor, return_type, modifiers, constructor, start_offset, end_offset, start_line, end_line FROM methods ORDER BY id")) {
-            while (results.next()) {
-                methods.add(new IndexedMethodSnapshot(results.getLong(1), results.getLong(2), results.getInt(3), results.getString(4), MethodTypeDesc.ofDescriptor(results.getString(5)), Optional.ofNullable(results.getString(6)), modifiers(results.getString(7)), results.getBoolean(8), range(results, 9)));
-            }
-        }
-        List<IndexedParameterSnapshot> parameters = new ArrayList<>();
-        try (Statement statement = connection.createStatement();
-             ResultSet results = statement.executeQuery("SELECT id, method_id, ordinal, name, type, varargs, start_offset, end_offset, start_line, end_line FROM parameters ORDER BY id")) {
-            while (results.next()) {
-                parameters.add(new IndexedParameterSnapshot(results.getLong(1), results.getLong(2), results.getInt(3), results.getString(4), results.getString(5), results.getBoolean(6), range(results, 7)));
-            }
-        }
+        List<IndexedFieldSnapshot> fields = data.fields().stream().map(row -> new IndexedFieldSnapshot(row.id(), row.typeId(), row.ordinal(), row.name(), row.type(), modifiers(row.modifiers()), new SourceRange(row.startOffset(), row.endOffset(), row.startLine(), row.endLine()))).toList();
+        List<IndexedMethodSnapshot> methods = data.methods().stream().map(row -> new IndexedMethodSnapshot(row.id(), row.typeId(), row.ordinal(), row.name(), MethodTypeDesc.ofDescriptor(row.descriptor()), Optional.ofNullable(row.returnType()), modifiers(row.modifiers()), row.constructor(), new SourceRange(row.startOffset(), row.endOffset(), row.startLine(), row.endLine()))).toList();
+        List<IndexedParameterSnapshot> parameters = data.parameters().stream().map(row -> new IndexedParameterSnapshot(row.id(), row.methodId(), row.ordinal(), row.name(), row.type(), row.varargs(), new SourceRange(row.startOffset(), row.endOffset(), row.startLine(), row.endLine()))).toList();
         return new SymbolIndexSnapshot(metadata, packages, types, interfaces, fields, methods, parameters);
     }
 
     private static Optional<FabricApiVersion> optionalVersion(String value) {
         return Optional.ofNullable(value).map(FabricApiVersion::new);
+    }
+
+    private static String versionKey(String value) {
+        return value == null ? "" : value;
     }
 
     private static Optional<ClassDesc> optionalClass(String value) {
@@ -140,14 +103,27 @@ value record SymbolIndexSnapshot(SymbolIndexMetadata metadata, List<IndexedPacka
         return Arrays.stream(value.split(",", -1)).map(name -> Modifier.valueOf(name.toUpperCase(Locale.ROOT))).toList();
     }
 
-    private static SourceRange range(ResultSet results, int firstColumn) throws SQLException {
-        return new SourceRange(results.getInt(firstColumn), results.getInt(firstColumn + 1), results.getInt(firstColumn + 2), results.getInt(firstColumn + 3));
+    private static String wireModifiers(List<Modifier> modifiers) {
+        return modifiers.stream().map(modifier -> modifier.name().toLowerCase(Locale.ROOT)).collect(Collectors.joining(","));
     }
 
-    void validate(Connection connection) throws SQLException {
-        SymbolIndexSnapshot actual = read(connection);
+    SymbolIndexData toData() {
+        Map<Long, List<String>> interfaceNames = new HashMap<>();
+        for (IndexedInterfaceSnapshot implemented : interfaces.stream().sorted(Comparator.comparingLong(IndexedInterfaceSnapshot::typeId).thenComparingInt(IndexedInterfaceSnapshot::ordinal)).toList()) {
+            interfaceNames.computeIfAbsent(implemented.typeId(), _ -> new ArrayList<>()).add(ClassDescriptors.binaryName(implemented.interfaceType()));
+        }
+        List<SymbolIndexData.PackageRow> packageRows = packages.stream().map(value -> new SymbolIndexData.PackageRow(value.id(), value.namespace().wireName(), value.fabricApiVersion().map(FabricApiVersion::value).orElse(null), value.name())).toList();
+        List<SymbolIndexData.TypeRow> typeRows = types.stream().map(value -> new SymbolIndexData.TypeRow(value.id(), value.packageId(), value.namespace().wireName(), value.fabricApiVersion().map(FabricApiVersion::value).orElse(null), value.binaryName(), value.simpleName(), ElementKindCodec.wireName(value.kind()), value.superclass().map(ClassDescriptors::binaryName).orElse(null), interfaceNames.getOrDefault(value.id(), List.of()), value.sourcePath().value(), value.range().startOffset(), value.range().endOffset(), value.range().startLine(), value.range().endLine())).toList();
+        List<SymbolIndexData.FieldRow> fieldRows = fields.stream().map(value -> new SymbolIndexData.FieldRow(value.id(), value.typeId(), value.ordinal(), value.name(), value.type(), wireModifiers(value.modifiers()), value.range().startOffset(), value.range().endOffset(), value.range().startLine(), value.range().endLine())).toList();
+        List<SymbolIndexData.MethodRow> methodRows = methods.stream().map(value -> new SymbolIndexData.MethodRow(value.id(), value.typeId(), value.ordinal(), value.name(), value.descriptor().descriptorString(), value.returnType().orElse(null), wireModifiers(value.modifiers()), value.constructor(), value.range().startOffset(), value.range().endOffset(), value.range().startLine(), value.range().endLine())).toList();
+        List<SymbolIndexData.ParameterRow> parameterRows = parameters.stream().map(value -> new SymbolIndexData.ParameterRow(value.id(), value.methodId(), value.ordinal(), value.name(), value.type(), value.varargs(), value.range().startOffset(), value.range().endOffset(), value.range().startLine(), value.range().endLine())).toList();
+        return SymbolIndexData.of(metadata.minecraftVersion().value(), metadata.sourceRoot().toString(), metadata.remappedJarSha256(), metadata.builtAt().toString(), packageRows, typeRows, fieldRows, methodRows, parameterRows);
+    }
+
+    void validate(Path file) throws IOException {
+        SymbolIndexSnapshot actual = from(SymbolIndexFiles.read(file));
         if (!equals(actual)) {
-            throw new SQLException("Persisted symbol projection does not exactly match the immutable build projection: expected " + this + ", found " + actual);
+            throw new IOException("Persisted symbol projection does not exactly match the immutable build projection: expected " + this + ", found " + actual);
         }
     }
 }

@@ -93,7 +93,7 @@ class TypeResolutionTest {
                                                        }
                                                        """, StandardCharsets.UTF_8);
         Path jar = IndexerTestSupport.createJar(temporaryDirectory.resolve("owners-empty.jar"), Map.of());
-        Path database = temporaryDirectory.resolve("owners.mv.db");
+        Path database = temporaryDirectory.resolve("owners.jsonl");
 
         new SourceIndexer().build(IndexerTestSupport.request(sources.getParent(), jar, database, 1));
         List<String> dump = IndexerTestSupport.dump(database);
@@ -120,7 +120,7 @@ class TypeResolutionTest {
         write(root, "same/SameChild.java", "package same; public class SameChild extends SameBase implements SameContract {}");
         write(root, "use/NestedChild.java", "package use; import nested.Owner; public class NestedChild extends Owner.Nested implements Owner.Contract {}");
         Path jar = IndexerTestSupport.createJar(temporaryDirectory.resolve("hierarchy-empty.jar"), Map.of());
-        Path database = temporaryDirectory.resolve("hierarchy.mv.db");
+        Path database = temporaryDirectory.resolve("hierarchy.jsonl");
 
         new SourceIndexer().build(IndexerTestSupport.request(root, jar, database, 4));
         List<String> dump = IndexerTestSupport.dump(database);

@@ -1,8 +1,7 @@
 package dev.mcdevmcp.storage.migration;
 
 import dev.mcdevmcp.storage.PlatformPaths;
-import dev.mcdevmcp.storage.h2.AtomicH2Database;
-import dev.mcdevmcp.storage.h2.SymbolSchema;
+import dev.mcdevmcp.storage.h2.SymbolIndexFixture;
 import dev.mcdevmcp.storage.model.MinecraftVersion;
 import dev.mcdevmcp.support.Cancellation;
 
@@ -31,14 +30,14 @@ record SourcePublicationFixture(PlatformPaths paths, MinecraftVersion version, P
         else {
             createDatabase(paths.symbolDatabase(version), paths.sourceRoot(version), version, inputs);
         }
-        Files.writeString(paths.indexRoot(version).resolve("symbols.trace.db"), "closed trace");
-        Files.writeString(paths.indexRoot(version).resolve("symbols.mv.db.bak"), "old backup bytes");
+        Files.writeString(paths.indexRoot(version).resolve("symbols.mv.db"), "index from an earlier release");
+        Files.writeString(paths.indexRoot(version).resolve("symbols.jsonl.bak"), "old backup bytes");
         Files.writeString(paths.versionCache(version).resolve("source-preparation.json"), "old unknown stamp");
         Path transaction = paths.cacheRoot().resolve("migrations").resolve(version.value()).resolve(UUID.randomUUID().toString());
         Path source = transaction.resolve("candidate/client");
         Files.createDirectories(source);
         Files.writeString(source.resolve("New.java"), "class New {}\n");
-        Path database = transaction.resolve("candidate/symbols.mv.db");
+        Path database = transaction.resolve("candidate/symbols.jsonl");
         createDatabase(database, paths.sourceRoot(version), version, inputs);
         Path stamp = transaction.resolve("candidate/source-preparation.json");
         SourceProvenance.write(stamp, new SourcePreparationStamp(1, SourceOwnership.VALIDATED_EXTERNAL, null, inputs, SourceTreeInventory.capture(source, Cancellation.none()), new SourceValidation(SourceValidationStatus.VALID, List.of(), List.of("New.java"), List.of("New.java"))));
@@ -46,10 +45,6 @@ record SourcePublicationFixture(PlatformPaths paths, MinecraftVersion version, P
     }
 
     private static void createDatabase(Path target, Path finalSource, MinecraftVersion version, SourceInputIdentity inputs) throws Exception {
-        new AtomicH2Database().rebuild(target, AtomicH2Database.WRITE_LOCK_TIMEOUT, connection -> {
-            SymbolSchema.create(connection, version, finalSource.toAbsolutePath().normalize(), inputs.remappedJar().sha256(), Instant.EPOCH);
-            SymbolSchema.createIndexes(connection);
-            return null;
-        }, SymbolSchema::validate);
+        SymbolIndexFixture.writeEmpty(target, version, finalSource.toAbsolutePath().normalize(), inputs.remappedJar().sha256(), Instant.EPOCH);
     }
 }

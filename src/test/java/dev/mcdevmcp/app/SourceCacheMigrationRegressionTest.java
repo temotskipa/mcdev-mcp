@@ -123,7 +123,7 @@ final class SourceCacheMigrationRegressionTest {
             assertFalse(Files.exists(fixture.paths().callgraphBundle(VERSION)));
             assertEquals(SOURCE, Files.readString(source));
 
-            // Historically this command required existence, not H2 schema readiness.
+            // Historically this command required existence, not index readiness.
             Files.createDirectories(fixture.paths().symbolDatabase(VERSION).getParent());
             Files.writeString(fixture.paths().symbolDatabase(VERSION), "historical existence sentinel");
             CliResult indexed = execute(fixture, "callgraph", "-v", VERSION.value());
@@ -206,7 +206,7 @@ final class SourceCacheMigrationRegressionTest {
             assertTrue(stages.contains("decompile"));
             Path old = result.retainedMigration().orElseThrow().resolve("old");
             assertEquals(before, SourceTreeInventory.capture(old.resolve("client"), Cancellation.none()));
-            assertArrayEquals(oldIndex, Files.readAllBytes(old.resolve("index/symbols.mv.db")));
+            assertArrayEquals(oldIndex, Files.readAllBytes(old.resolve("index/symbols.jsonl")));
             assertArrayEquals(oldStamp, Files.readAllBytes(old.resolve("source-preparation.json")));
             assertFalse(Files.readString(source).contains("VAR_NAMELESS_ENCLOSURE"));
             assertEquals(VersionState.READY, new VersionStateRepository(fixture.paths()).state(VERSION));
@@ -324,7 +324,7 @@ final class SourceCacheMigrationRegressionTest {
                     }
                 }).findFirst().orElseThrow();
                 Path old = oldSource.getParent().getParent().getParent();
-                assertArrayEquals(oldIndex, Files.readAllBytes(old.resolve("index/symbols.mv.db")));
+                assertArrayEquals(oldIndex, Files.readAllBytes(old.resolve("index/symbols.jsonl")));
             }
         }
     }

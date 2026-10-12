@@ -268,7 +268,7 @@ public final class AnalysisPipeline implements AnalysisOperations {
                 stamp = SourceProvenance.observed(inputs, candidateInventory, validation, previous.orElse(null));
                 mode = SourcePublicationMode.REUSE_SOURCES;
             }
-            Path candidateDatabase = boundary.require(candidate.resolve("index/symbols.mv.db"));
+            Path candidateDatabase = boundary.require(candidate.resolve("index/symbols.jsonl"));
             IndexRequest request = new IndexRequest(version, List.of(new SourceRoot(SourceNamespace.MINECRAFT, Optional.empty(), candidateSource)), prepared.remappedJar(), classpath, candidateDatabase, threads, progress, cancellation);
             IndexSummary summary = indexer.build(request, new PublishedSourceRoot(paths.sourceRoot(version)));
             Path candidateStamp = boundary.require(candidate.resolve("source-preparation.json"));

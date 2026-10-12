@@ -20,7 +20,6 @@ import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.attribute.BasicFileAttributes;
-import java.sql.SQLException;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -56,7 +55,7 @@ final class StaticToolSupport {
             return ToolResult.text(exception.getMessage());
         } catch (StaticToolException exception) {
             return ToolResult.error("Error executing " + toolName + ": " + exception.getMessage());
-        } catch (IOException | SQLException exception) {
+        } catch (IOException exception) {
             String message = exception.getMessage() == null ? exception.toString() : exception.getMessage();
             return ToolResult.error("Error executing " + toolName + ": " + message);
         }

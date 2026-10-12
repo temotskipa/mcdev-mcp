@@ -27,7 +27,7 @@ class DatabaseLockTest {
 
     @Test
     void zeroTimeoutMakesOneImmediateUncontendedAttempt() throws Exception {
-        Path database = temporaryDirectory.resolve("zero.mv.db");
+        Path database = temporaryDirectory.resolve("zero.jsonl");
 
         try (var writer = DatabaseLock.write(database, Duration.ZERO)) {
             assertTrue(writer.isHeld());
@@ -39,7 +39,7 @@ class DatabaseLockTest {
 
     @Test
     void hugeTimeoutDoesNotOverflowDeadlineConversion() throws Exception {
-        Path database = temporaryDirectory.resolve("huge.mv.db");
+        Path database = temporaryDirectory.resolve("huge.jsonl");
         Duration timeout = Duration.ofSeconds(Long.MAX_VALUE, 999_999_999);
 
         try (var writer = DatabaseLock.write(database, timeout)) {
@@ -51,7 +51,7 @@ class DatabaseLockTest {
     void exclusiveCloseClosesTheChannelWhenFileLockReleaseFails() throws Exception {
         var localLock = new ReentrantLock();
         localLock.lock();
-        try (FileChannel channel = FileChannel.open(temporaryDirectory.resolve("symbols.mv.db.lock"), StandardOpenOption.CREATE, StandardOpenOption.READ, StandardOpenOption.WRITE)) {
+        try (FileChannel channel = FileChannel.open(temporaryDirectory.resolve("symbols.jsonl.lock"), StandardOpenOption.CREATE, StandardOpenOption.READ, StandardOpenOption.WRITE)) {
             IOException releaseFailure = new IOException("release failed");
             DatabaseLock lock = exclusiveLock(localLock, channel, new FailingFileLock(channel, releaseFailure));
 

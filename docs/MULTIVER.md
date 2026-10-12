@@ -40,7 +40,7 @@ The relevant per-version shape is:
 |       `-- indexes/callgraph/         JSONL callgraph publication
 `-- index/
     `-- <minecraft-version>/
-        `-- symbols.mv.db              H2 symbol index
+        `-- symbols.jsonl              symbol index
 ```
 
 Fabric API source caches use their own versioned directories and are associated
@@ -64,12 +64,12 @@ java -jar mcdev-mcp-3.0.0.jar rebuild -v 1.21.11 --with-callgraph
 ```
 
 All rebuilds publish atomically. A failed candidate leaves the previous valid
-H2 database or callgraph generation readable.
+symbol index or callgraph generation readable.
 
 ## Legacy Index Transition
 
 The 2.2.1 Node line stored per-package JSON indexes. Java does not deserialize
-those files into its H2 schema or delete them implicitly. A version with only
+those files into its own index or delete them implicitly. A version with only
 legacy index data is reported as `needs rebuild`.
 
 Clean just the derived symbol index, retain the source cache, and rebuild:

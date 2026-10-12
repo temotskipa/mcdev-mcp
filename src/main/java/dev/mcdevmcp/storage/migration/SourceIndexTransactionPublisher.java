@@ -3,8 +3,10 @@ package dev.mcdevmcp.storage.migration;
 import dev.mcdevmcp.storage.PlatformPaths;
 import dev.mcdevmcp.storage.h2.AtomicH2Database;
 import dev.mcdevmcp.storage.h2.DatabaseLock;
-import dev.mcdevmcp.storage.h2.SymbolSchema;
+import dev.mcdevmcp.storage.h2.SymbolIndexData;
+import dev.mcdevmcp.storage.h2.SymbolIndexFiles;
 import dev.mcdevmcp.storage.model.MinecraftVersion;
+import dev.mcdevmcp.storage.model.SourceNamespace;
 import dev.mcdevmcp.support.Cancellation;
 import io.modelcontextprotocol.json.McpJsonDefaults;
 import io.modelcontextprotocol.json.McpJsonMapper;
@@ -13,17 +15,15 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.file.*;
-import java.sql.DriverManager;
-import java.sql.SQLException;
 import java.util.*;
 
 /**
  * Publishes a closed source/index pair while retaining verified original bytes.
  */
-@SuppressWarnings("SqlNoDataSourceInspection") // Databases are selected and validated at runtime.
 public final class SourceIndexTransactionPublisher {
     private static final McpJsonMapper JSON = McpJsonDefaults.getMapper();
-    private static final String DATABASE = "symbols.mv.db";
+    private static final String DATABASE = "symbols.jsonl";
+    private static final String LEGACY_DATABASE = "symbols.mv.db";
     private static final String DATABASE_LOCK = DATABASE + ".lock";
     private final SourcePublicationHook hook;
     private final CachePathBoundary boundary;
@@ -57,7 +57,7 @@ public final class SourceIndexTransactionPublisher {
         for (SourceInventoryEntry entry : index.entries()) {
             if (managed(entry.relativePath())) {
                 if (entry.kind() != SourceEntryKind.FILE || entry.relativePath().contains("/")) {
-                    throw new IOException("Unsafe H2 artifact: " + entry.relativePath());
+                    throw new IOException("Unsafe symbol index artifact: " + entry.relativePath());
                 }
                 names.add(entry.relativePath());
             }
@@ -66,14 +66,7 @@ public final class SourceIndexTransactionPublisher {
     }
 
     private static boolean managed(String name) {
-        if (Set.of(DATABASE, DATABASE + ".bak", "symbols.newFile", "symbols.tempFile", "symbols.lock.db", "symbols.trace.db", "symbols.trace.db.old").contains(name)) {
-            return true;
-        }
-        if (!name.startsWith("symbols.") || !name.endsWith(".temp.db") || name.length() <= "symbols.".length() + ".temp.db".length()) {
-            return false;
-        }
-        String number = name.substring("symbols.".length(), name.length() - ".temp.db".length());
-        return number.chars().allMatch(Character::isDigit);
+        return Set.of(DATABASE, DATABASE + ".bak", LEGACY_DATABASE, LEGACY_DATABASE + ".bak").contains(name);
     }
 
     private static SourceTreeInventory entryInventory(SourceTreeInventory index, String name) {
@@ -317,10 +310,6 @@ public final class SourceIndexTransactionPublisher {
     }
 
     private SourceIndexSnapshot capture(PlatformPaths paths, MinecraftVersion version, Cancellation cancellation) throws IOException {
-        Path active = paths.indexRoot(version).resolve("symbols.lock.db");
-        if (Files.exists(checked(active), LinkOption.NOFOLLOW_LINKS)) {
-            throw new IOException("Active H2 companion prevents migration: " + active);
-        }
         SourceTreeInventory source = inventory(paths.sourceRoot(version), cancellation);
         if (source.present()) requireDirectory(source, "existing source");
         SourceTreeInventory stamp = inventory(stampPath(paths, version), cancellation);
@@ -350,20 +339,6 @@ public final class SourceIndexTransactionPublisher {
 
     private void validatePair(PlatformPaths paths, MinecraftVersion version, Path source, Path database, Path stamp, SourceTreeInventory inventory) throws IOException {
         requireFile(inventory(database, Cancellation.none()), "closed candidate database");
-        String filename = database.getFileName().toString();
-        if (!filename.endsWith(".mv.db") || database.toString().contains(";")) {
-            throw new IOException("Invalid candidate database path");
-        }
-        Path base = database.resolveSibling(filename.substring(0, filename.length() - 6)).toAbsolutePath().normalize();
-        try (var siblings = Files.list(checked(database.getParent()))) {
-            for (Path sibling : siblings.toList()) {
-                String name = sibling.getFileName().toString();
-                String baseName = base.getFileName().toString();
-                if (name.startsWith(baseName + ".") && managed("symbols" + name.substring(baseName.length())) && !name.equals(filename)) {
-                    throw new IOException("Candidate H2 companion remains: " + sibling);
-                }
-            }
-        }
         SourcePreparationStamp preparation = SourceProvenance.read(checked(stamp)).orElseThrow(() -> new IOException("Candidate stamp is absent"));
         verify(inventory, preparation.inventory(), "Candidate stamp source inventory differs");
         if (!Path.of(preparation.inputs().remappedJar().path()).toAbsolutePath().normalize().equals(paths.remappedJar(version).toAbsolutePath().normalize())) {
@@ -372,26 +347,28 @@ public final class SourceIndexTransactionPublisher {
         for (SourceArtifactIdentity artifact : preparation.inputs().classpath()) validateInput(artifact);
         validateInput(preparation.inputs().remappedJar());
         checked(database);
-        try (var connection = DriverManager.getConnection("jdbc:h2:file:" + base + ";ACCESS_MODE_DATA=r;IFEXISTS=TRUE;DB_CLOSE_ON_EXIT=FALSE;FILE_LOCK=FS;TRACE_LEVEL_FILE=0")) {
-            SymbolSchema.validate(connection);
-            try (var statement = connection.createStatement();
-                 var row = statement.executeQuery("SELECT minecraft_version,source_root,remapped_jar_sha256 FROM metadata")) {
-                if (!row.next() || !version.value().equals(row.getString(1)) || !paths.sourceRoot(version).toAbsolutePath().normalize().equals(Path.of(row.getString(2)).toAbsolutePath().normalize()) || !preparation.inputs().remappedJar().sha256().equals(row.getString(3)) || row.next()) {
-                    throw new IOException("Candidate database final source identity differs");
-                }
-            }
-            try (var statement = connection.createStatement();
-                 var rows = statement.executeQuery("SELECT DISTINCT source_path FROM types WHERE source_namespace = 'minecraft'")) {
-                while (rows.next()) {
-                    Path relative = Path.of(rows.getString(1));
-                    Path resolved = source.toAbsolutePath().normalize().resolve(relative).normalize();
-                    if (relative.isAbsolute() || !resolved.startsWith(source.toAbsolutePath().normalize()) || !Files.isRegularFile(checked(resolved), LinkOption.NOFOLLOW_LINKS)) {
-                        throw new IOException("Candidate index source path is unsafe or missing: " + relative);
-                    }
-                }
-            }
-        } catch (SQLException exception) {
+        SymbolIndexData index;
+        try {
+            index = SymbolIndexFiles.read(database);
+        } catch (IOException exception) {
             throw new IOException("Invalid candidate symbol database", exception);
+        }
+        SymbolIndexData.Header header = index.header();
+        if (!version.value().equals(header.minecraftVersion()) || !paths.sourceRoot(version).toAbsolutePath().normalize().equals(Path.of(header.sourceRoot()).toAbsolutePath().normalize()) || !preparation.inputs().remappedJar().sha256().equals(header.remappedJarSha256())) {
+            throw new IOException("Candidate database final source identity differs");
+        }
+        Set<String> sourcePaths = new LinkedHashSet<>();
+        for (SymbolIndexData.TypeRow type : index.types()) {
+            if (type.namespace().equals(SourceNamespace.MINECRAFT.wireName())) {
+                sourcePaths.add(type.sourcePath());
+            }
+        }
+        for (String sourcePath : sourcePaths) {
+            Path relative = Path.of(sourcePath);
+            Path resolved = source.toAbsolutePath().normalize().resolve(relative).normalize();
+            if (relative.isAbsolute() || !resolved.startsWith(source.toAbsolutePath().normalize()) || !Files.isRegularFile(checked(resolved), LinkOption.NOFOLLOW_LINKS)) {
+                throw new IOException("Candidate index source path is unsafe or missing: " + relative);
+            }
         }
         verify(inventory, inventory(source, Cancellation.none()), "Candidate source changed while validating");
         requireFile(inventory(stamp, Cancellation.none()), "candidate stamp");

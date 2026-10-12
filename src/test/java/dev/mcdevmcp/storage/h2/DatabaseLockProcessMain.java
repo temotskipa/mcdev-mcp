@@ -2,11 +2,7 @@ package dev.mcdevmcp.storage.h2;
 
 import java.io.IOException;
 import java.nio.file.Path;
-import java.sql.DriverManager;
-import java.sql.SQLException;
 import java.time.Duration;
-
-import static org.junit.jupiter.api.Assertions.assertEquals;
 
 /**
  * Subprocess entry point for real multi-process lock, query, and recovery tests.
@@ -30,18 +26,9 @@ final class DatabaseLockProcessMain {
                 }
             }
             case "query-and-close" -> {
-                var repository = new SymbolRepository(database);
-                assertEquals("value", repository.query(connection -> {
-                    try (var statement = connection.createStatement()) {
-                        //noinspection SqlNoDataSourceInspection,SqlResolve
-                        try (var results = statement.executeQuery("SELECT marker_value FROM marker")) {
-                            if (!results.next()) {
-                                throw new SQLException("marker missing");
-                            }
-                            return results.getString(1);
-                        }
-                    }
-                }));
+                if (new SymbolRepository(database).classByName("marker.Marker") == null) {
+                    throw new AssertionError("marker type missing");
+                }
                 System.out.println("closed");
                 System.out.flush();
                 awaitParentExit();
@@ -49,45 +36,17 @@ final class DatabaseLockProcessMain {
             case "recover-failing" -> {
                 try {
                     new AtomicH2Database().rebuild(database, Duration.ofSeconds(1), _ -> {
-                        throw new SQLException("intentional rebuild failure");
+                        throw new IOException("intentional rebuild failure");
                     }, _ -> {
                     });
                     throw new AssertionError("rebuild unexpectedly succeeded");
-                } catch (SQLException expected) {
+                } catch (IOException expected) {
                     System.out.println("recovered");
                     System.out.flush();
                 }
             }
-            case "hold-h2-read" -> holdH2(H2DatabaseUrls.reader(database));
-            case "hold-h2-write" -> holdH2(H2DatabaseUrls.writer(database));
-            case "try-h2-write" -> {
-                try (var connection = DriverManager.getConnection(shortLockTimeout(H2DatabaseUrls.writer(database)))) {
-                    if (connection.isClosed()) {
-                        throw new AssertionError("H2 connection unexpectedly closed");
-                    }
-                    System.out.println("opened");
-                } catch (SQLException expected) {
-                    System.out.println("blocked");
-                }
-                System.out.flush();
-            }
             default -> throw new IllegalArgumentException("Unsupported process mode: " + arguments[0]);
         }
-    }
-
-    private static void holdH2(String url) throws Exception {
-        try (var connection = DriverManager.getConnection(url)) {
-            if (connection.isClosed()) {
-                throw new AssertionError("H2 connection unexpectedly closed");
-            }
-            System.out.println("h2-open");
-            System.out.flush();
-            awaitParentExit();
-        }
-    }
-
-    private static String shortLockTimeout(String url) {
-        return url.replace("LOCK_TIMEOUT=30000", "LOCK_TIMEOUT=250");
     }
 
     private static void awaitParentExit() throws IOException {

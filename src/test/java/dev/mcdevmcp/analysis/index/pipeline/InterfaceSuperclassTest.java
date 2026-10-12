@@ -5,6 +5,7 @@ import dev.mcdevmcp.analysis.index.SourceIndexer;
 import dev.mcdevmcp.mcp.tool.CompleteToolBindings;
 import dev.mcdevmcp.mcp.tool.ToolCatalog;
 import dev.mcdevmcp.storage.PlatformPaths;
+import dev.mcdevmcp.storage.h2.SymbolIndexFiles;
 import dev.mcdevmcp.storage.h2.SymbolRepository;
 import dev.mcdevmcp.storage.model.MinecraftVersion;
 import dev.mcdevmcp.support.AppEnvironment;
@@ -29,7 +30,7 @@ import java.util.jar.JarOutputStream;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-@SuppressWarnings("SqlNoDataSourceInspection")
+
 class InterfaceSuperclassTest {
     private static final MinecraftVersion VERSION = new MinecraftVersion("1.21.5");
     private static final Map<String, String> SOURCES = Map.of("hierarchy/Fixture.java", """
@@ -97,18 +98,7 @@ class InterfaceSuperclassTest {
             assertNotNull(type);
             assertEquals(name.equals("Mark") ? ElementKind.ANNOTATION_TYPE : ElementKind.INTERFACE, type.kind());
             assertEquals(Optional.empty(), type.superclassBinaryName(), name);
-            repository.query(connection -> {
-                try (var statement = connection.prepareStatement("SELECT superclass_binary_name FROM types WHERE binary_name=?")) {
-                    statement.setString(1, type.binaryName());
-                    try (var result = statement.executeQuery()) {
-                        assertTrue(result.next());
-                        assertNull(result.getString(1), name);
-                        assertTrue(result.wasNull(), name);
-                        assertFalse(result.next());
-                    }
-                }
-                return null;
-            });
+            assertNull(SymbolIndexFiles.read(paths.symbolDatabase(VERSION)).types().stream().filter(row -> row.binaryName().equals(type.binaryName())).findFirst().orElseThrow().superclass(), name);
         }
         assertEquals(List.of(), Objects.requireNonNull(repository.classByName("hierarchy.Parent")).interfaceBinaryNames());
         assertEquals(List.of(), Objects.requireNonNull(repository.classByName("hierarchy.Extra")).interfaceBinaryNames());

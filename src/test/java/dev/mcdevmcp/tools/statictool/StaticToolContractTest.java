@@ -6,7 +6,8 @@ import dev.mcdevmcp.mcp.tool.ToolCatalog;
 import dev.mcdevmcp.mcp.tool.api.ToolBinding;
 import dev.mcdevmcp.mcp.tool.api.ToolResult;
 import dev.mcdevmcp.storage.PlatformPaths;
-import dev.mcdevmcp.storage.h2.SymbolSchema;
+import dev.mcdevmcp.storage.h2.SymbolIndexData;
+import dev.mcdevmcp.storage.h2.SymbolIndexFixture;
 import dev.mcdevmcp.storage.migration.DirectoryAliasFixture;
 import dev.mcdevmcp.storage.migration.VersionOperationLease;
 import dev.mcdevmcp.storage.model.ClassSymbol;
@@ -29,10 +30,6 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.FileSystemException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.sql.Connection;
-import java.sql.DriverManager;
-import java.sql.PreparedStatement;
-import java.sql.SQLException;
 import java.time.Instant;
 import java.util.*;
 import java.util.concurrent.*;
@@ -40,7 +37,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-@SuppressWarnings("SqlNoDataSourceInspection")
+
 class StaticToolContractTest {
     private static final MinecraftVersion VERSION = new MinecraftVersion("1.21.5");
     private static final Map<String, String> PREVIEW_LAUNCH_GUIDANCE = Map.of("version_set_unknown", "Version 9.9.9 not initialized.\n\nSTOP and ask the USER to run this command in their terminal:\n  java -jar mcdev-mcp-3.0.0.jar init -v 9.9.9\n\nThis will download, decompile, and index Minecraft 9.9.9 sources.", "version_set_unindexed", "Version 1.21.4 not indexed.\n\nSTOP and ask the USER to run this command in their terminal:\n  java -jar mcdev-mcp-3.0.0.jar init -v 1.21.4\n\nThis will index Minecraft 1.21.4 sources.", "search_explicit_missing", "Version 9.9.9 not initialized. STOP and ask the USER to run this command in their terminal:\n  java -jar mcdev-mcp-3.0.0.jar init -v 9.9.9\n\nThis will download, decompile, and index Minecraft 9.9.9 sources (including callgraph).");
@@ -119,79 +116,35 @@ class StaticToolContractTest {
     }
 
     private static void createPrimaryDatabase(PlatformPaths paths, Path sourceRoot) throws Exception {
-        Files.createDirectories(paths.indexRoot(VERSION));
-        Path database = paths.symbolDatabase(VERSION);
-        String base = database.toAbsolutePath().toString().substring(0, database.toString().length() - ".mv.db".length());
-        try (var connection = DriverManager.getConnection("jdbc:h2:file:" + base + ";DB_CLOSE_ON_EXIT=FALSE")) {
-            SymbolSchema.create(connection, VERSION, sourceRoot, "0".repeat(64), Instant.parse("2026-07-16T00:00:00Z"));
-            insert(connection, "INSERT INTO packages(id, source_namespace, fabric_api_version, name) VALUES (1, 'minecraft', NULL, 'alpha'), (2, 'minecraft', NULL, 'beta'), (3, 'minecraft', NULL, 'gamma'), (4, 'minecraft', NULL, 'bulk'), (5, 'minecraft', NULL, 'hierarchy'), (6, 'fabric', '0.102.0+1.21.5', 'net.fabricmc.fabric.api')");
-            try (var types = connection.prepareStatement("INSERT INTO types(id, package_id, source_namespace, fabric_api_version, binary_name, simple_name, kind, superclass_binary_name, source_path, start_offset, end_offset, start_line, end_line) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
-                 var interfaces = connection.prepareStatement("INSERT INTO type_interfaces(type_id, ordinal, interface_binary_name) VALUES (?, ?, ?)")) {
-                type(types, 1, 1, "minecraft", null, "alpha.Alpha", "Alpha", "class", null, "alpha/Alpha.java", 2, 5);
-                type(types, 2, 1, "minecraft", null, "alpha.ConstructorOnly", "ConstructorOnly", "class", null, "alpha/ConstructorOnly.java", 2, 3);
-                type(types, 3, 2, "minecraft", null, "beta.Beta", "Beta", "class", "alpha.Alpha", "beta/Beta.java", 2, 2);
-                type(types, 4, 3, "minecraft", null, "gamma.Gamma", "Gamma", "class", null, "gamma/Gamma.java", 2, 2);
-                long id = 5;
-                for (int index = 0; index <= 5000; index++, id++) {
-                    type(types, id, 4, "minecraft", null, "bulk.Bulk%04d".formatted(index), "Bulk%04d".formatted(index), "class", null, "alpha/Alpha.java", 1, 1);
-                }
-                long root = id++;
-                type(types, root, 5, "minecraft", null, "hierarchy.RootInterface", "RootInterface", "interface", null, "alpha/Alpha.java", 1, 1);
-                for (int index = 0; index <= 250; index++, id++) {
-                    type(types, id, 5, "minecraft", null, "hierarchy.Child%03d".formatted(index), "Child%03d".formatted(index), "class", "alpha.Alpha", "alpha/Alpha.java", 1, 1);
-                }
-                for (int index = 0; index <= 250; index++, id++) {
-                    type(types, id, 5, "minecraft", null, "hierarchy.Impl%03d".formatted(index), "Impl%03d".formatted(index), "class", null, "alpha/Alpha.java", 1, 1);
-                    interfaces.setLong(1, id);
-                    interfaces.setInt(2, 0);
-                    interfaces.setString(3, "hierarchy.RootInterface");
-                    interfaces.addBatch();
-                }
-                type(types, id, 6, "fabric", "0.102.0+1.21.5", "net.fabricmc.fabric.api.FabricThing", "FabricThing", "class", null, "FabricThing.java", 1, 1);
-                types.executeBatch();
-                interfaces.executeBatch();
-            }
-            insert(connection, "INSERT INTO fields(id, type_id, ordinal, name, type, modifiers, start_offset, end_offset, start_line, end_line) VALUES (1, 1, 0, 'Needle', 'int', 'private', 27, 46, 3, 3)");
-            insert(connection, "INSERT INTO methods(id, type_id, ordinal, name, descriptor, return_type, modifiers, constructor, start_offset, end_offset, start_line, end_line) VALUES (1, 1, 0, 'needle', '(Ljava/lang/String;)V', 'void', 'public', FALSE, 51, 85, 4, 4), (2, 1, 1, 'Needle', '()V', 'void', 'public', FALSE, 90, 112, 5, 5), (3, 2, 0, 'ConstructorOnly', '()V', NULL, 'public', TRUE, 44, 70, 3, 3)");
-            insert(connection, "INSERT INTO parameters(id, method_id, ordinal, name, type, varargs, start_offset, end_offset, start_line, end_line) VALUES (1, 1, 0, 'arg', 'String', FALSE, 70, 80, 4, 4)");
-            SymbolSchema.createIndexes(connection);
+        List<SymbolIndexData.TypeRow> types = new ArrayList<>();
+        types.add(type(1, 1, "minecraft", null, "alpha.Alpha", "Alpha", "class", null, List.of(), "alpha/Alpha.java", 2, 5));
+        types.add(type(2, 1, "minecraft", null, "alpha.ConstructorOnly", "ConstructorOnly", "class", null, List.of(), "alpha/ConstructorOnly.java", 2, 3));
+        types.add(type(3, 2, "minecraft", null, "beta.Beta", "Beta", "class", "alpha.Alpha", List.of(), "beta/Beta.java", 2, 2));
+        types.add(type(4, 3, "minecraft", null, "gamma.Gamma", "Gamma", "class", null, List.of(), "gamma/Gamma.java", 2, 2));
+        long id = 5;
+        for (int index = 0; index <= 5000; index++, id++) {
+            types.add(type(id, 4, "minecraft", null, "bulk.Bulk%04d".formatted(index), "Bulk%04d".formatted(index), "class", null, List.of(), "alpha/Alpha.java", 1, 1));
         }
+        types.add(type(id++, 5, "minecraft", null, "hierarchy.RootInterface", "RootInterface", "interface", null, List.of(), "alpha/Alpha.java", 1, 1));
+        for (int index = 0; index <= 250; index++, id++) {
+            types.add(type(id, 5, "minecraft", null, "hierarchy.Child%03d".formatted(index), "Child%03d".formatted(index), "class", "alpha.Alpha", List.of(), "alpha/Alpha.java", 1, 1));
+        }
+        for (int index = 0; index <= 250; index++, id++) {
+            types.add(type(id, 5, "minecraft", null, "hierarchy.Impl%03d".formatted(index), "Impl%03d".formatted(index), "class", null, List.of("hierarchy.RootInterface"), "alpha/Alpha.java", 1, 1));
+        }
+        types.add(type(id, 6, "fabric", "0.102.0+1.21.5", "net.fabricmc.fabric.api.FabricThing", "FabricThing", "class", null, List.of(), "FabricThing.java", 1, 1));
+        List<SymbolIndexData.PackageRow> packages = List.of(SymbolIndexFixture.minecraftPackage(1, "alpha"), SymbolIndexFixture.minecraftPackage(2, "beta"), SymbolIndexFixture.minecraftPackage(3, "gamma"), SymbolIndexFixture.minecraftPackage(4, "bulk"), SymbolIndexFixture.minecraftPackage(5, "hierarchy"), new SymbolIndexData.PackageRow(6, "fabric", "0.102.0+1.21.5", "net.fabricmc.fabric.api"));
+        List<SymbolIndexData.MethodRow> methods = List.of(new SymbolIndexData.MethodRow(1, 1, 0, "needle", "(Ljava/lang/String;)V", "void", "public", false, 51, 85, 4, 4), new SymbolIndexData.MethodRow(2, 1, 1, "Needle", "()V", "void", "public", false, 90, 112, 5, 5), new SymbolIndexData.MethodRow(3, 2, 0, "ConstructorOnly", "()V", null, "public", true, 44, 70, 3, 3));
+        SymbolIndexFixture.write(paths.symbolDatabase(VERSION), VERSION, sourceRoot, "0".repeat(64), Instant.parse("2026-07-16T00:00:00Z"), packages, types, List.of(new SymbolIndexData.FieldRow(1, 1, 0, "Needle", "int", "private", 27, 46, 3, 3)), methods, List.of(new SymbolIndexData.ParameterRow(1, 1, 0, "arg", "String", false, 70, 80, 4, 4)));
     }
 
     private static void createOtherDatabase(PlatformPaths paths) throws Exception {
         MinecraftVersion otherVersion = new MinecraftVersion("1.21.6");
-        Files.createDirectories(paths.indexRoot(otherVersion));
-        Path database = paths.symbolDatabase(otherVersion);
-        String base = database.toAbsolutePath().toString().substring(0, database.toString().length() - ".mv.db".length());
-        try (var connection = DriverManager.getConnection("jdbc:h2:file:" + base + ";DB_CLOSE_ON_EXIT=FALSE")) {
-            SymbolSchema.create(connection, otherVersion, paths.sourceRoot(otherVersion), "0".repeat(64), Instant.parse("2026-07-16T00:00:00Z"));
-            insert(connection, "INSERT INTO packages(id, source_namespace, fabric_api_version, name) VALUES (1, 'minecraft', NULL, 'other')");
-            insert(connection, "INSERT INTO types(id, package_id, source_namespace, fabric_api_version, binary_name, simple_name, kind, superclass_binary_name, source_path, start_offset, end_offset, start_line, end_line) VALUES (1, 1, 'minecraft', NULL, 'other.Other', 'Other', 'class', NULL, 'other/Other.java', 0, 37, 2, 2)");
-            SymbolSchema.createIndexes(connection);
-        }
+        SymbolIndexFixture.write(paths.symbolDatabase(otherVersion), otherVersion, paths.sourceRoot(otherVersion), "0".repeat(64), Instant.parse("2026-07-16T00:00:00Z"), List.of(SymbolIndexFixture.minecraftPackage(1, "other")), List.of(new SymbolIndexData.TypeRow(1, 1, "minecraft", null, "other.Other", "Other", "class", null, List.of(), "other/Other.java", 0, 37, 2, 2)), List.of(), List.of(), List.of());
     }
 
-    private static void type(PreparedStatement statement, long id, long packageId, String namespace, String fabricVersion, String binaryName, String simpleName, String kind, String superclass, String sourcePath, int startLine, int endLine) throws Exception {
-        statement.setLong(1, id);
-        statement.setLong(2, packageId);
-        statement.setString(3, namespace);
-        statement.setString(4, fabricVersion);
-        statement.setString(5, binaryName);
-        statement.setString(6, simpleName);
-        statement.setString(7, kind);
-        statement.setString(8, superclass);
-        statement.setString(9, sourcePath);
-        statement.setInt(10, 0);
-        statement.setInt(11, 0);
-        statement.setInt(12, startLine);
-        statement.setInt(13, endLine);
-        statement.addBatch();
-    }
-
-    private static void insert(Connection connection, String sql) throws Exception {
-        try (var statement = connection.createStatement()) {
-            statement.executeUpdate(sql);
-        }
+    private static SymbolIndexData.TypeRow type(long id, long packageId, String namespace, String fabricVersion, String binaryName, String simpleName, String kind, String superclass, List<String> interfaces, String sourcePath, int startLine, int endLine) {
+        return new SymbolIndexData.TypeRow(id, packageId, namespace, fabricVersion, binaryName, simpleName, kind, superclass, interfaces, sourcePath, 0, 0, startLine, endLine);
     }
 
     private static String previewLaunchCorpusText(String label, String frozenText) {
@@ -323,11 +276,7 @@ class StaticToolContractTest {
         assertEquals("Method \"needle\" not found in class alpha.Alpha", text(catalog, "mc_get_method", Map.of("className", "alpha.Alpha", "methodName", "needle")));
 
         Files.writeString(paths.sourceRoot(VERSION).resolve("alpha/Alpha.java"), "package alpha;\npublic class Alpha { }\n");
-        String base = paths.symbolDatabase(VERSION).toAbsolutePath().toString().replaceFirst("\\.mv\\.db$", "");
-        try (var connection = DriverManager.getConnection("jdbc:h2:file:" + base + ";DB_CLOSE_ON_EXIT=FALSE");
-             var statement = connection.createStatement()) {
-            statement.executeUpdate("UPDATE types SET source_path='../escape.java' WHERE binary_name='alpha.Alpha'");
-        }
+        SymbolIndexFixture.rewrite(paths.symbolDatabase(VERSION), data -> new SymbolIndexData(data.header(), data.packages(), data.types().stream().map(row -> row.binaryName().equals("alpha.Alpha") ? new SymbolIndexData.TypeRow(row.id(), row.packageId(), row.namespace(), row.fabricApiVersion(), row.binaryName(), row.simpleName(), row.kind(), row.superclass(), row.interfaces(), "../escape.java", row.startOffset(), row.endOffset(), row.startLine(), row.endLine()) : row).toList(), data.fields(), data.methods(), data.parameters()));
         ToolResult<?> result = catalog.dispatch("mc_get_class", Map.of("className", "alpha.Alpha"), Cancellation.none()).toCompletableFuture().join();
         assertTrue(result.isError());
         assertEquals("Error executing mc_get_class: Unsafe indexed source path: " + Path.of("..", "escape.java"), contentText(result));
@@ -349,14 +298,9 @@ class StaticToolContractTest {
         ToolResult<?> ioFailure = support.execute("mc_get_class", () -> {
             throw new IOException("source denied");
         });
-        ToolResult<?> sqlFailure = support.execute("mc_search", () -> {
-            throw new SQLException("index corrupt");
-        });
 
         assertTrue(ioFailure.isError());
         assertEquals("Error executing mc_get_class: source denied", contentText(ioFailure));
-        assertTrue(sqlFailure.isError());
-        assertEquals("Error executing mc_search: index corrupt", contentText(sqlFailure));
     }
 
     @Test
@@ -410,11 +354,7 @@ class StaticToolContractTest {
         PlatformPaths second = fixture(temporaryDirectory.resolve("second/cache-root"));
         Path secondSource = second.sourceRoot(VERSION).resolve("alpha/Alpha.java");
         Files.writeString(secondSource, Files.readString(secondSource).replace("String arg", "String replacement"));
-        String secondDatabase = second.symbolDatabase(VERSION).toAbsolutePath().toString();
-        String databaseBase = secondDatabase.substring(0, secondDatabase.length() - ".mv.db".length());
-        try (var connection = DriverManager.getConnection("jdbc:h2:file:" + databaseBase + ";DB_CLOSE_ON_EXIT=FALSE")) {
-            insert(connection, "UPDATE parameters SET name='replacement' WHERE method_id=1");
-        }
+        SymbolIndexFixture.rewrite(second.symbolDatabase(VERSION), data -> new SymbolIndexData(data.header(), data.packages(), data.types(), data.fields(), data.methods(), data.parameters().stream().map(row -> row.methodId() == 1 ? new SymbolIndexData.ParameterRow(row.id(), row.methodId(), row.ordinal(), "replacement", row.type(), row.varargs(), row.startOffset(), row.endOffset(), row.startLine(), row.endLine()) : row).toList()));
         Map<String, Object> arguments = Map.of("className", "alpha.Alpha", "methodName", "needle", "version", VERSION.value());
         String oldExpected = text(catalog(first), "mc_get_method", arguments);
         String newExpected = text(catalog(second), "mc_get_method", arguments);

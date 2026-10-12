@@ -6,7 +6,7 @@ import dev.mcdevmcp.mcp.tool.api.ToolResult;
 import dev.mcdevmcp.storage.PlatformPaths;
 import dev.mcdevmcp.storage.callgraph.CallgraphBundleTestSupport;
 import dev.mcdevmcp.storage.callgraph.CallgraphDataRecord;
-import dev.mcdevmcp.storage.h2.SymbolSchema;
+import dev.mcdevmcp.storage.h2.SymbolIndexFixture;
 import dev.mcdevmcp.storage.model.MinecraftVersion;
 import dev.mcdevmcp.support.AppEnvironment;
 import dev.mcdevmcp.support.AppVersion;
@@ -19,7 +19,6 @@ import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.sql.DriverManager;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -63,11 +62,7 @@ class McFindRefsContractTest {
 
     private static void createSymbolDatabase(PlatformPaths paths, MinecraftVersion version) throws Exception {
         Files.createDirectories(paths.sourceRoot(version));
-        Files.createDirectories(paths.symbolDatabase(version).getParent());
-        try (var connection = DriverManager.getConnection(writerUrl(paths.symbolDatabase(version)))) {
-            SymbolSchema.create(connection, version, paths.sourceRoot(version), "0".repeat(64), Instant.parse("2026-07-16T00:00:00Z"));
-            SymbolSchema.createIndexes(connection);
-        }
+        SymbolIndexFixture.writeEmpty(paths.symbolDatabase(version), version, paths.sourceRoot(version), "0".repeat(64), Instant.parse("2026-07-16T00:00:00Z"));
     }
 
     private static void createPrimaryCallgraph(Path bundle) throws Exception {
@@ -92,11 +87,6 @@ class McFindRefsContractTest {
 
     private static CallgraphDataRecord edge(long id, String callerClass, String callerMethod, String callerDescriptor, String calleeClass, String calleeMethod, String calleeDescriptor, Integer line) {
         return new CallgraphDataRecord(id, callerClass, callerMethod, callerDescriptor, calleeClass, calleeMethod, calleeDescriptor, line);
-    }
-
-    private static String writerUrl(Path database) {
-        String path = database.toAbsolutePath().normalize().toString();
-        return "jdbc:h2:file:" + path.substring(0, path.length() - ".mv.db".length()) + ";DB_CLOSE_ON_EXIT=FALSE";
     }
 
     @AfterEach

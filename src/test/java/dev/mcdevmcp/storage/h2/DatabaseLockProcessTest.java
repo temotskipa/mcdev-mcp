@@ -1,5 +1,6 @@
 package dev.mcdevmcp.storage.h2;
 
+import dev.mcdevmcp.storage.model.MinecraftVersion;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -9,9 +10,9 @@ import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.sql.Connection;
-import java.sql.DriverManager;
 import java.time.Duration;
+import java.time.Instant;
+import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -19,7 +20,6 @@ import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-@SuppressWarnings({"SqlNoDataSourceInspection", "SqlResolve"})
 class DatabaseLockProcessTest {
     @TempDir
     Path temporaryDirectory;
@@ -50,7 +50,7 @@ class DatabaseLockProcessTest {
 
     @Test
     void sameJvmReadersOverlapAndReleaseTheSharedOperatingSystemLock() throws Exception {
-        Path database = temporaryDirectory.resolve("symbols.mv.db");
+        Path database = temporaryDirectory.resolve("symbols.jsonl");
         var acquired = new CountDownLatch(2);
         var release = new CountDownLatch(1);
         try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
@@ -74,7 +74,7 @@ class DatabaseLockProcessTest {
 
     @Test
     void twoReaderProcessesOverlapBeforeEitherBlocksAWritingProcess() throws Exception {
-        Path database = temporaryDirectory.resolve("symbols.mv.db");
+        Path database = temporaryDirectory.resolve("symbols.jsonl");
         Process first = process("hold-read", database);
         Process second = process("hold-read", database);
         try (var firstOutput = new BufferedReader(new InputStreamReader(first.getInputStream(), StandardCharsets.UTF_8));
@@ -99,7 +99,7 @@ class DatabaseLockProcessTest {
 
     @Test
     void aRealReaderProcessBlocksAnExclusiveWriterUntilItExits() throws Exception {
-        Path database = temporaryDirectory.resolve("symbols.mv.db");
+        Path database = temporaryDirectory.resolve("symbols.jsonl");
         Process process = process("hold-read", database);
         try (var reader = new BufferedReader(new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
             assertEquals("locked", reader.readLine());
@@ -114,7 +114,7 @@ class DatabaseLockProcessTest {
             assertTrue(process.waitFor(5, TimeUnit.SECONDS));
             try (var lock = DatabaseLock.write(database, Duration.ofSeconds(1))) {
                 assertTrue(lock.isHeld());
-                assertTrue(Files.exists(database.resolveSibling("symbols.mv.db.lock")));
+                assertTrue(Files.exists(database.resolveSibling("symbols.jsonl.lock")));
             }
         } finally {
             stop(process);
@@ -123,7 +123,7 @@ class DatabaseLockProcessTest {
 
     @Test
     void writerUsesOneDeadlineAcrossLocalAndOperatingSystemContention() throws Exception {
-        Path database = temporaryDirectory.resolve("symbols.mv.db");
+        Path database = temporaryDirectory.resolve("symbols.jsonl");
         Process externalReader = process("hold-read", database);
         var localReaderAcquired = new CountDownLatch(1);
         var releaseLocalReader = new CountDownLatch(1);
@@ -161,17 +161,12 @@ class DatabaseLockProcessTest {
 
     @Test
     void aRealQueryProcessReleasesAllWindowsHandlesBeforeRename() throws Exception {
-        Path database = temporaryDirectory.resolve("symbols.mv.db");
-        try (Connection connection = DriverManager.getConnection(H2DatabaseUrls.writer(database));
-             var statement = connection.createStatement()) {
-            statement.execute("CREATE TABLE marker (marker_value VARCHAR)");
-            //noinspection SqlNoDataSourceInspection,SqlResolve
-            statement.execute("INSERT INTO marker(marker_value) VALUES ('value')");
-        }
+        Path database = temporaryDirectory.resolve("symbols.jsonl");
+        SymbolIndexFixture.write(database, new MinecraftVersion("1.21.5"), Path.of("client"), "a".repeat(64), Instant.EPOCH, List.of(SymbolIndexFixture.minecraftPackage(1, "marker")), List.of(SymbolIndexFixture.minecraftType(1, 1, "marker.Marker", "Marker", "class", null, List.of(), "marker/Marker.java", 1, 1)), List.of(), List.of(), List.of());
         Process process = process("query-and-close", database);
         try (var reader = new BufferedReader(new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
             assertEquals("closed", reader.readLine());
-            Path renamed = temporaryDirectory.resolve("renamed.mv.db");
+            Path renamed = temporaryDirectory.resolve("renamed.jsonl");
             Files.move(database, renamed);
             assertTrue(Files.exists(renamed));
             process.getOutputStream().close();
@@ -183,14 +178,9 @@ class DatabaseLockProcessTest {
 
     @Test
     void aRealRecoveryProcessRestoresTheBackupWhenTheTargetIsMissing() throws Exception {
-        Path database = temporaryDirectory.resolve("symbols.mv.db");
-        Path backup = database.resolveSibling("symbols.mv.db.bak");
-        try (Connection connection = DriverManager.getConnection(H2DatabaseUrls.writer(database));
-             var statement = connection.createStatement()) {
-            statement.execute("CREATE TABLE marker (marker_value VARCHAR)");
-            //noinspection SqlNoDataSourceInspection,SqlResolve
-            statement.execute("INSERT INTO marker(marker_value) VALUES ('old')");
-        }
+        Path database = temporaryDirectory.resolve("symbols.jsonl");
+        Path backup = database.resolveSibling("symbols.jsonl.bak");
+        Files.writeString(database, "old");
         Files.move(database, backup);
 
         Process process = process("recover-failing", database);

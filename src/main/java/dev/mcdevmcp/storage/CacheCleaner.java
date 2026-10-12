@@ -52,7 +52,7 @@ public value class CacheCleaner {
             return false;
         }
         if (indexRoot) {
-            return Files.isRegularFile(candidate, LinkOption.NOFOLLOW_LINKS) && relative.equals(Path.of("symbols.mv.db.lock"));
+            return Files.isRegularFile(candidate, LinkOption.NOFOLLOW_LINKS) && relative.equals(Path.of("symbols.jsonl.lock"));
         }
         if (Files.isDirectory(candidate, LinkOption.NOFOLLOW_LINKS)) {
             return relative.equals(Path.of("indexes")) || relative.equals(Path.of("indexes", "callgraph"));

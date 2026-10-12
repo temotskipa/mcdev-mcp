@@ -309,7 +309,7 @@ final class DifferentialCliTest {
         // requires downloads, and Node callgraph success builds an external generator, so neither
         // belongs in this offline process gate. The rebuild-success test below exercises the
         // feasible stateful command against one shared source fixture despite the intentionally
-        // different JSON and H2 index layouts.
+        // different Node and Java index layouts.
         return differentialTests(Stream.concat(VALIDATION_CASES.stream(), CACHE_CASES.stream()).toList());
     }
 
@@ -371,14 +371,14 @@ final class DifferentialCliTest {
         assertTrue(nodePaths.contains("index/1.21.11/manifest.json"), nodePaths::toString);
         assertTrue(nodePaths.contains("index/1.21.11/minecraft/fixture.json"), nodePaths::toString);
         assertTrue(nodePaths.contains("cache/1.21.11/callgraph/callgraph.db"), nodePaths::toString);
-        assertFalse(nodePaths.contains("index/1.21.11/symbols.mv.db"), nodePaths::toString);
+        assertFalse(nodePaths.contains("index/1.21.11/symbols.jsonl"), nodePaths::toString);
         assertFalse(nodePaths.contains("cache/1.21.11/indexes/callgraph/current.json"), nodePaths::toString);
 
         assertTrue(javaPaths.contains("cache/1.21.11/client/fixture/Example.java"), javaPaths::toString);
         assertTrue(javaPaths.contains("cache"), javaPaths::toString);
         assertTrue(javaPaths.contains("cache/1.21.11"), javaPaths::toString);
         assertTrue(javaPaths.contains("cache/1.21.11/jars/1.21.11_unobfuscated.jar"), javaPaths::toString);
-        assertTrue(javaPaths.contains("index/1.21.11/symbols.mv.db"), javaPaths::toString);
+        assertTrue(javaPaths.contains("index/1.21.11/symbols.jsonl"), javaPaths::toString);
         assertTrue(javaPaths.contains("index/1.21.11/symbols.trace.db"), javaPaths::toString);
         assertTrue(javaPaths.contains("cache/1.21.11/indexes/callgraph/current.json"), javaPaths::toString);
         assertTrue(javaPaths.contains("cache/1.21.11/indexes/callgraph/generations/fixture/callers.jsonl"), javaPaths::toString);
@@ -409,7 +409,7 @@ final class DifferentialCliTest {
         assertEquals(withoutIndex(pair.nodeBefore()), withoutIndex(pair.nodeAfter()));
         assertEquals(withoutIndex(pair.javaBefore()), withoutIndex(pair.javaAfter()));
         assertTrue(hasArtifact(pair.nodeAfter(), "index/" + LEGACY_VERSION + "/manifest.json"));
-        assertTrue(hasArtifact(pair.javaAfter(), "index/" + LEGACY_VERSION + "/symbols.mv.db"));
+        assertTrue(hasArtifact(pair.javaAfter(), "index/" + LEGACY_VERSION + "/symbols.jsonl"));
     }
 
     private Stream<DynamicTest> differentialTests(List<CliCase> cases) {
@@ -523,8 +523,8 @@ final class DifferentialCliTest {
                     populateLegacyCallgraph(cacheRoot, SECOND_VERSION);
                 }
                 else {
-                    populateH2IndexArtifacts(cacheRoot, LEGACY_VERSION);
-                    populateH2IndexArtifacts(cacheRoot, SECOND_VERSION);
+                    populateSymbolIndexArtifacts(cacheRoot, LEGACY_VERSION);
+                    populateSymbolIndexArtifacts(cacheRoot, SECOND_VERSION);
                     populateJsonlCallgraph(cacheRoot, LEGACY_VERSION);
                     populateJsonlCallgraph(cacheRoot, SECOND_VERSION);
                 }
@@ -564,15 +564,12 @@ final class DifferentialCliTest {
             writeArtifact(index.resolve("fabric").resolve("fixture.json"), "{\"package\":\"fixture\",\"classes\":[]}\n");
         }
 
-        static void populateH2IndexArtifacts(Path cacheRoot, String version) throws IOException {
+        static void populateSymbolIndexArtifacts(Path cacheRoot, String version) throws IOException {
             Path index = cacheRoot.resolve("index").resolve(version);
-            writeArtifact(index.resolve("symbols.mv.db"), "h2");
-            writeArtifact(index.resolve("symbols.newFile"), "new");
-            writeArtifact(index.resolve("symbols.tempFile"), "temporary");
-            writeArtifact(index.resolve("symbols.trace.db"), "trace");
-            writeArtifact(index.resolve("symbols.trace.db.old"), "old-trace");
-            writeArtifact(index.resolve("symbols.42.temp.db"), "numbered-temporary");
-            writeArtifact(index.resolve("symbols.mv.db.bak"), "backup");
+            writeArtifact(index.resolve("symbols.jsonl"), "index");
+            writeArtifact(index.resolve("symbols.jsonl.42.tmp"), "temporary");
+            writeArtifact(index.resolve("symbols.jsonl.bak"), "backup");
+            writeArtifact(index.resolve("symbols.mv.db"), "earlier-release");
         }
 
         static void populateLegacyCallgraph(Path cacheRoot, String version) throws IOException {
@@ -804,7 +801,7 @@ final class DifferentialCliTest {
 
         private static boolean isPersistentJavaLock(Path relative) {
             int names = relative.getNameCount();
-            return names == 3 && relative.getName(0).toString().equals("index") && relative.getName(2).toString().equals("symbols.mv.db.lock") || names == 5 && relative.getName(0).toString().equals("cache") && relative.getName(2).toString().equals("indexes") && relative.getName(3).toString().equals("callgraph") && relative.getName(4).toString().equals("publication.lock") || names == 4 && relative.getName(0).toString().equals("locks") && relative.getName(1).toString().equals("analysis") && relative.getName(3).toString().equals("operation.lock");
+            return names == 3 && relative.getName(0).toString().equals("index") && relative.getName(2).toString().equals("symbols.jsonl.lock") || names == 5 && relative.getName(0).toString().equals("cache") && relative.getName(2).toString().equals("indexes") && relative.getName(3).toString().equals("callgraph") && relative.getName(4).toString().equals("publication.lock") || names == 4 && relative.getName(0).toString().equals("locks") && relative.getName(1).toString().equals("analysis") && relative.getName(3).toString().equals("operation.lock");
         }
 
         private static String portable(Path path) {

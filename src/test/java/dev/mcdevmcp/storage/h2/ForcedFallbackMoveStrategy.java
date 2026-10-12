@@ -8,32 +8,22 @@ final class ForcedFallbackMoveStrategy implements DatabaseFileOperations {
     private final int failingFallbackMove;
     private final FailureTiming failureTiming;
     private final DeleteFailure deleteFailure;
-    private final Path companionBeforeFallback;
     private int fallbackMoves;
 
     ForcedFallbackMoveStrategy() {
-        this(0, null, FailureTiming.BEFORE_SIDE_EFFECT, DeleteFailure.NONE);
+        this(0, FailureTiming.BEFORE_SIDE_EFFECT, DeleteFailure.NONE);
     }
 
     ForcedFallbackMoveStrategy(int failingFallbackMove) {
-        this(failingFallbackMove, null, FailureTiming.BEFORE_SIDE_EFFECT, DeleteFailure.NONE);
+        this(failingFallbackMove, FailureTiming.BEFORE_SIDE_EFFECT, DeleteFailure.NONE);
     }
 
     ForcedFallbackMoveStrategy(int failingFallbackMove, FailureTiming failureTiming) {
-        this(failingFallbackMove, null, failureTiming, DeleteFailure.NONE);
+        this(failingFallbackMove, failureTiming, DeleteFailure.NONE);
     }
 
     ForcedFallbackMoveStrategy(int failingFallbackMove, FailureTiming failureTiming, DeleteFailure deleteFailure) {
-        this(failingFallbackMove, null, failureTiming, deleteFailure);
-    }
-
-    ForcedFallbackMoveStrategy(Path companionBeforeFallback) {
-        this(0, companionBeforeFallback, FailureTiming.BEFORE_SIDE_EFFECT, DeleteFailure.NONE);
-    }
-
-    private ForcedFallbackMoveStrategy(int failingFallbackMove, Path companionBeforeFallback, FailureTiming failureTiming, DeleteFailure deleteFailure) {
         this.failingFallbackMove = failingFallbackMove;
-        this.companionBeforeFallback = companionBeforeFallback;
         this.failureTiming = failureTiming;
         this.deleteFailure = deleteFailure;
     }
@@ -41,9 +31,6 @@ final class ForcedFallbackMoveStrategy implements DatabaseFileOperations {
     @Override
     public void move(Path source, Path target, CopyOption... options) throws IOException {
         if (Arrays.asList(options).contains(StandardCopyOption.ATOMIC_MOVE)) {
-            if (companionBeforeFallback != null) {
-                Files.writeString(companionBeforeFallback, "unsafe");
-            }
             throw new AtomicMoveNotSupportedException(source.toString(), target.toString(), "forced by test");
         }
         fallbackMoves++;
@@ -67,12 +54,6 @@ final class ForcedFallbackMoveStrategy implements DatabaseFileOperations {
     public void delete(Path path) throws IOException {
         failDelete(path);
         DatabaseFileOperations.super.delete(path);
-    }
-
-    @Override
-    public boolean deleteIfExists(Path path) throws IOException {
-        failDelete(path);
-        return DatabaseFileOperations.super.deleteIfExists(path);
     }
 
     private void failDelete(Path path) throws IOException {

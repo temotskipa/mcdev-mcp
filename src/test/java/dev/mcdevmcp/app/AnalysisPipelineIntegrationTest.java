@@ -12,6 +12,7 @@ import dev.mcdevmcp.storage.PlatformPaths;
 import dev.mcdevmcp.storage.callgraph.CallgraphManifest;
 import dev.mcdevmcp.storage.callgraph.CallgraphPointer;
 import dev.mcdevmcp.storage.callgraph.CallgraphRepository;
+import dev.mcdevmcp.storage.h2.SymbolIndexFiles;
 import dev.mcdevmcp.storage.h2.SymbolRepository;
 import dev.mcdevmcp.storage.h2.VersionStateRepository;
 import dev.mcdevmcp.storage.migration.DirectoryAliasFixture;
@@ -51,7 +52,7 @@ import java.util.zip.ZipEntry;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-@SuppressWarnings("SqlNoDataSourceInspection") // Fixture databases are created at runtime.
+
 final class AnalysisPipelineIntegrationTest {
     @TempDir
     Path temporaryDirectory;
@@ -417,14 +418,7 @@ final class AnalysisPipelineIntegrationTest {
             assertArrayEquals(jar, Files.readAllBytes(paths.remappedJar(version)));
             assertFalse(Files.readString(source).contains("VAR_NAMELESS_ENCLOSURE"));
             assertEquals(VersionState.READY, new VersionStateRepository(paths).state(version));
-            new SymbolRepository(paths.symbolDatabase(version)).query(connection -> {
-                try (var statement = connection.createStatement();
-                     var rows = statement.executeQuery("SELECT source_root FROM metadata")) {
-                    assertTrue(rows.next());
-                    assertEquals(paths.sourceRoot(version).toAbsolutePath().normalize().toString(), rows.getString(1));
-                }
-                return null;
-            });
+            assertEquals(paths.sourceRoot(version).toAbsolutePath().normalize().toString(), SymbolIndexFiles.readHeader(paths.symbolDatabase(version)).sourceRoot());
             assertEquals(SourceOwnership.GENERATED, SourceProvenance.read(paths.versionCache(version).resolve("source-preparation.json")).orElseThrow().ownership());
 
             Path editedMarker = paths.sourceRoot(version).resolve("new-user-marker.txt");

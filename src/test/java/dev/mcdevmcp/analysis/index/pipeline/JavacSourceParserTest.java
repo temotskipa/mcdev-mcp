@@ -54,7 +54,7 @@ class JavacSourceParserTest {
         Path sources = IndexerTestSupport.copyFixture("main", temporaryDirectory.resolve("sources"));
         Path jar = IndexerTestSupport.fixtureCatalog(temporaryDirectory.resolve("remapped.jar"));
         Path dependency = IndexerTestSupport.fixtureDependency(temporaryDirectory.resolve("dependency.jar"));
-        Path database = temporaryDirectory.resolve("symbols.mv.db");
+        Path database = temporaryDirectory.resolve("symbols.jsonl");
 
         IndexRequest request = IndexerTestSupport.request(List.of(new SourceRoot(SourceNamespace.MINECRAFT, Optional.empty(), sources)), jar, List.of(dependency), database, 1);
         IndexSummary summary = new SourceIndexer().build(request);
@@ -105,7 +105,7 @@ class JavacSourceParserTest {
         String source = "package unicode;\npublic class Ranges {\n    String value = \"\uD83D\uDE00\";\n    void first() {\n    }\n    void second() {}\n}\n";
         Files.writeString(sources.resolve("unicode/Ranges.java"), source, StandardCharsets.UTF_8);
         Path jar = IndexerTestSupport.createJar(temporaryDirectory.resolve("empty.jar"), Map.of());
-        Path database = temporaryDirectory.resolve("ranges.mv.db");
+        Path database = temporaryDirectory.resolve("ranges.jsonl");
 
         new SourceIndexer().build(IndexerTestSupport.request(sources, jar, database, 1));
         List<String> dump = IndexerTestSupport.dump(database);
@@ -143,7 +143,7 @@ class JavacSourceParserTest {
                         """;
         Files.writeString(sources.resolve("ExactRecord.java"), source, StandardCharsets.UTF_8);
         Path jar = IndexerTestSupport.createJar(temporaryDirectory.resolve("record-empty.jar"), Map.of());
-        Path database = temporaryDirectory.resolve("record-ranges.mv.db");
+        Path database = temporaryDirectory.resolve("record-ranges.jsonl");
 
         new SourceIndexer().build(IndexerTestSupport.request(sources.getParent(), jar, database, 1));
         List<String> dump = IndexerTestSupport.dump(database);
@@ -181,7 +181,7 @@ class JavacSourceParserTest {
                         """;
         Files.writeString(sources.resolve("AnnotatedClass.java"), source, StandardCharsets.UTF_8);
         Path jar = IndexerTestSupport.createJar(temporaryDirectory.resolve("annotated-empty.jar"), Map.of());
-        Path database = temporaryDirectory.resolve("annotated.mv.db");
+        Path database = temporaryDirectory.resolve("annotated.jsonl");
 
         IndexSummary summary = new SourceIndexer().build(IndexerTestSupport.request(sources.getParent(), jar, database, 1));
         assertEquals(1, summary.types());
@@ -204,7 +204,7 @@ class JavacSourceParserTest {
                                                                  """, StandardCharsets.UTF_8);
         Path jar = IndexerTestSupport.createJar(temporaryDirectory.resolve("type-qualifier-empty.jar"), Map.of());
 
-        IndexSummary summary = new SourceIndexer().build(IndexerTestSupport.request(sources.getParent().getParent().getParent(), jar, temporaryDirectory.resolve("type-qualifier.mv.db"), 1));
+        IndexSummary summary = new SourceIndexer().build(IndexerTestSupport.request(sources.getParent().getParent().getParent(), jar, temporaryDirectory.resolve("type-qualifier.jsonl"), 1));
 
         assertEquals(1, summary.types());
         assertEquals(0, summary.fields());
@@ -218,7 +218,7 @@ class JavacSourceParserTest {
         Files.writeString(sources.resolve("Server.java"), "package sample; public class Server extends Base<String> { protected void run(String task) {} }", StandardCharsets.UTF_8);
         Path jar = IndexerTestSupport.createJar(temporaryDirectory.resolve("weaker-access-empty.jar"), Map.of());
 
-        IndexSummary summary = new SourceIndexer().build(IndexerTestSupport.request(sources.getParent(), jar, temporaryDirectory.resolve("weaker-access.mv.db"), 1));
+        IndexSummary summary = new SourceIndexer().build(IndexerTestSupport.request(sources.getParent(), jar, temporaryDirectory.resolve("weaker-access.jsonl"), 1));
 
         assertEquals(2, summary.types());
         assertEquals(2, summary.methods());
@@ -244,7 +244,7 @@ class JavacSourceParserTest {
                         """;
         Files.writeString(sources.resolve("RealmsPdpScreen.java"), source, StandardCharsets.UTF_8);
         Path jar = IndexerTestSupport.createJar(temporaryDirectory.resolve("qualified-nested-empty.jar"), Map.of());
-        Path database = temporaryDirectory.resolve("qualified-nested.mv.db");
+        Path database = temporaryDirectory.resolve("qualified-nested.jsonl");
 
         IndexSummary summary = new SourceIndexer().build(IndexerTestSupport.request(sources.getParent(), jar, database, 1));
         List<String> dump = IndexerTestSupport.dump(database);

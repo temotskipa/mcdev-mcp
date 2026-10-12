@@ -37,8 +37,8 @@ class SourceIndexerIntegrationTest {
         Path sources = IndexerTestSupport.copyFixture("main", temporaryDirectory.resolve("sources"));
         Path jar = IndexerTestSupport.fixtureCatalog(temporaryDirectory.resolve("remapped.jar"));
         Path dependency = IndexerTestSupport.fixtureDependency(temporaryDirectory.resolve("dependency.jar"));
-        Path one = temporaryDirectory.resolve("one.mv.db");
-        Path four = temporaryDirectory.resolve("four.mv.db");
+        Path one = temporaryDirectory.resolve("one.jsonl");
+        Path four = temporaryDirectory.resolve("four.jsonl");
 
         List<SourceRoot> roots = List.of(new SourceRoot(SourceNamespace.MINECRAFT, Optional.empty(), sources));
         IndexSummary oneSummary = new SourceIndexer().build(IndexerTestSupport.request(roots, jar, List.of(dependency), one, 1));
@@ -59,7 +59,7 @@ class SourceIndexerIntegrationTest {
         Path fabric = Files.createDirectories(temporaryDirectory.resolve("fabric/shared"));
         Files.writeString(fabric.resolve("FabricType.java"), "package shared; public class FabricType {}", StandardCharsets.UTF_8);
         Path jar = IndexerTestSupport.createJar(temporaryDirectory.resolve("empty.jar"), Map.of());
-        Path database = temporaryDirectory.resolve("identities.mv.db");
+        Path database = temporaryDirectory.resolve("identities.jsonl");
         List<SourceRoot> roots = List.of(new SourceRoot(SourceNamespace.MINECRAFT, Optional.empty(), minecraft.getParent()), new SourceRoot(SourceNamespace.FABRIC, Optional.of(new FabricApiVersion("0.120.0")), fabric.getParent()));
 
         new SourceIndexer().build(IndexerTestSupport.request(roots, jar, List.of(), database, 2));
@@ -84,7 +84,7 @@ class SourceIndexerIntegrationTest {
             Assumptions.abort("Symbolic links unavailable: " + exception.getMessage());
         }
         Path jar = IndexerTestSupport.createJar(temporaryDirectory.resolve("empty.jar"), Map.of());
-        Path database = temporaryDirectory.resolve("nofollow.mv.db");
+        Path database = temporaryDirectory.resolve("nofollow.jsonl");
 
         new SourceIndexer().build(IndexerTestSupport.request(root.getParent(), jar, database, 1));
         List<String> dump = IndexerTestSupport.dump(database);
@@ -98,8 +98,8 @@ class SourceIndexerIntegrationTest {
     void packageAndModuleUnitsProduceNoTypeRows() throws Exception {
         Path sources = IndexerTestSupport.copyFixture("modules", temporaryDirectory.resolve("modules"));
         Path jar = IndexerTestSupport.createJar(temporaryDirectory.resolve("empty.jar"), Map.of());
-        Path oneDatabase = temporaryDirectory.resolve("modules-one.mv.db");
-        Path fourDatabase = temporaryDirectory.resolve("modules-four.mv.db");
+        Path oneDatabase = temporaryDirectory.resolve("modules-one.jsonl");
+        Path fourDatabase = temporaryDirectory.resolve("modules-four.jsonl");
 
         IndexSummary one = new SourceIndexer().build(IndexerTestSupport.request(sources, jar, oneDatabase, 1));
         IndexSummary four = new SourceIndexer().build(IndexerTestSupport.request(sources, jar, fourDatabase, 4));
@@ -123,8 +123,8 @@ class SourceIndexerIntegrationTest {
         Path modularPackage = Files.createDirectories(modularSources.resolve("modular"));
         Files.writeString(modularPackage.resolve("UsesDependency.java"), "package modular; public class UsesDependency { dependency.External value; }", StandardCharsets.UTF_8);
         Path jar = IndexerTestSupport.fixtureDependency(temporaryDirectory.resolve("modular-dependency.jar"));
-        Path oneDatabase = temporaryDirectory.resolve("modular-one.mv.db");
-        Path fourDatabase = temporaryDirectory.resolve("modular-four.mv.db");
+        Path oneDatabase = temporaryDirectory.resolve("modular-one.jsonl");
+        Path fourDatabase = temporaryDirectory.resolve("modular-four.jsonl");
         new SourceIndexer().build(IndexerTestSupport.request(priorSources.getParent(), jar, oneDatabase, 1));
         new SourceIndexer().build(IndexerTestSupport.request(priorSources.getParent(), jar, fourDatabase, 1));
         byte[] oneOriginal = IndexerTestSupport.bytes(oneDatabase);
@@ -143,7 +143,7 @@ class SourceIndexerIntegrationTest {
     void emptySourceCorpusProducesEmptyIndexWithoutStartingWorkers() throws Exception {
         Path sources = Files.createDirectories(temporaryDirectory.resolve("empty-sources"));
         Path jar = IndexerTestSupport.createJar(temporaryDirectory.resolve("empty-corpus.jar"), Map.of());
-        Path database = temporaryDirectory.resolve("empty-corpus.mv.db");
+        Path database = temporaryDirectory.resolve("empty-corpus.jsonl");
 
         IndexSummary summary = new SourceIndexer().build(IndexerTestSupport.request(sources, jar, database, 4));
 
@@ -158,7 +158,7 @@ class SourceIndexerIntegrationTest {
         Files.writeString(sources.resolve("Allowed.java"), "package body; public class Allowed { java.util.List<String> values; int value() { return missingBodyName; } }", StandardCharsets.UTF_8);
         Path root = sources.getParent();
         Path jar = IndexerTestSupport.createJar(temporaryDirectory.resolve("empty.jar"), Map.of());
-        Path database = temporaryDirectory.resolve("body.mv.db");
+        Path database = temporaryDirectory.resolve("body.jsonl");
         var progress = new ArrayList<String>();
         IndexRequest base = IndexerTestSupport.request(root, jar, database, 1);
         IndexRequest request = new IndexRequest(base.minecraftVersion(), base.sourceRoots(), base.remappedJar(), base.classpath(), base.outputDatabase(), base.threads(), (_, _, message) -> progress.add(message), base.cancellation());
@@ -179,8 +179,8 @@ class SourceIndexerIntegrationTest {
         Path jar = IndexerTestSupport.createJar(temporaryDirectory.resolve("on-demand-body-empty.jar"), Map.of());
         var oneProgress = new ArrayList<String>();
         var fourProgress = new ArrayList<String>();
-        Path oneDatabase = temporaryDirectory.resolve("on-demand-one.mv.db");
-        Path fourDatabase = temporaryDirectory.resolve("on-demand-four.mv.db");
+        Path oneDatabase = temporaryDirectory.resolve("on-demand-one.jsonl");
+        Path fourDatabase = temporaryDirectory.resolve("on-demand-four.jsonl");
 
         IndexSummary one = new SourceIndexer().build(withProgress(IndexerTestSupport.request(root, jar, oneDatabase, 1), oneProgress));
         IndexSummary four = new SourceIndexer().build(withProgress(IndexerTestSupport.request(root, jar, fourDatabase, 4), fourProgress));
@@ -201,7 +201,7 @@ class SourceIndexerIntegrationTest {
         Files.writeString(root.resolve("Entry.java"), "package demand; public class Entry extends Secondary {}", StandardCharsets.UTF_8);
         Files.writeString(root.resolve("Types.java"), "package demand; class Primary {} class Secondary extends Primary {}", StandardCharsets.UTF_8);
         Path jar = IndexerTestSupport.createJar(temporaryDirectory.resolve("secondary-empty.jar"), Map.of());
-        Path database = temporaryDirectory.resolve("secondary.mv.db");
+        Path database = temporaryDirectory.resolve("secondary.jsonl");
 
         IndexSummary summary = new SourceIndexer().build(IndexerTestSupport.request(root.getParent(), jar, database, 4));
         List<String> dump = IndexerTestSupport.dump(database);
@@ -218,7 +218,7 @@ class SourceIndexerIntegrationTest {
         for (var source : List.of("package bad; class Missing { UnknownType value; }", "package bad; import java.util.*; import java.sql.*; class Ambiguous { Date value; }")) {
             Path root = Files.createDirectories(temporaryDirectory.resolve("bad-" + Integer.toUnsignedString(source.hashCode())));
             Files.writeString(root.resolve("Bad.java"), source, StandardCharsets.UTF_8);
-            IndexBuildException failure = assertThrows(IndexBuildException.class, () -> new SourceIndexer().build(IndexerTestSupport.request(root, jar, root.resolve("symbols.mv.db"), 1)));
+            IndexBuildException failure = assertThrows(IndexBuildException.class, () -> new SourceIndexer().build(IndexerTestSupport.request(root, jar, root.resolve("symbols.jsonl"), 1)));
             assertTrue(failure.getMessage().contains("diagnostic") || failure.getMessage().contains("resolve"), failure.getMessage());
         }
     }
@@ -235,7 +235,7 @@ class SourceIndexerIntegrationTest {
                 Files.createDirectories(file.getParent());
                 Files.writeString(file, source.getValue(), StandardCharsets.UTF_8);
             }
-            IndexBuildException failure = assertThrows(IndexBuildException.class, () -> new SourceIndexer().build(IndexerTestSupport.request(root, jar, root.resolve("symbols.mv.db"), 4)));
+            IndexBuildException failure = assertThrows(IndexBuildException.class, () -> new SourceIndexer().build(IndexerTestSupport.request(root, jar, root.resolve("symbols.jsonl"), 4)));
             assertTrue(failure.getMessage().contains("diagnostic") || failure.getMessage().contains("resolve"), failure.getMessage());
         }
     }
@@ -245,7 +245,7 @@ class SourceIndexerIntegrationTest {
         Path sources = IndexerTestSupport.copyFixture("main", temporaryDirectory.resolve("sources"));
         Path jar = IndexerTestSupport.fixtureCatalog(temporaryDirectory.resolve("remapped.jar"));
         Path dependency = IndexerTestSupport.fixtureDependency(temporaryDirectory.resolve("dependency.jar"));
-        Path database = temporaryDirectory.resolve("symbols.mv.db");
+        Path database = temporaryDirectory.resolve("symbols.jsonl");
         IndexRequest request = IndexerTestSupport.request(List.of(new SourceRoot(SourceNamespace.MINECRAFT, Optional.empty(), sources)), jar, List.of(dependency), database, 4);
 
         new SourceIndexer().build(request);

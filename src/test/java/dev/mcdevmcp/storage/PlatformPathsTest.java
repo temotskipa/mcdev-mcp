@@ -11,7 +11,6 @@ import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 
-import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -49,7 +48,7 @@ class PlatformPathsTest {
         assertEquals(Path.of("/cache/mcdev-mcp/cache/1.21.5/callgraph/client-remapped.jar"), paths.remappedCallgraphJar(VERSION));
         assertEquals(Path.of("/cache/mcdev-mcp/cache/1.21.5/indexes/callgraph"), paths.callgraphBundle(VERSION));
         assertEquals(Path.of("/cache/mcdev-mcp/cache/fabric-api-0.120.0"), paths.fabricSourceRoot(new FabricApiVersion("0.120.0")));
-        assertEquals(Path.of("/cache/mcdev-mcp/index/1.21.5/symbols.mv.db"), paths.symbolDatabase(VERSION));
+        assertEquals(Path.of("/cache/mcdev-mcp/index/1.21.5/symbols.jsonl"), paths.symbolDatabase(VERSION));
     }
 
     @ParameterizedTest
@@ -84,6 +83,10 @@ class PlatformPathsTest {
         Files.delete(paths.symbolDatabase(VERSION));
         Files.writeString(paths.indexRoot(VERSION).resolve("manifest.json"), "{}");
         assertTrue(states.needsRebuild(VERSION));
+        Files.delete(paths.indexRoot(VERSION).resolve("manifest.json"));
+        assertTrue(states.isSourceOnly(VERSION));
+        Files.writeString(paths.indexRoot(VERSION).resolve("symbols.mv.db"), "index from an earlier release");
+        assertTrue(states.needsRebuild(VERSION));
     }
 
     @Test
@@ -94,15 +97,15 @@ class PlatformPathsTest {
         Files.createDirectories(indexRoot.resolve("minecraft/net/minecraft"));
         Files.writeString(paths.symbolDatabase(VERSION), "db");
         Files.writeString(paths.symbolDatabase(VERSION).resolveSibling("symbols.lock"), "lock");
-        Files.writeString(paths.symbolDatabase(VERSION).resolveSibling("symbols.99.tmp.mv.db"), "tmp");
-        Files.writeString(paths.symbolDatabase(VERSION).resolveSibling("symbols.mv.db.bak"), "backup");
+        Files.writeString(paths.symbolDatabase(VERSION).resolveSibling("symbols.jsonl.99.tmp"), "tmp");
+        Files.writeString(paths.symbolDatabase(VERSION).resolveSibling("symbols.jsonl.bak"), "backup");
         Files.writeString(indexRoot.resolve("manifest.json"), "{}");
         Files.writeString(indexRoot.resolve("minecraft/net/minecraft/world.json"), "{}");
         Files.writeString(outside, "keep");
 
         new IndexCleaner(paths).cleanIndex(VERSION);
 
-        assertTrue(Files.exists(paths.symbolDatabase(VERSION).resolveSibling("symbols.mv.db.lock")));
+        assertTrue(Files.exists(paths.symbolDatabase(VERSION).resolveSibling("symbols.jsonl.lock")));
         assertFalse(Files.exists(paths.symbolDatabase(VERSION)));
         assertFalse(Files.exists(indexRoot.resolve("manifest.json")));
         assertTrue(Files.exists(outside));
@@ -152,19 +155,4 @@ class PlatformPathsTest {
         assertFalse(Files.exists(database));
     }
 
-    @Test
-    void refusesToCleanWhenAnH2LockCompanionMakesExternalUseUncertain() throws Exception {
-        var paths = new PlatformPaths(temporaryDirectory);
-        Path database = paths.symbolDatabase(VERSION);
-        Files.createDirectories(database.getParent());
-        Files.writeString(database.resolveSibling("manifest.json"), "keep");
-        Path h2Lock = database.resolveSibling("symbols.lock.db");
-        Files.writeString(h2Lock, "uncertain external H2 user");
-
-        IOException failure = assertThrows(IOException.class, () -> new IndexCleaner(paths).cleanIndex(VERSION));
-
-        assertTrue(failure.getMessage().contains(h2Lock.toString()));
-        assertTrue(Files.exists(h2Lock));
-        assertTrue(Files.exists(database.resolveSibling("manifest.json")));
-    }
 }

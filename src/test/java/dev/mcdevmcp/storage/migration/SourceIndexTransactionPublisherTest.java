@@ -143,16 +143,6 @@ class SourceIndexTransactionPublisherTest {
     }
 
     @Test
-    void activeH2CompanionRefusesBeforeAnyMutation() throws Exception {
-        SourcePublicationFixture fixture = SourcePublicationFixture.create(temporary, true);
-        Files.writeString(fixture.paths().indexRoot(fixture.version()).resolve("symbols.lock.db"), "live lock");
-        try (var lease = VersionOperationLease.write(fixture.paths(), fixture.version())) {
-            assertThrows(IOException.class, () -> new SourceIndexTransactionPublisher().captureBefore(fixture.paths(), fixture.version(), lease, Cancellation.none()));
-        }
-        assertEquals("class Old {}\n", Files.readString(fixture.paths().sourceRoot(fixture.version()).resolve("Old.java")));
-    }
-
-    @Test
     void reusePublishesIndexAndStampWithoutMovingSourceDirectory() throws Exception {
         SourcePublicationFixture fixture = SourcePublicationFixture.create(temporary, true);
         Path source = fixture.paths().sourceRoot(fixture.version());

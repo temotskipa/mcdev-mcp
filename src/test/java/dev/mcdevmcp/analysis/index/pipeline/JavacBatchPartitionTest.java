@@ -80,8 +80,8 @@ class JavacBatchPartitionTest {
             Files.writeString(sourceRoot.resolve(name + ".java"), padding + "class " + name + body);
         }
         Path jar = IndexerTestSupport.createJar(temporaryDirectory.resolve("empty.jar"), Map.of());
-        var requestOne = IndexerTestSupport.request(sourceRoot, jar, temporaryDirectory.resolve("one.mv.db"), 1);
-        var requestFour = IndexerTestSupport.request(sourceRoot, jar, temporaryDirectory.resolve("four.mv.db"), 4);
+        var requestOne = IndexerTestSupport.request(sourceRoot, jar, temporaryDirectory.resolve("one.jsonl"), 1);
+        var requestFour = IndexerTestSupport.request(sourceRoot, jar, temporaryDirectory.resolve("four.jsonl"), 4);
         SourceCorpus corpus = SourceCorpus.discover(requestOne.sourceRoots(), Cancellation.none());
         List<List<DecodedSource>> batches = JavacSourceParser.partition(corpus.sources());
         assertEquals(List.of(1, 3), sizes(batches));

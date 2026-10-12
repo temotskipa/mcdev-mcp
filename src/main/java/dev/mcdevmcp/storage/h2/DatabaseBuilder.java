@@ -1,8 +1,8 @@
 package dev.mcdevmcp.storage.h2;
 
-import java.sql.Connection;
+import java.nio.file.Path;
 
 @FunctionalInterface
 public interface DatabaseBuilder<T> {
-    T build(Connection connection) throws Exception;
+    T build(Path temporary) throws Exception;
 }

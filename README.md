@@ -23,7 +23,7 @@ Download one of these assets from the matching GitHub Release:
 - `mcdev-mcp-<version>.mcpb` for clients that install MCPB bundles.
 
 The JAR is the complete application. It contains the MCP server, CLI, Javac
-indexer, Class-File callgraph scanner, H2 storage, Vineflower, and Tiny
+indexer, Class-File callgraph scanner, file-backed index storage, Vineflower, and Tiny
 Remapper. The MCPB contains that exact release JAR plus a small packaging-only
 launcher.
 
@@ -72,15 +72,17 @@ Run `java --enable-preview -jar mcdev-mcp-3.0.0.jar --help` for the complete CLI
 
 ## Storage Migration
 
-The Java source index is an H2 database and is rebuilt atomically. Callgraph
-data is a generation-addressed JSONL bundle. Both are local derived data, not
-portable user documents.
+The Java source index is one JSONL file that is rebuilt atomically and held in
+memory while the server answers queries. Callgraph data is a
+generation-addressed JSONL bundle. Both are local derived data, not portable
+user documents.
 
 Indexes created by the final Node release used a legacy JSON layout. The Java
 server reports those versions as needing a rebuild and does not silently
 reinterpret them. Run `clean --index -v <version>` followed by `init` or
 `rebuild`; the cached sources can be retained. A clean Java rebuild replaces
-the legacy index with H2 data.
+the legacy index. The `symbols.mv.db` database written by earlier 3.0.0
+development builds is treated the same way.
 
 ## Environment
 

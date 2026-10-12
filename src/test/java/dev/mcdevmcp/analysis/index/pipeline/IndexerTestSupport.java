@@ -2,7 +2,8 @@ package dev.mcdevmcp.analysis.index.pipeline;
 
 import dev.mcdevmcp.analysis.index.IndexRequest;
 import dev.mcdevmcp.analysis.index.SourceRoot;
-import dev.mcdevmcp.storage.h2.SymbolRepository;
+import dev.mcdevmcp.storage.h2.SymbolIndexData;
+import dev.mcdevmcp.storage.h2.SymbolIndexFiles;
 import dev.mcdevmcp.storage.model.MinecraftVersion;
 import dev.mcdevmcp.storage.model.SourceNamespace;
 import dev.mcdevmcp.support.Cancellation;
@@ -14,8 +15,6 @@ import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.sql.Connection;
-import java.sql.ResultSetMetaData;
 import java.util.*;
 import java.util.jar.JarEntry;
 import java.util.jar.JarOutputStream;
@@ -95,34 +94,39 @@ final class IndexerTestSupport {
     }
 
     static List<String> dump(Path database) throws Exception {
-        return new SymbolRepository(database).query(IndexerTestSupport::dump);
-    }
-
-    private static List<String> dump(Connection connection) throws Exception {
+        SymbolIndexData data = SymbolIndexFiles.read(database);
+        SymbolIndexData.Header header = data.header();
         List<String> rows = new ArrayList<>();
-        rows.addAll(query(connection, "metadata", "SELECT singleton, schema_version, minecraft_version, source_root, remapped_jar_sha256 FROM metadata ORDER BY singleton"));
-        rows.addAll(query(connection, "packages", "SELECT id, source_namespace, fabric_api_version, name FROM packages ORDER BY id"));
-        rows.addAll(query(connection, "types", "SELECT id, package_id, source_namespace, fabric_api_version, binary_name, simple_name, kind, superclass_binary_name, source_path, start_offset, end_offset, start_line, end_line FROM types ORDER BY id"));
-        rows.addAll(query(connection, "type_interfaces", "SELECT type_id, ordinal, interface_binary_name FROM type_interfaces ORDER BY type_id, ordinal"));
-        rows.addAll(query(connection, "fields", "SELECT id, type_id, ordinal, name, type, modifiers, start_offset, end_offset, start_line, end_line FROM fields ORDER BY id"));
-        rows.addAll(query(connection, "methods", "SELECT id, type_id, ordinal, name, descriptor, return_type, modifiers, constructor, start_offset, end_offset, start_line, end_line FROM methods ORDER BY id"));
-        rows.addAll(query(connection, "parameters", "SELECT id, method_id, ordinal, name, type, varargs, start_offset, end_offset, start_line, end_line FROM parameters ORDER BY id"));
+        rows.add(row("metadata", true, header.format(), header.minecraftVersion(), header.sourceRoot(), header.remappedJarSha256()));
+        for (var value : data.packages()) {
+            rows.add(row("packages", value.id(), value.namespace(), value.fabricApiVersion(), value.name()));
+        }
+        for (var value : data.types()) {
+            rows.add(row("types", value.id(), value.packageId(), value.namespace(), value.fabricApiVersion(), value.binaryName(), value.simpleName(), value.kind(), value.superclass(), value.sourcePath(), value.startOffset(), value.endOffset(), value.startLine(), value.endLine()));
+        }
+        for (var value : data.types()) {
+            for (int ordinal = 0; ordinal < value.interfaces().size(); ordinal++) {
+                rows.add(row("type_interfaces", value.id(), ordinal, value.interfaces().get(ordinal)));
+            }
+        }
+        for (var value : data.fields()) {
+            rows.add(row("fields", value.id(), value.typeId(), value.ordinal(), value.name(), value.type(), value.modifiers(), value.startOffset(), value.endOffset(), value.startLine(), value.endLine()));
+        }
+        for (var value : data.methods()) {
+            rows.add(row("methods", value.id(), value.typeId(), value.ordinal(), value.name(), value.descriptor(), value.returnType(), value.modifiers(), value.constructor(), value.startOffset(), value.endOffset(), value.startLine(), value.endLine()));
+        }
+        for (var value : data.parameters()) {
+            rows.add(row("parameters", value.id(), value.methodId(), value.ordinal(), value.name(), value.type(), value.varargs(), value.startOffset(), value.endOffset(), value.startLine(), value.endLine()));
+        }
         return List.copyOf(rows);
     }
 
-    private static List<String> query(Connection connection, String table, String sql) throws Exception {
-        List<String> rows = new ArrayList<>();
-        try (var statement = connection.createStatement(); var results = statement.executeQuery(sql)) {
-            ResultSetMetaData metadata = results.getMetaData();
-            while (results.next()) {
-                StringBuilder row = new StringBuilder(table);
-                for (int column = 1; column <= metadata.getColumnCount(); column++) {
-                    row.append('|').append(results.getObject(column));
-                }
-                rows.add(row.toString());
-            }
+    private static String row(String table, Object... columns) {
+        StringBuilder row = new StringBuilder(table);
+        for (Object column : columns) {
+            row.append('|').append(column);
         }
-        return rows;
+        return row.toString();
     }
 
     static byte[] bytes(Path path) {

@@ -52,7 +52,7 @@ public value record PlatformPaths(Path cacheRoot) {
     }
 
     public Path symbolDatabase(MinecraftVersion version) {
-        return indexRoot(version).resolve("symbols.mv.db");
+        return indexRoot(version).resolve("symbols.jsonl");
     }
 
     public Path callgraphBundle(MinecraftVersion version) {

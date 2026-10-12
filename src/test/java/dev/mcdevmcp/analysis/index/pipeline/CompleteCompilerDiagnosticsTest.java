@@ -44,8 +44,8 @@ class CompleteCompilerDiagnosticsTest {
         writeRepeatedBody(sourceRoot, "BErrors", "missing();");
         Path jar = IndexerTestSupport.createJar(temporaryDirectory.resolve("empty.jar"), Map.of());
 
-        IndexBuildEvidence one = new SourceIndexer().build(IndexerTestSupport.request(sourceRoot, jar, temporaryDirectory.resolve("errors-one.mv.db"), 1)).evidence();
-        IndexBuildEvidence four = new SourceIndexer().build(IndexerTestSupport.request(sourceRoot, jar, temporaryDirectory.resolve("errors-four.mv.db"), 4)).evidence();
+        IndexBuildEvidence one = new SourceIndexer().build(IndexerTestSupport.request(sourceRoot, jar, temporaryDirectory.resolve("errors-one.jsonl"), 1)).evidence();
+        IndexBuildEvidence four = new SourceIndexer().build(IndexerTestSupport.request(sourceRoot, jar, temporaryDirectory.resolve("errors-four.jsonl"), 4)).evidence();
 
         assertEquals(one, four);
         assertEquals(2 * DIAGNOSTICS_PER_SOURCE, one.diagnostics().size());
@@ -60,8 +60,8 @@ class CompleteCompilerDiagnosticsTest {
         writeRepeatedBody(sourceRoot, "BWarnings", "legacy.Legacy.old();");
         Path jar = IndexerTestSupport.createJar(temporaryDirectory.resolve("legacy.jar"), Map.of("legacy/Legacy.java", "package legacy; public class Legacy { @Deprecated(forRemoval=true) public static void old() {} }"));
 
-        IndexBuildEvidence one = new SourceIndexer().build(IndexerTestSupport.request(sourceRoot, jar, temporaryDirectory.resolve("warnings-one.mv.db"), 1)).evidence();
-        IndexBuildEvidence four = new SourceIndexer().build(IndexerTestSupport.request(sourceRoot, jar, temporaryDirectory.resolve("warnings-four.mv.db"), 4)).evidence();
+        IndexBuildEvidence one = new SourceIndexer().build(IndexerTestSupport.request(sourceRoot, jar, temporaryDirectory.resolve("warnings-one.jsonl"), 1)).evidence();
+        IndexBuildEvidence four = new SourceIndexer().build(IndexerTestSupport.request(sourceRoot, jar, temporaryDirectory.resolve("warnings-four.jsonl"), 4)).evidence();
 
         assertEquals(one, four);
         assertEquals(2 * DIAGNOSTICS_PER_SOURCE, one.diagnostics().size());
@@ -106,7 +106,7 @@ class CompleteCompilerDiagnosticsTest {
     private Path createPriorDatabase(Path jar) throws Exception {
         Path sourceRoot = Files.createDirectories(temporaryDirectory.resolve("prior"));
         Files.writeString(sourceRoot.resolve("Prior.java"), "class Prior { int original; }\n");
-        Path database = temporaryDirectory.resolve("prior.mv.db");
+        Path database = temporaryDirectory.resolve("prior.jsonl");
         new SourceIndexer().build(IndexerTestSupport.request(sourceRoot, jar, database, 1));
         return database;
     }

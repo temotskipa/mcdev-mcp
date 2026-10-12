@@ -14,7 +14,7 @@ import java.nio.file.Path;
 import java.util.Objects;
 import java.util.concurrent.Callable;
 
-@Command(name = "rebuild", description = "Rebuild the cached H2 index")
+@Command(name = "rebuild", description = "Rebuild the cached symbol index")
 public final class RebuildCommand implements Callable<Integer> {
     private final AnalysisOperations operations;
     private final PlatformPaths paths;

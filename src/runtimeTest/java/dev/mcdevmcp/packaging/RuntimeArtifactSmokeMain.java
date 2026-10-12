@@ -5,6 +5,9 @@ import dev.mcdevmcp.analysis.decompile.MinecraftDecompiler;
 import dev.mcdevmcp.analysis.decompile.MinecraftRemapper;
 import dev.mcdevmcp.mcp.McpServerFactory;
 import dev.mcdevmcp.mcp.tool.ToolDefinition;
+import dev.mcdevmcp.storage.h2.SymbolIndexData;
+import dev.mcdevmcp.storage.h2.SymbolIndexFiles;
+import dev.mcdevmcp.storage.h2.SymbolRepository;
 import dev.mcdevmcp.support.AppEnvironment;
 import dev.mcdevmcp.support.RequiredRuntime;
 import dev.mcdevmcp.support.ScopeOutcomes;
@@ -26,8 +29,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.SimpleFileVisitor;
 import java.nio.file.attribute.BasicFileAttributes;
-import java.sql.Driver;
-import java.sql.DriverManager;
 import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.ExecutionException;
@@ -56,7 +57,7 @@ public final class RuntimeArtifactSmokeMain {
         logAndVerifyRuntime();
         String version = verifyArchive(jar);
         verifyMergedServiceProviders(jar);
-        verifyH2();
+        verifySymbolIndex();
         verifyRemappingAndDecompilation();
         verifyJarCli(jar, version);
         verifyStdio(jar, version);
@@ -84,7 +85,7 @@ public final class RuntimeArtifactSmokeMain {
             String version = attributes.getValue("Implementation-Version");
             require(version != null && !version.isBlank(), "Shaded JAR has no Implementation-Version");
             require(attributes.getValue("Enable-Native-Access") == null, "Shaded JAR unexpectedly requests native access");
-            require(archive.getEntry("META-INF/services/java.sql.Driver") != null, "Shaded JAR does not merge java.sql.Driver service metadata");
+            require(archive.stream().noneMatch(entry -> entry.getName().startsWith("org/h2/")), "Shaded JAR unexpectedly contains H2");
             require(archive.stream().noneMatch(entry -> isSignatureEntry(entry.getName())), "Shaded JAR retains a signed-archive signature file");
             require(archive.stream().noneMatch(entry -> entry.getName().startsWith("org/sqlite/")), "Shaded JAR unexpectedly contains SQLite");
             return version;
@@ -143,23 +144,12 @@ public final class RuntimeArtifactSmokeMain {
         return declarations;
     }
 
-    @SuppressWarnings({"SqlNoDataSourceInspection", "SqlResolve"})
-    private static void verifyH2() throws Exception {
-        boolean h2ServiceFound = ServiceLoader.load(Driver.class).stream().map(ServiceLoader.Provider::get).anyMatch(driver -> driver.getClass().getName().equals("org.h2.Driver"));
-        require(h2ServiceFound, "H2 Driver ServiceLoader provider was not found");
-
-        Path root = Files.createTempDirectory("mcdev-mcp-runtime-h2");
-        Path database = root.resolve("symbols");
-        String url = "jdbc:h2:file:" + database + ";DB_CLOSE_DELAY=0";
+    private static void verifySymbolIndex() throws Exception {
+        Path root = Files.createTempDirectory("mcdev-mcp-runtime-index");
+        Path index = root.resolve("symbols.jsonl");
         try {
-            try (var connection = DriverManager.getConnection(url); var statement = connection.createStatement()) {
-                statement.execute("CREATE TABLE smoke(metric_value INTEGER NOT NULL)");
-                statement.executeUpdate("INSERT INTO smoke VALUES (41)");
-            }
-            try (var connection = DriverManager.getConnection(url); var statement = connection.createStatement();
-                 var results = statement.executeQuery("SELECT metric_value FROM smoke")) {
-                require(results.next() && results.getInt(1) == 41 && !results.next(), "H2 persisted read/write/reopen smoke failed");
-            }
+            SymbolIndexFiles.write(index, SymbolIndexData.of("1.21.5", root.toString(), "0".repeat(64), "2026-01-01T00:00:00Z", List.of(new SymbolIndexData.PackageRow(1, "minecraft", null, "smoke")), List.of(new SymbolIndexData.TypeRow(1, 1, "minecraft", null, "smoke.Smoke", "Smoke", "class", null, List.of(), "smoke/Smoke.java", 0, 0, 1, 1)), List.of(), List.of(), List.of()));
+            require(new SymbolRepository(index).classByName("smoke.Smoke") != null, "Symbol index write and reopen smoke failed");
         } finally {
             deleteTree(root);
         }

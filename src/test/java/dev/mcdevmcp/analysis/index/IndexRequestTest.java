@@ -35,7 +35,7 @@ class IndexRequestTest {
     void requestDeepCopiesPathsAndRejectsDuplicateOrInvalidState() {
         var roots = new ArrayList<>(List.of(new SourceRoot(SourceNamespace.MINECRAFT, Optional.empty(), temporaryDirectory.resolve("sources"))));
         var classpath = new ArrayList<>(List.of(temporaryDirectory.resolve("lib/../lib/dependency.jar")));
-        var request = new IndexRequest(new MinecraftVersion("1.21.5"), roots, temporaryDirectory.resolve("game.jar"), classpath, temporaryDirectory.resolve("symbols.mv.db"), 4, (_, _, _) -> {
+        var request = new IndexRequest(new MinecraftVersion("1.21.5"), roots, temporaryDirectory.resolve("game.jar"), classpath, temporaryDirectory.resolve("symbols.jsonl"), 4, (_, _, _) -> {
         }, Cancellation.none());
 
         roots.clear();

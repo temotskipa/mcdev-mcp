@@ -3,7 +3,8 @@ package dev.mcdevmcp.parity;
 import dev.mcdevmcp.storage.PlatformPaths;
 import dev.mcdevmcp.storage.callgraph.CallgraphBundleTestSupport;
 import dev.mcdevmcp.storage.callgraph.CallgraphDataRecord;
-import dev.mcdevmcp.storage.h2.SymbolSchema;
+import dev.mcdevmcp.storage.h2.SymbolIndexData;
+import dev.mcdevmcp.storage.h2.SymbolIndexFixture;
 import dev.mcdevmcp.storage.model.MinecraftVersion;
 import io.modelcontextprotocol.json.McpJsonDefaults;
 
@@ -11,17 +12,13 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.sql.Connection;
-import java.sql.DriverManager;
-import java.sql.PreparedStatement;
-import java.sql.SQLException;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Stream;
 
-@SuppressWarnings("SqlNoDataSourceInspection") // Fixture databases are created at runtime.
+
 final class StaticParityFixture {
     static final MinecraftVersion VERSION = new MinecraftVersion("1.21.5");
     private static final Duration NODE_DATABASE_TIMEOUT = Duration.ofSeconds(30);
@@ -134,43 +131,13 @@ final class StaticParityFixture {
     }
 
     private static void writeJavaSymbolIndex(PlatformPaths paths) throws Exception {
-        Files.createDirectories(paths.indexRoot(VERSION));
-        try (Connection connection = DriverManager.getConnection(writerUrl(paths.symbolDatabase(VERSION)))) {
-            SymbolSchema.create(connection, VERSION, paths.sourceRoot(VERSION), "0".repeat(64), Instant.parse("2026-07-29T00:00:00Z"));
-            execute(connection, "INSERT INTO packages(id, source_namespace, fabric_api_version, name) VALUES (1, 'minecraft', NULL, 'example'), (2, 'minecraft', NULL, 'bulk')");
-            try (PreparedStatement types = connection.prepareStatement("INSERT INTO types(id, package_id, source_namespace, fabric_api_version, binary_name, simple_name, kind, superclass_binary_name, source_path, start_offset, end_offset, start_line, end_line) VALUES (?, ?, 'minecraft', NULL, ?, ?, ?, ?, ?, 0, 0, ?, ?)");
-                 PreparedStatement interfaces = connection.prepareStatement("INSERT INTO type_interfaces(type_id, ordinal, interface_binary_name) VALUES (?, 0, ?)")) {
-                insertType(types, 1, 1, "example.Parity", "Parity", "class", null, "example/Parity.java", 6);
-                insertType(types, 2, 1, "example.Other", "Other", "class", null, "example/Other.java", 2);
-                insertType(types, 3, 1, "example.Child", "Child", "class", "example.Parity", "example/Child.java", 2);
-                insertType(types, 4, 1, "example.ChildTwo", "ChildTwo", "class", "example.Parity", "example/ChildTwo.java", 2);
-                insertType(types, 5, 1, "example.Marker", "Marker", "interface", null, "example/Marker.java", 2);
-                insertType(types, 6, 1, "example.Impl", "Impl", "class", null, "example/Impl.java", 2);
-                insertType(types, 7, 2, "bulk.HitOne", "HitOne", "class", null, "bulk/HitOne.java", 2);
-                insertType(types, 8, 2, "bulk.HitTwo", "HitTwo", "class", null, "bulk/HitTwo.java", 2);
-                types.executeBatch();
-                interfaces.setLong(1, 6);
-                interfaces.setString(2, "example.Marker");
-                interfaces.executeUpdate();
-            }
-            execute(connection, "INSERT INTO fields(id, type_id, ordinal, name, type, modifiers, start_offset, end_offset, start_line, end_line) VALUES (1, 1, 0, 'Needle', 'int', 'private', 0, 0, 3, 3)");
-            execute(connection, "INSERT INTO methods(id, type_id, ordinal, name, descriptor, return_type, modifiers, constructor, start_offset, end_offset, start_line, end_line) VALUES (1, 1, 0, 'needle', '(Ljava/lang/String;)V', 'void', 'public', FALSE, 0, 0, 4, 4), (2, 1, 1, 'run', '()V', 'void', 'public', FALSE, 0, 0, 5, 5)");
-            execute(connection, "INSERT INTO parameters(id, method_id, ordinal, name, type, varargs, start_offset, end_offset, start_line, end_line) VALUES (1, 1, 0, 'arg', 'String', FALSE, 0, 0, 4, 4)");
-            SymbolSchema.createIndexes(connection);
-        }
+        List<SymbolIndexData.TypeRow> types = List.of(type(1, 1, "example.Parity", "Parity", "class", null, List.of(), "example/Parity.java", 6), type(2, 1, "example.Other", "Other", "class", null, List.of(), "example/Other.java", 2), type(3, 1, "example.Child", "Child", "class", "example.Parity", List.of(), "example/Child.java", 2), type(4, 1, "example.ChildTwo", "ChildTwo", "class", "example.Parity", List.of(), "example/ChildTwo.java", 2), type(5, 1, "example.Marker", "Marker", "interface", null, List.of(), "example/Marker.java", 2), type(6, 1, "example.Impl", "Impl", "class", null, List.of("example.Marker"), "example/Impl.java", 2), type(7, 2, "bulk.HitOne", "HitOne", "class", null, List.of(), "bulk/HitOne.java", 2), type(8, 2, "bulk.HitTwo", "HitTwo", "class", null, List.of(), "bulk/HitTwo.java", 2));
+        List<SymbolIndexData.MethodRow> methods = List.of(new SymbolIndexData.MethodRow(1, 1, 0, "needle", "(Ljava/lang/String;)V", "void", "public", false, 0, 0, 4, 4), new SymbolIndexData.MethodRow(2, 1, 1, "run", "()V", "void", "public", false, 0, 0, 5, 5));
+        SymbolIndexFixture.write(paths.symbolDatabase(VERSION), VERSION, paths.sourceRoot(VERSION), "0".repeat(64), Instant.parse("2026-07-29T00:00:00Z"), List.of(SymbolIndexFixture.minecraftPackage(1, "example"), SymbolIndexFixture.minecraftPackage(2, "bulk")), types, List.of(new SymbolIndexData.FieldRow(1, 1, 0, "Needle", "int", "private", 0, 0, 3, 3)), methods, List.of(new SymbolIndexData.ParameterRow(1, 1, 0, "arg", "String", false, 0, 0, 4, 4)));
     }
 
-    private static void insertType(PreparedStatement statement, long id, long packageId, String binaryName, String simpleName, String kind, String superclass, String sourcePath, int endLine) throws SQLException {
-        statement.setLong(1, id);
-        statement.setLong(2, packageId);
-        statement.setString(3, binaryName);
-        statement.setString(4, simpleName);
-        statement.setString(5, kind);
-        statement.setString(6, superclass);
-        statement.setString(7, sourcePath);
-        statement.setInt(8, 2);
-        statement.setInt(9, endLine);
-        statement.addBatch();
+    private static SymbolIndexData.TypeRow type(long id, long packageId, String binaryName, String simpleName, String kind, String superclass, List<String> interfaces, String sourcePath, int endLine) {
+        return SymbolIndexFixture.minecraftType(id, packageId, binaryName, simpleName, kind, superclass, interfaces, sourcePath, 2, endLine);
     }
 
     private static void writeJavaCallgraph(PlatformPaths paths) throws Exception {
@@ -283,16 +250,5 @@ final class StaticParityFixture {
             TimeUnit.NANOSECONDS.sleep(Math.min(remaining, TimeUnit.MILLISECONDS.toNanos(25)));
         }
         return true;
-    }
-
-    private static String writerUrl(Path database) {
-        String path = database.toAbsolutePath().normalize().toString();
-        return "jdbc:h2:file:" + path.substring(0, path.length() - ".mv.db".length()) + ";DB_CLOSE_ON_EXIT=FALSE";
-    }
-
-    private static void execute(Connection connection, String sql) throws SQLException {
-        try (var statement = connection.createStatement()) {
-            statement.executeUpdate(sql);
-        }
     }
 }

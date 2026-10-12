@@ -1,258 +1,187 @@
 package dev.mcdevmcp.storage.h2;
 
-import dev.mcdevmcp.storage.model.MinecraftVersion;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.sql.Connection;
-import java.sql.DriverManager;
-import java.sql.SQLException;
 import java.time.Duration;
-import java.time.Instant;
 import java.util.Arrays;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-@SuppressWarnings("SqlNoDataSourceInspection") // Each test creates an isolated database.
 class AtomicH2DatabaseTest {
+    private static final String MARKER = "marker:";
     @TempDir
     Path temporaryDirectory;
 
-    private static void createDatabase(Path database) throws Exception {
-        try (Connection connection = DriverManager.getConnection(H2DatabaseUrls.writer(database))) {
-            createMarker(connection, "old");
+    private static void createDatabase(Path database) throws IOException {
+        createMarker(database, "old");
+    }
+
+    private static void createMarker(Path file, String value) throws IOException {
+        Files.writeString(file, MARKER + value);
+    }
+
+    private static void validateMarker(Path file) throws IOException {
+        if (!Files.readString(file).startsWith(MARKER)) {
+            throw new IOException("marker missing");
         }
     }
 
-    private static void createMarker(Connection connection, String value) throws SQLException {
-        SymbolSchema.create(connection, new MinecraftVersion("1.21.5"), Path.of("client"), "a".repeat(64), Instant.EPOCH);
-        SymbolSchema.createIndexes(connection);
-        try (var statement = connection.createStatement()) {
-            statement.execute("CREATE TABLE marker (marker_value VARCHAR)");
-            statement.executeUpdate("INSERT INTO marker(marker_value) VALUES ('" + value + "')");
+    private static void validateMarker(Path file, String expected) throws IOException {
+        if (!marker(file).equals(expected)) {
+            throw new IOException("expected marker " + expected);
         }
     }
 
-    private static void createGenericMarker(Connection connection) throws SQLException {
-        try (var statement = connection.createStatement()) {
-            statement.execute("CREATE TABLE generic_marker (marker_value VARCHAR)");
-            statement.executeUpdate(genericMarkerInsertSql());
-        }
-    }
-
-    private static void validateGenericMarker(Connection connection) throws SQLException {
-        try (var statement = connection.createStatement();
-             var results = statement.executeQuery(genericMarkerSelectSql())) {
-            if (!results.next()) {
-                throw new SQLException("generic marker missing");
-            }
-        }
-    }
-
-    private static void validateMarker(Connection connection) throws SQLException {
-        try (var statement = connection.createStatement(); var results = statement.executeQuery(markerSelectSql())) {
-            if (!results.next()) {
-                throw new SQLException("marker missing");
-            }
-        }
-    }
-
-    private static void validateMarker(Connection connection, String expected) throws SQLException {
-        try (var statement = connection.createStatement(); var results = statement.executeQuery(markerSelectSql())) {
-            if (!results.next() || !expected.equals(results.getString(1))) {
-                throw new SQLException("expected marker " + expected);
-            }
-        }
-    }
-
-    private static String marker(Path database) throws Exception {
-        try (Connection connection = DriverManager.getConnection(H2DatabaseUrls.reader(database));
-             var statement = connection.createStatement(); var results = statement.executeQuery(markerSelectSql())) {
-            assertTrue(results.next());
-            return results.getString(1);
-        }
-    }
-
-    @SuppressWarnings("SameReturnValue")
-    private static String markerSelectSql() {
-        return "SELECT marker_value FROM marker";
-    }
-
-    @SuppressWarnings("SameReturnValue")
-    private static String genericMarkerInsertSql() {
-        return "INSERT INTO generic_marker(marker_value) VALUES ('generic')";
-    }
-
-    @SuppressWarnings("SameReturnValue")
-    private static String genericMarkerSelectSql() {
-        return "SELECT marker_value FROM generic_marker";
+    private static String marker(Path database) throws IOException {
+        String content = Files.readString(database);
+        assertTrue(content.startsWith(MARKER));
+        return content.substring(MARKER.length());
     }
 
     @Test
-    void buildsOneClosedMvStoreFileAndRejectsUnsafePaths() throws Exception {
-        Path target = temporaryDirectory.resolve("symbols.mv.db");
-
-        String result = new AtomicH2Database().rebuild(target, Duration.ofSeconds(1), connection -> {
-            createMarker(connection, "new");
+    void buildsOneFileAndLeavesNoTemporaryBehind() throws Exception {
+        Path target = temporaryDirectory.resolve("symbols.jsonl");
+        String result = new AtomicH2Database().rebuild(target, Duration.ofSeconds(1), temporary -> {
+            createMarker(temporary, "new");
             return "built";
         }, AtomicH2DatabaseTest::validateMarker);
-
         assertEquals("built", result);
         assertEquals("new", marker(target));
-        assertTrue(Files.isRegularFile(target));
-        assertFalse(Files.exists(temporaryDirectory.resolve("symbols.lock.db")));
-        assertFalse(Files.exists(temporaryDirectory.resolve("symbols.trace.db")));
-        assertThrows(IllegalArgumentException.class, () -> new AtomicH2Database().rebuild(temporaryDirectory.resolve("bad;name.mv.db"), Duration.ofSeconds(1), _ -> null, _ -> {
-        }));
+        try (var siblings = Files.list(temporaryDirectory)) {
+            assertEquals(List.of("symbols.jsonl", "symbols.jsonl.lock"), siblings.map(path -> path.getFileName().toString()).sorted().toList());
+        }
     }
 
     @Test
-    void acceptsH2PathsWithSpacesHashUnicodeAndWindowsSeparators() throws Exception {
+    void acceptsPathsWithSpacesHashAndUnicode() throws Exception {
         Path directory = temporaryDirectory.resolve("space # unicode-é");
-        Path target = directory.resolve("symbols.mv.db");
+        Path target = directory.resolve("symbols.jsonl");
 
-        new AtomicH2Database().rebuild(target, Duration.ofSeconds(1), connection -> {
-            createMarker(connection, "special");
+        new AtomicH2Database().rebuild(target, Duration.ofSeconds(1), temporary -> {
+            createMarker(temporary, "special");
             return null;
         }, AtomicH2DatabaseTest::validateMarker);
 
         assertEquals("special", marker(target));
-        assertTrue(H2DatabaseUrls.writer(target).contains(target.toAbsolutePath().getParent().toString()));
     }
 
     @Test
     void leavesOldDatabaseUnchangedWhenBuilderOrValidatorFails() throws Exception {
-        Path target = temporaryDirectory.resolve("symbols.mv.db");
+        Path target = temporaryDirectory.resolve("symbols.jsonl");
         createDatabase(target);
         byte[] oldBytes = Files.readAllBytes(target);
 
-        assertThrows(SQLException.class, () -> new AtomicH2Database().rebuild(target, Duration.ofSeconds(1), _ -> {
-            throw new SQLException("builder failed");
+        assertThrows(IOException.class, () -> new AtomicH2Database().rebuild(target, Duration.ofSeconds(1), _ -> {
+            throw new IOException("builder failed");
         }, AtomicH2DatabaseTest::validateMarker));
         assertEquals("old", marker(target));
         assertEquals(Arrays.toString(oldBytes), Arrays.toString(Files.readAllBytes(target)));
 
-        assertThrows(SQLException.class, () -> new AtomicH2Database().rebuild(target, Duration.ofSeconds(1), connection -> {
-            createMarker(connection, "new");
+        assertThrows(IOException.class, () -> new AtomicH2Database().rebuild(target, Duration.ofSeconds(1), temporary -> {
+            createMarker(temporary, "new");
             return null;
         }, _ -> {
-            throw new SQLException("validator failed");
+            throw new IOException("validator failed");
         }));
         assertEquals("old", marker(target));
     }
 
     @Test
     void forcedBackupFallbackRestoresOldTargetWhenPostPromotionValidationFails() throws Exception {
-        Path target = temporaryDirectory.resolve("symbols.mv.db");
+        Path target = temporaryDirectory.resolve("symbols.jsonl");
         createDatabase(target);
 
         var moves = new ForcedFallbackMoveStrategy();
         var database = new AtomicH2Database(moves);
-        assertThrows(SQLException.class, () -> database.rebuild(target, Duration.ofSeconds(1), connection -> {
-            createMarker(connection, "new");
+        assertThrows(IOException.class, () -> database.rebuild(target, Duration.ofSeconds(1), temporary -> {
+            createMarker(temporary, "new");
             return null;
         }, _ -> {
-            throw new SQLException("reject promoted database");
+            throw new IOException("reject promoted database");
         }));
 
         assertEquals("old", marker(target));
-        assertFalse(Files.exists(target.resolveSibling("symbols.mv.db.bak")));
+        assertFalse(Files.exists(target.resolveSibling("symbols.jsonl.bak")));
     }
 
     @Test
     void forcedBackupFallbackPromotesAndDeletesTheBackup() throws Exception {
-        Path target = temporaryDirectory.resolve("symbols.mv.db");
+        Path target = temporaryDirectory.resolve("symbols.jsonl");
         createDatabase(target);
 
-        new AtomicH2Database(new ForcedFallbackMoveStrategy()).rebuild(target, Duration.ofSeconds(1), connection -> {
-            createMarker(connection, "new");
+        new AtomicH2Database(new ForcedFallbackMoveStrategy()).rebuild(target, Duration.ofSeconds(1), temporary -> {
+            createMarker(temporary, "new");
             return null;
         }, AtomicH2DatabaseTest::validateMarker);
 
         assertEquals("new", marker(target));
-        assertFalse(Files.exists(target.resolveSibling("symbols.mv.db.bak")));
+        assertFalse(Files.exists(target.resolveSibling("symbols.jsonl.bak")));
     }
 
     @Test
     void forcedBackupFallbackRemovesInvalidTargetWithoutAnOldDatabase() {
-        Path target = temporaryDirectory.resolve("symbols.mv.db");
+        Path target = temporaryDirectory.resolve("symbols.jsonl");
 
-        assertThrows(SQLException.class, () -> new AtomicH2Database(new ForcedFallbackMoveStrategy()).rebuild(target, Duration.ofSeconds(1), connection -> {
-            createMarker(connection, "new");
+        assertThrows(IOException.class, () -> new AtomicH2Database(new ForcedFallbackMoveStrategy()).rebuild(target, Duration.ofSeconds(1), temporary -> {
+            createMarker(temporary, "new");
             return null;
         }, _ -> {
-            throw new SQLException("reject promoted database");
+            throw new IOException("reject promoted database");
         }));
 
         assertFalse(Files.exists(target));
-        assertFalse(Files.exists(target.resolveSibling("symbols.mv.db.bak")));
-    }
-
-    @Test
-    void commonInfrastructurePromotesANonSymbolH2Schema() throws Exception {
-        Path target = temporaryDirectory.resolve("generic.mv.db");
-
-        String result = new AtomicH2Database().rebuild(target, Duration.ofSeconds(1), connection -> {
-            createGenericMarker(connection);
-            return "built";
-        }, AtomicH2DatabaseTest::validateGenericMarker);
-
-        assertEquals("built", result);
-        try (Connection connection = DriverManager.getConnection(H2DatabaseUrls.reader(target));
-             var statement = connection.createStatement();
-             var results = statement.executeQuery(genericMarkerSelectSql())) {
-            assertTrue(results.next());
-            assertEquals("generic", results.getString(1));
-        }
+        assertFalse(Files.exists(target.resolveSibling("symbols.jsonl.bak")));
     }
 
     @Test
     void preservesOldTargetWhenTheFirstFallbackMoveFails() throws Exception {
-        Path target = temporaryDirectory.resolve("symbols.mv.db");
+        Path target = temporaryDirectory.resolve("symbols.jsonl");
         createDatabase(target);
         byte[] original = Files.readAllBytes(target);
 
-        IOException failure = assertThrows(IOException.class, () -> new AtomicH2Database(new ForcedFallbackMoveStrategy(1)).rebuild(target, Duration.ofSeconds(1), connection -> {
-            createMarker(connection, "new");
+        IOException failure = assertThrows(IOException.class, () -> new AtomicH2Database(new ForcedFallbackMoveStrategy(1)).rebuild(target, Duration.ofSeconds(1), temporary -> {
+            createMarker(temporary, "new");
             return null;
         }, AtomicH2DatabaseTest::validateMarker));
 
         assertEquals("forced fallback move failure 1", failure.getMessage());
         assertArrayEquals(original, Files.readAllBytes(target));
         assertEquals("old", marker(target));
-        assertFalse(Files.exists(target.resolveSibling("symbols.mv.db.bak")));
+        assertFalse(Files.exists(target.resolveSibling("symbols.jsonl.bak")));
     }
 
     @Test
     void restoresOldTargetWhenTheFirstFallbackMoveFailsAfterMovingItToBackup() throws Exception {
-        Path target = temporaryDirectory.resolve("symbols.mv.db");
+        Path target = temporaryDirectory.resolve("symbols.jsonl");
         createDatabase(target);
         byte[] original = Files.readAllBytes(target);
 
-        IOException failure = assertThrows(IOException.class, () -> new AtomicH2Database(new ForcedFallbackMoveStrategy(1, ForcedFallbackMoveStrategy.FailureTiming.AFTER_SIDE_EFFECT)).rebuild(target, Duration.ofSeconds(1), connection -> {
-            createMarker(connection, "new");
+        IOException failure = assertThrows(IOException.class, () -> new AtomicH2Database(new ForcedFallbackMoveStrategy(1, ForcedFallbackMoveStrategy.FailureTiming.AFTER_SIDE_EFFECT)).rebuild(target, Duration.ofSeconds(1), temporary -> {
+            createMarker(temporary, "new");
             return null;
         }, AtomicH2DatabaseTest::validateMarker));
 
         assertEquals("forced fallback move failure 1", failure.getMessage());
         assertArrayEquals(original, Files.readAllBytes(target));
         assertEquals("old", marker(target));
-        assertFalse(Files.exists(target.resolveSibling("symbols.mv.db.bak")));
+        assertFalse(Files.exists(target.resolveSibling("symbols.jsonl.bak")));
     }
 
     @Test
     void preservesOldTargetAndPartialBackupWhenTheFirstFallbackMoveLeavesBoth() throws Exception {
-        Path target = temporaryDirectory.resolve("symbols.mv.db");
-        Path backup = target.resolveSibling("symbols.mv.db.bak");
+        Path target = temporaryDirectory.resolve("symbols.jsonl");
+        Path backup = target.resolveSibling("symbols.jsonl.bak");
         createDatabase(target);
         byte[] original = Files.readAllBytes(target);
 
-        IOException failure = assertThrows(IOException.class, () -> new AtomicH2Database(new ForcedFallbackMoveStrategy(1, ForcedFallbackMoveStrategy.FailureTiming.AFTER_PARTIAL_COPY)).rebuild(target, Duration.ofSeconds(1), connection -> {
-            createMarker(connection, "new");
+        IOException failure = assertThrows(IOException.class, () -> new AtomicH2Database(new ForcedFallbackMoveStrategy(1, ForcedFallbackMoveStrategy.FailureTiming.AFTER_PARTIAL_COPY)).rebuild(target, Duration.ofSeconds(1), temporary -> {
+            createMarker(temporary, "new");
             return null;
         }, AtomicH2DatabaseTest::validateMarker));
 
@@ -265,12 +194,12 @@ class AtomicH2DatabaseTest {
 
     @Test
     void reportsWhenTheFirstFallbackMoveLeavesNeitherTargetNorBackup() throws Exception {
-        Path target = temporaryDirectory.resolve("symbols.mv.db");
-        Path backup = target.resolveSibling("symbols.mv.db.bak");
+        Path target = temporaryDirectory.resolve("symbols.jsonl");
+        Path backup = target.resolveSibling("symbols.jsonl.bak");
         createDatabase(target);
 
-        IOException failure = assertThrows(IOException.class, () -> new AtomicH2Database(new ForcedFallbackMoveStrategy(1, ForcedFallbackMoveStrategy.FailureTiming.AFTER_SOURCE_REMOVAL)).rebuild(target, Duration.ofSeconds(1), connection -> {
-            createMarker(connection, "new");
+        IOException failure = assertThrows(IOException.class, () -> new AtomicH2Database(new ForcedFallbackMoveStrategy(1, ForcedFallbackMoveStrategy.FailureTiming.AFTER_SOURCE_REMOVAL)).rebuild(target, Duration.ofSeconds(1), temporary -> {
+            createMarker(temporary, "new");
             return null;
         }, AtomicH2DatabaseTest::validateMarker));
 
@@ -282,44 +211,44 @@ class AtomicH2DatabaseTest {
 
     @Test
     void restoresOldTargetWhenTheSecondFallbackMoveFailsBeforeCreatingTheTarget() throws Exception {
-        Path target = temporaryDirectory.resolve("symbols.mv.db");
+        Path target = temporaryDirectory.resolve("symbols.jsonl");
         createDatabase(target);
         byte[] original = Files.readAllBytes(target);
 
-        IOException failure = assertThrows(IOException.class, () -> new AtomicH2Database(new ForcedFallbackMoveStrategy(2)).rebuild(target, Duration.ofSeconds(1), connection -> {
-            createMarker(connection, "new");
+        IOException failure = assertThrows(IOException.class, () -> new AtomicH2Database(new ForcedFallbackMoveStrategy(2)).rebuild(target, Duration.ofSeconds(1), temporary -> {
+            createMarker(temporary, "new");
             return null;
         }, AtomicH2DatabaseTest::validateMarker));
 
         assertEquals("forced fallback move failure 2", failure.getMessage());
         assertArrayEquals(original, Files.readAllBytes(target));
         assertEquals("old", marker(target));
-        assertFalse(Files.exists(target.resolveSibling("symbols.mv.db.bak")));
+        assertFalse(Files.exists(target.resolveSibling("symbols.jsonl.bak")));
     }
 
     @Test
     void restoresOldTargetWhenTheSecondFallbackMoveFailsAfterCreatingTheTarget() throws Exception {
-        Path target = temporaryDirectory.resolve("symbols.mv.db");
+        Path target = temporaryDirectory.resolve("symbols.jsonl");
         createDatabase(target);
         byte[] original = Files.readAllBytes(target);
 
-        IOException failure = assertThrows(IOException.class, () -> new AtomicH2Database(new ForcedFallbackMoveStrategy(2, ForcedFallbackMoveStrategy.FailureTiming.AFTER_SIDE_EFFECT)).rebuild(target, Duration.ofSeconds(1), connection -> {
-            createMarker(connection, "new");
+        IOException failure = assertThrows(IOException.class, () -> new AtomicH2Database(new ForcedFallbackMoveStrategy(2, ForcedFallbackMoveStrategy.FailureTiming.AFTER_SIDE_EFFECT)).rebuild(target, Duration.ofSeconds(1), temporary -> {
+            createMarker(temporary, "new");
             return null;
         }, AtomicH2DatabaseTest::validateMarker));
 
         assertEquals("forced fallback move failure 2", failure.getMessage());
         assertArrayEquals(original, Files.readAllBytes(target));
         assertEquals("old", marker(target));
-        assertFalse(Files.exists(target.resolveSibling("symbols.mv.db.bak")));
+        assertFalse(Files.exists(target.resolveSibling("symbols.jsonl.bak")));
     }
 
     @Test
     void removesAnUncertainTargetWhenTheFallbackMoveFailsAfterCreatingItWithoutAnOldDatabase() {
-        Path target = temporaryDirectory.resolve("symbols.mv.db");
+        Path target = temporaryDirectory.resolve("symbols.jsonl");
 
-        IOException failure = assertThrows(IOException.class, () -> new AtomicH2Database(new ForcedFallbackMoveStrategy(1, ForcedFallbackMoveStrategy.FailureTiming.AFTER_SIDE_EFFECT)).rebuild(target, Duration.ofSeconds(1), connection -> {
-            createMarker(connection, "new");
+        IOException failure = assertThrows(IOException.class, () -> new AtomicH2Database(new ForcedFallbackMoveStrategy(1, ForcedFallbackMoveStrategy.FailureTiming.AFTER_SIDE_EFFECT)).rebuild(target, Duration.ofSeconds(1), temporary -> {
+            createMarker(temporary, "new");
             return null;
         }, AtomicH2DatabaseTest::validateMarker));
 
@@ -329,10 +258,10 @@ class AtomicH2DatabaseTest {
 
     @Test
     void leavesNoTargetWhenTheFallbackMoveFailsBeforeCreatingItWithoutAnOldDatabase() {
-        Path target = temporaryDirectory.resolve("symbols.mv.db");
+        Path target = temporaryDirectory.resolve("symbols.jsonl");
 
-        IOException failure = assertThrows(IOException.class, () -> new AtomicH2Database(new ForcedFallbackMoveStrategy(1)).rebuild(target, Duration.ofSeconds(1), connection -> {
-            createMarker(connection, "new");
+        IOException failure = assertThrows(IOException.class, () -> new AtomicH2Database(new ForcedFallbackMoveStrategy(1)).rebuild(target, Duration.ofSeconds(1), temporary -> {
+            createMarker(temporary, "new");
             return null;
         }, AtomicH2DatabaseTest::validateMarker));
 
@@ -342,17 +271,17 @@ class AtomicH2DatabaseTest {
 
     @Test
     void preservesThePromotionFailureWhenBackupRestorationFails() throws Exception {
-        Path target = temporaryDirectory.resolve("symbols.mv.db");
-        Path backup = target.resolveSibling("symbols.mv.db.bak");
+        Path target = temporaryDirectory.resolve("symbols.jsonl");
+        Path backup = target.resolveSibling("symbols.jsonl.bak");
         createDatabase(target);
         var validations = new AtomicInteger();
 
-        SQLException failure = assertThrows(SQLException.class, () -> new AtomicH2Database(new ForcedFallbackMoveStrategy(3)).rebuild(target, Duration.ofSeconds(1), connection -> {
-            createMarker(connection, "new");
+        IOException failure = assertThrows(IOException.class, () -> new AtomicH2Database(new ForcedFallbackMoveStrategy(3)).rebuild(target, Duration.ofSeconds(1), temporary -> {
+            createMarker(temporary, "new");
             return null;
         }, _ -> {
-            if (validations.incrementAndGet() == 3) {
-                throw new SQLException("promotion validation failed");
+            if (validations.incrementAndGet() == 2) {
+                throw new IOException("promotion validation failed");
             }
         }));
 
@@ -360,25 +289,25 @@ class AtomicH2DatabaseTest {
         assertTrue(Arrays.stream(failure.getSuppressed()).anyMatch(suppressed -> suppressed.getMessage().contains("Unable to restore backup")));
         assertFalse(Files.exists(target));
         assertTrue(Files.exists(backup));
-        Path preserved = temporaryDirectory.resolve("preserved.mv.db");
+        Path preserved = temporaryDirectory.resolve("preserved.jsonl");
         Files.copy(backup, preserved);
         assertEquals("old", marker(preserved));
     }
 
     @Test
     void keepsRestoredOldTargetAuthoritativeWhenBackupRestoreReportsFailureAfterMoving() throws Exception {
-        Path target = temporaryDirectory.resolve("symbols.mv.db");
-        Path backup = target.resolveSibling("symbols.mv.db.bak");
+        Path target = temporaryDirectory.resolve("symbols.jsonl");
+        Path backup = target.resolveSibling("symbols.jsonl.bak");
         createDatabase(target);
         byte[] original = Files.readAllBytes(target);
         var validations = new AtomicInteger();
 
-        SQLException failure = assertThrows(SQLException.class, () -> new AtomicH2Database(new ForcedFallbackMoveStrategy(3, ForcedFallbackMoveStrategy.FailureTiming.AFTER_SIDE_EFFECT)).rebuild(target, Duration.ofSeconds(1), connection -> {
-            createMarker(connection, "new");
+        IOException failure = assertThrows(IOException.class, () -> new AtomicH2Database(new ForcedFallbackMoveStrategy(3, ForcedFallbackMoveStrategy.FailureTiming.AFTER_SIDE_EFFECT)).rebuild(target, Duration.ofSeconds(1), temporary -> {
+            createMarker(temporary, "new");
             return null;
         }, _ -> {
-            if (validations.incrementAndGet() == 3) {
-                throw new SQLException("promotion validation failed");
+            if (validations.incrementAndGet() == 2) {
+                throw new IOException("promotion validation failed");
             }
         }));
 
@@ -390,13 +319,13 @@ class AtomicH2DatabaseTest {
 
     @Test
     void preservesUncertainTargetAndBackupWhenTargetRemovalFailsBeforeRestore() throws Exception {
-        Path target = temporaryDirectory.resolve("symbols.mv.db");
-        Path backup = target.resolveSibling("symbols.mv.db.bak");
+        Path target = temporaryDirectory.resolve("symbols.jsonl");
+        Path backup = target.resolveSibling("symbols.jsonl.bak");
         createDatabase(target);
         byte[] original = Files.readAllBytes(target);
 
-        IOException failure = assertThrows(IOException.class, () -> new AtomicH2Database(new ForcedFallbackMoveStrategy(2, ForcedFallbackMoveStrategy.FailureTiming.AFTER_SIDE_EFFECT, ForcedFallbackMoveStrategy.DeleteFailure.ANY)).rebuild(target, Duration.ofSeconds(1), connection -> {
-            createMarker(connection, "new");
+        IOException failure = assertThrows(IOException.class, () -> new AtomicH2Database(new ForcedFallbackMoveStrategy(2, ForcedFallbackMoveStrategy.FailureTiming.AFTER_SIDE_EFFECT, ForcedFallbackMoveStrategy.DeleteFailure.ANY)).rebuild(target, Duration.ofSeconds(1), temporary -> {
+            createMarker(temporary, "new");
             return null;
         }, AtomicH2DatabaseTest::validateMarker));
 
@@ -408,19 +337,19 @@ class AtomicH2DatabaseTest {
 
     @Test
     void neverOverwritesRestoredOldTargetAfterFormerPostRestoreCleanupFailure() throws Exception {
-        Path target = temporaryDirectory.resolve("symbols.mv.db");
-        Path backup = target.resolveSibling("symbols.mv.db.bak");
-        Path rejected = target.resolveSibling("symbols.mv.db.failed-promotion");
+        Path target = temporaryDirectory.resolve("symbols.jsonl");
+        Path backup = target.resolveSibling("symbols.jsonl.bak");
+        Path rejected = target.resolveSibling("symbols.jsonl.failed-promotion");
         createDatabase(target);
         byte[] original = Files.readAllBytes(target);
         var validations = new AtomicInteger();
 
-        SQLException failure = assertThrows(SQLException.class, () -> new AtomicH2Database(new ForcedFallbackMoveStrategy(0, ForcedFallbackMoveStrategy.FailureTiming.BEFORE_SIDE_EFFECT, ForcedFallbackMoveStrategy.DeleteFailure.FAILED_PROMOTION)).rebuild(target, Duration.ofSeconds(1), connection -> {
-            createMarker(connection, "new");
+        IOException failure = assertThrows(IOException.class, () -> new AtomicH2Database(new ForcedFallbackMoveStrategy(0, ForcedFallbackMoveStrategy.FailureTiming.BEFORE_SIDE_EFFECT, ForcedFallbackMoveStrategy.DeleteFailure.FAILED_PROMOTION)).rebuild(target, Duration.ofSeconds(1), temporary -> {
+            createMarker(temporary, "new");
             return null;
         }, _ -> {
-            if (validations.incrementAndGet() == 3) {
-                throw new SQLException("promotion validation failed");
+            if (validations.incrementAndGet() == 2) {
+                throw new IOException("promotion validation failed");
             }
         }));
 
@@ -432,52 +361,14 @@ class AtomicH2DatabaseTest {
     }
 
     @Test
-    void preservesTemporaryDatabaseAndLockWhenTemporaryLockCompanionExists() {
-        Path target = temporaryDirectory.resolve("symbols.mv.db");
-        Path temporaryBase = temporaryDirectory.resolve("symbols." + ProcessHandle.current().pid() + ".tmp");
-        Path temporary = temporaryBase.resolveSibling(temporaryBase.getFileName() + ".mv.db");
-        Path lock = temporaryBase.resolveSibling(temporaryBase.getFileName() + ".lock.db");
-
-        IOException failure = assertThrows(IOException.class, () -> new AtomicH2Database(new ForcedFallbackMoveStrategy(lock)).rebuild(target, Duration.ofSeconds(1), connection -> {
-            createMarker(connection, "new");
-            return null;
-        }, AtomicH2DatabaseTest::validateMarker));
-
-        assertTrue(failure.getMessage().contains(lock.toString()));
-        assertEquals(lock.toString(), failure.getSuppressed()[0].getMessage().replace("Refusing to rebuild while an H2 lock companion exists: ", ""));
-        assertTrue(Files.exists(temporary));
-        assertTrue(Files.exists(lock));
-    }
-
-    @Test
-    void rejectsNumberedTemporaryCompanionWithoutTouchingUnrelatedSiblings() throws Exception {
-        Path target = temporaryDirectory.resolve("symbols.mv.db");
-        createDatabase(target);
-        Path temporaryBase = temporaryDirectory.resolve("symbols." + ProcessHandle.current().pid() + ".tmp");
-        Path numberedCompanion = temporaryBase.resolveSibling(temporaryBase.getFileName() + ".7.temp.db");
-        Path unrelated = temporaryDirectory.resolve("unrelated.7.temp.db");
-        Files.writeString(unrelated, "keep");
-
-        IOException failure = assertThrows(IOException.class, () -> new AtomicH2Database(new ForcedFallbackMoveStrategy(numberedCompanion)).rebuild(target, Duration.ofSeconds(1), connection -> {
-            createMarker(connection, "new");
-            return null;
-        }, AtomicH2DatabaseTest::validateMarker));
-
-        assertTrue(failure.getMessage().contains(numberedCompanion.toString()));
-        assertEquals("old", marker(target));
-        assertFalse(Files.exists(numberedCompanion));
-        assertEquals("keep", Files.readString(unrelated));
-    }
-
-    @Test
     void restoresBackupWhenStartupFindsNoTarget() throws Exception {
-        Path target = temporaryDirectory.resolve("symbols.mv.db");
-        Path backup = target.resolveSibling("symbols.mv.db.bak");
+        Path target = temporaryDirectory.resolve("symbols.jsonl");
+        Path backup = target.resolveSibling("symbols.jsonl.bak");
         createDatabase(target);
         Files.move(target, backup);
 
-        assertThrows(SQLException.class, () -> new AtomicH2Database().rebuild(target, Duration.ofSeconds(1), _ -> {
-            throw new SQLException("stop after recovery");
+        assertThrows(IOException.class, () -> new AtomicH2Database().rebuild(target, Duration.ofSeconds(1), _ -> {
+            throw new IOException("stop after recovery");
         }, AtomicH2DatabaseTest::validateMarker));
 
         assertEquals("old", marker(target));
@@ -486,13 +377,13 @@ class AtomicH2DatabaseTest {
 
     @Test
     void deletesStaleBackupWhenStartupFindsAValidTarget() throws Exception {
-        Path target = temporaryDirectory.resolve("symbols.mv.db");
-        Path backup = target.resolveSibling("symbols.mv.db.bak");
+        Path target = temporaryDirectory.resolve("symbols.jsonl");
+        Path backup = target.resolveSibling("symbols.jsonl.bak");
         createDatabase(target);
         Files.copy(target, backup);
 
-        assertThrows(SQLException.class, () -> new AtomicH2Database().rebuild(target, Duration.ofSeconds(1), _ -> {
-            throw new SQLException("stop after recovery");
+        assertThrows(IOException.class, () -> new AtomicH2Database().rebuild(target, Duration.ofSeconds(1), _ -> {
+            throw new IOException("stop after recovery");
         }, AtomicH2DatabaseTest::validateMarker));
 
         assertEquals("old", marker(target));
@@ -501,15 +392,15 @@ class AtomicH2DatabaseTest {
 
     @Test
     void routesExistingAndCandidateValidatorsSeparatelyDuringStaleBackupRecovery() throws Exception {
-        Path target = temporaryDirectory.resolve("symbols.mv.db");
-        Path backup = target.resolveSibling("symbols.mv.db.bak");
+        Path target = temporaryDirectory.resolve("symbols.jsonl");
+        Path backup = target.resolveSibling("symbols.jsonl.bak");
         createDatabase(target);
         Files.copy(target, backup);
 
-        String result = new AtomicH2Database().rebuild(target, Duration.ofSeconds(1), connection -> {
-            createMarker(connection, "new");
+        String result = new AtomicH2Database().rebuild(target, Duration.ofSeconds(1), temporary -> {
+            createMarker(temporary, "new");
             return "built";
-        }, connection -> validateMarker(connection, "old"), connection -> validateMarker(connection, "new"));
+        }, file -> validateMarker(file, "old"), file -> validateMarker(file, "new"));
 
         assertEquals("built", result);
         assertEquals("new", marker(target));
@@ -518,8 +409,8 @@ class AtomicH2DatabaseTest {
 
     @Test
     void preservesTargetAndBackupWhenStartupTargetIsInvalid() throws Exception {
-        Path target = temporaryDirectory.resolve("symbols.mv.db");
-        Path backup = target.resolveSibling("symbols.mv.db.bak");
+        Path target = temporaryDirectory.resolve("symbols.jsonl");
+        Path backup = target.resolveSibling("symbols.jsonl.bak");
         createDatabase(target);
         Files.copy(target, backup);
         Files.writeString(target, "invalid");

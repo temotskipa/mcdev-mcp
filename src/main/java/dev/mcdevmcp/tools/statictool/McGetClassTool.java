@@ -11,7 +11,6 @@ import dev.mcdevmcp.storage.model.MethodSymbol;
 
 import java.io.IOException;
 import java.nio.file.NoSuchFileException;
-import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -68,7 +67,7 @@ final class McGetClassTool {
         return "// Fields:\n" + declarations + "\n";
     }
 
-    private static String methods(SymbolRepository repository, List<MethodSymbol> methods) throws IOException, SQLException {
+    private static String methods(SymbolRepository repository, List<MethodSymbol> methods) throws IOException {
         if (methods.isEmpty()) {
             return "// (no methods)\n";
         }

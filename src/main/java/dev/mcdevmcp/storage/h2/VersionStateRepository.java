@@ -8,7 +8,6 @@ import dev.mcdevmcp.storage.model.VersionState;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.sql.SQLException;
 import java.util.Objects;
 
 public final class VersionStateRepository {
@@ -23,19 +22,16 @@ public final class VersionStateRepository {
             return false;
         }
         try {
-            new SymbolRepository(database).query(connection -> {
-                SymbolSchema.validate(connection);
-                return null;
-            });
+            SymbolIndexFiles.readHeader(database);
             return true;
-        } catch (IOException | SQLException exception) {
+        } catch (IOException exception) {
             return false;
         }
     }
 
     private static boolean hasLegacyIndex(MinecraftVersion version, VersionOperationLease lease) throws IOException {
         Path root = lease.resolvedPaths().indexRoot(version);
-        return Files.isRegularFile(lease.boundary().require(root.resolve("manifest.json"))) || Files.isDirectory(lease.boundary().require(root.resolve("minecraft"))) || Files.isDirectory(lease.boundary().require(root.resolve("fabric")));
+        return Files.isRegularFile(lease.boundary().require(root.resolve("symbols.mv.db"))) || Files.isRegularFile(lease.boundary().require(root.resolve("manifest.json"))) || Files.isDirectory(lease.boundary().require(root.resolve("minecraft"))) || Files.isDirectory(lease.boundary().require(root.resolve("fabric")));
     }
 
     public VersionState state(MinecraftVersion version) throws IOException {

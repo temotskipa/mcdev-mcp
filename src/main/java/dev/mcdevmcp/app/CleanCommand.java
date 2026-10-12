@@ -30,7 +30,7 @@ public final class CleanCommand implements Callable<Integer> {
     @Option(names = {"-v", "--version"}, description = "Minecraft version")
     private String version;
 
-    @Option(names = "--index", description = "Clean the H2 index")
+    @Option(names = "--index", description = "Clean the symbol index")
     private boolean index;
 
     @Option(names = "--cache", description = "Clean the version cache")

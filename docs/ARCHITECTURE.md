@@ -15,7 +15,7 @@ MCP client
 ```
 
 The server has no analysis worker processes and no internal serialization
-protocol. Filesystem and H2 work runs on virtual threads with explicit
+protocol. Filesystem and index work runs on virtual threads with explicit
 cancellation. DebugBridge remains an independent mod and therefore remains a
 real JSON/WebSocket boundary.
 
@@ -32,7 +32,7 @@ Production code lives below `dev.mcdevmcp`:
 | `analysis.index`     | Javac-based source indexing and typed index models.            |
 | `analysis.callgraph` | JDK Class-File API scanning and graph publication.             |
 | `analysis.decompile` | Minecraft download, Tiny Remapper, and Vineflower.             |
-| `storage`            | Platform paths, H2 repositories, JSONL bundles, and cleanup.   |
+| `storage`            | Platform paths, the symbol index, JSONL bundles, and cleanup.  |
 | `bridge`             | Nonblocking DebugBridge envelopes, validation, and sessions.   |
 | `packaging`          | Deterministic MCPB metadata and packed-artifact smoke tests.   |
 | `support`            | Environment, JSON, logging, cancellation, and version helpers. |
@@ -85,7 +85,7 @@ separate modular distribution without changing the single-JAR baseline.
 1. Resolve the Mojang version metadata and download the client JAR.
 2. Convert official mappings and remap with embedded Tiny Remapper.
 3. Decompile the remapped JAR with embedded Vineflower.
-4. Parse Java source with Javac and atomically publish an H2 symbol database.
+4. Parse Java source with Javac and atomically publish the symbol index file.
 5. Scan JVM class files with the Java Class-File API and publish a deterministic
    JSONL callgraph bundle.
 
@@ -97,16 +97,19 @@ Javac indexer's responsibility.
 
 ## Storage And Rebuilds
 
-Each Minecraft version owns its cache and index state. The symbol database is
-`symbols.mv.db`. Callgraph publication uses immutable generation directories,
+Each Minecraft version owns its cache and index state. The symbol index is
+`symbols.jsonl`: a header line followed by every package, type, field, method
+and parameter row. A query loads the file once into an immutable in-memory
+index, which is cached per process and reloaded when the file is replaced.
+Callgraph publication uses immutable generation directories,
 checksummed JSONL data/index files, and an atomic current-generation pointer.
 Writers validate candidates before publication; readers never observe a
 partially replaced index.
 
 The final Node release's package JSON indexes are legacy input, not a Java
 storage format. Their presence makes status report `needs rebuild`. Users run
-`clean --index -v <version>` and then `init` or `rebuild`; no SQL server or
-external database service is required because H2 is embedded in the JAR.
+`clean --index -v <version>` and then `init` or `rebuild`; no database engine
+or external service is involved.
 
 ## JSON Boundaries
 

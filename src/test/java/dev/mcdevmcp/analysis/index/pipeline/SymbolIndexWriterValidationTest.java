@@ -5,6 +5,8 @@ import dev.mcdevmcp.analysis.index.IndexRequest;
 import dev.mcdevmcp.analysis.index.SourceIndexer;
 import dev.mcdevmcp.storage.h2.AtomicH2Database;
 import dev.mcdevmcp.storage.h2.DatabaseValidator;
+import dev.mcdevmcp.storage.h2.SymbolIndexData;
+import dev.mcdevmcp.storage.h2.SymbolIndexFixture;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -16,7 +18,6 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-@SuppressWarnings({"SqlNoDataSourceInspection", "SqlResolve", "SqlWithoutWhere"})
 class SymbolIndexWriterValidationTest {
     @TempDir
     Path temporaryDirectory;
@@ -27,20 +28,15 @@ class SymbolIndexWriterValidationTest {
         Files.writeString(sources.resolve("A.java"), "class A { int value; }", StandardCharsets.UTF_8);
         Files.writeString(sources.resolve("B.java"), "class B {}", StandardCharsets.UTF_8);
         Path jar = IndexerTestSupport.createJar(temporaryDirectory.resolve("writer-empty.jar"), Map.of());
-        Path database = temporaryDirectory.resolve("writer.mv.db");
+        Path database = temporaryDirectory.resolve("writer.jsonl");
         IndexRequest request = IndexerTestSupport.request(sources, jar, database, 1);
         new SourceIndexer().build(request);
         byte[] original = IndexerTestSupport.bytes(database);
 
-        List<DatabaseValidator> corruptions = List.of(connection -> {
-            try (var statement = connection.createStatement()) {
-                statement.executeUpdate("UPDATE fields SET type_id = 2 WHERE id = 1");
-            }
-        }, connection -> {
-            try (var statement = connection.createStatement()) {
-                statement.executeUpdate("UPDATE metadata SET minecraft_version = 'wrong-version'");
-            }
-        });
+        List<DatabaseValidator> corruptions = List.of(file -> SymbolIndexFixture.rewrite(file, data -> {
+            SymbolIndexData.FieldRow field = data.fields().getFirst();
+            return new SymbolIndexData(data.header(), data.packages(), data.types(), List.of(new SymbolIndexData.FieldRow(field.id(), 2, field.ordinal(), field.name(), field.type(), field.modifiers(), field.startOffset(), field.endOffset(), field.startLine(), field.endLine())), data.methods(), data.parameters());
+        }), file -> SymbolIndexFixture.rewrite(file, data -> SymbolIndexFixture.withHeader(data, header -> new SymbolIndexData.Header(header.format(), "wrong-version", header.sourceRoot(), header.remappedJarSha256(), header.builtAt(), header.packages(), header.types(), header.fields(), header.methods(), header.parameters()))));
         for (DatabaseValidator corruption : corruptions) {
             SymbolIndexWriter writer = new SymbolIndexWriter(new AtomicH2Database(), corruption);
             assertThrows(IndexBuildException.class, () -> new SourceIndexPipeline(new JavacSourceParser(), writer).build(request));
@@ -54,7 +50,7 @@ class SymbolIndexWriterValidationTest {
         Path source = sources.resolve("Current.java");
         Files.writeString(source, "class Prior {}", StandardCharsets.UTF_8);
         Path jar = IndexerTestSupport.createJar(temporaryDirectory.resolve("stale-backup-empty.jar"), Map.of());
-        Path database = temporaryDirectory.resolve("stale-backup.mv.db");
+        Path database = temporaryDirectory.resolve("stale-backup.jsonl");
         IndexRequest request = IndexerTestSupport.request(sources, jar, database, 1);
         new SourceIndexer().build(request);
         Path backup = database.resolveSibling(database.getFileName() + ".bak");

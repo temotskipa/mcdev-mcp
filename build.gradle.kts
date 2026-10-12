@@ -24,7 +24,6 @@ dependencies {
     implementation(project(":storage-model"))
     implementation(libs.mcpSdk)
     implementation(libs.picocli)
-    implementation(libs.h2)
     implementation(libs.vineflower)
     implementation(libs.tinyRemapper)
     implementation(libs.mappingIo)

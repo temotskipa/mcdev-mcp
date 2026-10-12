@@ -5,9 +5,6 @@ import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
-import java.sql.Connection;
-import java.sql.DriverManager;
-import java.sql.SQLException;
 
 final class H2DatabasePromotion {
     private final DatabaseFileOperations files;
@@ -16,15 +13,13 @@ final class H2DatabasePromotion {
         this.files = files;
     }
 
-    static void validatePromotedDatabase(Path target, DatabaseValidator validator) throws IOException, SQLException {
-        try (Connection connection = DriverManager.getConnection(H2DatabaseUrls.reader(target))) {
-            try {
-                validator.validate(connection);
-            } catch (SQLException exception) {
-                throw exception;
-            } catch (Exception exception) {
-                throw new SQLException("Promoted H2 database validation failed", exception);
-            }
+    static void validate(Path file, DatabaseValidator validator) throws IOException {
+        try {
+            validator.validate(file);
+        } catch (IOException exception) {
+            throw exception;
+        } catch (Exception exception) {
+            throw new IOException("Symbol index validation failed", exception);
         }
     }
 
@@ -39,23 +34,22 @@ final class H2DatabasePromotion {
             return;
         }
         try {
-            validatePromotedDatabase(target, validator);
-        } catch (IOException | SQLException exception) {
-            throw new IOException("Both H2 target and backup exist and the target is invalid; preserve and inspect " + target + " and " + backup, exception);
+            validate(target, validator);
+        } catch (IOException exception) {
+            throw new IOException("Both the symbol index and its backup exist and the index is invalid; preserve and inspect " + target + " and " + backup, exception);
         }
         Files.delete(backup);
     }
 
-    void promote(H2DatabaseArtifacts artifacts, DatabaseValidator validator) throws IOException, SQLException {
+    void promote(H2DatabaseArtifacts artifacts, DatabaseValidator validator) throws IOException {
         try {
             files.move(artifacts.temporary, artifacts.target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
         } catch (AtomicMoveNotSupportedException exception) {
-            H2DatabaseArtifacts.verifyNoCompanions(artifacts.temporary);
             promoteWithBackup(artifacts, validator, exception);
         }
     }
 
-    private void promoteWithBackup(H2DatabaseArtifacts artifacts, DatabaseValidator validator, AtomicMoveNotSupportedException atomicFailure) throws IOException, SQLException {
+    private void promoteWithBackup(H2DatabaseArtifacts artifacts, DatabaseValidator validator, AtomicMoveNotSupportedException atomicFailure) throws IOException {
         Path temporary = artifacts.temporary;
         Path target = artifacts.target;
         Path backup = artifacts.backup;
@@ -69,18 +63,18 @@ final class H2DatabasePromotion {
             }
             phase = DatabasePromotionPhase.PROMOTING_TEMPORARY;
             files.move(temporary, target, StandardCopyOption.REPLACE_EXISTING);
-            validatePromotedDatabase(target, validator);
+            validate(target, validator);
             if (Files.exists(backup)) {
                 Files.deleteIfExists(backup);
             }
-        } catch (IOException | SQLException exception) {
+        } catch (IOException exception) {
             restorePrePromotionState(target, backup, phase, originalTargetExisted, exception);
             exception.addSuppressed(atomicFailure);
             throw exception;
         }
     }
 
-    private void restorePrePromotionState(Path target, Path backup, DatabasePromotionPhase phase, boolean originalTargetExisted, Exception originalFailure) {
+    private void restorePrePromotionState(Path target, Path backup, DatabasePromotionPhase phase, boolean originalTargetExisted, IOException originalFailure) {
         boolean targetExists = Files.exists(target);
         boolean backupExists = Files.exists(backup);
         if (phase == DatabasePromotionPhase.BACKING_UP_TARGET) {
@@ -114,7 +108,7 @@ final class H2DatabasePromotion {
         }
     }
 
-    private void restoreBackup(Path target, Path backup, Exception originalFailure) {
+    private void restoreBackup(Path target, Path backup, IOException originalFailure) {
         DatabasePromotionPhase phase = DatabasePromotionPhase.RESTORING_BACKUP;
         try {
             files.move(backup, target, StandardCopyOption.REPLACE_EXISTING);
