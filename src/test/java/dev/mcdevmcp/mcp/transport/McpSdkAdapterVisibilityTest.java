@@ -2,7 +2,6 @@ package dev.mcdevmcp.mcp.transport;
 
 import dev.mcdevmcp.mcp.ServerDefinition;
 import io.modelcontextprotocol.json.McpJsonMapper;
-import io.modelcontextprotocol.spec.McpStreamableServerTransportProvider;
 import org.junit.jupiter.api.Test;
 
 import java.io.InputStream;
@@ -28,16 +27,9 @@ class McpSdkAdapterVisibilityTest {
         assertTrue(Arrays.stream(McpSdkAdapter.class.getDeclaredConstructors()).noneMatch(constructor -> Modifier.isPublic(constructor.getModifiers())));
 
         var publicMethods = Arrays.stream(McpSdkAdapter.class.getDeclaredMethods()).filter(method -> Modifier.isPublic(method.getModifiers())).toList();
-        assertEquals(3, publicMethods.size());
+        assertEquals(1, publicMethods.size());
         assertPublicStaticMethod("startStdio", StdioServer.class, McpJsonMapper.class, InputStream.class, OutputStream.class, ServerDefinition.class, ExecutorService.class, AutoCloseable.class);
-        assertPublicStaticMethod("startStreamable", McpSdkAdapter.StreamableServer.class, McpJsonMapper.class, McpStreamableServerTransportProvider.class, ServerDefinition.class, ExecutorService.class);
-        assertPublicStaticMethod("startStreamable", McpSdkAdapter.StreamableServer.class, McpJsonMapper.class, McpStreamableServerTransportProvider.class, ServerDefinition.class, ExecutorService.class, McpSdkAdapter.AsyncServerExtensions.class);
 
         assertTrue(Arrays.stream(StdioServer.class.getDeclaredConstructors()).noneMatch(constructor -> Modifier.isPublic(constructor.getModifiers())));
-        var streamablePublicMethods = Arrays.stream(McpSdkAdapter.StreamableServer.class.getDeclaredMethods()).filter(method -> Modifier.isPublic(method.getModifiers())).toList();
-        assertEquals(1, streamablePublicMethods.size());
-        assertEquals("close", streamablePublicMethods.getFirst().getName());
-        assertEquals(void.class, streamablePublicMethods.getFirst().getReturnType());
-        assertEquals(0, streamablePublicMethods.getFirst().getParameterCount());
     }
 }

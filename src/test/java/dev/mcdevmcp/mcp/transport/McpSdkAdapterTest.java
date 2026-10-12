@@ -10,20 +10,14 @@ import io.modelcontextprotocol.json.McpJsonMapper;
 import io.modelcontextprotocol.json.TypeRef;
 import io.modelcontextprotocol.server.McpServerFeatures;
 import io.modelcontextprotocol.spec.McpSchema;
-import io.modelcontextprotocol.spec.McpStreamableServerSession;
-import io.modelcontextprotocol.spec.McpStreamableServerTransportProvider;
 import org.junit.jupiter.api.Test;
-import reactor.core.publisher.Mono;
 
-import java.time.Duration;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -232,84 +226,9 @@ class McpSdkAdapterTest {
         }
     }
 
-    @Test
-    void streamableConstructionFailureClosesTransportAndSuppressesCloseFailure() {
-        var transport = new RecordingStreamableTransport(true);
-        try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
-            ServerDefinition definition = serverDefinition();
-            var duplicate = new McpSdkAdapter(MAPPER, executor).tools(definition.tools()).getFirst();
-            var extensions = new McpSdkAdapter.AsyncServerExtensions(List.of(duplicate), List.of(), List.of(), List.of(), List.of(), McpSdkAdapter.AsyncServerExtensions.production().capabilities(), Duration.ofSeconds(1));
-
-            IllegalArgumentException failure = assertThrows(IllegalArgumentException.class, () -> McpSdkAdapter.startStreamable(MAPPER, transport, definition, executor, extensions));
-
-            assertTrue(failure.getMessage().startsWith("Duplicate MCP tool name:"));
-            assertEquals(1, transport.closeCalls.get());
-            assertEquals(1, failure.getSuppressed().length);
-            assertEquals("close failure 1", failure.getSuppressed()[0].getMessage());
-        }
-    }
-
-    @Test
-    void streamableCloseIsIdempotentAndPreservesBothCloseFailures() {
-        var transport = new RecordingStreamableTransport(true);
-        try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
-            var server = McpSdkAdapter.startStreamable(MAPPER, transport, serverDefinition(), executor);
-
-            IllegalStateException failure = assertThrows(IllegalStateException.class, server::close);
-            server.close();
-
-            assertEquals(2, transport.closeCalls.get());
-            assertEquals("close failure 1", failure.getCause().getMessage());
-            assertTrue(Arrays.stream(failure.getCause().getSuppressed()).anyMatch(exception -> "close failure 2".equals(exception.getMessage())));
-        }
-    }
-
-    @Test
-    void streamableExtensionsCannotHideProductionToolsAndResources() {
-        var transport = new RecordingStreamableTransport(false);
-        try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
-            var requestedCapabilities = McpSchema.ServerCapabilities.builder().logging().build();
-            var extensions = new McpSdkAdapter.AsyncServerExtensions(List.of(), List.of(), List.of(), List.of(), List.of(), requestedCapabilities, Duration.ofSeconds(1));
-
-            try (var server = McpSdkAdapter.startStreamable(MAPPER, transport, serverDefinition(), executor, extensions)) {
-                McpSchema.ServerCapabilities capabilities = server.server().getServerCapabilities();
-                assertNotNull(capabilities.logging());
-                assertNotNull(capabilities.tools());
-                assertNotNull(capabilities.resources());
-            }
-        }
-    }
-
     private record TestStructuredResult(String itemId, int count) {
     }
 
     private record TestOtherStructuredResult(String itemId) {
     }
-
-    private static final class RecordingStreamableTransport implements McpStreamableServerTransportProvider {
-        private final boolean failClose;
-        private final AtomicInteger closeCalls = new AtomicInteger();
-
-        private RecordingStreamableTransport(boolean failClose) {
-            this.failClose = failClose;
-        }
-
-        @Override
-        public void setSessionFactory(McpStreamableServerSession.Factory sessionFactory) {
-        }
-
-        @Override
-        public Mono<Void> notifyClients(String method, Object params) {
-            return Mono.empty();
-        }
-
-        @Override
-        public Mono<Void> closeGracefully() {
-            return Mono.defer(() -> {
-                int call = closeCalls.incrementAndGet();
-                return failClose ? Mono.error(new IllegalStateException("close failure " + call)) : Mono.empty();
-            });
-        }
-    }
-
 }
