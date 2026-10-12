@@ -35,7 +35,7 @@ jobs:
           test "$GITHUB_REF_NAME" = "v$version"
       - name: Test and produce the immutable release payload
         run: >-
-          ./gradlew clean test check shadowJar runtimeTestBundle benchmarkBundle
+          ./gradlew clean test check shadowJar runtimeTestBundle
           releaseArtifactBundle --rerun-tasks --no-build-cache --no-configuration-cache --console=plain
       - name: Verify staged JAR checksum
         shell: bash

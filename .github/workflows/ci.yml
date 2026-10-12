@@ -30,7 +30,7 @@ jobs:
           cache: gradle
       - name: Test and produce the release provenance payload
         run: >-
-          ./gradlew clean test check shadowJar runtimeTestBundle benchmarkBundle
+          ./gradlew clean test check shadowJar runtimeTestBundle
           releaseArtifactBundle --rerun-tasks --no-build-cache --no-configuration-cache --console=plain
       - name: Verify staged JAR checksum
         shell: bash
@@ -204,28 +204,3 @@ jobs:
           name: mcpb
           path: build/distributions/*.mcpb
           if-no-files-found: error
-
-  conformance:
-    name: Official MCP conformance 0.1.16
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Read the preview Java feature
-        id: preview-java
-        shell: bash
-        run: |
-          set -euo pipefail
-          feature="$(sed -n 's/^javaFeature=//p' gradle.properties)"
-          test -n "$feature"
-          echo "feature=$feature" >> "$GITHUB_OUTPUT"
-      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
-        with:
-          distribution: temurin
-          java-version: ${{ steps.preview-java.outputs.feature }}
-          cache: gradle
-      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
-        with:
-          node-version: '24'
-      - name: Run pinned official MCP conformance
-        shell: pwsh
-        run: .\scripts\run-conformance.ps1

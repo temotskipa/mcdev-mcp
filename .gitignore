@@ -9,15 +9,13 @@ notes/
 /mcp-tool-binding/build/
 /mcp-tool-api/build/
 /storage-model/build/
-/benchmark/build/
-/conformance/build/
 node_modules
 
 # IDE
 .vscode/
 .idea/
 .codex/
-# Includes differential-oracle clones and parity/benchmark execution evidence.
+# Includes differential-oracle clones and parity execution evidence.
 .superpowers/
 *.swp
 *.swo

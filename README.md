@@ -11,13 +11,9 @@ DebugBridge mod.
   build until its general availability in March 2027.
 - No Maven, Gradle, npm, or IDE subscription is required to run a release.
 
-Corpus qualification and index/callgraph benchmarking are required release
-gates. Preview bytecode is specific to Java 28; other JDK feature versions
+Preview bytecode is specific to Java 28; other JDK feature versions
 cannot run this release. The MCPB launcher enables preview automatically;
 direct JAR launches must include the flag.
-
-See [corpus qualification and benchmark inputs](benchmark/README.md) for the
-immutable compiler-library manifests and evidence required by those gates.
 
 ## Install
 

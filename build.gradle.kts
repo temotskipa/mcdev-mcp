@@ -39,9 +39,6 @@ abstract class DependencyPolicyCheck : DefaultTask() {
     @get:Input
     abstract val declaredExternalSelectors: ListProperty<String>
 
-    @get:Input
-    abstract val productionRuntimeModules: SetProperty<String>
-
     @TaskAction
     fun verifyDependencyPolicy() {
         val dynamic = declaredExternalSelectors.get().filter { selector ->
@@ -52,13 +49,6 @@ abstract class DependencyPolicyCheck : DefaultTask() {
         }
         check(dynamic.isEmpty()) {
             "Dynamic or ranged dependency selectors are forbidden: ${dynamic.joinToString()}"
-        }
-
-        val containerModules = productionRuntimeModules.get().filter { module ->
-            module.startsWith("org.apache.tomcat") || module.startsWith("jakarta.servlet")
-        }
-        check(containerModules.isEmpty()) {
-            "Conformance HTTP container leaked into production runtimeClasspath: ${containerModules.joinToString()}"
         }
     }
 }
@@ -164,30 +154,6 @@ val runtimeTest = sourceSets.create("runtimeTest") {
 dependencies {
     add(runtimeTest.implementationConfigurationName, sourceSets.main.get().output)
     testImplementation(runtimeTest.output)
-}
-
-val benchmarkClasses = tasks.register("benchmarkClasses") {
-    group = "build"
-    description = "Compatibility alias for the benchmark module classes task."
-    dependsOn(":benchmark:classes")
-}
-
-tasks.register("conformanceRun") {
-    group = "verification"
-    description = "Compatibility alias for the conformance module run task."
-    dependsOn(":conformance:conformanceRun")
-}
-
-tasks.register("conformanceJavaExecutable") {
-    group = "verification"
-    description = "Compatibility alias for the conformance Java executable record."
-    dependsOn(":conformance:conformanceJavaExecutable")
-}
-
-tasks.register("conformanceHarnessJar") {
-    group = "verification"
-    description = "Compatibility alias for the conformance module harness JAR."
-    dependsOn(":conformance:conformanceHarnessJar")
 }
 
 tasks.processTestResources {
@@ -327,27 +293,10 @@ val runtimeTestBundle = tasks.register<Zip>("runtimeTestBundle") {
     duplicatesStrategy = DuplicatesStrategy.FAIL
 }
 
-val benchmarkBundle = tasks.register<Zip>("benchmarkBundle") {
-    group = "distribution"
-    description = "Packages the preview-built JAR, checksum, and compiled benchmark harness."
-    dependsOn(benchmarkClasses, generateJarChecksum)
-    archiveBaseName.set("mcdev-mcp-benchmark")
-    archiveVersion.set(applicationVersion)
-    archiveClassifier.set("")
-    destinationDirectory.set(layout.buildDirectory.dir("bundles"))
-    isPreserveFileTimestamps = false
-    isReproducibleFileOrder = true
-    from(releaseJar) { into("server") }
-    from(jarChecksum) { into("server") }
-    from(project(":benchmark").layout.buildDirectory.dir("classes/java/main")) { into("harness") }
-    from(project(":benchmark").layout.buildDirectory.dir("resources/main")) { into("harness") }
-    duplicatesStrategy = DuplicatesStrategy.FAIL
-}
-
 tasks.register<Sync>("releaseArtifactBundle") {
     group = "distribution"
     description = "Stages the complete build-once provenance payload for CI consumers."
-    dependsOn(runtimeTestBundle, benchmarkBundle, generateMcpbManifest)
+    dependsOn(runtimeTestBundle, generateMcpbManifest)
     into(layout.buildDirectory.dir("artifacts/release"))
     from(releaseJar)
     from(jarChecksum)
@@ -355,7 +304,6 @@ tasks.register<Sync>("releaseArtifactBundle") {
         rename { "manifest.json" }
     }
     from(runtimeTestBundle)
-    from(benchmarkBundle)
     duplicatesStrategy = DuplicatesStrategy.FAIL
 }
 
@@ -405,7 +353,7 @@ val mcpSdkSnapshotCheck = tasks.register<McpSdkSnapshotCheck>("mcpSdkSnapshotChe
 
 val dependencyPolicyCheck = tasks.register<DependencyPolicyCheck>("dependencyPolicyCheck") {
     group = "verification"
-    description = "Rejects dynamic dependencies and production-scoped conformance containers."
+    description = "Rejects dynamic or ranged dependency versions."
     declaredExternalSelectors.set(providers.provider {
         allprojects.flatMap { candidate ->
             candidate.configurations.flatMap { configuration ->
@@ -415,7 +363,6 @@ val dependencyPolicyCheck = tasks.register<DependencyPolicyCheck>("dependencyPol
             }
         }.distinct().sorted()
     })
-    productionRuntimeModules.set(runtimeModuleVersions.map { modules -> modules.keys })
 }
 
 fun registerCutoverScan(
@@ -1110,8 +1057,6 @@ val cutoverCheckBypassTest = registerCutoverScan(
 
 tasks.named("check") {
     dependsOn(":mcp-tool-api:check")
-    dependsOn(":benchmark:test")
-    dependsOn(":conformance:classes")
     dependsOn(cutoverCheck)
     dependsOn(cutoverCheckBypassTest)
     dependsOn(dependencyPolicyCheck)

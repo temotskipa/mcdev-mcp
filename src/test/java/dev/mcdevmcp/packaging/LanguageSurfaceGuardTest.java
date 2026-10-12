@@ -20,7 +20,7 @@ import java.util.stream.Stream;
 import static org.junit.jupiter.api.Assertions.*;
 
 class LanguageSurfaceGuardTest {
-    private static final List<Path> JAVA_ROOTS = List.of(Path.of("src/main/java"), Path.of("src/test/java"), Path.of("src/runtimeTest/java"), Path.of("mcp-tool-api/src/main/java"), Path.of("mcp-tool-api/src/test/java"), Path.of("mcp-tool-api/src/jpmsSmoke/java"), Path.of("storage-model/src/main/java"), Path.of("storage-model/src/test/java"), Path.of("benchmark/src/main/java"), Path.of("benchmark/src/test/java"), Path.of("conformance/src/main/java"));
+    private static final List<Path> JAVA_ROOTS = List.of(Path.of("src/main/java"), Path.of("src/test/java"), Path.of("src/runtimeTest/java"), Path.of("mcp-tool-api/src/main/java"), Path.of("mcp-tool-api/src/test/java"), Path.of("mcp-tool-api/src/jpmsSmoke/java"), Path.of("storage-model/src/main/java"), Path.of("storage-model/src/test/java"));
 
     @TempDir
     Path temporaryDirectory;
