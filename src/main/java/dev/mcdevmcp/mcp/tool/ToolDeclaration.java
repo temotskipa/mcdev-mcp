@@ -45,14 +45,6 @@ public final value class ToolDeclaration<A> {
         return availability;
     }
 
-    public ContentToolBinding<A> bind(ToolHandler<A> handler) {
-        return ToolBinding.content(input, handler);
-    }
-
-    public <O> ToolOutputBinding<A, O> bind(ToolOutput<O> output, ToolOutputHandler<A, O> handler) {
-        return ToolBinding.output(input, output, handler);
-    }
-
     public ContentToolBinding<A> bindBlocking(BlockingToolHandler<A> handler) {
         return ToolBinding.blocking(input, handler);
     }

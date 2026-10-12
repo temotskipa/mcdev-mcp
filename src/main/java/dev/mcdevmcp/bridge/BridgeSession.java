@@ -141,6 +141,7 @@ public final class BridgeSession implements AutoCloseable {
         return owned.awaitOwned();
     }
 
+    @SuppressWarnings("resource")
     public BridgeResponse send(BridgeEndpoint endpoint, BridgePayload payload, Duration endpointTimeout) throws IOException, InterruptedException {
         Objects.requireNonNull(endpoint, "endpoint");
         connect(null);

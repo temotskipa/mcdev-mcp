@@ -24,10 +24,7 @@ final class McRunCommandTool {
             try {
                 BridgeResponse response = sessionControl.send(ENDPOINT, new RunCommandPayload(stripSlash(arguments.command())), null);
                 ContentToolResult<Void> failure = RuntimeToolSupport.declaredFailure(response);
-                if (failure != null) {
-                    return failure;
-                }
-                return ToolResult.text(runtime.prettyJson(RuntimeToolSupport.requireResult(ENDPOINT, response)));
+                return failure == null ? ToolResult.text(runtime.prettyJson(RuntimeToolSupport.requireResult(ENDPOINT, response))) : failure;
             } catch (IOException | RuntimeException failure) {
                 return ToolResult.error(SessionControlSupport.message(failure));
             }

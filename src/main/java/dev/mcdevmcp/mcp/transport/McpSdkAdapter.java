@@ -73,7 +73,7 @@ public final class McpSdkAdapter {
             return new StdioServer(server, blockingExecutor, inputClosed, ownedRuntime);
         } catch (RuntimeException | Error exception) {
             try {
-                closeWithinTimeout("STDIO MCP transport", () -> transport.closeGracefully().block());
+                closeWithinTimeout(() -> transport.closeGracefully().block());
             } catch (Throwable closeFailure) {
                 exception.addSuppressed(closeFailure);
             }
@@ -82,7 +82,7 @@ public final class McpSdkAdapter {
     }
 
     @SuppressWarnings("preview")
-    private static void closeWithinTimeout(String description, Runnable closeAction) {
+    private static void closeWithinTimeout(Runnable closeAction) {
         try (var scope = StructuredTaskScope.open(StructuredTaskScope.Joiner.awaitAllSuccessfulOrThrow(), config -> config.withName("mcp-transport-close").withTimeout(TRANSPORT_CLOSE_TIMEOUT))) {
             scope.fork(() -> {
                 closeAction.run();
@@ -91,17 +91,17 @@ public final class McpSdkAdapter {
             scope.join();
         } catch (ExecutionException exception) {
             if (ScopeOutcomes.timedOut(exception)) {
-                throw new IllegalStateException(description + " did not close within " + TRANSPORT_CLOSE_TIMEOUT, exception);
+                throw new IllegalStateException("STDIO MCP transport did not close within " + TRANSPORT_CLOSE_TIMEOUT, exception);
             }
             Throwable cause = ScopeOutcomes.cause(exception);
             switch (cause) {
                 case Error error -> throw error;
                 case RuntimeException runtimeException -> throw runtimeException;
-                default -> throw new IllegalStateException("Unable to close " + description, cause);
+                default -> throw new IllegalStateException("Unable to close STDIO MCP transport", cause);
             }
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
-            throw new IllegalStateException("Interrupted while closing " + description, exception);
+            throw new IllegalStateException("Interrupted while closing STDIO MCP transport", exception);
         }
     }
 
