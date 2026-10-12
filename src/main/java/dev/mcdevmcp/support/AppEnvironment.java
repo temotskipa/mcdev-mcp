@@ -57,7 +57,7 @@ public value record AppEnvironment(Map<String, String> values) {
         try {
             int parsed = Integer.parseInt(value);
             return parsed > 0 ? Optional.of(parsed) : Optional.empty();
-        } catch (NumberFormatException ignored) {
+        } catch (NumberFormatException _) {
             return Optional.empty();
         }
     }

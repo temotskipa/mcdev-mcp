@@ -156,7 +156,7 @@ public final class DownloadService {
     private static boolean isLiteralLoopback(String host) {
         try {
             return InetAddress.ofLiteral(host).isLoopbackAddress();
-        } catch (IllegalArgumentException ignored) {
+        } catch (IllegalArgumentException _) {
             return false;
         }
     }

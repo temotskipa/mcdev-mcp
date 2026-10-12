@@ -52,7 +52,7 @@ public final value class BundleLock implements AutoCloseable {
             throw new IOException("Bundle root must not be a symbolic link: " + root);
         }
         Path lockPath = root.resolve("publication.lock");
-        BundleLockState state = LOCKS.computeIfAbsent(lockPath, ignored -> new BundleLockState());
+        BundleLockState state = LOCKS.computeIfAbsent(lockPath, _ -> new BundleLockState());
         Lock localLock = shared ? state.lock.readLock() : state.lock.writeLock();
         BundleLockDeadline deadline = BundleLockDeadline.after(timeout);
         try {
@@ -125,7 +125,7 @@ public final value class BundleLock implements AutoCloseable {
                 if (lock != null) {
                     return lock;
                 }
-            } catch (OverlappingFileLockException ignored) {
+            } catch (OverlappingFileLockException _) {
                 // A competing process may release its lock before this timeout expires.
             }
             long remaining = deadline.remainingNanos();

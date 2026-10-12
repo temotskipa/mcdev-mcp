@@ -82,7 +82,7 @@ final value class SessionControlSupport {
             }
             Throwable failure = ScopeOutcomes.cause(exception);
             switch (failure) {
-                case IOException ignored -> {
+                case IOException _ -> {
                     return null;
                 }
                 case InterruptedException interrupted -> throw interrupted;
@@ -128,7 +128,7 @@ final value class SessionControlSupport {
                 socket.connect(new InetSocketAddress("127.0.0.1", port));
                 checkInterrupted();
                 return true;
-            } catch (IOException ignored) {
+            } catch (IOException _) {
                 checkInterrupted();
                 return false;
             }
@@ -177,7 +177,7 @@ final value class SessionControlSupport {
             if (process.isAlive()) {
                 process.destroyForcibly();
             }
-        } catch (RuntimeException ignored) {
+        } catch (RuntimeException _) {
             // Cleanup is best effort; the owner still closes the process.
         }
     }
@@ -185,7 +185,7 @@ final value class SessionControlSupport {
     private static void closeProcess(Process process) {
         try {
             process.close();
-        } catch (IOException | RuntimeException ignored) {
+        } catch (IOException | RuntimeException _) {
             // The owning scope has already destroyed the process on failure.
         }
     }
@@ -428,7 +428,7 @@ final value class SessionControlSupport {
         try {
             BridgeResponse response = session.send(endpoint, RuntimeToolSupport.EMPTY_PAYLOAD, null);
             return response.success() ? response.result() : null;
-        } catch (IOException | RuntimeException ignored) {
+        } catch (IOException | RuntimeException _) {
             checkInterrupted();
             return null;
         }
@@ -450,7 +450,7 @@ final value class SessionControlSupport {
                 SessionInfo info;
                 try {
                     info = session.probe(port);
-                } catch (IOException | RuntimeException ignored) {
+                } catch (IOException | RuntimeException _) {
                     checkInterrupted();
                     continue;
                 }
@@ -476,7 +476,7 @@ final value class SessionControlSupport {
             boolean listening;
             try {
                 listening = portListeningProbe.isListening(port);
-            } catch (RuntimeException ignored) {
+            } catch (RuntimeException _) {
                 checkInterrupted();
                 listening = true; // A failed probe is not evidence that the port closed.
             }

@@ -102,7 +102,7 @@ public final class CallgraphBundleWriter implements AutoCloseable {
         String identifier = name.substring(prefix.length());
         try {
             return UUID.fromString(identifier).toString().equals(identifier);
-        } catch (IllegalArgumentException ignored) {
+        } catch (IllegalArgumentException _) {
             return false;
         }
     }
@@ -238,7 +238,7 @@ public final class CallgraphBundleWriter implements AutoCloseable {
         }
         try {
             publicationLock.close();
-        } catch (IOException ignored) {
+        } catch (IOException _) {
             // Pointer replacement commits publication; lock release cannot roll it back.
         }
         return identity;
@@ -425,7 +425,7 @@ public final class CallgraphBundleWriter implements AutoCloseable {
                 FileLock orphanLock;
                 try {
                     orphanLock = channel.tryLock();
-                } catch (OverlappingFileLockException ignored) {
+                } catch (OverlappingFileLockException _) {
                     return;
                 }
                 if (orphanLock == null) {
@@ -441,7 +441,7 @@ public final class CallgraphBundleWriter implements AutoCloseable {
                 }
             }
             Files.deleteIfExists(marker);
-        } catch (NoSuchFileException ignored) {
+        } catch (NoSuchFileException _) {
             // A concurrently closing writer already removed its lease.
         }
     }

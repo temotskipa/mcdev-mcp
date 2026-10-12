@@ -160,7 +160,7 @@ final class ScriptLogger {
                     if (decoded instanceof Map<?, ?> values) {
                         entries.add(ScriptLogWireEntry.fromJson(values).toDomain());
                     }
-                } catch (IOException | RuntimeException ignored) {
+                } catch (IOException | RuntimeException _) {
                 }
             }
             return List.copyOf(entries.subList(Math.max(0, entries.size() - limit), entries.size()));
@@ -245,7 +245,7 @@ final class ScriptLogger {
             Path rotated = uniqueRotationPath(live, now);
             Files.move(live, rotated);
             cleanOldRotations(live, now);
-        } catch (IOException | RuntimeException ignored) {
+        } catch (IOException | RuntimeException _) {
         }
     }
 
@@ -281,7 +281,7 @@ final class ScriptLogger {
                 if (timestamp != null && timestamp.isBefore(cutoff)) {
                     try {
                         Files.deleteIfExists(old);
-                    } catch (IOException ignored) {
+                    } catch (IOException _) {
                     }
                 }
             }

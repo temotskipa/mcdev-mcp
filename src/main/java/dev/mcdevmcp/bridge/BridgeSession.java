@@ -35,7 +35,7 @@ public final class BridgeSession implements AutoCloseable {
     private boolean closed;
 
     public BridgeSession() {
-        this(new BridgeJson(McpJsonDefaults.getMapper()), AppEnvironment.system(), defaultConnector(new BridgeJson(McpJsonDefaults.getMapper())), ignored -> {
+        this(new BridgeJson(McpJsonDefaults.getMapper()), AppEnvironment.system(), defaultConnector(new BridgeJson(McpJsonDefaults.getMapper())), _ -> {
         });
     }
 
@@ -44,7 +44,7 @@ public final class BridgeSession implements AutoCloseable {
     }
 
     BridgeSession(BridgeJson json, AppEnvironment environment, Connector connector) {
-        this(json, environment, connector, ignored -> {
+        this(json, environment, connector, _ -> {
         });
     }
 
@@ -211,7 +211,7 @@ public final class BridgeSession implements AutoCloseable {
                 return connectPort(token, base + offset);
             } catch (CancellationException exception) {
                 throw exception;
-            } catch (IOException | RuntimeException ignored) {
+            } catch (IOException | RuntimeException _) {
                 // Try the next port in the documented scan window.
             }
         }

@@ -21,7 +21,7 @@ public final value class DebugLog {
                 Files.createDirectories(parent);
             }
             Files.writeString(path, message + System.lineSeparator(), StandardOpenOption.CREATE, StandardOpenOption.APPEND);
-        } catch (IOException | RuntimeException ignored) {
+        } catch (IOException | RuntimeException _) {
             // Debug logging must never affect the protocol stream.
         }
     }

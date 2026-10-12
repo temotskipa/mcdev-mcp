@@ -37,7 +37,7 @@ final class McJoinServerTool {
         BridgeResponse response;
         try {
             response = sessionControl.send(SNAPSHOT, RuntimeToolSupport.EMPTY_PAYLOAD, null);
-        } catch (IOException | RuntimeException ignored) {
+        } catch (IOException | RuntimeException _) {
             return false;
         }
         return response.success() && SessionControlSupport.classifyInWorldPoll(response.result(), null) instanceof InWorldPollResult.Joined;

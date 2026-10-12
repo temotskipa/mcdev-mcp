@@ -24,7 +24,7 @@ final value class MediaToolSupport {
     static Duration recordingDeadline(int frames, RecordInterval interval) {
         double perFrameMillis = switch (interval) {
             case null -> 17.0;
-            case RecordInterval.Frame ignored -> 17.0;
+            case RecordInterval.Frame _ -> 17.0;
             case RecordInterval.Fixed fixed -> RecordInterval.projectedMillis(fixed.intervalSeconds());
         };
         double captureMillis = frames * perFrameMillis;
@@ -34,7 +34,7 @@ final value class MediaToolSupport {
         long roundedCapture = Math.round(captureMillis);
         try {
             return Duration.ofMillis(Math.addExact(roundedCapture, 15_000L));
-        } catch (ArithmeticException ignored) {
+        } catch (ArithmeticException _) {
             return Duration.ofMillis(Long.MAX_VALUE);
         }
     }
@@ -122,7 +122,7 @@ final value class MediaToolSupport {
 
     ContentToolResult<Void> recordVideo(RecordVideoArguments arguments) throws InterruptedException {
         BridgePayload payload = switch (arguments.interval()) {
-            case RecordInterval.Frame ignored ->
+            case RecordInterval.Frame _ ->
                     new RecordVideoFramePayload(arguments.frames(), "frame", arguments.output() == RecordVideoOutput.GRID ? "grid" : "frames", arguments.gridCols(), arguments.downscale(), arguments.quality());
             case RecordInterval.Fixed fixed ->
                     new RecordVideoTimedPayload(arguments.frames(), RecordInterval.projectedMillis(fixed.intervalSeconds()), arguments.output() == RecordVideoOutput.GRID ? "grid" : "frames", arguments.gridCols(), arguments.downscale(), arguments.quality());

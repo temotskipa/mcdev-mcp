@@ -146,7 +146,7 @@ public final class VersionManifestClient {
         }
         try {
             return Integer.parseInt(value.substring(0, end)) < 26;
-        } catch (NumberFormatException ignored) {
+        } catch (NumberFormatException _) {
             return true;
         }
     }
@@ -192,7 +192,7 @@ public final class VersionManifestClient {
             if (compilerClasspathLibrary(library) && library.downloads() != null && library.downloads().artifact() != null && library.downloads().artifact().url() != null) {
                 try {
                     libraryArtifacts.add(library.downloads().artifact().toArtifact(ArtifactKind.JAR));
-                } catch (IllegalArgumentException ignored) {
+                } catch (IllegalArgumentException _) {
                 }
             }
         }

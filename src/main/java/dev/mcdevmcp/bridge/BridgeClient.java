@@ -31,7 +31,7 @@ public final class BridgeClient implements AutoCloseable {
     private final Map<String, PendingRequest> pending = new ConcurrentHashMap<>();
     private final StringBuilder fragments = new StringBuilder();
     private boolean discardingFragments;
-    private Consumer<BridgeClient> closedCallback = ignored -> {
+    private Consumer<BridgeClient> closedCallback = _ -> {
     };
     private boolean closed;
 
@@ -69,18 +69,18 @@ public final class BridgeClient implements AutoCloseable {
     }
 
     static BridgeClient overWebSocket(WebSocket socket, BridgeJson json) {
-        return new BridgeClient(new WebSocketTransport(Objects.requireNonNull(socket, "socket")), json, ignored -> {
-        }, ignored -> {
+        return new BridgeClient(new WebSocketTransport(Objects.requireNonNull(socket, "socket")), json, _ -> {
+        }, _ -> {
         });
     }
 
     static BridgeClient testing(BridgeJson json, Peer peer) {
-        return testing(json, peer, ignored -> {
+        return testing(json, peer, _ -> {
         });
     }
 
     static BridgeClient testing(BridgeJson json, Peer peer, Consumer<String> diagnostics) {
-        return testing(json, peer, diagnostics, ignored -> {
+        return testing(json, peer, diagnostics, _ -> {
         });
     }
 
@@ -105,7 +105,7 @@ public final class BridgeClient implements AutoCloseable {
                         else {
                             client.complete(request.id(), response);
                         }
-                    } catch (InterruptedException ignored) {
+                    } catch (InterruptedException _) {
                         // The client closed while the peer was still answering.
                     } catch (Throwable failure) {
                         client.fail(request.id(), failure);
@@ -302,7 +302,7 @@ public final class BridgeClient implements AutoCloseable {
         }
         try {
             transport.close();
-        } catch (RuntimeException ignored) {
+        } catch (RuntimeException _) {
             // A peer can already be gone.
         }
         callback.accept(this);
@@ -426,7 +426,7 @@ public final class BridgeClient implements AutoCloseable {
             try {
                 try {
                     lastSend.get(remainingNanos(deadline), TimeUnit.NANOSECONDS);
-                } catch (ExecutionException ignored) {
+                } catch (ExecutionException _) {
                     // The abandoned send failed; its own caller has already given up.
                 }
                 lastSend = socket.sendText(text, true);

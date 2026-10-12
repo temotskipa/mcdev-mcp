@@ -122,7 +122,7 @@ final value class JavacTaskExecutor {
             request.cancellation().throwIfCancelled();
             try {
                 return done.get(CANCELLATION_POLL.toMillis(), TimeUnit.MILLISECONDS);
-            } catch (TimeoutException ignored) {
+            } catch (TimeoutException _) {
             } catch (ExecutionException exception) {
                 throw mappedWorker(exception.getCause());
             } catch (CancellationException exception) {

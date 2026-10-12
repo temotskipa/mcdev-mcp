@@ -68,7 +68,7 @@ public final value class CacheCleaner {
                 BasicFileAttributes attributes;
                 try {
                     attributes = Files.readAttributes(child, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
-                } catch (NoSuchFileException ignored) {
+                } catch (NoSuchFileException _) {
                     continue;
                 }
                 if (attributes.isSymbolicLink() || attributes.isOther() || !attributes.isDirectory()) {
@@ -84,7 +84,7 @@ public final value class CacheCleaner {
                             versions.putIfAbsent(name, version);
                         }
                     }
-                } catch (IllegalArgumentException ignored) {
+                } catch (IllegalArgumentException _) {
                     // Foreign or malformed directories are not safe version selectors.
                 }
             }
@@ -278,7 +278,7 @@ public final value class CacheCleaner {
                         String name = child.getFileName().toString();
                         try {
                             versions.putIfAbsent(name, new MinecraftVersion(name));
-                        } catch (IllegalArgumentException ignored) {
+                        } catch (IllegalArgumentException _) {
                             // Foreign directories are not version selectors.
                         }
                     }

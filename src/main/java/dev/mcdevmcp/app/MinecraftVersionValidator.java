@@ -58,7 +58,7 @@ public final class MinecraftVersionValidator {
     private static int number(String value, int start, int end) {
         try {
             return Integer.parseInt(value.substring(start, end));
-        } catch (NumberFormatException ignored) {
+        } catch (NumberFormatException _) {
             return -1;
         }
     }

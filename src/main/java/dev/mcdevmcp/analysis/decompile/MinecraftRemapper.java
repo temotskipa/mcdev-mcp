@@ -68,7 +68,7 @@ public final class MinecraftRemapper {
             try {
                 future.get(100, TimeUnit.MILLISECONDS);
                 return;
-            } catch (TimeoutException ignored) {
+            } catch (TimeoutException _) {
                 // Polling keeps cancellation responsive while Tiny Remapper scans the archive.
             } catch (InterruptedException exception) {
                 Thread.currentThread().interrupt();

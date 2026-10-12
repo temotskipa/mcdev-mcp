@@ -113,11 +113,11 @@ final class RuntimeToolSupport {
     static String describe(Object value) {
         return switch (value) {
             case null -> "null";
-            case Map<?, ?> ignored -> "object";
-            case List<?> ignored -> "array";
-            case String ignored -> "string";
-            case Boolean ignored -> "boolean";
-            case Number ignored -> "number";
+            case Map<?, ?> _ -> "object";
+            case List<?> _ -> "array";
+            case String _ -> "string";
+            case Boolean _ -> "boolean";
+            case Number _ -> "number";
             default -> value.getClass().getSimpleName();
         };
     }

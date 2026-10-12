@@ -98,7 +98,7 @@ public value record JsonObjectSchema(Map<String, Object> value) {
                 if (unknownProperty == null) {
                     unknownProperty = exception;
                 }
-            } catch (IllegalArgumentException ignored) {
+            } catch (IllegalArgumentException _) {
                 // A oneOf value is valid only when exactly one complete alternative accepts it.
             }
         }

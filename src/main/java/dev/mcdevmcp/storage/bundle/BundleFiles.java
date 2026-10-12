@@ -86,7 +86,7 @@ public final value class BundleFiles {
     public static void moveNewDirectory(Path source, Path target) throws IOException {
         try {
             Files.move(source, target, StandardCopyOption.ATOMIC_MOVE);
-        } catch (AtomicMoveNotSupportedException ignored) {
+        } catch (AtomicMoveNotSupportedException _) {
             Files.move(source, target);
         }
     }

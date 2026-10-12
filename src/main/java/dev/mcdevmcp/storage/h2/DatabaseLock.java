@@ -49,7 +49,7 @@ public final class DatabaseLock implements AutoCloseable {
         Path normalizedDatabase = database.toAbsolutePath().normalize();
         Path lockPath = normalizedDatabase.resolveSibling(normalizedDatabase.getFileName() + ".lock");
         Files.createDirectories(lockPath.getParent());
-        DatabaseLockState state = LOCKS.computeIfAbsent(lockPath, ignored -> new DatabaseLockState());
+        DatabaseLockState state = LOCKS.computeIfAbsent(lockPath, _ -> new DatabaseLockState());
         Lock localLock = shared ? state.lock.readLock() : state.lock.writeLock();
         DatabaseLockDeadline deadline = DatabaseLockDeadline.after(timeout);
         try {
@@ -123,7 +123,7 @@ public final class DatabaseLock implements AutoCloseable {
                 if (lock != null) {
                     return lock;
                 }
-            } catch (OverlappingFileLockException ignored) {
+            } catch (OverlappingFileLockException _) {
                 // A competing process may release its lock before this timeout expires.
             }
             long remaining = deadline.remainingNanos();

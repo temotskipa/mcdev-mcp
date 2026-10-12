@@ -176,7 +176,7 @@ public final class MinecraftDecompiler {
         if (movedExistingTarget) {
             try {
                 deleteTree(backup);
-            } catch (IOException ignored) {
+            } catch (IOException _) {
                 // The newly published target is authoritative; a retained backup is safe to clean later.
             }
         }
