@@ -10,6 +10,7 @@ import dev.mcdevmcp.storage.model.MinecraftVersion;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
 import picocli.CommandLine.Spec;
+import reactor.util.annotation.NonNull;
 
 import java.io.IOException;
 import java.nio.file.*;
@@ -21,7 +22,6 @@ import java.util.concurrent.Callable;
 import java.util.function.Consumer;
 
 @Command(name = "clean", description = "Clean cached analysis artifacts")
-@SuppressWarnings("unused")
 public final class CleanCommand implements Callable<Integer> {
     private final PlatformPaths paths;
     private final Consumer<MinecraftVersion> afterCacheCleanup;
@@ -271,15 +271,15 @@ public final class CleanCommand implements Callable<Integer> {
         }
 
         @Override
-        @SuppressWarnings("NullableProblems")
-        public FileVisitResult preVisitDirectory(Path directory, BasicFileAttributes attributes) throws IOException {
+        @NonNull
+        public FileVisitResult preVisitDirectory(@NonNull Path directory, @NonNull BasicFileAttributes attributes) throws IOException {
             rejectUnsafe(directory);
             return FileVisitResult.CONTINUE;
         }
 
         @Override
-        @SuppressWarnings("NullableProblems")
-        public FileVisitResult visitFile(Path file, BasicFileAttributes attributes) throws IOException {
+        @NonNull
+        public FileVisitResult visitFile(@NonNull Path file, @NonNull BasicFileAttributes attributes) throws IOException {
             rejectUnsafe(file);
             if (delete) {
                 Files.delete(file);
@@ -288,8 +288,8 @@ public final class CleanCommand implements Callable<Integer> {
         }
 
         @Override
-        @SuppressWarnings("NullableProblems")
-        public FileVisitResult postVisitDirectory(Path directory, IOException failure) throws IOException {
+        @NonNull
+        public FileVisitResult postVisitDirectory(@NonNull Path directory, IOException failure) throws IOException {
             if (failure != null) {
                 throw failure;
             }

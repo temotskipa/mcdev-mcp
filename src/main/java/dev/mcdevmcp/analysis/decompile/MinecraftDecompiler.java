@@ -5,6 +5,7 @@ import dev.mcdevmcp.support.ProgressSink;
 import org.jetbrains.java.decompiler.main.Fernflower;
 import org.jetbrains.java.decompiler.main.extern.IFernflowerPreferences;
 import org.jetbrains.java.decompiler.main.extern.IResultSaver;
+import reactor.util.annotation.NonNull;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -274,20 +275,21 @@ public final class MinecraftDecompiler {
         }
     }
 
-    @SuppressWarnings("NullableProblems")
     private static void deleteTree(Path root) throws IOException {
         if (!Files.exists(root, NO_FOLLOW_LINKS)) {
             return;
         }
         Files.walkFileTree(root, new SimpleFileVisitor<>() {
             @Override
-            public FileVisitResult visitFile(Path file, BasicFileAttributes attributes) throws IOException {
+            @NonNull
+            public FileVisitResult visitFile(@NonNull Path file, @NonNull BasicFileAttributes attributes) throws IOException {
                 Files.delete(file);
                 return FileVisitResult.CONTINUE;
             }
 
             @Override
-            public FileVisitResult postVisitDirectory(Path directory, IOException exception) throws IOException {
+            @NonNull
+            public FileVisitResult postVisitDirectory(@NonNull Path directory, IOException exception) throws IOException {
                 if (exception != null) {
                     throw exception;
                 }

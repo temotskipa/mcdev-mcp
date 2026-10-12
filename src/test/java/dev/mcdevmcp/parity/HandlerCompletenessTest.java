@@ -9,6 +9,7 @@ import dev.mcdevmcp.tools.runtime.RuntimeToolModule;
 import dev.mcdevmcp.tools.statictool.StaticToolModule;
 import io.modelcontextprotocol.json.McpJsonDefaults;
 import io.modelcontextprotocol.json.McpJsonMapper;
+import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -246,13 +247,14 @@ class HandlerCompletenessTest {
         assertSupportedGeneric("expandingForbidden", true);
     }
 
-    @SuppressWarnings("NullableProblems")
     private record SubstitutedParameterizedType(Type owner, Type rawType, Type[] arguments) implements ParameterizedType {
         private SubstitutedParameterizedType {
             arguments = arguments.clone();
         }
 
         @Override
+        @NonNull
+        @SuppressWarnings("NullableProblems")
         public Type[] getActualTypeArguments() {
             return arguments.clone();
         }
@@ -263,6 +265,7 @@ class HandlerCompletenessTest {
         }
 
         @Override
+        @NonNull
         public Type getRawType() {
             return rawType;
         }
@@ -273,9 +276,9 @@ class HandlerCompletenessTest {
         }
     }
 
-    @SuppressWarnings("NullableProblems")
     private record SubstitutedGenericArrayType(Type componentType) implements GenericArrayType {
         @Override
+        @NonNull
         public Type getGenericComponentType() {
             return componentType;
         }
@@ -304,10 +307,11 @@ class HandlerCompletenessTest {
     private record GenericExpanding<T>(GenericExpanding<List<T>> next) {
     }
 
-    @SuppressWarnings("unused")
     private static final class GenericOwner<T> {
         private final class Inner<U> {
+            @SuppressWarnings("unused")
             private T ownerValue;
+            @SuppressWarnings("unused")
             private U innerValue;
         }
     }

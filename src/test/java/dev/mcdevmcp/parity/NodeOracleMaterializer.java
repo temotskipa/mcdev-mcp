@@ -2,6 +2,7 @@ package dev.mcdevmcp.parity;
 
 import io.modelcontextprotocol.json.McpJsonDefaults;
 import io.modelcontextprotocol.json.TypeRef;
+import org.jspecify.annotations.NonNull;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -19,6 +20,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.locks.LockSupport;
 
 /**
  * Materializes the frozen Node checkout without ever modifying the source checkout.
@@ -202,7 +204,6 @@ public final class NodeOracleMaterializer implements AutoCloseable {
         deleteScratchDirectory(scratchLayout(currentWorktree), scratchDirectory);
     }
 
-    @SuppressWarnings("NullableProblems")
     private static void deleteScratchDirectory(ScratchLayout expectedLayout, Path expectedScratchDirectory) throws IOException {
         ScratchLayout layout = scratchLayout(expectedLayout.workspaceBoundary());
         if (!layout.equals(expectedLayout)) {
@@ -220,13 +221,15 @@ public final class NodeOracleMaterializer implements AutoCloseable {
         }
         Files.walkFileTree(scratchDirectory, new SimpleFileVisitor<>() {
             @Override
-            public FileVisitResult visitFile(Path file, BasicFileAttributes attributes) throws IOException {
+            @NonNull
+            public FileVisitResult visitFile(@NonNull Path file, @NonNull BasicFileAttributes attributes) throws IOException {
                 Files.delete(file);
                 return FileVisitResult.CONTINUE;
             }
 
             @Override
-            public FileVisitResult postVisitDirectory(Path directory, IOException failure) throws IOException {
+            @NonNull
+            public FileVisitResult postVisitDirectory(@NonNull Path directory, IOException failure) throws IOException {
                 if (failure != null) {
                     throw failure;
                 }
@@ -559,9 +562,8 @@ public final class NodeOracleMaterializer implements AutoCloseable {
         private void monitor() {
             while (tracking.get()) {
                 capture();
-                try {
-                    Thread.sleep(POLL_INTERVAL);
-                } catch (InterruptedException exception) {
+                LockSupport.parkNanos(POLL_INTERVAL.toNanos());
+                if (Thread.interrupted()) {
                     return;
                 }
             }

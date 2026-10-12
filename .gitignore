@@ -4,6 +4,8 @@ notes/
 # Build
 /.gradle/
 /build/
+/buildSrc/.gradle/
+/buildSrc/build/
 /mcp-tool-binding/build/
 /mcp-tool-api/build/
 /storage-model/build/

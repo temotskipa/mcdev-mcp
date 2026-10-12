@@ -1,6 +1,7 @@
 package dev.mcdevmcp.storage.callgraph;
 
 import dev.mcdevmcp.storage.bundle.BundleLock;
+import reactor.util.annotation.NonNull;
 
 import java.io.IOException;
 import java.nio.file.*;
@@ -31,15 +32,15 @@ public final class CallgraphCleaner {
         Path publicationLock = root.resolve("publication.lock");
         Files.walkFileTree(root, new SimpleFileVisitor<>() {
             @Override
-            @SuppressWarnings("NullableProblems")
-            public FileVisitResult preVisitDirectory(Path directory, BasicFileAttributes attributes) throws IOException {
+            @NonNull
+            public FileVisitResult preVisitDirectory(@NonNull Path directory, @NonNull BasicFileAttributes attributes) throws IOException {
                 rejectLink(root, directory);
                 return FileVisitResult.CONTINUE;
             }
 
             @Override
-            @SuppressWarnings("NullableProblems")
-            public FileVisitResult visitFile(Path file, BasicFileAttributes attributes) throws IOException {
+            @NonNull
+            public FileVisitResult visitFile(@NonNull Path file, @NonNull BasicFileAttributes attributes) throws IOException {
                 rejectLink(root, file);
                 if (file.toAbsolutePath().normalize().equals(publicationLock)) {
                     return FileVisitResult.CONTINUE;
@@ -49,8 +50,8 @@ public final class CallgraphCleaner {
             }
 
             @Override
-            @SuppressWarnings("NullableProblems")
-            public FileVisitResult postVisitDirectory(Path directory, IOException failure) throws IOException {
+            @NonNull
+            public FileVisitResult postVisitDirectory(@NonNull Path directory, IOException failure) throws IOException {
                 if (failure != null) {
                     throw failure;
                 }
@@ -65,15 +66,15 @@ public final class CallgraphCleaner {
     private static void rejectUnsafePaths(Path root) throws IOException {
         Files.walkFileTree(root, new SimpleFileVisitor<>() {
             @Override
-            @SuppressWarnings("NullableProblems")
-            public FileVisitResult preVisitDirectory(Path directory, BasicFileAttributes attributes) throws IOException {
+            @NonNull
+            public FileVisitResult preVisitDirectory(@NonNull Path directory, @NonNull BasicFileAttributes attributes) throws IOException {
                 rejectLink(root, directory);
                 return FileVisitResult.CONTINUE;
             }
 
             @Override
-            @SuppressWarnings("NullableProblems")
-            public FileVisitResult visitFile(Path file, BasicFileAttributes attributes) throws IOException {
+            @NonNull
+            public FileVisitResult visitFile(@NonNull Path file, @NonNull BasicFileAttributes attributes) throws IOException {
                 rejectLink(root, file);
                 return FileVisitResult.CONTINUE;
             }

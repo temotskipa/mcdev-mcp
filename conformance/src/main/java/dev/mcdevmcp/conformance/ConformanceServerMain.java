@@ -118,7 +118,6 @@ public final class ConformanceServerMain {
         connector.setAsyncTimeout(30000);
     }
 
-    @SuppressWarnings("deprecation")
     private static List<McpServerFeatures.AsyncToolSpecification> createToolSpecs() {
         return List.of(McpServerFeatures.AsyncToolSpecification.builder().tool(Tool.builder("test_simple_text", EMPTY_JSON_SCHEMA).description("Returns simple text content for testing").build()).callHandler((_, _) -> {
             logger.info("Tool 'test_simple_text' called");
@@ -164,7 +163,7 @@ public final class ConformanceServerMain {
             logger.info("Tool 'test_elicitation' called");
             String message = (String) request.arguments().get("message");
             Map<String, Object> requestedSchema = Map.of("type", "object", "properties", Map.of("username", Map.of("type", "string", "description", "User's response"), "email", Map.of("type", "string", "description", "User's email address")), "required", List.of("username", "email"));
-            ElicitRequest elicitRequest = ElicitRequest.builder(message, requestedSchema).build();
+            var elicitRequest = ElicitFormRequest.builder(message, requestedSchema).build();
             return exchange.createElicitation(elicitRequest).map(response -> {
                 String responseText = "User response: action=" + response.action() + ", content=" + response.content();
                 return CallToolResult.builder().content(List.of(TextContent.builder(responseText).build())).isError(false).build();
@@ -172,7 +171,7 @@ public final class ConformanceServerMain {
         }).build(), McpServerFeatures.AsyncToolSpecification.builder().tool(Tool.builder("test_elicitation_sep1034_defaults", EMPTY_JSON_SCHEMA).description("Tool that requests elicitation with default values for all primitive types").build()).callHandler((exchange, _) -> {
             logger.info("Tool 'test_elicitation_sep1034_defaults' called");
             Map<String, Object> requestedSchema = Map.of("type", "object", "properties", Map.of("name", Map.of("type", "string", "default", "John Doe"), "age", Map.of("type", "integer", "default", 30), "score", Map.of("type", "number", "default", 95.5), "status", Map.of("type", "string", "enum", List.of("active", "inactive", "pending"), "default", "active"), "verified", Map.of("type", "boolean", "default", true)), "required", List.of("name", "age", "score", "status", "verified"));
-            ElicitRequest elicitRequest = ElicitRequest.builder("Please provide your information with defaults", requestedSchema).build();
+            var elicitRequest = ElicitFormRequest.builder("Please provide your information with defaults", requestedSchema).build();
             return exchange.createElicitation(elicitRequest).map(response -> {
                 String responseText = "Elicitation completed: action=" + response.action() + ", content=" + response.content();
                 return CallToolResult.builder().content(List.of(TextContent.builder(responseText).build())).isError(false).build();
@@ -187,11 +186,11 @@ public final class ConformanceServerMain {
             var mapper = McpJsonDefaults.getMapper();
             var untitledSingle = UntitledSingleSelectEnumSchema.builder().enumValues("option1", "option2", "option3").build();
             var titledSingle = TitledSingleSelectEnumSchema.builder().oneOf(new EnumSchemaOption("value1", "First Option"), new EnumSchemaOption("value2", "Second Option"), new EnumSchemaOption("value3", "Third Option")).build();
-            var legacyEnum = LegacyTitledEnumSchema.builder().enumValues("opt1", "opt2", "opt3").enumNames("Option One", "Option Two", "Option Three").build();
+            var legacyEnum = legacyTitledEnum();
             var untitledMulti = UntitledMultiSelectEnumSchema.builder(UntitledMultiSelectItems.builder().enumValues("option1", "option2", "option3").build()).build();
             var titledMulti = TitledMultiSelectEnumSchema.builder(TitledMultiSelectItems.builder().anyOf(new EnumSchemaOption("value1", "First Choice"), new EnumSchemaOption("value2", "Second Choice"), new EnumSchemaOption("value3", "Third Choice")).build()).build();
             Map<String, Object> requestedSchema = Map.of("type", "object", "properties", Map.of("untitledSingle", mapper.convertValue(untitledSingle, mapType), "titledSingle", mapper.convertValue(titledSingle, mapType), "legacyEnum", mapper.convertValue(legacyEnum, mapType), "untitledMulti", mapper.convertValue(untitledMulti, mapType), "titledMulti", mapper.convertValue(titledMulti, mapType)), "required", List.of("untitledSingle", "titledSingle", "legacyEnum", "untitledMulti", "titledMulti"));
-            ElicitRequest elicitRequest = ElicitRequest.builder("Select your preferences", requestedSchema).build();
+            var elicitRequest = ElicitFormRequest.builder("Select your preferences", requestedSchema).build();
             return exchange.createElicitation(elicitRequest).map(response -> {
                 String responseText = "Elicitation completed: action=" + response.action() + ", content=" + response.content();
                 return CallToolResult.builder().content(List.of(TextContent.builder(responseText).build())).isError(false).build();
@@ -218,6 +217,11 @@ public final class ConformanceServerMain {
             logger.info("Prompt 'test_prompt_with_image' requested");
             return Mono.just(GetPromptResult.builder(List.of(PromptMessage.builder(Role.USER, ImageContent.builder(RED_PIXEL_PNG, "image/png").build()).build(), PromptMessage.builder(Role.USER, TextContent.builder("Please analyze the image above.").build()).build())).build());
         }));
+    }
+
+    @SuppressWarnings("deprecation")
+    private static LegacyTitledEnumSchema legacyTitledEnum() {
+        return LegacyTitledEnumSchema.builder().enumValues("opt1", "opt2", "opt3").enumNames("Option One", "Option Two", "Option Three").build();
     }
 
     private static List<McpServerFeatures.AsyncResourceSpecification> createResourceSpecs() {
@@ -449,7 +453,7 @@ public final class ConformanceServerMain {
                 requireProductionDefinition(definition);
                 var mapper = McpJsonDefaults.getMapper();
                 var extensions = createExtensions();
-                HttpServletStreamableServerTransportProvider transport = HttpServletStreamableServerTransportProvider.builder().jsonMapper(mapper).mcpEndpoint(MCP_ENDPOINT).keepAliveInterval(REQUEST_TIMEOUT).securityValidator(DefaultServerTransportSecurityValidator.builder().allowedOrigin("http://127.0.0.1:*").allowedHost("127.0.0.1:*").build()).build();
+                var transport = HttpServletStreamableServerTransportProvider.builder().jsonMapper(mapper).mcpEndpoint(MCP_ENDPOINT).keepAliveInterval(REQUEST_TIMEOUT).httpHeaderValidator(DefaultServerTransportSecurityValidator.builder().allowedOrigin("http://127.0.0.1:*").allowedHost("127.0.0.1:*").build()).build();
                 server = McpSdkAdapter.startStreamable(mapper, transport, definition, executor, extensions);
                 var servlet = new ConformanceServlet(transport);
                 tomcat = new Tomcat();

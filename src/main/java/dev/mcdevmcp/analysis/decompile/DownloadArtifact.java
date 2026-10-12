@@ -4,11 +4,6 @@ import java.net.URI;
 import java.util.Objects;
 
 public record DownloadArtifact(URI uri, String sha1, long byteLength, ArtifactKind kind) {
-    @SuppressWarnings("unused")
-    public DownloadArtifact(URI uri, String sha1, long byteLength) {
-        this(uri, sha1, byteLength, ArtifactKind.JAR);
-    }
-
     public DownloadArtifact {
         Objects.requireNonNull(uri, "uri");
         sha1 = Objects.requireNonNull(sha1, "sha1");

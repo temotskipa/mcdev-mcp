@@ -2,6 +2,7 @@ package dev.mcdevmcp.storage.h2;
 
 import dev.mcdevmcp.storage.PlatformPaths;
 import dev.mcdevmcp.storage.model.MinecraftVersion;
+import reactor.util.annotation.NonNull;
 
 import java.io.IOException;
 import java.nio.channels.FileChannel;
@@ -71,8 +72,8 @@ public final class IndexCleaner {
     private void deleteArtifacts(Path root, Path database, Path lockPath) throws IOException {
         Files.walkFileTree(root, new SimpleFileVisitor<>() {
             @Override
-            @SuppressWarnings("NullableProblems")
-            public FileVisitResult visitFile(Path file, BasicFileAttributes attributes) throws IOException {
+            @NonNull
+            public FileVisitResult visitFile(@NonNull Path file, @NonNull BasicFileAttributes attributes) throws IOException {
                 Path normalized = file.toAbsolutePath().normalize();
                 if (normalized.getFileName().toString().endsWith(".lock.db")) {
                     throw new IOException("Refusing to clean while an H2 lock companion exists: " + normalized);
@@ -84,8 +85,8 @@ public final class IndexCleaner {
             }
 
             @Override
-            @SuppressWarnings("NullableProblems")
-            public FileVisitResult postVisitDirectory(Path directory, IOException exception) throws IOException {
+            @NonNull
+            public FileVisitResult postVisitDirectory(@NonNull Path directory, IOException exception) throws IOException {
                 if (exception != null) {
                     throw exception;
                 }

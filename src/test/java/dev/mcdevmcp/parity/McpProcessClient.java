@@ -14,6 +14,7 @@ import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.locks.LockSupport;
 
 /**
  * A shell-free, NDJSON-only JSON-RPC client for parity tests.
@@ -527,9 +528,8 @@ final class McpProcessClient implements AutoCloseable {
         private void monitor() {
             while (tracking.get()) {
                 capture();
-                try {
-                    Thread.sleep(POLL_INTERVAL);
-                } catch (InterruptedException exception) {
+                LockSupport.parkNanos(POLL_INTERVAL.toNanos());
+                if (Thread.interrupted()) {
                     return;
                 }
             }

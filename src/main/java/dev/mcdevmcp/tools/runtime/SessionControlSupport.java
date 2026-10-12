@@ -139,16 +139,14 @@ final class SessionControlSupport {
                 return timedOut.get();
             }
             Throwable failure = ScopeOutcomes.cause(exception);
-            if (failure instanceof IOException) {
-                return null;
+            switch (failure) {
+                case IOException ignored -> {
+                    return null;
+                }
+                case InterruptedException interrupted -> throw interrupted;
+                case RuntimeException runtime -> throw runtime;
+                default -> throw new IllegalStateException(failure);
             }
-            if (failure instanceof InterruptedException interrupted) {
-                throw interrupted;
-            }
-            if (failure instanceof RuntimeException runtime) {
-                throw runtime;
-            }
-            throw new IllegalStateException(failure);
         }
     }
 
@@ -207,7 +205,6 @@ final class SessionControlSupport {
         return stage instanceof AsyncOperation<?> operation && operation.stopped.getCount() == 0;
     }
 
-    @SuppressWarnings("preview")
     private static Throwable unwrap(Throwable failure) {
         Throwable current = failure;
         while ((current instanceof CompletionException || current instanceof ExecutionException) && current.getCause() != null) {

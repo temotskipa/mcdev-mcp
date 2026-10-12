@@ -1,5 +1,7 @@
 package dev.mcdevmcp.storage.bundle;
 
+import reactor.util.annotation.NonNull;
+
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
@@ -71,7 +73,6 @@ public final class BundleFiles {
         }
     }
 
-    @SuppressWarnings("unused")
     public static void force(Path file) throws IOException {
         try (FileChannel channel = FileChannel.open(file, StandardOpenOption.WRITE)) {
             channel.force(true);
@@ -90,20 +91,21 @@ public final class BundleFiles {
         }
     }
 
-    @SuppressWarnings("NullableProblems")
     public static void deleteTree(Path root) throws IOException {
         if (!Files.exists(root, LinkOption.NOFOLLOW_LINKS)) {
             return;
         }
         Files.walkFileTree(root, new SimpleFileVisitor<>() {
             @Override
-            public FileVisitResult visitFile(Path file, BasicFileAttributes attributes) throws IOException {
+            @NonNull
+            public FileVisitResult visitFile(@NonNull Path file, @NonNull BasicFileAttributes attributes) throws IOException {
                 Files.delete(file);
                 return FileVisitResult.CONTINUE;
             }
 
             @Override
-            public FileVisitResult postVisitDirectory(Path directory, IOException failure) throws IOException {
+            @NonNull
+            public FileVisitResult postVisitDirectory(@NonNull Path directory, IOException failure) throws IOException {
                 if (failure != null) {
                     throw failure;
                 }

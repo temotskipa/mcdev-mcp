@@ -7,6 +7,10 @@ import org.gradle.jvm.toolchain.JavaLanguageVersion
 import org.gradle.jvm.toolchain.JavaToolchainService
 import org.gradle.jvm.toolchain.JavaToolchainSpec
 
+plugins {
+    java
+}
+
 val javaFeature = providers.gradleProperty("javaFeature").get().toInt()
 val previewJavaLauncher = extensions.getByType(JavaToolchainService::class.java).launcherFor(Action<JavaToolchainSpec> {
     languageVersion.set(JavaLanguageVersion.of(javaFeature))

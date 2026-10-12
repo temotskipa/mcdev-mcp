@@ -4,6 +4,8 @@ import dev.mcdevmcp.support.JsonValues;
 
 import java.util.Map;
 import java.util.Objects;
+import java.util.LinkedHashMap;
+import java.util.Collections;
 
 public final class BridgePayloadValidator {
     public static final int MAXIMUM_PNG_BASE64_CHARACTERS = 7 * 1024 * 1024;
@@ -18,8 +20,18 @@ public final class BridgePayloadValidator {
         if (!(result instanceof Map<?, ?>)) {
             throw new IllegalArgumentException("DebugBridge " + endpoint + " response result must be an object, got " + safeDisplay(result));
         }
-        @SuppressWarnings("unchecked") Map<String, Object> object = (Map<String, Object>) JsonValues.freeze(result);
-        return object;
+        Object frozen = JsonValues.freeze(result);
+        if (!(frozen instanceof Map<?, ?> map)) {
+            throw new IllegalArgumentException("DebugBridge " + endpoint + " response result must be an object, got " + safeDisplay(result));
+        }
+        Map<String, Object> object = new LinkedHashMap<>();
+        for (Map.Entry<?, ?> entry : map.entrySet()) {
+            if (!(entry.getKey() instanceof String key)) {
+                throw new IllegalArgumentException("DebugBridge " + endpoint + " response result must be an object, got " + safeDisplay(result));
+            }
+            object.put(key, entry.getValue());
+        }
+        return Collections.unmodifiableMap(object);
     }
 
     public static String requireString(Object value, String name) {

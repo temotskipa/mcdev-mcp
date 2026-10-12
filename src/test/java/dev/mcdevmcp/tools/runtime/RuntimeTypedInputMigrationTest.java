@@ -254,7 +254,6 @@ class RuntimeTypedInputMigrationTest {
     }
 
     @Test
-    @SuppressWarnings("ALL")
     void validSimpleBindingDispatchesConvertExactlyOnceAndPreserveBridgePayloads() throws Exception {
         assertValidDispatch("mc_connect", Map.of("port", 9876, "reset", true), "status", Map.of());
         assertValidDispatch("mc_execute", Map.of("code", "return 1", "timeoutSeconds", new BigDecimal("1.25")), "execute", Map.of("code", "return 1", "timeoutMs", 1250L));
@@ -278,7 +277,6 @@ class RuntimeTypedInputMigrationTest {
     }
 
     @Test
-    @SuppressWarnings("ALL")
     void queryBindingDispatchesConvertExactlyOnceAndPreservesOmissionAndPrimitivePayloads() throws Exception {
         assertQueryDispatch("mc_nearby_entities", Map.of(), "nearbyEntities", Map.of("includeIcons", false));
         assertQueryDispatch("mc_nearby_entities", Map.of("range", 0, "limit", 0, "includeIcons", false), "nearbyEntities", Map.of("range", 0.0, "limit", 0, "includeIcons", false));

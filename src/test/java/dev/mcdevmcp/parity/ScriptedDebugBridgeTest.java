@@ -12,6 +12,7 @@ import java.time.Duration;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.LockSupport;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -22,7 +23,10 @@ class ScriptedDebugBridgeTest {
     private static boolean awaitClosed(ScriptedDebugBridge bridge) throws InterruptedException {
         long deadline = System.nanoTime() + Duration.ofSeconds(2).toNanos();
         while (!bridge.isClosed() && System.nanoTime() < deadline) {
-            Thread.sleep(Duration.ofMillis(10));
+            LockSupport.parkNanos(Duration.ofMillis(10).toNanos());
+            if (Thread.interrupted()) {
+                throw new InterruptedException();
+            }
         }
         return bridge.isClosed();
     }

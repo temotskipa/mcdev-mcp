@@ -8,6 +8,7 @@ import net.fabricmc.mappingio.adapter.MappingSourceNsSwitch;
 import net.fabricmc.mappingio.format.proguard.ProGuardFileReader;
 import net.fabricmc.mappingio.format.tiny.Tiny2FileWriter;
 import net.fabricmc.mappingio.tree.MemoryMappingTree;
+import reactor.util.annotation.NonNull;
 
 import java.io.*;
 import java.nio.channels.FileChannel;
@@ -128,8 +129,7 @@ public final class MappingConverter {
         }
 
         @Override
-        @SuppressWarnings("NullableProblems")
-        public int read(byte[] bytes, int offset, int length) throws IOException {
+        public int read(@NonNull byte[] bytes, int offset, int length) throws IOException {
             checkCancelled(cancellation);
             int read = in.read(bytes, offset, length);
             if (read > 0) {

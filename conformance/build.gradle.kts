@@ -20,11 +20,10 @@ abstract class Utf8TextFileTask : DefaultTask() {
 
 plugins {
     application
+    id("java-preview")
+    id("mcp-sdk-modules")
     id("com.gradleup.shadow") version "9.6.1"
-    id("org.gradlex.extra-java-module-info")
 }
-
-apply(from = rootProject.file("gradle/java-preview.gradle.kts"))
 
 val applicationVersion = rootProject.providers.gradleProperty("version").get()
 val conformanceJavaLauncher = javaToolchains.launcherFor {
@@ -34,12 +33,10 @@ val conformanceJavaLauncher = javaToolchains.launcherFor {
 dependencies {
     implementation(project(":"))
     implementation(project(":mcp-tool-api"))
-    implementation("io.modelcontextprotocol.sdk:mcp:2.0.1")
+    implementation("io.modelcontextprotocol.sdk:mcp:2.1.0-SNAPSHOT")
     implementation("org.apache.tomcat.embed:tomcat-embed-core:11.0.26")
     implementation("jakarta.servlet:jakarta.servlet-api:6.1.0")
 }
-
-apply(from = rootProject.file("gradle/mcp-sdk-modules.gradle"))
 
 extraJavaModuleInfo {
     automaticModule("net.fabricmc:tiny-remapper", "net.fabricmc.tinyremapper")

@@ -3,6 +3,7 @@ package dev.mcdevmcp.mcp.tool.api;
 import java.io.Serial;
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
 
@@ -147,7 +148,13 @@ public record JsonObjectSchema(Map<String, Object> value) {
     }
 
     private static Map<String, Object> stringObjectMap(Map<?, ?> map) {
-        @SuppressWarnings("unchecked") Map<String, Object> typed = (Map<String, Object>) map;
+        Map<String, Object> typed = new LinkedHashMap<>();
+        for (Map.Entry<?, ?> entry : map.entrySet()) {
+            if (!(entry.getKey() instanceof String key)) {
+                throw new IllegalArgumentException("JSON object keys must be strings");
+            }
+            typed.put(key, entry.getValue());
+        }
         return typed;
     }
 
@@ -157,11 +164,6 @@ public record JsonObjectSchema(Map<String, Object> value) {
 
     private static JsonInputLocation propertyLocation(JsonInputLocation inputLocation, String name) {
         return inputLocation.property(name);
-    }
-
-    @SuppressWarnings("unused")
-    public boolean semanticallyEquals(Map<String, Object> other) {
-        return JsonSchemaSupport.jsonEquals(value, Objects.requireNonNull(other, "other"));
     }
 
     void validateInputTypes(Map<String, Object> input) {

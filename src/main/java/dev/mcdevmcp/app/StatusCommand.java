@@ -23,7 +23,6 @@ import java.util.Objects;
 import java.util.concurrent.Callable;
 
 @Command(name = "status", description = "Show cached analysis state")
-@SuppressWarnings("unused")
 public final class StatusCommand implements Callable<Integer> {
     private final PlatformPaths paths;
     private CachePathBoundary boundary;

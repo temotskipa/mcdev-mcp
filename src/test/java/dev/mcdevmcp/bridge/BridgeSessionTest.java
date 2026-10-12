@@ -17,6 +17,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.locks.LockSupport;
 import java.util.function.BooleanSupplier;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -39,7 +40,10 @@ final class BridgeSessionTest {
             if (System.nanoTime() >= deadline) {
                 fail("timed out waiting for structured session work");
             }
-            Thread.sleep(5);
+            LockSupport.parkNanos(TimeUnit.MILLISECONDS.toNanos(5));
+            if (Thread.interrupted()) {
+                throw new InterruptedException();
+            }
         }
     }
 
@@ -91,7 +95,6 @@ final class BridgeSessionTest {
     }
 
     @Test
-    @SuppressWarnings("ALL")
     void explicitAdoptionRemainsDeliberateAndSendUsesTheConnectedClient() {
         FakeDebugBridge bridge = new FakeDebugBridge(Map.of());
         BridgeSession session = new BridgeSession(JSON, new AppEnvironment(Map.of()), _ -> CompletableFuture.completedFuture(bridge.client()));

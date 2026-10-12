@@ -98,6 +98,7 @@ final class McpProcessFixtureMain {
         awaitParentEof();
     }
 
+    // The child must outlive this method so the parent exit stays observable.
     @SuppressWarnings("resource")
     private static void materializerTree(Path childPidFile) throws IOException, InterruptedException {
         Process child = spawnSleeper();
@@ -105,6 +106,7 @@ final class McpProcessFixtureMain {
         Thread.sleep(Duration.ofDays(1));
     }
 
+    // The inherited child must still be running when this process returns.
     @SuppressWarnings("resource")
     private static void materializerTreeRootExits(Path childPidFile) throws IOException, InterruptedException {
         Process child = spawnInheritedSleeper();

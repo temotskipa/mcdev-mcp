@@ -1,5 +1,7 @@
 package dev.mcdevmcp.mcp.transport;
 
+import reactor.util.annotation.NonNull;
+
 import java.io.FilterInputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -20,8 +22,7 @@ final class EofTrackingInputStream extends FilterInputStream {
     }
 
     @Override
-    @SuppressWarnings("NullableProblems")
-    public int read(byte[] bytes, int offset, int length) throws IOException {
+    public int read(@NonNull byte[] bytes, int offset, int length) throws IOException {
         return signalEndOfStream(super.read(bytes, offset, length));
     }
 

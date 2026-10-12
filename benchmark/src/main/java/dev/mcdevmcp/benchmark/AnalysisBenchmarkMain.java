@@ -46,8 +46,7 @@ public final class AnalysisBenchmarkMain {
     private AnalysisBenchmarkMain() {
     }
 
-    @SuppressWarnings("UnnecessaryModifier")
-    public static void main(String[] arguments) throws Exception {
+    static void main(String[] arguments) throws Exception {
         if (arguments.length > 0 && CHILD_COMMAND.equals(arguments[0])) {
             runChild(ChildArguments.parse(Arrays.copyOfRange(arguments, 1, arguments.length)));
             return;

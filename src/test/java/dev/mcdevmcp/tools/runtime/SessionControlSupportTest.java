@@ -34,10 +34,18 @@ import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.locks.LockSupport;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 class SessionControlSupportTest {
+    private static void pauseBriefly() throws InterruptedException {
+        LockSupport.parkNanos(TimeUnit.MILLISECONDS.toNanos(10));
+        if (Thread.interrupted()) {
+            throw new InterruptedException();
+        }
+    }
+
     private static final Path GAME_DIRECTORY = Path.of(RuntimeContractFixtures.gameDirectory());
 
     private static void assertPropertyCreator(Class<?> type, Class<?>... parameterTypes) {
@@ -295,7 +303,7 @@ class SessionControlSupportTest {
             assertTrue(process.closeFinished.await(1, TimeUnit.SECONDS));
             long ownerDeadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(1);
             while (!SessionControlSupport.ownerStopped(pid) && System.nanoTime() < ownerDeadline) {
-                Thread.sleep(10);
+                pauseBriefly();
             }
             assertTrue(SessionControlSupport.ownerStopped(pid));
         }
@@ -325,12 +333,13 @@ class SessionControlSupportTest {
         releaseStarter.countDown();
         long ownerDeadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(1);
         while (!SessionControlSupport.ownerStopped(pid) && System.nanoTime() < ownerDeadline) {
-            Thread.sleep(10);
+            pauseBriefly();
         }
         assertTrue(SessionControlSupport.ownerStopped(pid));
     }
 
     @Test
+    @SuppressWarnings("resource")
     void lateReturningStarterIsDestroyedAfterCancellation() throws Exception {
         ProbeProcess process = new ProbeProcess("4242\n");
         CountDownLatch starterEntered = new CountDownLatch(1);
@@ -342,20 +351,20 @@ class SessionControlSupportTest {
                 releaseStarter.await();
             } catch (InterruptedException interrupted) {
                 starterCaughtInterrupt.countDown();
-                boolean wasInterrupted = true;
-                Thread.interrupted();
+                while (Thread.interrupted()) {
+                    Thread.yield();
+                }
                 while (true) {
                     try {
                         releaseStarter.await();
                         break;
                     } catch (InterruptedException ignored) {
-                        wasInterrupted = true;
-                        Thread.interrupted();
+                        while (Thread.interrupted()) {
+                            Thread.yield();
+                        }
                     }
                 }
-                if (wasInterrupted) {
-                    Thread.currentThread().interrupt();
-                }
+                Thread.currentThread().interrupt();
             }
             return process;
         });
@@ -370,12 +379,13 @@ class SessionControlSupportTest {
         assertEquals(1, process.probeEntered.getCount());
         long ownerDeadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(1);
         while (!SessionControlSupport.ownerStopped(pid) && System.nanoTime() < ownerDeadline) {
-            Thread.sleep(10);
+            pauseBriefly();
         }
         assertTrue(SessionControlSupport.ownerStopped(pid));
     }
 
     @Test
+    @SuppressWarnings("resource")
     void pidProbeHonorsItsRealFourSecondDeadlineAndDrainsBothPipes() throws Exception {
         TimeoutProcess process = new TimeoutProcess();
         SessionControlSupport.ListeningPidResolver resolver = SessionControlSupport.listeningPidResolver(_ -> process);
@@ -393,7 +403,7 @@ class SessionControlSupportTest {
     @Test
     void composeCancellationBeforeResolverInvocationPreventsStarterAndOwnerStops() throws Exception {
         AtomicBoolean starterInvoked = new AtomicBoolean();
-        SessionControlSupport.ListeningPidResolver resolver = SessionControlSupport.listeningPidResolver(command -> {
+        SessionControlSupport.ListeningPidResolver resolver = SessionControlSupport.listeningPidResolver(_ -> {
             starterInvoked.set(true);
             throw new IOException("starter must not run");
         });
@@ -405,7 +415,7 @@ class SessionControlSupportTest {
         assertFalse(starterInvoked.get());
         long ownerDeadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(1);
         while (!SessionControlSupport.ownerStopped(composed) && System.nanoTime() < ownerDeadline) {
-            Thread.sleep(10);
+            pauseBriefly();
         }
         assertTrue(SessionControlSupport.ownerStopped(composed));
         assertTrue(composed.isCancelled());
@@ -466,7 +476,7 @@ class SessionControlSupportTest {
             long responseDeadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(1);
             CompletableFuture<BridgeResponse> pending;
             while ((pending = response.get()) == null && System.nanoTime() < responseDeadline) {
-                Thread.sleep(10);
+                pauseBriefly();
             }
             assertNotNull(pending);
             CompletableFuture<BridgeResponse> ready = pending;
@@ -643,6 +653,7 @@ class SessionControlSupportTest {
         }
 
         @Override
+        @SuppressWarnings("resource")
         public void destroy() {
             destroyForcibly();
         }
@@ -667,9 +678,9 @@ class SessionControlSupportTest {
             if (blockClose) {
                 boolean interrupted = false;
                 try {
-                    while (!releaseClose.await(100, TimeUnit.MILLISECONDS)) {
-                        // Deliberately keep ownership until the test releases
-                        // the close latch, even when the owner is interrupted.
+                    boolean waiting = true;
+                    while (waiting) {
+                        waiting = !releaseClose.await(100, TimeUnit.MILLISECONDS);
                     }
                 } catch (InterruptedException exception) {
                     interrupted = true;
@@ -678,7 +689,9 @@ class SessionControlSupportTest {
                             releaseClose.await();
                             break;
                         } catch (InterruptedException ignored) {
-                            interrupted = true;
+                            while (Thread.interrupted()) {
+                                Thread.yield();
+                            }
                         }
                     }
                 }
@@ -736,6 +749,7 @@ class SessionControlSupportTest {
         }
 
         @Override
+        @SuppressWarnings("resource")
         public void destroy() {
             destroyForcibly();
         }

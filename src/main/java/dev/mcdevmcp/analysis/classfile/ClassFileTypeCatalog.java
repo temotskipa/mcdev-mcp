@@ -91,7 +91,6 @@ public final class ClassFileTypeCatalog {
         return find(binaryName).orElseThrow(() -> new NoSuchElementException("Class-file type not found: " + binaryName));
     }
 
-    @SuppressWarnings("unused")
     public List<ClassFileType> types() {
         return List.copyOf(types.values());
     }

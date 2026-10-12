@@ -44,17 +44,14 @@ final class H2ServiceLoaderProbeMain {
         System.out.println("H2_SERVICE_OK");
     }
 
-    @SuppressWarnings("SameReturnValue")
     private static String insertSql() {
         return "INSERT INTO smoke(id) VALUES (1)";
     }
 
-    @SuppressWarnings("SameReturnValue")
     private static String selectSql() {
         return "SELECT id FROM smoke";
     }
 
-    @SuppressWarnings("SameReturnValue")
     private static String checkpointSql() {
         return "CHECKPOINT SYNC";
     }

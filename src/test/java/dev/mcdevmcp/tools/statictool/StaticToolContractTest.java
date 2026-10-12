@@ -404,7 +404,6 @@ class StaticToolContractTest {
     }
 
     @Test
-    @SuppressWarnings("ExtractMethodRecommender")
         // Keep the alias-retargeting sequence visible in one regression.
     void methodSqlAndSourceStayPinnedWhenAncestorAliasChangesBetweenQueries() throws Exception {
         PlatformPaths first = fixture(temporaryDirectory.resolve("first/cache-root"));

@@ -56,7 +56,6 @@ public final class Main {
         return text.replace("\n", System.lineSeparator());
     }
 
-    @SuppressWarnings("SameReturnValue")
     private static int rejectUnsupportedJava(int javaFeature, PrintWriter error) {
         Objects.requireNonNull(error, "error");
         error.printf("%s; detected Java %d.%n", RequiredRuntime.previewRequirement(), javaFeature);

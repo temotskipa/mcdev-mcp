@@ -110,7 +110,6 @@ public final class BridgeSession implements AutoCloseable {
         return stage.toCompletableFuture().get();
     }
 
-    @SuppressWarnings("preview")
     private static Throwable unwrap(Throwable failure) {
         Throwable current = failure;
         while ((current instanceof CompletionException || current instanceof ExecutionException) && current.getCause() != null) {
@@ -162,6 +161,7 @@ public final class BridgeSession implements AutoCloseable {
         return startConnect(() -> connectPort(token, explicit, opening));
     }
 
+    @SuppressWarnings("resource")
     public CompletionStage<BridgeResponse> send(BridgeEndpoint endpoint, BridgePayload payload, Duration endpointTimeout) {
         Objects.requireNonNull(endpoint, "endpoint");
         return new AsyncAttempt<>(() -> {

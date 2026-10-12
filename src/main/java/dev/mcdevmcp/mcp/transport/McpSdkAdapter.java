@@ -85,7 +85,6 @@ public final class McpSdkAdapter {
         }
     }
 
-    @SuppressWarnings("unused")
     public static StreamableServer startStreamable(McpJsonMapper transportMapper, McpStreamableServerTransportProvider transport, ServerDefinition definition, ExecutorService blockingExecutor) {
         return startStreamable(transportMapper, transport, definition, blockingExecutor, AsyncServerExtensions.production());
     }

@@ -8,12 +8,13 @@ import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.locks.LockSupport;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 class SessionControlProcessIntegrationTest {
     private static SessionControlSupport.ListeningPidResolver realChild(AtomicReference<Process> captured, String mode) {
-        return SessionControlSupport.listeningPidResolver(command -> {
+        return SessionControlSupport.listeningPidResolver(_ -> {
             List<String> childCommand = List.of(javaExecutable(), "-cp", System.getProperty("java.class.path"), SessionControlProcessFixture.class.getName(), mode);
             Process process = new ProcessBuilder(childCommand).start();
             captured.set(process);
@@ -23,6 +24,13 @@ class SessionControlProcessIntegrationTest {
 
     private static String javaExecutable() {
         return Path.of(System.getProperty("java.home"), "bin", "java").toString();
+    }
+
+    private static void pauseBriefly() throws InterruptedException {
+        LockSupport.parkNanos(TimeUnit.MILLISECONDS.toNanos(10));
+        if (Thread.interrupted()) {
+            throw new InterruptedException();
+        }
     }
 
     private static void assertNotNullProcess(Process process) {
@@ -63,7 +71,7 @@ class SessionControlProcessIntegrationTest {
         CompletableFuture<Long> result = resolver.resolve(9876).toCompletableFuture();
         long childDeadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
         while (captured.get() == null && System.nanoTime() < childDeadline) {
-            Thread.sleep(10);
+            pauseBriefly();
         }
         Process process = captured.get();
         assertNotNullProcess(process);
@@ -73,7 +81,7 @@ class SessionControlProcessIntegrationTest {
         assertFalse(process.isAlive());
         long ownerDeadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(1);
         while (!SessionControlSupport.ownerStopped(result) && System.nanoTime() < ownerDeadline) {
-            Thread.sleep(10);
+            pauseBriefly();
         }
         assertTrue(SessionControlSupport.ownerStopped(result));
     }

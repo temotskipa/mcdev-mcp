@@ -1,23 +1,20 @@
 plugins {
     `java-library`
-    id("org.gradlex.extra-java-module-info")
+    id("java-preview")
+    id("mcp-sdk-modules")
 }
-
-apply(from = rootProject.file("gradle/java-preview.gradle.kts"))
 
 dependencies {
     implementation(project(":"))
     implementation(project(":storage-model"))
     implementation(project(":mcp-tool-api"))
-    implementation("io.modelcontextprotocol.sdk:mcp-core:2.0.1")
-    implementation("io.modelcontextprotocol.sdk:mcp-json-jackson3:2.0.1")
+    implementation("io.modelcontextprotocol.sdk:mcp-core:2.1.0-SNAPSHOT")
+    implementation("io.modelcontextprotocol.sdk:mcp-json-jackson3:2.1.0-SNAPSHOT")
 
     testImplementation(platform("org.junit:junit-bom:6.1.3"))
     testImplementation("org.junit.jupiter:junit-jupiter")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
-
-apply(from = rootProject.file("gradle/mcp-sdk-modules.gradle"))
 
 extraJavaModuleInfo {
     automaticModule("net.fabricmc:tiny-remapper", "net.fabricmc.tinyremapper")

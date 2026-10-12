@@ -29,8 +29,7 @@ public final class McpbBundleSmokeMain {
     private McpbBundleSmokeMain() {
     }
 
-    @SuppressWarnings("all")
-    public static void main(String[] arguments) throws Exception {
+    static void main(String[] arguments) throws Exception {
         if (arguments.length != 1) {
             throw new IllegalArgumentException("Usage: McpbBundleSmokeMain <extracted-bundle-directory>");
         }
@@ -40,29 +39,25 @@ public final class McpbBundleSmokeMain {
         var processBuilder = new ProcessBuilder("node", "bootstrap.cjs").directory(bundle.toFile());
         processBuilder.environment().put("MCDEV_SESSION_LOG_DIR", logs.toString());
         processBuilder.environment().put("MCDEV_RUN_COMMAND", "true");
-        Process process = processBuilder.start();
-        try (var output = new BufferedReader(new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
-            try (var input = new OutputStreamWriter(process.getOutputStream(), StandardCharsets.UTF_8)) {
-                write(input, request(1, "initialize", Map.of("protocolVersion", "2024-11-05", "capabilities", Map.of(), "clientInfo", Map.of("name", "mcpb-smoke", "version", "1.0"))));
-                Map<String, Object> initialized = readWithinTimeout(output);
-                Map<String, Object> result = map(initialized.get("result"));
-                Map<String, Object> serverInfo = map(result.get("serverInfo"));
-                requireEquals(manifest.get("name"), serverInfo.get("name"), "initialize server name");
-                requireEquals(manifest.get("version"), serverInfo.get("version"), "initialize server version");
-                write(input, Map.of("jsonrpc", "2.0", "method", "notifications/initialized", "params", Map.of()));
-                write(input, request(2, "tools/list", Map.of()));
-                List<Map<String, Object>> actualTools = maps(map(readWithinTimeout(output).get("result")).get("tools"));
-                List<Map<String, Object>> expectedTools = maps(manifest.get("tools"));
-                if (actualTools.isEmpty() || !actualTools.stream().map(tool -> tool.get("name")).sorted().toList().equals(expectedTools.stream().map(tool -> tool.get("name")).sorted().toList())) {
-                    throw new IllegalStateException("MCPB tools/list catalog does not match the generated manifest");
-                }
+        try (Process process = processBuilder.start();
+             var output = new BufferedReader(new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8));
+             var input = new OutputStreamWriter(process.getOutputStream(), StandardCharsets.UTF_8)) {
+            write(input, request(1, "initialize", Map.of("protocolVersion", "2024-11-05", "capabilities", Map.of(), "clientInfo", Map.of("name", "mcpb-smoke", "version", "1.0"))));
+            Map<String, Object> initialized = readWithinTimeout(output);
+            Map<String, Object> result = map(initialized.get("result"));
+            Map<String, Object> serverInfo = map(result.get("serverInfo"));
+            requireEquals(manifest.get("name"), serverInfo.get("name"), "initialize server name");
+            requireEquals(manifest.get("version"), serverInfo.get("version"), "initialize server version");
+            write(input, Map.of("jsonrpc", "2.0", "method", "notifications/initialized", "params", Map.of()));
+            write(input, request(2, "tools/list", Map.of()));
+            List<Map<String, Object>> actualTools = maps(map(readWithinTimeout(output).get("result")).get("tools"));
+            List<Map<String, Object>> expectedTools = maps(manifest.get("tools"));
+            if (actualTools.isEmpty() || !actualTools.stream().map(tool -> tool.get("name")).sorted().toList().equals(expectedTools.stream().map(tool -> tool.get("name")).sorted().toList())) {
+                throw new IllegalStateException("MCPB tools/list catalog does not match the generated manifest");
             }
             if (!process.waitFor(TIMEOUT.toMillis(), TimeUnit.MILLISECONDS) || process.exitValue() != 0) {
                 throw new IllegalStateException("MCPB launcher did not stop cleanly");
             }
-        } finally {
-            process.destroyForcibly();
-            process.waitFor(TIMEOUT.toMillis(), TimeUnit.MILLISECONDS);
         }
     }
 

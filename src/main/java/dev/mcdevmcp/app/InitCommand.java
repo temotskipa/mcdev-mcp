@@ -11,7 +11,6 @@ import java.util.Objects;
 import java.util.concurrent.Callable;
 
 @Command(name = "init", description = "Prepare sources and rebuild the analysis index")
-@SuppressWarnings("unused")
 public final class InitCommand implements Callable<Integer> {
     private final AnalysisOperations operations;
 

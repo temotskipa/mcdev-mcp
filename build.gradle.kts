@@ -76,6 +76,7 @@ abstract class McpSdkSnapshotCheck : DefaultTask() {
             "io.modelcontextprotocol.sdk:mcp-json-jackson3" to "2.0.1",
             "tools.jackson.core:jackson-core" to "3.1.4",
             "tools.jackson.core:jackson-databind" to "3.1.4",
+            "com.fasterxml.jackson.core:jackson-annotations" to "2.21",
             "com.networknt:json-schema-validator" to "3.0.6"
         )
         val runtimeModules = resolvedModules.get()
@@ -107,11 +108,10 @@ abstract class McpSdkSnapshotCheck : DefaultTask() {
 
 plugins {
     application
-    id("org.gradlex.extra-java-module-info")
+    id("java-preview")
+    id("mcp-sdk-modules")
     id("com.gradleup.shadow")
 }
-
-apply(from = "gradle/java-preview.gradle.kts")
 
 val applicationVersion = providers.gradleProperty("version").get()
 
@@ -124,7 +124,7 @@ val generateTestVersionProperties = tasks.register<WriteProperties>("generateTes
 dependencies {
     implementation(project(":mcp-tool-api"))
     implementation(project(":storage-model"))
-    implementation("io.modelcontextprotocol.sdk:mcp:2.0.1")
+    implementation("io.modelcontextprotocol.sdk:mcp:2.1.0-SNAPSHOT")
     implementation("info.picocli:picocli:4.7.7")
     implementation("com.h2database:h2:2.5.250")
     implementation("org.vineflower:vineflower:1.12.0")
@@ -136,8 +136,6 @@ dependencies {
     testImplementation("org.junit.jupiter:junit-jupiter")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
-
-apply(from = "gradle/mcp-sdk-modules.gradle")
 
 extraJavaModuleInfo {
     automaticModule("net.fabricmc:tiny-remapper", "net.fabricmc.tinyremapper")
