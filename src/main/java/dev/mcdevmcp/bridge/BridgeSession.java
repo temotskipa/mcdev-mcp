@@ -141,18 +141,17 @@ public final class BridgeSession implements AutoCloseable {
         return owned.awaitOwned();
     }
 
-    @SuppressWarnings("resource")
     public BridgeResponse send(BridgeEndpoint endpoint, BridgePayload payload, Duration endpointTimeout) throws IOException, InterruptedException {
         Objects.requireNonNull(endpoint, "endpoint");
         connect(null);
-        BridgeClient client;
+        Connected current;
         synchronized (this) {
             if (connected == null) {
                 throw new IllegalStateException("DebugBridge session is disconnected");
             }
-            client = connected.client();
+            current = connected;
         }
-        return client.send(endpoint, payload, endpointTimeout);
+        return current.send(endpoint, payload, endpointTimeout);
     }
 
     public synchronized OptionalInt connectedPort() {
@@ -186,7 +185,7 @@ public final class BridgeSession implements AutoCloseable {
         pendingAttempts.forEach(ConnectAttempt::cancel);
         pendingCandidates.forEach(BridgeClient::close);
         if (previous != null) {
-            previous.client().close();
+            previous.close();
         }
     }
 
@@ -249,7 +248,6 @@ public final class BridgeSession implements AutoCloseable {
         }
     }
 
-    @SuppressWarnings("resource")
     private SessionInfo acceptStatus(long token, int port, BridgeClient client, BridgeResponse response) {
         BridgeStatusWire status = resultDecoder.decode(STATUS, BridgePayloadValidator.requireResult("status", response), BridgeResultTypes.STATUS);
         SessionInfo info = toSessionInfo(port, status);
@@ -263,8 +261,8 @@ public final class BridgeSession implements AutoCloseable {
             if (lastSessionInfo != null && identityChanged(lastSessionInfo, info)) {
                 diagnostics.accept("DebugBridge session identity changed from " + display(lastSessionInfo) + " to " + display(info));
             }
-            if (previous != null && previous.client() != client) {
-                previous.client().close();
+            if (previous != null && !previous.uses(client)) {
+                previous.close();
             }
             candidates.remove(client);
             connected = new Connected(client, info);
@@ -299,10 +297,9 @@ public final class BridgeSession implements AutoCloseable {
         }
     }
 
-    @SuppressWarnings("resource")
     private synchronized void clearDeadClient(BridgeClient client) {
         candidates.remove(client);
-        if (connected != null && connected.client() == client) {
+        if (connected != null && connected.uses(client)) {
             connected = null;
         }
     }
@@ -343,6 +340,17 @@ public final class BridgeSession implements AutoCloseable {
     }
 
     private value record Connected(BridgeClient client, SessionInfo info) {
+        private boolean uses(BridgeClient candidate) {
+            return client == candidate;
+        }
+
+        private BridgeResponse send(BridgeEndpoint endpoint, BridgePayload payload, Duration endpointTimeout) throws IOException, InterruptedException {
+            return client.send(endpoint, payload, endpointTimeout);
+        }
+
+        private void close() {
+            client.close();
+        }
     }
 
     /**
