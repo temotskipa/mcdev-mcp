@@ -15,4 +15,5 @@ open module dev.mcdevmcp {
     requires java.management;
     requires java.compiler;
     requires jdk.compiler;
+    requires jdk.management;
 }

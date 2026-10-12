@@ -12,6 +12,7 @@ public value class ServeCommand implements Callable<Integer> {
     public Integer call() throws Exception {
         try (var factory = new McpServerFactory(AppEnvironment.system());
              var server = factory.startStdio(System.in, System.out)) {
+            StartupCache.refresh();
             server.awaitInputClosed();
             return 0;
         }
