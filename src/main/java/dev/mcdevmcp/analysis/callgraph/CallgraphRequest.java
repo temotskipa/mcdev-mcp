@@ -7,7 +7,7 @@ import dev.mcdevmcp.support.ProgressSink;
 import java.nio.file.Path;
 import java.util.Objects;
 
-public record CallgraphRequest(MinecraftVersion minecraftVersion, Path remappedJar, Path outputBundle, int threads, ProgressSink progress, Cancellation cancellation) {
+public value record CallgraphRequest(MinecraftVersion minecraftVersion, Path remappedJar, Path outputBundle, int threads, ProgressSink progress, Cancellation cancellation) {
     public CallgraphRequest {
         Objects.requireNonNull(minecraftVersion, "minecraftVersion");
         remappedJar = normalize(remappedJar, "remappedJar");

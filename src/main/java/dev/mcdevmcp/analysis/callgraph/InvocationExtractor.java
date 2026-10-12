@@ -84,9 +84,9 @@ final class InvocationExtractor {
         return new Extraction(callerClass, classModel.methods().size(), List.copyOf(edges));
     }
 
-    record Extraction(String className, int methodCount, List<CallEdge> edges) {
+    value record Extraction(String className, int methodCount, List<CallEdge> edges) {
     }
 
-    private record DynamicTarget(String owner, String name, String descriptor) {
+    private value record DynamicTarget(String owner, String name, String descriptor) {
     }
 }

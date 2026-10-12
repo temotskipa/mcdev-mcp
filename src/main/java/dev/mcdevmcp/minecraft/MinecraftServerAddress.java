@@ -114,6 +114,6 @@ public value record MinecraftServerAddress(String value) {
         return value;
     }
 
-    private record HostPort(String host) {
+    private value record HostPort(String host) {
     }
 }

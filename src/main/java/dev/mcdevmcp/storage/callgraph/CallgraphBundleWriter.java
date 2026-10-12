@@ -636,6 +636,6 @@ public final class CallgraphBundleWriter implements AutoCloseable {
         }
     }
 
-    private record DirectionCounts(long dataRows, long indexRows) {
+    private value record DirectionCounts(long dataRows, long indexRows) {
     }
 }

@@ -288,7 +288,7 @@ final class ScriptLogger {
         }
     }
 
-    record ScriptLogEntry(Instant timestamp, boolean success, String code, boolean resultPresent, Object result, String output, String error, Duration duration) {
+    value record ScriptLogEntry(Instant timestamp, boolean success, String code, boolean resultPresent, Object result, String output, String error, Duration duration) {
         ScriptLogEntry {
             Objects.requireNonNull(timestamp, "timestamp");
             Objects.requireNonNull(code, "code");
@@ -304,7 +304,7 @@ final class ScriptLogger {
         }
     }
 
-    record ScriptErrorStat(String error, int count, Instant lastSeen, List<String> examples) {
+    value record ScriptErrorStat(String error, int count, Instant lastSeen, List<String> examples) {
     }
 
     private static final class MutableErrorStat {

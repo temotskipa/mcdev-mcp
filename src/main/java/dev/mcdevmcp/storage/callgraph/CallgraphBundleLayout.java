@@ -95,6 +95,6 @@ final class CallgraphBundleLayout {
         return Files.readAllBytes(file);
     }
 
-    record ResolvedGeneration(String identity, Path path, CallgraphManifest manifest) {
+    value record ResolvedGeneration(String identity, Path path, CallgraphManifest manifest) {
     }
 }

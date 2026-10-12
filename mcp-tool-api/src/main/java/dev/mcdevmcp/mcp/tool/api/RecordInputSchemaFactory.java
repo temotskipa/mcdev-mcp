@@ -398,7 +398,7 @@ public final value class RecordInputSchemaFactory implements InputSchemaFactory 
         return schema;
     }
 
-    private record JsonValueAccessor(Type type, Method method, Field field) {
+    private value record JsonValueAccessor(Type type, Method method, Field field) {
         static JsonValueAccessor forMethod(Method method) {
             return new JsonValueAccessor(method.getGenericReturnType(), method, null);
         }

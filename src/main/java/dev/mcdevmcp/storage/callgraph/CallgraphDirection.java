@@ -89,7 +89,7 @@ enum CallgraphDirection {
         return indexArtifact;
     }
 
-    record LookupKey(String className, String methodName) implements Comparable<LookupKey> {
+    value record LookupKey(String className, String methodName) implements Comparable<LookupKey> {
         @Override
         public int compareTo(LookupKey other) {
             int classes = className.compareTo(other.className);

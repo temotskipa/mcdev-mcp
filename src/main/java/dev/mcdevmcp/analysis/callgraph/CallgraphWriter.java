@@ -60,6 +60,6 @@ final class CallgraphWriter {
         void run() throws Exception;
     }
 
-    record Counts(int classes, int methods, long edges) {
+    value record Counts(int classes, int methods, long edges) {
     }
 }
