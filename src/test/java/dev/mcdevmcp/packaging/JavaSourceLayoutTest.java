@@ -44,7 +44,7 @@ class JavaSourceLayoutTest {
         List<Path> sources = javaSourcesUnder(root);
         DiagnosticCollector<JavaFileObject> diagnostics = new DiagnosticCollector<>();
         try (StandardJavaFileManager fileManager = compiler.getStandardFileManager(diagnostics, Locale.ROOT, StandardCharsets.UTF_8)) {
-            JavacTask task = (JavacTask) compiler.getTask(null, fileManager, diagnostics, List.of("-proc:none"), null, fileManager.getJavaFileObjectsFromPaths(sources));
+            JavacTask task = (JavacTask) compiler.getTask(null, fileManager, diagnostics, List.of("--source", Integer.toString(Runtime.version().feature()), "--enable-preview", "-proc:none"), null, fileManager.getJavaFileObjectsFromPaths(sources));
             List<CompilationUnitTree> compilationUnits = new ArrayList<>();
             task.parse().forEach(compilationUnits::add);
             for (CompilationUnitTree unit : compilationUnits) {
@@ -83,7 +83,7 @@ class JavaSourceLayoutTest {
             throw new AssertionError("A system Java compiler is required to inspect production source guards.");
         }
         try (StandardJavaFileManager fileManager = compiler.getStandardFileManager(null, Locale.ROOT, StandardCharsets.UTF_8)) {
-            JavacTask task = (JavacTask) compiler.getTask(null, fileManager, null, List.of("--source", Integer.toString(Runtime.version().feature()), "-proc:none"), null, fileManager.getJavaFileObjectsFromPaths(sources));
+            JavacTask task = (JavacTask) compiler.getTask(null, fileManager, null, List.of("--source", Integer.toString(Runtime.version().feature()), "--enable-preview", "-proc:none"), null, fileManager.getJavaFileObjectsFromPaths(sources));
             List<CompilationUnitTree> compilationUnits = new ArrayList<>();
             task.parse().forEach(compilationUnits::add);
             for (CompilationUnitTree unit : compilationUnits) {
