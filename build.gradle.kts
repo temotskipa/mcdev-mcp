@@ -135,6 +135,7 @@ dependencies {
     testImplementation(platform("org.junit:junit-bom:6.1.3"))
     testImplementation("org.junit.jupiter:junit-jupiter")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
+    testImplementation("org.jspecify:jspecify:1.0.0")
 }
 
 extraJavaModuleInfo {
