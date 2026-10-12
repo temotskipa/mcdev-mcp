@@ -208,17 +208,14 @@ final value class SessionControlSupport {
                 }
             }
         } catch (ExecutionException exception) {
-            Throwable failure = exception.getCause();
-            if (failure instanceof IOException) {
-                return null;
+            switch (exception.getCause()) {
+                case IOException _ -> {
+                    return null;
+                }
+                case InterruptedException interrupted -> throw interrupted;
+                case RuntimeException runtime -> throw runtime;
+                case Throwable failure -> throw new IllegalStateException(failure);
             }
-            if (failure instanceof InterruptedException interrupted) {
-                throw interrupted;
-            }
-            if (failure instanceof RuntimeException runtime) {
-                throw runtime;
-            }
-            throw new IllegalStateException(failure);
         }
     }
 
@@ -270,7 +267,7 @@ final value class SessionControlSupport {
     }
 
     static Long parseListeningPid(String output) {
-        Set<Long> pids = new LinkedHashSet<>();
+        SequencedSet<Long> pids = new LinkedHashSet<>();
         for (String line : output.split("\\R", -1)) {
             String trimmed = line.strip();
             if (trimmed.isEmpty()) {
@@ -288,7 +285,7 @@ final value class SessionControlSupport {
         if (pids.size() != 1) {
             return null;
         }
-        long pid = pids.iterator().next();
+        long pid = pids.getFirst();
         return pid > 0 ? pid : null;
     }
 

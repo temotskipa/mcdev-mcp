@@ -61,10 +61,9 @@ final class McQuitClientTool {
 
     private static ContentToolResult<Void> renderExit(ClientExitResult result, int port, Long pid, QuitClientArguments arguments) {
         String timeout = RuntimeToolSupport.nodeNumber(arguments.timeoutSeconds());
-        if (result instanceof ClientExitResult.Timeout(ClientExitResult.Phase waitingOn)) {
-            return waitingOn == ClientExitResult.Phase.PORT ? ToolResult.error("Quit was acknowledged but port " + port + " is still listening after " + timeout + "s. The game may be stuck on a save/exit prompt — ask the user to close it manually before relaunching.") : ToolResult.error("Port " + port + " closed but the client process (PID " + pid + ") is still running after " + timeout + "s — it's likely still finishing shutdown, or hung. Wait for it to exit (kill -0 " + pid + ") before relaunching.");
-        }
-        ClientExitResult.Exited exited = (ClientExitResult.Exited) result;
-        return exited.pidConfirmed() ? ToolResult.text("Client shut down — port " + port + " closed and process " + pid + " exited. Safe to relaunch immediately; use mc_wait_for_bridge to reconnect afterwards.") : ToolResult.text("Client shut down — port " + port + " closed. Couldn't resolve the client PID to also confirm process exit, and the JVM can outlive the port by a few seconds — if the launcher tracks the instance (Prism ignores --launch while the old process lives), confirm it exited (pgrep / kill -0) before relaunching. Use mc_wait_for_bridge to reconnect afterwards.");
+        return switch (result) {
+            case ClientExitResult.Timeout(ClientExitResult.Phase waitingOn) -> waitingOn == ClientExitResult.Phase.PORT ? ToolResult.error("Quit was acknowledged but port " + port + " is still listening after " + timeout + "s. The game may be stuck on a save/exit prompt — ask the user to close it manually before relaunching.") : ToolResult.error("Port " + port + " closed but the client process (PID " + pid + ") is still running after " + timeout + "s — it's likely still finishing shutdown, or hung. Wait for it to exit (kill -0 " + pid + ") before relaunching.");
+            case ClientExitResult.Exited(boolean pidConfirmed) -> pidConfirmed ? ToolResult.text("Client shut down — port " + port + " closed and process " + pid + " exited. Safe to relaunch immediately; use mc_wait_for_bridge to reconnect afterwards.") : ToolResult.text("Client shut down — port " + port + " closed. Couldn't resolve the client PID to also confirm process exit, and the JVM can outlive the port by a few seconds — if the launcher tracks the instance (Prism ignores --launch while the old process lives), confirm it exited (pgrep / kill -0) before relaunching. Use mc_wait_for_bridge to reconnect afterwards.");
+        };
     }
 }
