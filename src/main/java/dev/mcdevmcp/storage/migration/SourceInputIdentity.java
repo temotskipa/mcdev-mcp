@@ -8,7 +8,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 
-public record SourceInputIdentity(SourceArtifactIdentity remappedJar, List<SourceArtifactIdentity> classpath) {
+public value record SourceInputIdentity(SourceArtifactIdentity remappedJar, List<SourceArtifactIdentity> classpath) {
     public SourceInputIdentity {
         Objects.requireNonNull(remappedJar, "remappedJar");
         classpath = List.copyOf(classpath);

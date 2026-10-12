@@ -12,7 +12,7 @@ import java.nio.file.attribute.BasicFileAttributes;
 import java.util.HexFormat;
 import java.util.Objects;
 
-public record SourceArtifactIdentity(String path, long size, String sha256) {
+public value record SourceArtifactIdentity(String path, long size, String sha256) {
     public SourceArtifactIdentity {
         Objects.requireNonNull(path, "path");
         if (size < 0 || sha256.length() != 64 || HexFormat.of().parseHex(sha256).length != 32) {

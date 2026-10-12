@@ -13,7 +13,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.TreeMap;
 
-public record SourceProducerIdentity(String implementation, String version, SourceArtifactIdentity artifact, Map<String, String> settings, String resourcePolicy) {
+public value record SourceProducerIdentity(String implementation, String version, SourceArtifactIdentity artifact, Map<String, String> settings, String resourcePolicy) {
     public static final String JAVA_ONLY_RESOURCE_POLICY = "mcdev-java-only-v1: IResultSaver copyFile/copyEntry and archive metadata callbacks intentionally emit no resources";
 
     public SourceProducerIdentity {

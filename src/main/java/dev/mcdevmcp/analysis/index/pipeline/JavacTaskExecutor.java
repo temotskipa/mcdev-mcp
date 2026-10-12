@@ -195,7 +195,7 @@ final value class JavacTaskExecutor {
             throw new ExecutionException(new StructuredTaskScope.CancelledByTimeoutException());
         }
 
-        private record Outcome<T>(T value, Throwable failure) {
+        private value record Outcome<T>(T value, Throwable failure) {
         }
     }
 }

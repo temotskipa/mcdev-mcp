@@ -6,7 +6,7 @@ import java.nio.file.Path;
 import java.util.Objects;
 import java.util.Optional;
 
-public record InitializationResult(PreparedSources sources, IndexSummary index, String sourceIdentity, Optional<Path> retainedMigration) {
+public value record InitializationResult(PreparedSources sources, IndexSummary index, String sourceIdentity, Optional<Path> retainedMigration) {
     public InitializationResult {
         Objects.requireNonNull(sources, "sources");
         Objects.requireNonNull(index, "index");

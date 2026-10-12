@@ -18,7 +18,7 @@ import java.util.*;
  * Entries use String.compareTo UTF-16 code-unit order, without locale or Unicode normalization.
  * A present inventory always includes its root entry; an absent root has no entries.
  */
-public record SourceTreeInventory(boolean present, List<SourceInventoryEntry> entries, String sha256) {
+public value record SourceTreeInventory(boolean present, List<SourceInventoryEntry> entries, String sha256) {
     public SourceTreeInventory {
         entries = List.copyOf(entries);
         String previous = null;

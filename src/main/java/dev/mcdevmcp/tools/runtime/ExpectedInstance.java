@@ -9,7 +9,7 @@ import java.util.Optional;
 /**
  * Identity constraints used while selecting a DebugBridge instance.
  */
-record ExpectedInstance(Optional<MinecraftVersion> version, Optional<Path> gameDirectory) {
+value record ExpectedInstance(Optional<MinecraftVersion> version, Optional<Path> gameDirectory) {
     ExpectedInstance {
         Objects.requireNonNull(version, "version");
         Objects.requireNonNull(gameDirectory, "gameDirectory");

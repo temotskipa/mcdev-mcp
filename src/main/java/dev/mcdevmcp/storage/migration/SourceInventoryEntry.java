@@ -3,7 +3,7 @@ package dev.mcdevmcp.storage.migration;
 import java.nio.file.Path;
 import java.util.Objects;
 
-public record SourceInventoryEntry(String relativePath, SourceEntryKind kind, long size, String sha256) {
+public value record SourceInventoryEntry(String relativePath, SourceEntryKind kind, long size, String sha256) {
     public SourceInventoryEntry {
         Objects.requireNonNull(relativePath, "relativePath");
         Objects.requireNonNull(kind, "kind");

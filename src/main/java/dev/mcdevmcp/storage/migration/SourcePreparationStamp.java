@@ -2,7 +2,7 @@ package dev.mcdevmcp.storage.migration;
 
 import java.util.Objects;
 
-public record SourcePreparationStamp(int schemaVersion, SourceOwnership ownership, SourceProducerIdentity producer, SourceInputIdentity inputs, SourceTreeInventory inventory, SourceValidation validation) {
+public value record SourcePreparationStamp(int schemaVersion, SourceOwnership ownership, SourceProducerIdentity producer, SourceInputIdentity inputs, SourceTreeInventory inventory, SourceValidation validation) {
     public SourcePreparationStamp {
         if (schemaVersion != 1) {
             throw new IllegalArgumentException("Unsupported source preparation stamp schema: " + schemaVersion);
