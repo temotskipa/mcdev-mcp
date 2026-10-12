@@ -12,9 +12,9 @@ import dev.mcdevmcp.storage.PlatformPaths;
 import dev.mcdevmcp.storage.callgraph.CallgraphManifest;
 import dev.mcdevmcp.storage.callgraph.CallgraphPointer;
 import dev.mcdevmcp.storage.callgraph.CallgraphRepository;
-import dev.mcdevmcp.storage.h2.SymbolIndexFiles;
-import dev.mcdevmcp.storage.h2.SymbolRepository;
-import dev.mcdevmcp.storage.h2.VersionStateRepository;
+import dev.mcdevmcp.storage.symbols.SymbolIndexFiles;
+import dev.mcdevmcp.storage.symbols.SymbolRepository;
+import dev.mcdevmcp.storage.symbols.VersionStateRepository;
 import dev.mcdevmcp.storage.migration.DirectoryAliasFixture;
 import dev.mcdevmcp.storage.migration.SourceOwnership;
 import dev.mcdevmcp.storage.migration.SourceProvenance;
@@ -406,7 +406,7 @@ final class AnalysisPipelineIntegrationTest {
             assertTrue(refusal.getMessage().contains("--refresh-sources"), refusal.getMessage());
             assertEquals(malformed, Files.readString(source));
             assertEquals("original user content", Files.readString(marker));
-            assertFalse(Files.exists(paths.symbolDatabase(version)));
+            assertFalse(Files.exists(paths.symbolIndex(version)));
 
             InitializationResult initialized = pipeline.initialize(version, SourceRefreshPolicy.EXPLICIT_REFRESH, (_, _, _) -> {
             }, Cancellation.none());
@@ -418,7 +418,7 @@ final class AnalysisPipelineIntegrationTest {
             assertArrayEquals(jar, Files.readAllBytes(paths.remappedJar(version)));
             assertFalse(Files.readString(source).contains("VAR_NAMELESS_ENCLOSURE"));
             assertEquals(VersionState.READY, new VersionStateRepository(paths).state(version));
-            assertEquals(paths.sourceRoot(version).toAbsolutePath().normalize().toString(), SymbolIndexFiles.readHeader(paths.symbolDatabase(version)).sourceRoot());
+            assertEquals(paths.sourceRoot(version).toAbsolutePath().normalize().toString(), SymbolIndexFiles.readHeader(paths.symbolIndex(version)).sourceRoot());
             assertEquals(SourceOwnership.GENERATED, SourceProvenance.read(paths.versionCache(version).resolve("source-preparation.json")).orElseThrow().ownership());
 
             Path editedMarker = paths.sourceRoot(version).resolve("new-user-marker.txt");
@@ -460,7 +460,7 @@ final class AnalysisPipelineIntegrationTest {
                 rebuilding.get(10, TimeUnit.SECONDS);
                 InitializationResult refreshed = refreshing.get(20, TimeUnit.SECONDS);
                 assertTrue(Files.readString(refreshed.retainedMigration().orElseThrow().resolve("old/client").resolve(paths.sourceRoot(version).relativize(source))).contains("oldOnly"));
-                SymbolRepository repository = new SymbolRepository(paths.symbolDatabase(version));
+                SymbolRepository repository = new SymbolRepository(paths.symbolIndex(version));
                 var owner = repository.classByName(binaryName);
                 assertNotNull(owner);
                 assertNull(repository.methodNamed(owner.id(), "oldOnly"));

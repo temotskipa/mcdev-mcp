@@ -1,7 +1,7 @@
 package dev.mcdevmcp.storage.migration;
 
 import dev.mcdevmcp.storage.PlatformPaths;
-import dev.mcdevmcp.storage.h2.DatabaseLock;
+import dev.mcdevmcp.storage.symbols.IndexLock;
 import dev.mcdevmcp.storage.model.MinecraftVersion;
 
 import java.io.IOException;
@@ -18,12 +18,12 @@ public final class VersionOperationLease implements AutoCloseable {
     private static final Duration TIMEOUT = Duration.ofSeconds(30);
     private final CachePathBoundary boundary;
     private final MinecraftVersion version;
-    private final DatabaseLock lock;
+    private final IndexLock lock;
     private final boolean write;
     private final Thread owner;
     private boolean closed;
 
-    private VersionOperationLease(CachePathBoundary boundary, MinecraftVersion version, DatabaseLock lock, boolean write) {
+    private VersionOperationLease(CachePathBoundary boundary, MinecraftVersion version, IndexLock lock, boolean write) {
         this.boundary = boundary;
         this.version = version;
         this.lock = lock;
@@ -63,7 +63,7 @@ public final class VersionOperationLease implements AutoCloseable {
         Objects.requireNonNull(version, "version");
         Path key = boundary.resolve(boundary.physicalRoot().resolve("locks/analysis").resolve(version.value()).resolve("operation"));
         boundary.require(key.resolveSibling("operation.lock"));
-        DatabaseLock lock = write ? DatabaseLock.write(key, TIMEOUT) : DatabaseLock.read(key, TIMEOUT);
+        IndexLock lock = write ? IndexLock.write(key, TIMEOUT) : IndexLock.read(key, TIMEOUT);
         VersionOperationLease lease = new VersionOperationLease(boundary, version, lock, write);
         try {
             boundary.require(key.resolveSibling("operation.lock"));

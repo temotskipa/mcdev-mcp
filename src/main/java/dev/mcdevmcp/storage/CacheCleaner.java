@@ -1,7 +1,7 @@
 package dev.mcdevmcp.storage;
 
 import dev.mcdevmcp.storage.callgraph.CallgraphCleaner;
-import dev.mcdevmcp.storage.h2.IndexCleaner;
+import dev.mcdevmcp.storage.symbols.IndexCleaner;
 import dev.mcdevmcp.storage.migration.CachePathBoundary;
 import dev.mcdevmcp.storage.migration.VersionOperationLease;
 import dev.mcdevmcp.storage.model.MinecraftVersion;

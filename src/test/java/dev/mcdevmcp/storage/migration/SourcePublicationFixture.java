@@ -1,7 +1,7 @@
 package dev.mcdevmcp.storage.migration;
 
 import dev.mcdevmcp.storage.PlatformPaths;
-import dev.mcdevmcp.storage.h2.SymbolIndexFixture;
+import dev.mcdevmcp.storage.symbols.SymbolIndexFixture;
 import dev.mcdevmcp.storage.model.MinecraftVersion;
 import dev.mcdevmcp.support.Cancellation;
 
@@ -25,10 +25,10 @@ record SourcePublicationFixture(PlatformPaths paths, MinecraftVersion version, P
         Files.writeString(paths.remappedJar(version), "pinned input witness");
         SourceInputIdentity inputs = SourceInputIdentity.capture(paths.remappedJar(version), List.of(), Cancellation.none());
         if (invalidOldDatabase) {
-            Files.writeString(paths.symbolDatabase(version), "invalid old database preserved exactly");
+            Files.writeString(paths.symbolIndex(version), "invalid old database preserved exactly");
         }
         else {
-            createDatabase(paths.symbolDatabase(version), paths.sourceRoot(version), version, inputs);
+            createDatabase(paths.symbolIndex(version), paths.sourceRoot(version), version, inputs);
         }
         Files.writeString(paths.indexRoot(version).resolve("symbols.mv.db"), "index from an earlier release");
         Files.writeString(paths.indexRoot(version).resolve("symbols.jsonl.bak"), "old backup bytes");

@@ -2,24 +2,24 @@ package dev.mcdevmcp.analysis.index.pipeline;
 
 import dev.mcdevmcp.analysis.index.IndexRequest;
 import dev.mcdevmcp.analysis.index.PublishedSourceRoot;
-import dev.mcdevmcp.storage.h2.AtomicH2Database;
-import dev.mcdevmcp.storage.h2.DatabaseValidator;
-import dev.mcdevmcp.storage.h2.SymbolIndexFiles;
+import dev.mcdevmcp.storage.symbols.AtomicSymbolIndex;
+import dev.mcdevmcp.storage.symbols.IndexValidator;
+import dev.mcdevmcp.storage.symbols.SymbolIndexFiles;
 
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.*;
 
 value class SymbolIndexWriter {
-    private final AtomicH2Database databases;
-    private final DatabaseValidator beforeValidation;
+    private final AtomicSymbolIndex databases;
+    private final IndexValidator beforeValidation;
 
     SymbolIndexWriter() {
-        this(new AtomicH2Database(), _ -> {
+        this(new AtomicSymbolIndex(), _ -> {
         });
     }
 
-    SymbolIndexWriter(AtomicH2Database databases, DatabaseValidator beforeValidation) {
+    SymbolIndexWriter(AtomicSymbolIndex databases, IndexValidator beforeValidation) {
         this.databases = Objects.requireNonNull(databases, "databases");
         this.beforeValidation = Objects.requireNonNull(beforeValidation, "beforeValidation");
     }
@@ -47,7 +47,7 @@ value class SymbolIndexWriter {
         IndexCounts counts = counts(packages, index.types());
         Instant persistedBuiltAt = builtAt.truncatedTo(ChronoUnit.MICROS);
         SymbolIndexSnapshot expected = SymbolIndexSnapshot.expected(request, remappedJarSha256, persistedBuiltAt, packages, index.types(), publishedSourceRoot);
-        return databases.rebuild(request.outputDatabase(), AtomicH2Database.WRITE_LOCK_TIMEOUT, temporary -> {
+        return databases.rebuild(request.outputIndex(), AtomicSymbolIndex.WRITE_LOCK_TIMEOUT, temporary -> {
             request.cancellation().throwIfCancelled();
             SymbolIndexFiles.write(temporary, expected.toData());
             beforeValidation.validate(temporary);

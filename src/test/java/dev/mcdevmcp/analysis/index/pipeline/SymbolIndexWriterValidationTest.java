@@ -3,10 +3,10 @@ package dev.mcdevmcp.analysis.index.pipeline;
 import dev.mcdevmcp.analysis.index.IndexBuildException;
 import dev.mcdevmcp.analysis.index.IndexRequest;
 import dev.mcdevmcp.analysis.index.SourceIndexer;
-import dev.mcdevmcp.storage.h2.AtomicH2Database;
-import dev.mcdevmcp.storage.h2.DatabaseValidator;
-import dev.mcdevmcp.storage.h2.SymbolIndexData;
-import dev.mcdevmcp.storage.h2.SymbolIndexFixture;
+import dev.mcdevmcp.storage.symbols.AtomicSymbolIndex;
+import dev.mcdevmcp.storage.symbols.IndexValidator;
+import dev.mcdevmcp.storage.symbols.SymbolIndexData;
+import dev.mcdevmcp.storage.symbols.SymbolIndexFixture;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -33,12 +33,12 @@ class SymbolIndexWriterValidationTest {
         new SourceIndexer().build(request);
         byte[] original = IndexerTestSupport.bytes(database);
 
-        List<DatabaseValidator> corruptions = List.of(file -> SymbolIndexFixture.rewrite(file, data -> {
+        List<IndexValidator> corruptions = List.of(file -> SymbolIndexFixture.rewrite(file, data -> {
             SymbolIndexData.FieldRow field = data.fields().getFirst();
             return new SymbolIndexData(data.header(), data.packages(), data.types(), List.of(new SymbolIndexData.FieldRow(field.id(), 2, field.ordinal(), field.name(), field.type(), field.modifiers(), field.startOffset(), field.endOffset(), field.startLine(), field.endLine())), data.methods(), data.parameters());
         }), file -> SymbolIndexFixture.rewrite(file, data -> SymbolIndexFixture.withHeader(data, header -> new SymbolIndexData.Header(header.format(), "wrong-version", header.sourceRoot(), header.remappedJarSha256(), header.builtAt(), header.packages(), header.types(), header.fields(), header.methods(), header.parameters()))));
-        for (DatabaseValidator corruption : corruptions) {
-            SymbolIndexWriter writer = new SymbolIndexWriter(new AtomicH2Database(), corruption);
+        for (IndexValidator corruption : corruptions) {
+            SymbolIndexWriter writer = new SymbolIndexWriter(new AtomicSymbolIndex(), corruption);
             assertThrows(IndexBuildException.class, () -> new SourceIndexPipeline(new JavacSourceParser(), writer).build(request));
             assertArrayEquals(original, IndexerTestSupport.bytes(database));
         }

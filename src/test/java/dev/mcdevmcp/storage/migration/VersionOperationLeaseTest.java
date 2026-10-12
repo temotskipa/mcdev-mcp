@@ -2,7 +2,7 @@ package dev.mcdevmcp.storage.migration;
 
 import dev.mcdevmcp.storage.CacheCleaner;
 import dev.mcdevmcp.storage.PlatformPaths;
-import dev.mcdevmcp.storage.h2.VersionStateRepository;
+import dev.mcdevmcp.storage.symbols.VersionStateRepository;
 import dev.mcdevmcp.storage.model.MinecraftVersion;
 import dev.mcdevmcp.storage.model.VersionState;
 import org.junit.jupiter.api.Test;

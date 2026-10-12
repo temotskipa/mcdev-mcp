@@ -3,7 +3,7 @@ package dev.mcdevmcp.tools.statictool;
 import dev.mcdevmcp.mcp.tool.ToolDeclaration;
 import dev.mcdevmcp.mcp.tool.api.ToolBinding;
 import dev.mcdevmcp.mcp.tool.api.ToolResult;
-import dev.mcdevmcp.storage.h2.SymbolRepository;
+import dev.mcdevmcp.storage.symbols.SymbolRepository;
 import dev.mcdevmcp.storage.model.ClassSymbol;
 import dev.mcdevmcp.storage.model.ElementKindCodec;
 import dev.mcdevmcp.storage.model.FieldSymbol;

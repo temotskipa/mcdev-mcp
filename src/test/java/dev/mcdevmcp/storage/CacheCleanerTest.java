@@ -35,24 +35,24 @@ final class CacheCleanerTest {
     }
 
     @Test
-    void cacheOnlyPreservesH2AndCallgraphIndexes() throws Exception {
+    void cacheOnlyPreservesSymbolAndCallgraphIndexes() throws Exception {
         PlatformPaths paths = new PlatformPaths(Files.createTempDirectory("cache-only"));
         MinecraftVersion version = new MinecraftVersion("1.21.11");
         Path client = paths.versionCache(version).resolve("client/source.java");
         Path callgraph = paths.callgraphBundle(version).resolve("publication.lock");
-        Path database = paths.symbolDatabase(version);
+        Path database = paths.symbolIndex(version);
         Files.createDirectories(client.getParent());
         Files.createDirectories(callgraph.getParent());
         Files.createDirectories(database.getParent());
         Files.writeString(client, "source");
         Files.writeString(callgraph, "lock");
-        Files.writeString(database, "h2");
+        Files.writeString(database, "index");
 
         new CacheCleaner(paths).cleanCache(version);
 
         assertFalse(Files.exists(client));
         assertTrue(Files.exists(callgraph));
-        assertEquals("h2", Files.readString(database));
+        assertEquals("index", Files.readString(database));
     }
 
     @Test
@@ -84,17 +84,17 @@ final class CacheCleanerTest {
     }
 
     @Test
-    void allCleanupPreflightsCacheBeforeDeletingTheH2Index() throws Exception {
+    void allCleanupPreflightsCacheBeforeDeletingTheSymbolIndex() throws Exception {
         PlatformPaths paths = new PlatformPaths(Files.createTempDirectory("cache-all-linked"));
         MinecraftVersion version = new MinecraftVersion("1.21.11");
         Path outside = Files.createTempDirectory("cache-all-linked-outside");
-        Path database = paths.symbolDatabase(version);
+        Path database = paths.symbolIndex(version);
         Files.createDirectories(paths.versionCache(version));
         Files.createDirectories(database.getParent());
-        Files.writeString(database, "h2");
+        Files.writeString(database, "index");
         createSymbolicLinkOrSkip(paths.versionCache(version).resolve("linked"), outside);
 
         assertThrows(IOException.class, () -> new CacheCleaner(paths).cleanAll(version));
-        assertEquals("h2", Files.readString(database));
+        assertEquals("index", Files.readString(database));
     }
 }

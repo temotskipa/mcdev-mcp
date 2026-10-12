@@ -7,7 +7,7 @@ import dev.mcdevmcp.support.ProgressSink;
 import java.nio.file.Path;
 import java.util.*;
 
-public value record IndexRequest(MinecraftVersion minecraftVersion, List<SourceRoot> sourceRoots, Path remappedJar, List<Path> classpath, Path outputDatabase, int threads, ProgressSink progress, Cancellation cancellation) {
+public value record IndexRequest(MinecraftVersion minecraftVersion, List<SourceRoot> sourceRoots, Path remappedJar, List<Path> classpath, Path outputIndex, int threads, ProgressSink progress, Cancellation cancellation) {
     public static final String THREADS_ENVIRONMENT_VARIABLE = "MCDEV_INDEX_THREADS";
 
     public IndexRequest {
@@ -18,7 +18,7 @@ public value record IndexRequest(MinecraftVersion minecraftVersion, List<SourceR
         if (classpath.contains(remappedJar)) {
             throw new IllegalArgumentException("Classpath duplicates remappedJar: " + remappedJar);
         }
-        outputDatabase = normalize(outputDatabase, "outputDatabase");
+        outputIndex = normalize(outputIndex, "outputIndex");
         if (threads < 1) {
             throw new IllegalArgumentException("threads must be positive: " + threads);
         }

@@ -4,8 +4,8 @@ import dev.mcdevmcp.mcp.tool.api.ContentToolResult;
 import dev.mcdevmcp.mcp.tool.api.ToolResult;
 import dev.mcdevmcp.storage.PlatformPaths;
 import dev.mcdevmcp.storage.callgraph.CallgraphRepository;
-import dev.mcdevmcp.storage.h2.SymbolRepository;
-import dev.mcdevmcp.storage.h2.VersionStateRepository;
+import dev.mcdevmcp.storage.symbols.SymbolRepository;
+import dev.mcdevmcp.storage.symbols.VersionStateRepository;
 import dev.mcdevmcp.storage.migration.VersionOperationLease;
 import dev.mcdevmcp.storage.model.ClassSymbol;
 import dev.mcdevmcp.storage.model.MinecraftVersion;
@@ -112,7 +112,7 @@ final class StaticToolSupport {
 
     SymbolRepository repository(VersionOperationLease lease) throws IOException {
         lease.require(paths, lease.version());
-        Path database = lease.boundary().require(lease.resolvedPaths().symbolDatabase(lease.version()));
+        Path database = lease.boundary().require(lease.resolvedPaths().symbolIndex(lease.version()));
         lease.boundary().require(database.resolveSibling(database.getFileName() + ".lock"));
         return new SymbolRepository(database);
     }

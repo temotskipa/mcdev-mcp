@@ -3,8 +3,8 @@ package dev.mcdevmcp.parity;
 import dev.mcdevmcp.storage.PlatformPaths;
 import dev.mcdevmcp.storage.callgraph.CallgraphBundleTestSupport;
 import dev.mcdevmcp.storage.callgraph.CallgraphDataRecord;
-import dev.mcdevmcp.storage.h2.SymbolIndexData;
-import dev.mcdevmcp.storage.h2.SymbolIndexFixture;
+import dev.mcdevmcp.storage.symbols.SymbolIndexData;
+import dev.mcdevmcp.storage.symbols.SymbolIndexFixture;
 import dev.mcdevmcp.storage.model.MinecraftVersion;
 import io.modelcontextprotocol.json.McpJsonDefaults;
 
@@ -133,7 +133,7 @@ final class StaticParityFixture {
     private static void writeJavaSymbolIndex(PlatformPaths paths) throws Exception {
         List<SymbolIndexData.TypeRow> types = List.of(type(1, 1, "example.Parity", "Parity", "class", null, List.of(), "example/Parity.java", 6), type(2, 1, "example.Other", "Other", "class", null, List.of(), "example/Other.java", 2), type(3, 1, "example.Child", "Child", "class", "example.Parity", List.of(), "example/Child.java", 2), type(4, 1, "example.ChildTwo", "ChildTwo", "class", "example.Parity", List.of(), "example/ChildTwo.java", 2), type(5, 1, "example.Marker", "Marker", "interface", null, List.of(), "example/Marker.java", 2), type(6, 1, "example.Impl", "Impl", "class", null, List.of("example.Marker"), "example/Impl.java", 2), type(7, 2, "bulk.HitOne", "HitOne", "class", null, List.of(), "bulk/HitOne.java", 2), type(8, 2, "bulk.HitTwo", "HitTwo", "class", null, List.of(), "bulk/HitTwo.java", 2));
         List<SymbolIndexData.MethodRow> methods = List.of(new SymbolIndexData.MethodRow(1, 1, 0, "needle", "(Ljava/lang/String;)V", "void", "public", false, 0, 0, 4, 4), new SymbolIndexData.MethodRow(2, 1, 1, "run", "()V", "void", "public", false, 0, 0, 5, 5));
-        SymbolIndexFixture.write(paths.symbolDatabase(VERSION), VERSION, paths.sourceRoot(VERSION), "0".repeat(64), Instant.parse("2026-07-29T00:00:00Z"), List.of(SymbolIndexFixture.minecraftPackage(1, "example"), SymbolIndexFixture.minecraftPackage(2, "bulk")), types, List.of(new SymbolIndexData.FieldRow(1, 1, 0, "Needle", "int", "private", 0, 0, 3, 3)), methods, List.of(new SymbolIndexData.ParameterRow(1, 1, 0, "arg", "String", false, 0, 0, 4, 4)));
+        SymbolIndexFixture.write(paths.symbolIndex(VERSION), VERSION, paths.sourceRoot(VERSION), "0".repeat(64), Instant.parse("2026-07-29T00:00:00Z"), List.of(SymbolIndexFixture.minecraftPackage(1, "example"), SymbolIndexFixture.minecraftPackage(2, "bulk")), types, List.of(new SymbolIndexData.FieldRow(1, 1, 0, "Needle", "int", "private", 0, 0, 3, 3)), methods, List.of(new SymbolIndexData.ParameterRow(1, 1, 0, "arg", "String", false, 0, 0, 4, 4)));
     }
 
     private static SymbolIndexData.TypeRow type(long id, long packageId, String binaryName, String simpleName, String kind, String superclass, List<String> interfaces, String sourcePath, int endLine) {

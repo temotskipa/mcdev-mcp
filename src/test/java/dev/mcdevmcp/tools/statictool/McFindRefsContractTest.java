@@ -6,7 +6,7 @@ import dev.mcdevmcp.mcp.tool.api.ToolResult;
 import dev.mcdevmcp.storage.PlatformPaths;
 import dev.mcdevmcp.storage.callgraph.CallgraphBundleTestSupport;
 import dev.mcdevmcp.storage.callgraph.CallgraphDataRecord;
-import dev.mcdevmcp.storage.h2.SymbolIndexFixture;
+import dev.mcdevmcp.storage.symbols.SymbolIndexFixture;
 import dev.mcdevmcp.storage.model.MinecraftVersion;
 import dev.mcdevmcp.support.AppEnvironment;
 import dev.mcdevmcp.support.AppVersion;
@@ -62,7 +62,7 @@ class McFindRefsContractTest {
 
     private static void createSymbolDatabase(PlatformPaths paths, MinecraftVersion version) throws Exception {
         Files.createDirectories(paths.sourceRoot(version));
-        SymbolIndexFixture.writeEmpty(paths.symbolDatabase(version), version, paths.sourceRoot(version), "0".repeat(64), Instant.parse("2026-07-16T00:00:00Z"));
+        SymbolIndexFixture.writeEmpty(paths.symbolIndex(version), version, paths.sourceRoot(version), "0".repeat(64), Instant.parse("2026-07-16T00:00:00Z"));
     }
 
     private static void createPrimaryCallgraph(Path bundle) throws Exception {

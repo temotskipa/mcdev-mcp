@@ -148,8 +148,8 @@ final class CliContractTest {
         PlatformPaths paths = new PlatformPaths(temporaryDirectory.resolve("failure-cache"));
         MinecraftVersion version = new MinecraftVersion("1.21.11");
         Files.createDirectories(paths.sourceRoot(version));
-        Files.createDirectories(paths.symbolDatabase(version).getParent());
-        Files.writeString(paths.symbolDatabase(version), "fixture");
+        Files.createDirectories(paths.symbolIndex(version).getParent());
+        Files.writeString(paths.symbolIndex(version), "fixture");
 
         CliResult failure = execute(operations, paths, "callgraph", "-v", "1.21.11");
 
@@ -260,13 +260,13 @@ final class CliContractTest {
         PlatformPaths paths = new PlatformPaths(temporaryDirectory.resolve("clean-failure"));
         MinecraftVersion version = new MinecraftVersion("1.21.11");
         Path source = paths.sourceRoot(version).resolve("Example.java");
-        Path database = paths.symbolDatabase(version);
+        Path database = paths.symbolIndex(version);
         Path outside = temporaryDirectory.resolve("outside");
         Files.createDirectories(source.getParent());
         Files.createDirectories(database.getParent());
         Files.createDirectories(outside);
         Files.writeString(source, "class Example {}");
-        Files.writeString(database, "h2");
+        Files.writeString(database, "index");
         createSymbolicLinkOrSkip(paths.versionCache(version).resolve("linked"), outside);
 
         CliResult result = execute(new RecordingOperations(temporaryDirectory), paths, "clean", "--cache", "--index");

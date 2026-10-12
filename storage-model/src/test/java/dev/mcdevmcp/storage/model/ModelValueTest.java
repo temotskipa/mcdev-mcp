@@ -17,7 +17,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class ModelValueTest {
     @Test
-    void mapsOnlySupportedJdkElementKindsToStableH2WireNames() {
+    void mapsOnlySupportedJdkElementKindsToStableWireNames() {
         assertEquals("class", ElementKindCodec.wireName(ElementKind.CLASS));
         assertEquals("annotation", ElementKindCodec.wireName(ElementKind.ANNOTATION_TYPE));
         assertEquals(ElementKind.RECORD, ElementKindCodec.fromWireName("record"));

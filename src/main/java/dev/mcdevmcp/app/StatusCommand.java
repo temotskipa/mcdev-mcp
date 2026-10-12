@@ -3,7 +3,7 @@ package dev.mcdevmcp.app;
 import dev.mcdevmcp.storage.CacheCleaner;
 import dev.mcdevmcp.storage.PlatformPaths;
 import dev.mcdevmcp.storage.callgraph.CallgraphRepository;
-import dev.mcdevmcp.storage.h2.VersionStateRepository;
+import dev.mcdevmcp.storage.symbols.VersionStateRepository;
 import dev.mcdevmcp.storage.migration.CachePathBoundary;
 import dev.mcdevmcp.storage.migration.VersionOperationLease;
 import dev.mcdevmcp.storage.model.MinecraftVersion;

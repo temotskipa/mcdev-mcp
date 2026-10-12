@@ -286,6 +286,6 @@ class JavacTaskExecutorTest {
 
     private IndexRequest request(Cancellation cancellation) {
         IndexRequest base = IndexerTestSupport.request(temporaryDirectory, temporaryDirectory.resolve("unused.jar"), temporaryDirectory.resolve("unused.jsonl"), 2);
-        return new IndexRequest(base.minecraftVersion(), base.sourceRoots(), base.remappedJar(), base.classpath(), base.outputDatabase(), base.threads(), base.progress(), cancellation);
+        return new IndexRequest(base.minecraftVersion(), base.sourceRoots(), base.remappedJar(), base.classpath(), base.outputIndex(), base.threads(), base.progress(), cancellation);
     }
 }

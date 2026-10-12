@@ -76,13 +76,13 @@ class IndexerFailureAtomicityTest {
         }
         var checks = new AtomicInteger();
         IndexRequest midBuildBase = IndexerTestSupport.request(many, jar, database, 4);
-        IndexRequest midBuildCancellation = new IndexRequest(midBuildBase.minecraftVersion(), midBuildBase.sourceRoots(), midBuildBase.remappedJar(), midBuildBase.classpath(), midBuildBase.outputDatabase(), midBuildBase.threads(), midBuildBase.progress(), () -> checks.incrementAndGet() > 8);
+        IndexRequest midBuildCancellation = new IndexRequest(midBuildBase.minecraftVersion(), midBuildBase.sourceRoots(), midBuildBase.remappedJar(), midBuildBase.classpath(), midBuildBase.outputIndex(), midBuildBase.threads(), midBuildBase.progress(), () -> checks.incrementAndGet() > 8);
         IndexBuildException midBuildFailure = assertPreserved(original, database, midBuildCancellation);
         assertInstanceOf(InterruptedException.class, midBuildFailure.getCause());
         assertTrue(checks.get() > 8);
 
         IndexRequest base = IndexerTestSupport.request(valid.getParent(), jar, database, 1);
-        IndexRequest cancelled = new IndexRequest(base.minecraftVersion(), base.sourceRoots(), base.remappedJar(), base.classpath(), base.outputDatabase(), base.threads(), base.progress(), () -> true);
+        IndexRequest cancelled = new IndexRequest(base.minecraftVersion(), base.sourceRoots(), base.remappedJar(), base.classpath(), base.outputIndex(), base.threads(), base.progress(), () -> true);
         IndexBuildException cancellation = assertPreserved(original, database, cancelled);
         assertInstanceOf(InterruptedException.class, cancellation.getCause());
         assertFalse(Thread.currentThread().isInterrupted());
@@ -142,7 +142,7 @@ class IndexerFailureAtomicityTest {
             }
         });
         IndexRequest base = IndexerTestSupport.request(sourceRoot, jar, database, 1);
-        IndexRequest request = new IndexRequest(base.minecraftVersion(), base.sourceRoots(), base.remappedJar(), base.classpath(), base.outputDatabase(), base.threads(), base.progress(), cancelled::get);
+        IndexRequest request = new IndexRequest(base.minecraftVersion(), base.sourceRoots(), base.remappedJar(), base.classpath(), base.outputIndex(), base.threads(), base.progress(), cancelled::get);
         try (var executor = Executors.newSingleThreadExecutor()) {
             try {
                 var build = executor.submit(() -> new SourceIndexPipeline(parser, new SymbolIndexWriter()).build(request));

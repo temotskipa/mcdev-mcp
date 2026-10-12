@@ -1,8 +1,8 @@
 package dev.mcdevmcp.storage;
 
-import dev.mcdevmcp.storage.h2.DatabaseLock;
-import dev.mcdevmcp.storage.h2.IndexCleaner;
-import dev.mcdevmcp.storage.h2.VersionStateRepository;
+import dev.mcdevmcp.storage.symbols.IndexLock;
+import dev.mcdevmcp.storage.symbols.IndexCleaner;
+import dev.mcdevmcp.storage.symbols.VersionStateRepository;
 import dev.mcdevmcp.storage.model.FabricApiVersion;
 import dev.mcdevmcp.storage.model.MinecraftVersion;
 import dev.mcdevmcp.storage.model.VersionState;
@@ -48,7 +48,7 @@ class PlatformPathsTest {
         assertEquals(Path.of("/cache/mcdev-mcp/cache/1.21.5/callgraph/client-remapped.jar"), paths.remappedCallgraphJar(VERSION));
         assertEquals(Path.of("/cache/mcdev-mcp/cache/1.21.5/indexes/callgraph"), paths.callgraphBundle(VERSION));
         assertEquals(Path.of("/cache/mcdev-mcp/cache/fabric-api-0.120.0"), paths.fabricSourceRoot(new FabricApiVersion("0.120.0")));
-        assertEquals(Path.of("/cache/mcdev-mcp/index/1.21.5/symbols.jsonl"), paths.symbolDatabase(VERSION));
+        assertEquals(Path.of("/cache/mcdev-mcp/index/1.21.5/symbols.jsonl"), paths.symbolIndex(VERSION));
     }
 
     @ParameterizedTest
@@ -64,7 +64,7 @@ class PlatformPathsTest {
         assertTrue(paths.remappedCallgraphJar(minecraftVersion).startsWith(paths.versionCache(minecraftVersion)));
         assertTrue(paths.callgraphBundle(minecraftVersion).startsWith(paths.versionCache(minecraftVersion)));
         assertTrue(paths.indexRoot(minecraftVersion).startsWith(paths.cacheRoot()));
-        assertTrue(paths.symbolDatabase(minecraftVersion).startsWith(paths.indexRoot(minecraftVersion)));
+        assertTrue(paths.symbolIndex(minecraftVersion).startsWith(paths.indexRoot(minecraftVersion)));
         assertTrue(paths.fabricSourceRoot(fabricVersion).startsWith(paths.cacheRoot()));
     }
 
@@ -77,10 +77,10 @@ class PlatformPathsTest {
         assertTrue(states.isAbsent(VERSION));
         Files.createDirectories(paths.sourceRoot(VERSION));
         assertTrue(states.isSourceOnly(VERSION));
-        Files.createDirectories(paths.symbolDatabase(VERSION).getParent());
-        Files.writeString(paths.symbolDatabase(VERSION), "not-a-database");
-        assertFalse(states.isH2Ready(VERSION));
-        Files.delete(paths.symbolDatabase(VERSION));
+        Files.createDirectories(paths.symbolIndex(VERSION).getParent());
+        Files.writeString(paths.symbolIndex(VERSION), "not-a-database");
+        assertFalse(states.isReady(VERSION));
+        Files.delete(paths.symbolIndex(VERSION));
         Files.writeString(paths.indexRoot(VERSION).resolve("manifest.json"), "{}");
         assertTrue(states.needsRebuild(VERSION));
         Files.delete(paths.indexRoot(VERSION).resolve("manifest.json"));
@@ -95,18 +95,18 @@ class PlatformPathsTest {
         Path indexRoot = paths.indexRoot(VERSION);
         Path outside = temporaryDirectory.resolve("outside.json");
         Files.createDirectories(indexRoot.resolve("minecraft/net/minecraft"));
-        Files.writeString(paths.symbolDatabase(VERSION), "db");
-        Files.writeString(paths.symbolDatabase(VERSION).resolveSibling("symbols.lock"), "lock");
-        Files.writeString(paths.symbolDatabase(VERSION).resolveSibling("symbols.jsonl.99.tmp"), "tmp");
-        Files.writeString(paths.symbolDatabase(VERSION).resolveSibling("symbols.jsonl.bak"), "backup");
+        Files.writeString(paths.symbolIndex(VERSION), "db");
+        Files.writeString(paths.symbolIndex(VERSION).resolveSibling("symbols.lock"), "lock");
+        Files.writeString(paths.symbolIndex(VERSION).resolveSibling("symbols.jsonl.99.tmp"), "tmp");
+        Files.writeString(paths.symbolIndex(VERSION).resolveSibling("symbols.jsonl.bak"), "backup");
         Files.writeString(indexRoot.resolve("manifest.json"), "{}");
         Files.writeString(indexRoot.resolve("minecraft/net/minecraft/world.json"), "{}");
         Files.writeString(outside, "keep");
 
         new IndexCleaner(paths).cleanIndex(VERSION);
 
-        assertTrue(Files.exists(paths.symbolDatabase(VERSION).resolveSibling("symbols.jsonl.lock")));
-        assertFalse(Files.exists(paths.symbolDatabase(VERSION)));
+        assertTrue(Files.exists(paths.symbolIndex(VERSION).resolveSibling("symbols.jsonl.lock")));
+        assertFalse(Files.exists(paths.symbolIndex(VERSION)));
         assertFalse(Files.exists(indexRoot.resolve("manifest.json")));
         assertTrue(Files.exists(outside));
     }
@@ -114,12 +114,12 @@ class PlatformPathsTest {
     @Test
     void waitsForAnActiveReaderBeforeDeletingIndexArtifacts() throws Exception {
         var paths = new PlatformPaths(temporaryDirectory);
-        Path database = paths.symbolDatabase(VERSION);
+        Path database = paths.symbolIndex(VERSION);
         Files.createDirectories(database.getParent());
         Files.writeString(database, "database");
         try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
             Future<Void> clean;
-            try (var reader = DatabaseLock.read(database, Duration.ofSeconds(1))) {
+            try (var reader = IndexLock.read(database, Duration.ofSeconds(1))) {
                 assertTrue(reader.isHeld());
                 clean = executor.submit(() -> {
                     new IndexCleaner(paths).cleanIndex(VERSION);
@@ -136,12 +136,12 @@ class PlatformPathsTest {
     @Test
     void waitsForAnActiveWriterBeforeDeletingIndexArtifacts() throws Exception {
         var paths = new PlatformPaths(temporaryDirectory);
-        Path database = paths.symbolDatabase(VERSION);
+        Path database = paths.symbolIndex(VERSION);
         Files.createDirectories(database.getParent());
         Files.writeString(database, "database");
         try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
             Future<Void> clean;
-            try (var writer = DatabaseLock.write(database, Duration.ofSeconds(1))) {
+            try (var writer = IndexLock.write(database, Duration.ofSeconds(1))) {
                 assertTrue(writer.isHeld());
                 clean = executor.submit(() -> {
                     new IndexCleaner(paths).cleanIndex(VERSION);

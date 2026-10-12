@@ -2,8 +2,8 @@ package dev.mcdevmcp.app;
 
 import com.sun.net.httpserver.HttpServer;
 import dev.mcdevmcp.storage.PlatformPaths;
-import dev.mcdevmcp.storage.h2.SymbolRepository;
-import dev.mcdevmcp.storage.h2.VersionStateRepository;
+import dev.mcdevmcp.storage.symbols.SymbolRepository;
+import dev.mcdevmcp.storage.symbols.VersionStateRepository;
 import dev.mcdevmcp.storage.migration.SourceOwnership;
 import dev.mcdevmcp.storage.migration.SourcePreparationStamp;
 import dev.mcdevmcp.storage.migration.SourceProvenance;
@@ -55,7 +55,7 @@ final class SourceCacheMigrationRegressionTest {
     private static void awaitLockWait(Thread thread) throws InterruptedException {
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
         while (System.nanoTime() < deadline) {
-            if (thread.getState() == Thread.State.TIMED_WAITING && Arrays.stream(thread.getStackTrace()).anyMatch(frame -> frame.getClassName().equals("dev.mcdevmcp.storage.h2.DatabaseLock") && frame.getMethodName().equals("acquire"))) {
+            if (thread.getState() == Thread.State.TIMED_WAITING && Arrays.stream(thread.getStackTrace()).anyMatch(frame -> frame.getClassName().equals("dev.mcdevmcp.storage.symbols.IndexLock") && frame.getMethodName().equals("acquire"))) {
                 return;
             }
             //noinspection BusyWait
@@ -92,8 +92,8 @@ final class SourceCacheMigrationRegressionTest {
             PlatformPaths paths = fixture.paths();
             Files.createDirectories(paths.sourceRoot(VERSION));
             if (marker) Files.writeString(paths.sourceRoot(VERSION).resolve("user.txt"), "keep user marker");
-            Files.createDirectories(paths.symbolDatabase(VERSION).getParent());
-            Files.writeString(paths.symbolDatabase(VERSION), "keep old database");
+            Files.createDirectories(paths.symbolIndex(VERSION).getParent());
+            Files.writeString(paths.symbolIndex(VERSION), "keep old database");
             SourceTreeInventory sources = SourceTreeInventory.capture(paths.sourceRoot(VERSION), Cancellation.none());
             fixture.server().stop(0);
 
@@ -103,7 +103,7 @@ final class SourceCacheMigrationRegressionTest {
             assertTrue(result.stderr().contains("init -v 26.1 --refresh-sources to regenerate with retained originals."), result.stderr());
             assertFalse(result.stderr().contains("run init first"), result.stderr());
             assertEquals(sources, SourceTreeInventory.capture(paths.sourceRoot(VERSION), Cancellation.none()));
-            assertEquals("keep old database", Files.readString(paths.symbolDatabase(VERSION)));
+            assertEquals("keep old database", Files.readString(paths.symbolIndex(VERSION)));
             assertFalse(Files.exists(paths.cacheRoot().resolve("migrations/26.1/pending.json")));
         }
     }
@@ -124,14 +124,14 @@ final class SourceCacheMigrationRegressionTest {
             assertEquals(SOURCE, Files.readString(source));
 
             // Historically this command required existence, not index readiness.
-            Files.createDirectories(fixture.paths().symbolDatabase(VERSION).getParent());
-            Files.writeString(fixture.paths().symbolDatabase(VERSION), "historical existence sentinel");
+            Files.createDirectories(fixture.paths().symbolIndex(VERSION).getParent());
+            Files.writeString(fixture.paths().symbolIndex(VERSION), "historical existence sentinel");
             CliResult indexed = execute(fixture, "callgraph", "-v", VERSION.value());
             assertEquals(0, indexed.exitCode(), indexed.stderr());
             assertTrue(indexed.stdout().contains("Recorded 1 call edges."), indexed.stdout());
             assertEquals("", indexed.stderr());
             assertTrue(Files.exists(fixture.paths().callgraphBundle(VERSION).resolve("current.json")));
-            assertEquals("historical existence sentinel", Files.readString(fixture.paths().symbolDatabase(VERSION)));
+            assertEquals("historical existence sentinel", Files.readString(fixture.paths().symbolIndex(VERSION)));
         }
     }
 
@@ -139,7 +139,7 @@ final class SourceCacheMigrationRegressionTest {
     void globalCleanKeepsInitializerOutsideBothSelectedDeletions() throws Exception {
         try (Fixture fixture = fixture()) {
             fixture.initialize();
-            Path database = fixture.paths().symbolDatabase(VERSION);
+            Path database = fixture.paths().symbolIndex(VERSION);
             CountDownLatch cacheRemoved = new CountDownLatch(1);
             CountDownLatch releaseCleanup = new CountDownLatch(1);
             CountDownLatch initEntered = new CountDownLatch(1);
@@ -197,7 +197,7 @@ final class SourceCacheMigrationRegressionTest {
             // Simulate an older producer's integrity-matched stamp, not ownership inferred from validity.
             Files.delete(stampPath);
             SourceProvenance.write(stampPath, new SourcePreparationStamp(1, SourceOwnership.GENERATED, prior.producer(), prior.inputs(), before, prior.validation()));
-            byte[] oldIndex = Files.readAllBytes(fixture.paths().symbolDatabase(VERSION));
+            byte[] oldIndex = Files.readAllBytes(fixture.paths().symbolIndex(VERSION));
             byte[] oldStamp = Files.readAllBytes(stampPath);
             List<String> stages = new ArrayList<>();
 
@@ -220,7 +220,7 @@ final class SourceCacheMigrationRegressionTest {
         try (Fixture fixture = fixture()) {
             fixture.initialize();
             SourceTreeInventory source = SourceTreeInventory.capture(fixture.paths().sourceRoot(VERSION), Cancellation.none());
-            byte[] index = Files.readAllBytes(fixture.paths().symbolDatabase(VERSION));
+            byte[] index = Files.readAllBytes(fixture.paths().symbolIndex(VERSION));
             Path stamp = fixture.paths().versionCache(VERSION).resolve("source-preparation.json");
             byte[] provenance = Files.readAllBytes(stamp);
             AtomicBoolean cancel = new AtomicBoolean();
@@ -259,7 +259,7 @@ final class SourceCacheMigrationRegressionTest {
                 Thread.interrupted();
             }
             assertEquals(source, SourceTreeInventory.capture(fixture.paths().sourceRoot(VERSION), Cancellation.none()));
-            assertArrayEquals(index, Files.readAllBytes(fixture.paths().symbolDatabase(VERSION)));
+            assertArrayEquals(index, Files.readAllBytes(fixture.paths().symbolIndex(VERSION)));
             assertArrayEquals(provenance, Files.readAllBytes(stamp));
             assertFalse(Files.exists(fixture.paths().cacheRoot().resolve("migrations/26.1/pending.json")));
             assertEquals(VersionState.READY, new VersionStateRepository(fixture.paths()).state(VERSION));
@@ -275,7 +275,7 @@ final class SourceCacheMigrationRegressionTest {
             }, Cancellation.none());
             Path source = fixture.paths().sourceRoot(VERSION).resolve("sample/Example.java");
             Files.writeString(source, SOURCE.replace("generated", "old edited source"));
-            byte[] oldIndex = Files.readAllBytes(fixture.paths().symbolDatabase(VERSION));
+            byte[] oldIndex = Files.readAllBytes(fixture.paths().symbolIndex(VERSION));
             SourceTreeInventory oldGraph = SourceTreeInventory.capture(fixture.paths().callgraphBundle(VERSION), Cancellation.none());
             AtomicBoolean graphEntered = new AtomicBoolean();
             StringWriter output = new StringWriter();

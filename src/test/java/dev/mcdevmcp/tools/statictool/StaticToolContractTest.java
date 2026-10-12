@@ -6,8 +6,8 @@ import dev.mcdevmcp.mcp.tool.ToolCatalog;
 import dev.mcdevmcp.mcp.tool.api.ToolBinding;
 import dev.mcdevmcp.mcp.tool.api.ToolResult;
 import dev.mcdevmcp.storage.PlatformPaths;
-import dev.mcdevmcp.storage.h2.SymbolIndexData;
-import dev.mcdevmcp.storage.h2.SymbolIndexFixture;
+import dev.mcdevmcp.storage.symbols.SymbolIndexData;
+import dev.mcdevmcp.storage.symbols.SymbolIndexFixture;
 import dev.mcdevmcp.storage.migration.DirectoryAliasFixture;
 import dev.mcdevmcp.storage.migration.VersionOperationLease;
 import dev.mcdevmcp.storage.model.ClassSymbol;
@@ -135,12 +135,12 @@ class StaticToolContractTest {
         types.add(type(id, 6, "fabric", "0.102.0+1.21.5", "net.fabricmc.fabric.api.FabricThing", "FabricThing", "class", null, List.of(), "FabricThing.java", 1, 1));
         List<SymbolIndexData.PackageRow> packages = List.of(SymbolIndexFixture.minecraftPackage(1, "alpha"), SymbolIndexFixture.minecraftPackage(2, "beta"), SymbolIndexFixture.minecraftPackage(3, "gamma"), SymbolIndexFixture.minecraftPackage(4, "bulk"), SymbolIndexFixture.minecraftPackage(5, "hierarchy"), new SymbolIndexData.PackageRow(6, "fabric", "0.102.0+1.21.5", "net.fabricmc.fabric.api"));
         List<SymbolIndexData.MethodRow> methods = List.of(new SymbolIndexData.MethodRow(1, 1, 0, "needle", "(Ljava/lang/String;)V", "void", "public", false, 51, 85, 4, 4), new SymbolIndexData.MethodRow(2, 1, 1, "Needle", "()V", "void", "public", false, 90, 112, 5, 5), new SymbolIndexData.MethodRow(3, 2, 0, "ConstructorOnly", "()V", null, "public", true, 44, 70, 3, 3));
-        SymbolIndexFixture.write(paths.symbolDatabase(VERSION), VERSION, sourceRoot, "0".repeat(64), Instant.parse("2026-07-16T00:00:00Z"), packages, types, List.of(new SymbolIndexData.FieldRow(1, 1, 0, "Needle", "int", "private", 27, 46, 3, 3)), methods, List.of(new SymbolIndexData.ParameterRow(1, 1, 0, "arg", "String", false, 70, 80, 4, 4)));
+        SymbolIndexFixture.write(paths.symbolIndex(VERSION), VERSION, sourceRoot, "0".repeat(64), Instant.parse("2026-07-16T00:00:00Z"), packages, types, List.of(new SymbolIndexData.FieldRow(1, 1, 0, "Needle", "int", "private", 27, 46, 3, 3)), methods, List.of(new SymbolIndexData.ParameterRow(1, 1, 0, "arg", "String", false, 70, 80, 4, 4)));
     }
 
     private static void createOtherDatabase(PlatformPaths paths) throws Exception {
         MinecraftVersion otherVersion = new MinecraftVersion("1.21.6");
-        SymbolIndexFixture.write(paths.symbolDatabase(otherVersion), otherVersion, paths.sourceRoot(otherVersion), "0".repeat(64), Instant.parse("2026-07-16T00:00:00Z"), List.of(SymbolIndexFixture.minecraftPackage(1, "other")), List.of(new SymbolIndexData.TypeRow(1, 1, "minecraft", null, "other.Other", "Other", "class", null, List.of(), "other/Other.java", 0, 37, 2, 2)), List.of(), List.of(), List.of());
+        SymbolIndexFixture.write(paths.symbolIndex(otherVersion), otherVersion, paths.sourceRoot(otherVersion), "0".repeat(64), Instant.parse("2026-07-16T00:00:00Z"), List.of(SymbolIndexFixture.minecraftPackage(1, "other")), List.of(new SymbolIndexData.TypeRow(1, 1, "minecraft", null, "other.Other", "Other", "class", null, List.of(), "other/Other.java", 0, 37, 2, 2)), List.of(), List.of(), List.of());
     }
 
     private static SymbolIndexData.TypeRow type(long id, long packageId, String namespace, String fabricVersion, String binaryName, String simpleName, String kind, String superclass, List<String> interfaces, String sourcePath, int startLine, int endLine) {
@@ -276,7 +276,7 @@ class StaticToolContractTest {
         assertEquals("Method \"needle\" not found in class alpha.Alpha", text(catalog, "mc_get_method", Map.of("className", "alpha.Alpha", "methodName", "needle")));
 
         Files.writeString(paths.sourceRoot(VERSION).resolve("alpha/Alpha.java"), "package alpha;\npublic class Alpha { }\n");
-        SymbolIndexFixture.rewrite(paths.symbolDatabase(VERSION), data -> new SymbolIndexData(data.header(), data.packages(), data.types().stream().map(row -> row.binaryName().equals("alpha.Alpha") ? new SymbolIndexData.TypeRow(row.id(), row.packageId(), row.namespace(), row.fabricApiVersion(), row.binaryName(), row.simpleName(), row.kind(), row.superclass(), row.interfaces(), "../escape.java", row.startOffset(), row.endOffset(), row.startLine(), row.endLine()) : row).toList(), data.fields(), data.methods(), data.parameters()));
+        SymbolIndexFixture.rewrite(paths.symbolIndex(VERSION), data -> new SymbolIndexData(data.header(), data.packages(), data.types().stream().map(row -> row.binaryName().equals("alpha.Alpha") ? new SymbolIndexData.TypeRow(row.id(), row.packageId(), row.namespace(), row.fabricApiVersion(), row.binaryName(), row.simpleName(), row.kind(), row.superclass(), row.interfaces(), "../escape.java", row.startOffset(), row.endOffset(), row.startLine(), row.endLine()) : row).toList(), data.fields(), data.methods(), data.parameters()));
         ToolResult<?> result = catalog.dispatch("mc_get_class", Map.of("className", "alpha.Alpha"), Cancellation.none()).toCompletableFuture().join();
         assertTrue(result.isError());
         assertEquals("Error executing mc_get_class: Unsafe indexed source path: " + Path.of("..", "escape.java"), contentText(result));
@@ -354,7 +354,7 @@ class StaticToolContractTest {
         PlatformPaths second = fixture(temporaryDirectory.resolve("second/cache-root"));
         Path secondSource = second.sourceRoot(VERSION).resolve("alpha/Alpha.java");
         Files.writeString(secondSource, Files.readString(secondSource).replace("String arg", "String replacement"));
-        SymbolIndexFixture.rewrite(second.symbolDatabase(VERSION), data -> new SymbolIndexData(data.header(), data.packages(), data.types(), data.fields(), data.methods(), data.parameters().stream().map(row -> row.methodId() == 1 ? new SymbolIndexData.ParameterRow(row.id(), row.methodId(), row.ordinal(), "replacement", row.type(), row.varargs(), row.startOffset(), row.endOffset(), row.startLine(), row.endLine()) : row).toList()));
+        SymbolIndexFixture.rewrite(second.symbolIndex(VERSION), data -> new SymbolIndexData(data.header(), data.packages(), data.types(), data.fields(), data.methods(), data.parameters().stream().map(row -> row.methodId() == 1 ? new SymbolIndexData.ParameterRow(row.id(), row.methodId(), row.ordinal(), "replacement", row.type(), row.varargs(), row.startOffset(), row.endOffset(), row.startLine(), row.endLine()) : row).toList()));
         Map<String, Object> arguments = Map.of("className", "alpha.Alpha", "methodName", "needle", "version", VERSION.value());
         String oldExpected = text(catalog(first), "mc_get_method", arguments);
         String newExpected = text(catalog(second), "mc_get_method", arguments);

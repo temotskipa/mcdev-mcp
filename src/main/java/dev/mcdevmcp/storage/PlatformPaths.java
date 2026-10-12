@@ -51,7 +51,7 @@ public value record PlatformPaths(Path cacheRoot) {
         return cacheRoot.resolve("cache").resolve("fabric-api-" + version.value());
     }
 
-    public Path symbolDatabase(MinecraftVersion version) {
+    public Path symbolIndex(MinecraftVersion version) {
         return indexRoot(version).resolve("symbols.jsonl");
     }
 

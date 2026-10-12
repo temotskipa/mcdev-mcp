@@ -2,8 +2,8 @@ package dev.mcdevmcp.analysis.index.pipeline;
 
 import dev.mcdevmcp.analysis.index.IndexRequest;
 import dev.mcdevmcp.analysis.index.SourceRoot;
-import dev.mcdevmcp.storage.h2.SymbolIndexData;
-import dev.mcdevmcp.storage.h2.SymbolIndexFiles;
+import dev.mcdevmcp.storage.symbols.SymbolIndexData;
+import dev.mcdevmcp.storage.symbols.SymbolIndexFiles;
 import dev.mcdevmcp.storage.model.MinecraftVersion;
 import dev.mcdevmcp.storage.model.SourceNamespace;
 import dev.mcdevmcp.support.Cancellation;
@@ -25,12 +25,12 @@ final class IndexerTestSupport {
     private IndexerTestSupport() {
     }
 
-    static IndexRequest request(Path sourceRoot, Path remappedJar, Path outputDatabase, int threads) {
-        return request(List.of(new SourceRoot(SourceNamespace.MINECRAFT, Optional.empty(), sourceRoot)), remappedJar, List.of(), outputDatabase, threads);
+    static IndexRequest request(Path sourceRoot, Path remappedJar, Path outputIndex, int threads) {
+        return request(List.of(new SourceRoot(SourceNamespace.MINECRAFT, Optional.empty(), sourceRoot)), remappedJar, List.of(), outputIndex, threads);
     }
 
-    static IndexRequest request(List<SourceRoot> sourceRoots, Path remappedJar, List<Path> classpath, Path outputDatabase, int threads) {
-        return new IndexRequest(new MinecraftVersion("1.21.5"), sourceRoots, remappedJar, classpath, outputDatabase, threads, (_, _, _) -> {
+    static IndexRequest request(List<SourceRoot> sourceRoots, Path remappedJar, List<Path> classpath, Path outputIndex, int threads) {
+        return new IndexRequest(new MinecraftVersion("1.21.5"), sourceRoots, remappedJar, classpath, outputIndex, threads, (_, _, _) -> {
         }, Cancellation.none());
     }
 

@@ -3,7 +3,7 @@ package dev.mcdevmcp.analysis.index.pipeline;
 import dev.mcdevmcp.analysis.index.IndexBuildEvidence;
 import dev.mcdevmcp.analysis.index.IndexBuildException;
 import dev.mcdevmcp.analysis.index.SourceIndexer;
-import dev.mcdevmcp.storage.h2.AtomicH2Database;
+import dev.mcdevmcp.storage.symbols.AtomicSymbolIndex;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -93,7 +93,7 @@ class CompleteCompilerDiagnosticsTest {
         Path sourceRoot = Files.createDirectories(temporaryDirectory.resolve("replacement"));
         writeRepeatedBody(sourceRoot, "Replacement", "missing();");
         AtomicBoolean writerEntered = new AtomicBoolean();
-        SymbolIndexWriter writer = new SymbolIndexWriter(new AtomicH2Database(), _ -> writerEntered.set(true));
+        SymbolIndexWriter writer = new SymbolIndexWriter(new AtomicSymbolIndex(), _ -> writerEntered.set(true));
         OutOfMemoryError failure = new OutOfMemoryError("injected evidence materialization failure");
         SourceIndexPipeline pipeline = new SourceIndexPipeline(new JavacSourceParser(), writer, () -> {
             throw failure;

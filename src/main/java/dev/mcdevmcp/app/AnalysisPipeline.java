@@ -307,7 +307,7 @@ public final class AnalysisPipeline implements AnalysisOperations {
             }
             List<Path> classpath = cachedClasspath(paths, boundary, version, cancellation);
             List<SourceRoot> sourceRoots = List.of(new SourceRoot(SourceNamespace.MINECRAFT, Optional.empty(), source));
-            Path database = boundary.require(paths.symbolDatabase(version));
+            Path database = boundary.require(paths.symbolIndex(version));
             SourceTreeInventory.capture(database.getParent(), boundary, cancellation);
             return indexer.build(new IndexRequest(version, sourceRoots, remapped, classpath, database, threads, progress, cancellation));
         } catch (Exception exception) {
@@ -347,7 +347,7 @@ public final class AnalysisPipeline implements AnalysisOperations {
             sourceTransactions.recover(paths, version, lease);
             checkCancelled(cancellation);
             requireCachedSources(paths, boundary, version, cancellation);
-            if (!Files.isRegularFile(boundary.require(paths.symbolDatabase(version)), LinkOption.NOFOLLOW_LINKS)) {
+            if (!Files.isRegularFile(boundary.require(paths.symbolIndex(version)), LinkOption.NOFOLLOW_LINKS)) {
                 throw new IllegalStateException("Minecraft %s not indexed. Run 'init -v %s' first.".formatted(version.value(), version.value()));
             }
             Path remapped = cachedRemappedJar(paths, boundary, version, cancellation);

@@ -43,12 +43,12 @@ class IndexRequestTest {
         assertEquals(1, request.sourceRoots().size());
         assertEquals(temporaryDirectory.resolve("lib/dependency.jar").toAbsolutePath().normalize(), request.classpath().getFirst());
         assertThrows(UnsupportedOperationException.class, () -> request.classpath().add(Path.of("other.jar")));
-        assertThrows(IllegalArgumentException.class, () -> new IndexRequest(request.minecraftVersion(), List.of(request.sourceRoots().getFirst(), request.sourceRoots().getFirst()), request.remappedJar(), List.of(), request.outputDatabase(), 1, request.progress(), request.cancellation()));
+        assertThrows(IllegalArgumentException.class, () -> new IndexRequest(request.minecraftVersion(), List.of(request.sourceRoots().getFirst(), request.sourceRoots().getFirst()), request.remappedJar(), List.of(), request.outputIndex(), 1, request.progress(), request.cancellation()));
         SourceRoot duplicateIdentity = new SourceRoot(SourceNamespace.MINECRAFT, Optional.empty(), temporaryDirectory.resolve("other-sources"));
-        assertThrows(IllegalArgumentException.class, () -> new IndexRequest(request.minecraftVersion(), List.of(request.sourceRoots().getFirst(), duplicateIdentity), request.remappedJar(), List.of(), request.outputDatabase(), 1, request.progress(), request.cancellation()));
-        assertThrows(IllegalArgumentException.class, () -> new IndexRequest(request.minecraftVersion(), request.sourceRoots(), request.remappedJar(), List.of(Path.of("a.jar"), Path.of("a.jar")), request.outputDatabase(), 1, request.progress(), request.cancellation()));
-        assertThrows(IllegalArgumentException.class, () -> new IndexRequest(request.minecraftVersion(), request.sourceRoots(), request.remappedJar(), List.of(request.remappedJar()), request.outputDatabase(), 1, request.progress(), request.cancellation()));
-        assertThrows(IllegalArgumentException.class, () -> new IndexRequest(request.minecraftVersion(), request.sourceRoots(), request.remappedJar(), List.of(), request.outputDatabase(), 0, request.progress(), request.cancellation()));
+        assertThrows(IllegalArgumentException.class, () -> new IndexRequest(request.minecraftVersion(), List.of(request.sourceRoots().getFirst(), duplicateIdentity), request.remappedJar(), List.of(), request.outputIndex(), 1, request.progress(), request.cancellation()));
+        assertThrows(IllegalArgumentException.class, () -> new IndexRequest(request.minecraftVersion(), request.sourceRoots(), request.remappedJar(), List.of(Path.of("a.jar"), Path.of("a.jar")), request.outputIndex(), 1, request.progress(), request.cancellation()));
+        assertThrows(IllegalArgumentException.class, () -> new IndexRequest(request.minecraftVersion(), request.sourceRoots(), request.remappedJar(), List.of(request.remappedJar()), request.outputIndex(), 1, request.progress(), request.cancellation()));
+        assertThrows(IllegalArgumentException.class, () -> new IndexRequest(request.minecraftVersion(), request.sourceRoots(), request.remappedJar(), List.of(), request.outputIndex(), 0, request.progress(), request.cancellation()));
     }
 
     @Test

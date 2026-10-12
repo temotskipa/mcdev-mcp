@@ -1,10 +1,10 @@
 package dev.mcdevmcp.storage.migration;
 
 import dev.mcdevmcp.storage.PlatformPaths;
-import dev.mcdevmcp.storage.h2.AtomicH2Database;
-import dev.mcdevmcp.storage.h2.DatabaseLock;
-import dev.mcdevmcp.storage.h2.SymbolIndexData;
-import dev.mcdevmcp.storage.h2.SymbolIndexFiles;
+import dev.mcdevmcp.storage.symbols.AtomicSymbolIndex;
+import dev.mcdevmcp.storage.symbols.IndexLock;
+import dev.mcdevmcp.storage.symbols.SymbolIndexData;
+import dev.mcdevmcp.storage.symbols.SymbolIndexFiles;
 import dev.mcdevmcp.storage.model.MinecraftVersion;
 import dev.mcdevmcp.storage.model.SourceNamespace;
 import dev.mcdevmcp.support.Cancellation;
@@ -191,7 +191,7 @@ public final class SourceIndexTransactionPublisher {
                 if (mode == SourcePublicationMode.REPLACE_SOURCES) move(candidateSource, paths.sourceRoot(version));
                 verify(source, inventory(paths.sourceRoot(version), cancellation), "Installed source differs");
                 journal = advance(paths, version, transaction, journal, SourcePublicationPhase.INSTALLING_DATABASE, cancellation);
-                move(candidateDatabase, paths.symbolDatabase(version));
+                move(candidateDatabase, paths.symbolIndex(version));
                 journal = advance(paths, version, transaction, journal, SourcePublicationPhase.INSTALLING_STAMP, cancellation);
                 move(candidateStamp, stampPath(paths, version));
                 journal = advance(paths, version, transaction, journal, SourcePublicationPhase.VALIDATING_PAIR, cancellation);
@@ -325,7 +325,7 @@ public final class SourceIndexTransactionPublisher {
 
     private void validateCommitted(PlatformPaths paths, MinecraftVersion version, Path transaction, SourcePublicationJournal journal) throws IOException {
         verify(journal.candidate(), capture(paths, version, Cancellation.none()), "Published pair identity differs");
-        validatePair(paths, version, paths.sourceRoot(version), paths.symbolDatabase(version), stampPath(paths, version), journal.candidate().source());
+        validatePair(paths, version, paths.sourceRoot(version), paths.symbolIndex(version), stampPath(paths, version), journal.candidate().source());
         verifyRetained(transaction, journal.before());
         if (journal.mode() == SourcePublicationMode.REPLACE_SOURCES) {
             verify(journal.before().source(), inventory(transaction.resolve("held/client"), Cancellation.none()), "Held original source changed");
@@ -571,11 +571,11 @@ public final class SourceIndexTransactionPublisher {
         return Objects.requireNonNull(boundary, "Publication requires an explicit cache boundary").resolve(path);
     }
 
-    private DatabaseLock canonicalDatabaseLock(PlatformPaths paths, MinecraftVersion version) throws IOException {
-        Path database = checked(paths.symbolDatabase(version));
+    private IndexLock canonicalDatabaseLock(PlatformPaths paths, MinecraftVersion version) throws IOException {
+        Path database = checked(paths.symbolIndex(version));
         Path lockPath = database.resolveSibling(database.getFileName() + ".lock");
         checked(lockPath);
-        DatabaseLock lock = DatabaseLock.write(database, AtomicH2Database.WRITE_LOCK_TIMEOUT);
+        IndexLock lock = IndexLock.write(database, AtomicSymbolIndex.WRITE_LOCK_TIMEOUT);
         try {
             checked(lockPath);
             return lock;

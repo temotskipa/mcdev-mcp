@@ -29,7 +29,7 @@ class SourceIndexerIntegrationTest {
     }
 
     private static IndexRequest withProgress(IndexRequest base, List<String> progress) {
-        return new IndexRequest(base.minecraftVersion(), base.sourceRoots(), base.remappedJar(), base.classpath(), base.outputDatabase(), base.threads(), (_, _, message) -> progress.add(message), base.cancellation());
+        return new IndexRequest(base.minecraftVersion(), base.sourceRoots(), base.remappedJar(), base.classpath(), base.outputIndex(), base.threads(), (_, _, message) -> progress.add(message), base.cancellation());
     }
 
     @Test
@@ -161,7 +161,7 @@ class SourceIndexerIntegrationTest {
         Path database = temporaryDirectory.resolve("body.jsonl");
         var progress = new ArrayList<String>();
         IndexRequest base = IndexerTestSupport.request(root, jar, database, 1);
-        IndexRequest request = new IndexRequest(base.minecraftVersion(), base.sourceRoots(), base.remappedJar(), base.classpath(), base.outputDatabase(), base.threads(), (_, _, message) -> progress.add(message), base.cancellation());
+        IndexRequest request = new IndexRequest(base.minecraftVersion(), base.sourceRoots(), base.remappedJar(), base.classpath(), base.outputIndex(), base.threads(), (_, _, message) -> progress.add(message), base.cancellation());
 
         IndexSummary summary = new SourceIndexer().build(request);
 

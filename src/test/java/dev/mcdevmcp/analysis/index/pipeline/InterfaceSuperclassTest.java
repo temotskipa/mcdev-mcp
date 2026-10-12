@@ -5,8 +5,8 @@ import dev.mcdevmcp.analysis.index.SourceIndexer;
 import dev.mcdevmcp.mcp.tool.CompleteToolBindings;
 import dev.mcdevmcp.mcp.tool.ToolCatalog;
 import dev.mcdevmcp.storage.PlatformPaths;
-import dev.mcdevmcp.storage.h2.SymbolIndexFiles;
-import dev.mcdevmcp.storage.h2.SymbolRepository;
+import dev.mcdevmcp.storage.symbols.SymbolIndexFiles;
+import dev.mcdevmcp.storage.symbols.SymbolRepository;
 import dev.mcdevmcp.storage.model.MinecraftVersion;
 import dev.mcdevmcp.support.AppEnvironment;
 import dev.mcdevmcp.support.Cancellation;
@@ -92,13 +92,13 @@ class InterfaceSuperclassTest {
     @ValueSource(booleans = {true, false})
     void indexedHierarchyStoresAndHydratesLanguageSuperclasses(boolean catalogBacked) throws Exception {
         PlatformPaths paths = index(catalogBacked);
-        var repository = new SymbolRepository(paths.symbolDatabase(VERSION));
+        var repository = new SymbolRepository(paths.symbolIndex(VERSION));
         for (String name : INTERFACES) {
             var type = repository.classByName("hierarchy." + name);
             assertNotNull(type);
             assertEquals(name.equals("Mark") ? ElementKind.ANNOTATION_TYPE : ElementKind.INTERFACE, type.kind());
             assertEquals(Optional.empty(), type.superclassBinaryName(), name);
-            assertNull(SymbolIndexFiles.read(paths.symbolDatabase(VERSION)).types().stream().filter(row -> row.binaryName().equals(type.binaryName())).findFirst().orElseThrow().superclass(), name);
+            assertNull(SymbolIndexFiles.read(paths.symbolIndex(VERSION)).types().stream().filter(row -> row.binaryName().equals(type.binaryName())).findFirst().orElseThrow().superclass(), name);
         }
         assertEquals(List.of(), Objects.requireNonNull(repository.classByName("hierarchy.Parent")).interfaceBinaryNames());
         assertEquals(List.of(), Objects.requireNonNull(repository.classByName("hierarchy.Extra")).interfaceBinaryNames());
@@ -155,7 +155,7 @@ class InterfaceSuperclassTest {
             Files.writeString(file, source.getValue());
         }
         Path jar = IndexerTestSupport.createJar(temporaryDirectory.resolve("catalog.jar"), catalogBacked ? SOURCES : Map.of());
-        new SourceIndexer().build(IndexerTestSupport.request(sourceRoot, jar, paths.symbolDatabase(VERSION), 1));
+        new SourceIndexer().build(IndexerTestSupport.request(sourceRoot, jar, paths.symbolIndex(VERSION), 1));
         return paths;
     }
 }
