@@ -6,6 +6,7 @@ import dev.mcdevmcp.analysis.callgraph.CallgraphSummary;
 import dev.mcdevmcp.analysis.decompile.*;
 import dev.mcdevmcp.analysis.index.*;
 import dev.mcdevmcp.storage.PlatformPaths;
+import dev.mcdevmcp.storage.bundle.BundleFiles;
 import dev.mcdevmcp.storage.migration.*;
 import dev.mcdevmcp.storage.model.MinecraftVersion;
 import dev.mcdevmcp.storage.model.SourceNamespace;
@@ -246,44 +247,63 @@ public final class AnalysisPipeline implements AnalysisOperations {
                 throw sourceRefreshRequired(version, validation);
             }
             Path transaction = boundary.require(paths.cacheRoot().resolve("migrations").resolve(version.value()).resolve(UUID.randomUUID().toString()));
-            Path candidate = Files.createDirectories(boundary.require(transaction.resolve("candidate")));
-            Path candidateSource = paths.sourceRoot(version);
-            SourceTreeInventory candidateInventory = before.source();
-            SourcePreparationStamp stamp;
-            SourcePublicationMode mode;
-            if (selection == SourceSelection.GENERATE) {
-                if (before.source().present()) {
-                    progress.report("migration", 0, "Regenerating sources with retained originals; do not edit this cache during migration");
+            boolean handedOver = false;
+            try {
+                Path candidate = Files.createDirectories(boundary.require(transaction.resolve("candidate")));
+                Path candidateSource = paths.sourceRoot(version);
+                SourceTreeInventory candidateInventory = before.source();
+                SourcePreparationStamp stamp;
+                SourcePublicationMode mode;
+                if (selection == SourceSelection.GENERATE) {
+                    if (before.source().present()) {
+                        progress.report("migration", 0, "Regenerating sources with retained originals; do not edit this cache during migration");
+                    }
+                    candidateSource = boundary.require(candidate.resolve("client"));
+                    decompiler.decompile(prepared.remappedJar(), candidateSource, progress, cancellation);
+                    validation = sourceValidator.validate(candidateSource, prepared.remappedJar(), cancellation);
+                    if (!validation.valid()) {
+                        throw new IOException("Generated sources failed complete source validation: " + validationMessage(validation));
+                    }
+                    candidateInventory = SourceTreeInventory.capture(candidateSource, boundary, cancellation);
+                    SourceProducerIdentity producer = SourceProducerIdentity.capture(Fernflower.class, "1.12.0", MinecraftDecompiler.settings(), cancellation);
+                    stamp = SourceProvenance.generated(inputs, candidateInventory, validation, producer);
+                    mode = SourcePublicationMode.REPLACE_SOURCES;
                 }
-                candidateSource = boundary.require(candidate.resolve("client"));
-                decompiler.decompile(prepared.remappedJar(), candidateSource, progress, cancellation);
-                validation = sourceValidator.validate(candidateSource, prepared.remappedJar(), cancellation);
-                if (!validation.valid()) {
-                    throw new IOException("Generated sources failed complete source validation: " + validationMessage(validation));
+                else {
+                    stamp = SourceProvenance.observed(inputs, candidateInventory, validation, previous.orElse(null));
+                    mode = SourcePublicationMode.REUSE_SOURCES;
                 }
-                candidateInventory = SourceTreeInventory.capture(candidateSource, boundary, cancellation);
-                SourceProducerIdentity producer = SourceProducerIdentity.capture(Fernflower.class, "1.12.0", MinecraftDecompiler.settings(), cancellation);
-                stamp = SourceProvenance.generated(inputs, candidateInventory, validation, producer);
-                mode = SourcePublicationMode.REPLACE_SOURCES;
+                Path candidateDatabase = boundary.require(candidate.resolve("index/symbols.jsonl"));
+                IndexRequest request = new IndexRequest(version, List.of(new SourceRoot(SourceNamespace.MINECRAFT, Optional.empty(), candidateSource)), prepared.remappedJar(), classpath, candidateDatabase, threads, progress, cancellation);
+                IndexSummary summary = indexer.build(request, new PublishedSourceRoot(paths.sourceRoot(version)));
+                Path candidateStamp = boundary.require(candidate.resolve("source-preparation.json"));
+                SourceProvenance.write(candidateStamp, stamp);
+                if (!inputs.equals(SourceInputIdentity.capture(prepared.remappedJar(), classpath, cancellation))) {
+                    throw new IOException("Source/index inputs changed while staging; original source and index are preserved");
+                }
+                handedOver = true;
+                SourcePublicationResult published = sourceTransactions.publish(paths, version, lease, transaction, candidateSource, candidateDatabase, candidateStamp, before, mode, cancellation);
+                boolean hadOriginal = before.source().present() || before.index().entries().stream().anyMatch(entry -> entry.kind() == SourceEntryKind.FILE) || before.stamp().present();
+                return new InitializationResult(prepared, summary, published.sourceInventory().sha256(), hadOriginal ? Optional.of(published.retainedMigration()) : Optional.empty());
+            } finally {
+                if (!handedOver) {
+                    discardStaging(transaction);
+                }
             }
-            else {
-                stamp = SourceProvenance.observed(inputs, candidateInventory, validation, previous.orElse(null));
-                mode = SourcePublicationMode.REUSE_SOURCES;
-            }
-            Path candidateDatabase = boundary.require(candidate.resolve("index/symbols.jsonl"));
-            IndexRequest request = new IndexRequest(version, List.of(new SourceRoot(SourceNamespace.MINECRAFT, Optional.empty(), candidateSource)), prepared.remappedJar(), classpath, candidateDatabase, threads, progress, cancellation);
-            IndexSummary summary = indexer.build(request, new PublishedSourceRoot(paths.sourceRoot(version)));
-            Path candidateStamp = boundary.require(candidate.resolve("source-preparation.json"));
-            SourceProvenance.write(candidateStamp, stamp);
-            if (!inputs.equals(SourceInputIdentity.capture(prepared.remappedJar(), classpath, cancellation))) {
-                throw new IOException("Source/index inputs changed while staging; original source and index are preserved");
-            }
-            SourcePublicationResult published = sourceTransactions.publish(paths, version, lease, transaction, candidateSource, candidateDatabase, candidateStamp, before, mode, cancellation);
-            boolean hadOriginal = before.source().present() || before.index().entries().stream().anyMatch(entry -> entry.kind() == SourceEntryKind.FILE) || before.stamp().present();
-            return new InitializationResult(prepared, summary, published.sourceInventory().sha256(), hadOriginal ? Optional.of(published.retainedMigration()) : Optional.empty());
         } catch (Exception failure) {
             preserveInterruption(failure);
             throw new IllegalStateException(failureMessage("Unable to initialize Minecraft " + version.value(), failure), failure);
+        }
+    }
+
+    /**
+     * Removes what a failed initialization staged before the publisher took ownership of it.
+     */
+    private static void discardStaging(Path transaction) {
+        try {
+            BundleFiles.deleteTree(transaction);
+        } catch (IOException ignored) {
+            // What cannot be removed now stays for 'clean'; the failure being reported is the one that matters.
         }
     }
 

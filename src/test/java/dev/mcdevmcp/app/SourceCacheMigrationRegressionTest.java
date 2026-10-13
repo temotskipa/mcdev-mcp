@@ -20,6 +20,7 @@ import org.junit.jupiter.params.provider.ValueSource;
 import picocli.CommandLine;
 import reactor.util.annotation.NonNull;
 
+import java.io.IOException;
 import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.nio.file.Files;
@@ -73,6 +74,15 @@ final class SourceCacheMigrationRegressionTest {
         StringWriter error = new StringWriter();
         int exitCode = Main.execute(arguments, RequiredRuntime.FEATURE, new PrintWriter(output), new PrintWriter(error), new CommandContext(fixture.pipeline(), fixture.paths()));
         return new CliResult(exitCode, output.toString(), error.toString());
+    }
+
+    /**
+     * The transaction directories under the version's migration root, the retained record of each publication.
+     */
+    private static List<Path> transactions(Fixture fixture) throws IOException {
+        try (var entries = Files.list(fixture.paths().cacheRoot().resolve("migrations").resolve(VERSION.value()))) {
+            return entries.filter(Files::isDirectory).sorted().toList();
+        }
     }
 
     private Fixture fixture() throws Exception {
@@ -227,6 +237,7 @@ final class SourceCacheMigrationRegressionTest {
             byte[] index = Files.readAllBytes(fixture.paths().symbolIndex(VERSION));
             Path stamp = fixture.paths().versionCache(VERSION).resolve("source-preparation.json");
             byte[] provenance = Files.readAllBytes(stamp);
+            List<Path> transactions = transactions(fixture);
             AtomicBoolean cancel = new AtomicBoolean();
             AtomicBoolean injected = new AtomicBoolean();
             // A cancelled refresh leaves its thread interrupted, so it runs on a thread of its own.
@@ -262,6 +273,7 @@ final class SourceCacheMigrationRegressionTest {
             assertArrayEquals(index, Files.readAllBytes(fixture.paths().symbolIndex(VERSION)));
             assertArrayEquals(provenance, Files.readAllBytes(stamp));
             assertFalse(Files.exists(fixture.paths().cacheRoot().resolve("migrations/26.1/pending.json")));
+            assertEquals(transactions, transactions(fixture), "a refresh that fails before publication leaves nothing staged");
             assertEquals(VersionState.READY, new VersionStateRepository(fixture.paths()).state(VERSION));
         }
     }
