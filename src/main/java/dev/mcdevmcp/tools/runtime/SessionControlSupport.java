@@ -516,13 +516,13 @@ value class SessionControlSupport {
         Thread.sleep(Duration.ofNanos(Math.min(saturatedNanos(interval), remaining(started, budget).toNanos())));
     }
 
+    /**
+     * The ports a bridge may answer on: the configured port first, so that it is the one found when
+     * several clients are running, then the rest of the documented range.
+     */
     List<Integer> bridgePortRange() {
-        var ports = new ArrayList<Integer>();
-        environment.debugBridgePort().ifPresent(port -> {
-            if (port < BRIDGE_PORT_START || port > BRIDGE_PORT_END) {
-                ports.add(port);
-            }
-        });
+        var ports = new LinkedHashSet<Integer>();
+        environment.debugBridgePort().ifPresent(ports::add);
         for (int port = BRIDGE_PORT_START; port <= BRIDGE_PORT_END; port++) {
             ports.add(port);
         }

@@ -178,10 +178,11 @@ class SessionControlSupportTest {
     }
 
     @Test
-    void scansDocumentedPortsPlusOneValidConfiguredOutOfRangePort() {
+    void scansTheConfiguredPortFirstThenTheDocumentedRange() {
         List<Integer> documented = List.of(9876, 9877, 9878, 9879, 9880, 9881, 9882, 9883, 9884, 9885, 9886);
         assertEquals(List.of(9999, 9876, 9877, 9878, 9879, 9880, 9881, 9882, 9883, 9884, 9885, 9886), bridgePorts(Map.of("DEBUGBRIDGE_PORT", " 9999.0 ")));
         assertEquals(documented, bridgePorts(Map.of("DEBUGBRIDGE_PORT", " 9876.0 ")));
+        assertEquals(List.of(9878, 9876, 9877, 9879, 9880, 9881, 9882, 9883, 9884, 9885, 9886), bridgePorts(Map.of("DEBUGBRIDGE_PORT", "9878")), "a configured port inside the range is still tried first");
         for (String configured : List.of("65536", "9999.5", "0x2694")) {
             assertEquals(documented, bridgePorts(Map.of("DEBUGBRIDGE_PORT", configured)), configured);
         }
