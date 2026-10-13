@@ -20,6 +20,29 @@ class AppVersionTest {
     }
 
     @Test
+    void namesTheJarWhenNotStartedFromAnApplicationImage() {
+        assertEquals("java --enable-preview -jar " + AppVersion.executableJarName(), AppVersion.commandLine());
+    }
+
+    @Test
+    void namesTheLauncherOfTheApplicationImageAndQuotesAPathWithSpaces() {
+        String previous = System.getProperty(AppVersion.LAUNCHER_PROPERTY);
+        try {
+            System.setProperty(AppVersion.LAUNCHER_PROPERTY, "/opt/mcdev-mcp/bin/mcdev-mcp");
+            assertEquals("/opt/mcdev-mcp/bin/mcdev-mcp", AppVersion.commandLine());
+            System.setProperty(AppVersion.LAUNCHER_PROPERTY, "C:\\Program Files\\mcdev-mcp\\mcdev-mcp.exe");
+            assertEquals("\"C:\\Program Files\\mcdev-mcp\\mcdev-mcp.exe\"", AppVersion.commandLine());
+        } finally {
+            if (previous == null) {
+                System.clearProperty(AppVersion.LAUNCHER_PROPERTY);
+            }
+            else {
+                System.setProperty(AppVersion.LAUNCHER_PROPERTY, previous);
+            }
+        }
+    }
+
+    @Test
     void rejectsTestResourceFallbackWhenTheTestGuardIsDisabled() {
         String property = AppVersion.TEST_FALLBACK_PROPERTY;
         String previous = System.getProperty(property);

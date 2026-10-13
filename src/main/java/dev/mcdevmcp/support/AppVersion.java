@@ -9,6 +9,8 @@ import java.util.Properties;
 
 public final class AppVersion {
     public static final String TEST_FALLBACK_PROPERTY = "dev.mcdevmcp.test.versionFallback";
+    /** Set by the launcher of a jpackage application image to its own path. */
+    public static final String LAUNCHER_PROPERTY = "jpackage.app-path";
     private static final String ARTIFACT_NAME = "mcdev-mcp";
 
     private AppVersion() {
@@ -41,5 +43,17 @@ public final class AppVersion {
 
     public static String executableJarName() {
         return ARTIFACT_NAME + "-" + current() + ".jar";
+    }
+
+    /**
+     * What the user types in a terminal to start this application: the launcher of the
+     * application image when it runs from one, otherwise the JAR with the option it needs.
+     */
+    public static String commandLine() {
+        String launcher = System.getProperty(LAUNCHER_PROPERTY);
+        if (launcher == null || launcher.isBlank()) {
+            return "java --enable-preview -jar " + executableJarName();
+        }
+        return launcher.contains(" ") ? '"' + launcher + '"' : launcher;
     }
 }
