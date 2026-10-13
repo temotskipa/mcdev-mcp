@@ -10,7 +10,7 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-value class ToolOutputTest {
+class ToolOutputTest {
     @Test
     void canonicalFieldsAndFactoriesRetainTrustedMetadata() {
         var schema = JsonValueSchema.of(Map.of("type", "string"));

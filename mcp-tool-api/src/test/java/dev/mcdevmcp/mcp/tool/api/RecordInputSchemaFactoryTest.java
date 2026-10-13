@@ -18,7 +18,7 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
-value class RecordInputSchemaFactoryTest {
+class RecordInputSchemaFactoryTest {
     @Test
     void generatesADeeplyImmutableSchemaForAnnotatedRecordComponents() {
         JsonObjectSchema schema = RecordInputSchemaFactory.standard().generate(JsonType.of(SchemaInput.class));

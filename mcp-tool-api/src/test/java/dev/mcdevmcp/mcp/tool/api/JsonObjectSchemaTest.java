@@ -11,7 +11,7 @@ import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-value class JsonObjectSchemaTest {
+class JsonObjectSchemaTest {
     @Test
     void rejectsMutableValuesThatAreNotJsonTreeNodes() {
         Map<String, Object> setSchema = new LinkedHashMap<>();
