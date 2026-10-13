@@ -2,6 +2,20 @@ plugins {
     id("org.gradlex.extra-java-module-info")
 }
 
+val catalog = extensions.getByType<VersionCatalogsExtension>().named("libs")
+val jacksonBom = "tools.jackson:jackson-bom:${catalog.findVersion("jackson3").get().requiredVersion}"
+val jsonSchemaValidator =
+    "com.networknt:json-schema-validator:${catalog.findVersion("jsonSchemaValidator").get().requiredVersion}"
+
+// The SDK snapshot declares a Jackson release with open security advisories and the schema
+// validator built against it. Every source set resolves the releases the catalog names instead.
+pluginManager.withPlugin("java") {
+    extensions.getByType<SourceSetContainer>().configureEach {
+        dependencies.add(implementationConfigurationName, dependencies.platform(jacksonBom))
+        dependencies.constraints.add(implementationConfigurationName, jsonSchemaValidator)
+    }
+}
+
 extraJavaModuleInfo {
     failOnMissingModuleInfo.set(false)
     failOnAutomaticModules.set(false)

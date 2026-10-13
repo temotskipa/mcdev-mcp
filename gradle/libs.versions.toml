@@ -1,17 +1,18 @@
 [versions]
 mcpSdk = "2.1.0-SNAPSHOT"
-# Reviewed transitive versions of the MCP SDK; verified by mcpSdkSnapshotCheck.
-jackson3 = "3.1.4"
-jsonSchemaValidator = "3.0.6"
+# Transitive dependencies of the MCP SDK. The snapshot declares older releases;
+# mcdev.mcp-sdk-modules raises them to these and mcpSdkSnapshotCheck verifies the result.
+jackson3 = "3.2.3"
+jsonSchemaValidator = "3.0.8"
 jacksonAnnotations = "2.22"
 picocli = "4.7.7"
 vineflower = "1.12.0"
-tinyRemapper = "0.14.1"
+tinyRemapper = "0.15.0"
 mappingIo = "0.9.1"
-slf4j = "2.0.18"
+slf4j = "2.0.20"
 servletApi = "6.1.0"
 junit = "6.1.3"
-jspecify = "1.0.0"
+jspecify = "1.0.1"
 
 [libraries]
 mcpSdk = { module = "io.modelcontextprotocol.sdk:mcp", version.ref = "mcpSdk" }
