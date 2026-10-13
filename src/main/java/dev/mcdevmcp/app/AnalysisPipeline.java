@@ -9,6 +9,7 @@ import dev.mcdevmcp.storage.PlatformPaths;
 import dev.mcdevmcp.storage.migration.*;
 import dev.mcdevmcp.storage.model.MinecraftVersion;
 import dev.mcdevmcp.storage.model.SourceNamespace;
+import dev.mcdevmcp.support.AppEnvironment;
 import dev.mcdevmcp.support.AppVersion;
 import dev.mcdevmcp.support.Cancellation;
 import dev.mcdevmcp.support.ProgressSink;
@@ -58,7 +59,7 @@ public final class AnalysisPipeline implements AnalysisOperations {
     }
 
     public static AnalysisPipeline production(PlatformPaths paths) {
-        return production(paths, System.getenv());
+        return production(paths, AppEnvironment.system().values());
     }
 
     static AnalysisPipeline production(PlatformPaths paths, Map<String, String> environment) {

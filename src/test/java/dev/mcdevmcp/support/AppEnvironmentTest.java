@@ -10,6 +10,15 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 
 class AppEnvironmentTest {
     @Test
+    void treatsASettingAnMcpbClientLeftUnresolvedAsAbsent() {
+        var environment = new AppEnvironment(Map.of("MCDEV_MCP_DEBUG_LOG", "${user_config.debug_log}", "MCDEV_INDEX_THREADS", "${user_config.index_threads}", "MCDEV_RUN_COMMAND", "true", "MCDEV_SESSION_LOG_DIR", "logs/${user_config.script_logs}"));
+
+        assertEquals(Map.of("MCDEV_RUN_COMMAND", "true", "MCDEV_SESSION_LOG_DIR", "logs/${user_config.script_logs}"), environment.values());
+        assertFalse(environment.debugLogPath().isPresent());
+        assertEquals(4, environment.indexThreads(4));
+    }
+
+    @Test
     void acceptsExactIntegralAsciiDecimalDebugBridgePorts() {
         Map.ofEntries(Map.entry("1", 1), Map.entry("65535", 65535), Map.entry("9876", 9876), Map.entry(" 9876 ", 9876), Map.entry("+009876", 9876), Map.entry("9876.0", 9876), Map.entry("9876.", 9876), Map.entry(".9876e4", 9876), Map.entry("9.876e3", 9876), Map.entry("987600e-2", 9876)).forEach((text, expected) -> {
             var port = new AppEnvironment(Map.of("DEBUGBRIDGE_PORT", text)).debugBridgePort();

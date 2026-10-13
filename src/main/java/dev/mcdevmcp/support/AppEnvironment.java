@@ -7,12 +7,18 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.OptionalInt;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 public value record AppEnvironment(Map<String, String> values) {
     private static final Pattern DEBUGBRIDGE_PORT_DECIMAL = Pattern.compile("\\A[+-]?(?:[0-9]+(?:\\.[0-9]*)?|\\.[0-9]+)(?:[eE][+-]?[0-9]+)?\\z");
+    private static final Pattern UNRESOLVED_USER_SETTING = Pattern.compile("\\$\\{user_config\\.[^}]+}");
 
+    /**
+     * An MCPB client fills in the settings its user configured and passes the placeholder of every
+     * other one through as the value itself. Such a value means the setting is absent.
+     */
     public AppEnvironment {
-        values = Map.copyOf(values);
+        values = values.entrySet().stream().filter(entry -> !UNRESOLVED_USER_SETTING.matcher(entry.getValue()).matches()).collect(Collectors.toUnmodifiableMap(Map.Entry::getKey, Map.Entry::getValue));
     }
 
     public static AppEnvironment system() {
