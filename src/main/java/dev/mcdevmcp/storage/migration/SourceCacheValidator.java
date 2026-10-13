@@ -3,7 +3,10 @@ package dev.mcdevmcp.storage.migration;
 import com.sun.source.tree.ClassTree;
 import com.sun.source.tree.CompilationUnitTree;
 import com.sun.source.util.JavacTask;
+import com.sun.source.util.SourcePositions;
+import com.sun.source.util.Trees;
 import dev.mcdevmcp.support.Cancellation;
+import dev.mcdevmcp.support.ExecutableBodies;
 
 import javax.tools.Diagnostic;
 import javax.tools.DiagnosticCollector;
@@ -16,6 +19,7 @@ import java.lang.classfile.ClassFile;
 import java.lang.classfile.ClassModel;
 import java.lang.classfile.attribute.InnerClassInfo;
 import java.lang.classfile.constantpool.ClassEntry;
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
@@ -26,7 +30,9 @@ import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 
 /**
- * Syntax and class-file ownership checks, without attribution or dependency guessing.
+ * Syntax and class-file ownership checks, without attribution or dependency guessing. A syntax
+ * error confined to an executable body is not a failure: a decompiler cannot express every body
+ * as Java, and what it leaves there does not make the unit's declarations unreadable.
  */
 public final class SourceCacheValidator {
     private static Map<String, RequiredSourceClass> emittedUnits(Map<String, RequiredSourceClass> classes, Map<String, ParsedSourceUnit> parsed) {
@@ -157,11 +163,14 @@ public final class SourceCacheValidator {
         for (int offset = 0; offset < sources.size(); offset += 128) {
             checkCancellation(cancellation);
             DiagnosticCollector<JavaFileObject> collector = new DiagnosticCollector<>();
+            Map<URI, ExecutableBodies> bodies = new HashMap<>();
             try (var manager = compiler.getStandardFileManager(collector, Locale.ROOT, StandardCharsets.UTF_8)) {
                 var files = manager.getJavaFileObjectsFromPaths(sources.subList(offset, Math.min(offset + 128, sources.size())));
                 JavacTask task = (JavacTask) compiler.getTask(null, manager, collector, List.of("-proc:none", "--release", "25", "-encoding", "UTF-8", "-Xmaxerrs", "0", "-Xmaxwarns", "0"), null, files);
+                SourcePositions positions = Trees.instance(task).getSourcePositions();
                 for (CompilationUnitTree tree : task.parse()) {
                     checkCancellation(cancellation);
+                    bodies.put(tree.getSourceFile().toUri(), ExecutableBodies.of(tree, positions));
                     String relative = root.relativize(Path.of(tree.getSourceFile().toUri()).toAbsolutePath().normalize()).toString().replace('\\', '/');
                     Set<String> declarations = new TreeSet<>();
                     for (var declaration : tree.getTypeDecls()) {
@@ -173,7 +182,8 @@ public final class SourceCacheValidator {
                 }
             }
             for (Diagnostic<? extends JavaFileObject> diagnostic : collector.getDiagnostics()) {
-                if (diagnostic.getKind() == Diagnostic.Kind.ERROR) {
+                ExecutableBodies unitBodies = diagnostic.getSource() == null ? ExecutableBodies.none() : bodies.getOrDefault(diagnostic.getSource().toUri(), ExecutableBodies.none());
+                if (diagnostic.getKind() == Diagnostic.Kind.ERROR && unitBodies.escapedBy(diagnostic)) {
                     diagnostics.add((diagnostic.getSource() == null ? "<compiler>" : diagnostic.getSource().getName()) + ":" + diagnostic.getLineNumber() + ":" + diagnostic.getColumnNumber() + ": " + diagnostic.getMessage(Locale.ROOT));
                 }
             }

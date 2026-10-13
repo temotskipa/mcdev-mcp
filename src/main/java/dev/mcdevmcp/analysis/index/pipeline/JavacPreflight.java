@@ -4,6 +4,7 @@ import com.sun.source.tree.ClassTree;
 import com.sun.source.tree.CompilationUnitTree;
 import com.sun.source.tree.Tree;
 import com.sun.source.util.JavacTask;
+import com.sun.source.util.Trees;
 import dev.mcdevmcp.analysis.index.IndexBuildException;
 import dev.mcdevmcp.analysis.index.IndexRequest;
 
@@ -31,7 +32,7 @@ final class JavacPreflight {
                 JavacTask task = (JavacTask) compiler.getTask(null, JavacBatchParser.compilerFileManager(manager), diagnostics, CompilerConfiguration.options(), null, explicit);
                 parsedUnitObserver.accept(task, new LinkedHashMap<>());
                 List<? extends CompilationUnitTree> units = stream(task.parse());
-                JavacDiagnostics.failOnSyntaxErrors(diagnostics.getDiagnostics(), discovered);
+                JavacDiagnostics.failOnSyntaxErrors(diagnostics.getDiagnostics(), discovered, JavacDiagnostics.executableBodies(units, Trees.instance(task).getSourcePositions()));
                 Map<URI, DecodedSource> declarations = new HashMap<>();
                 Map<String, DecodedSource> binaryNames = new HashMap<>();
                 for (CompilationUnitTree unit : units) {

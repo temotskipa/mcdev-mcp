@@ -7,6 +7,7 @@ import com.sun.source.util.Trees;
 import dev.mcdevmcp.analysis.classfile.ClassFileTypeCatalog;
 import dev.mcdevmcp.analysis.index.IndexBuildException;
 import dev.mcdevmcp.analysis.index.IndexRequest;
+import dev.mcdevmcp.support.ExecutableBodies;
 
 import javax.tools.*;
 import java.io.IOException;
@@ -33,7 +34,8 @@ final class JavacBatchParser {
                 boolean finishAttempted = false;
                 try {
                     List<? extends CompilationUnitTree> units = stream(task.parse());
-                    JavacDiagnostics.failOnSyntaxErrors(diagnostics.getDiagnostics(), corpus);
+                    SourcePositions parsedPositions = Trees.instance(task).getSourcePositions();
+                    JavacDiagnostics.failOnSyntaxErrors(diagnostics.getDiagnostics(), corpus, JavacDiagnostics.executableBodies(units, parsedPositions));
                     Set<URI> ownedSources = batch.stream().map(DecodedSource::uri).collect(Collectors.toUnmodifiableSet());
                     Set<URI> explicitlyParsedSources = units.stream().map(unit -> unit.getSourceFile().toUri()).collect(Collectors.toUnmodifiableSet());
                     if (!explicitlyParsedSources.equals(ownedSources)) {
@@ -42,7 +44,6 @@ final class JavacBatchParser {
                     Map<ClassTree, List<? extends Tree>> declaredMembers = new IdentityHashMap<>();
                     Map<MethodTree, List<? extends VariableTree>> declaredMethodParameters = new IdentityHashMap<>();
                     Map<Tree, SourceRange> declaredRanges = new IdentityHashMap<>();
-                    SourcePositions parsedPositions = Trees.instance(task).getSourcePositions();
                     for (CompilationUnitTree unit : units) {
                         for (Tree declaration : unit.getTypeDecls()) {
                             if (declaration instanceof ClassTree type) {
@@ -77,10 +78,7 @@ final class JavacBatchParser {
                     finishAttempted = true;
                     finish(task);
                     request.cancellation().throwIfCancelled();
-                    Map<URI, List<OffsetRange>> executableBodies = new HashMap<>();
-                    for (CompilationUnitTree unit : parsedUnits.values()) {
-                        executableBodies.put(unit.getSourceFile().toUri(), new ExecutableBodyScanner(unit, trees.getSourcePositions()).scan());
-                    }
+                    Map<URI, ExecutableBodies> executableBodies = JavacDiagnostics.executableBodies(parsedUnits.values(), trees.getSourcePositions());
                     return new ParsedBatch(parsedTypes, units.stream().map(unit -> corpus.require(unit.getSourceFile().toUri()).relativeName()).toList(), JavacDiagnostics.classifyDiagnostics(diagnostics.getDiagnostics(), corpus, executableBodies, ownedSources));
                 } finally {
                     if (!finishAttempted && !Thread.currentThread().isInterrupted() && !request.cancellation().isCancelled()) {

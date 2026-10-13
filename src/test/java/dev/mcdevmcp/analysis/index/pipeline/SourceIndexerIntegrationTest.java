@@ -170,6 +170,24 @@ class SourceIndexerIntegrationTest {
     }
 
     @Test
+    void indexesTheDeclarationsAroundABodyTheDecompilerCouldNotExpress() throws Exception {
+        Path sources = Files.createDirectories(temporaryDirectory.resolve("indy/indy"));
+        Files.writeString(sources.resolve("Encoder.java"), "package indy; public class Encoder { int before; void run(Object value, int index) { switch (SwitchBootstraps.typeSwitch<\"typeSwitch\",String,Integer>(value, index)) { case 0: return; default: break; } } int after() { return before; } }", StandardCharsets.UTF_8);
+        Path jar = IndexerTestSupport.createJar(temporaryDirectory.resolve("empty.jar"), Map.of());
+        Path database = temporaryDirectory.resolve("indy.jsonl");
+
+        IndexSummary summary = new SourceIndexer().build(IndexerTestSupport.request(sources.getParent(), jar, database, 1));
+
+        assertEquals(1, summary.types());
+        assertEquals(1, summary.fields());
+        assertEquals(2, summary.methods());
+        List<String> rows = IndexerTestSupport.dump(database);
+        assertTrue(rows.contains("methods|1|1|0|run|(Ljava/lang/Object;I)V|void||false|49|202|1|1"), rows.toString());
+        assertTrue(rows.contains("methods|2|1|1|after|()I|int||false|203|233|1|1"), rows.toString());
+        assertTrue(summary.evidence().diagnostics().stream().anyMatch(diagnostic -> diagnostic.contains("Encoder.java")), summary.evidence().diagnostics().toString());
+    }
+
+    @Test
     void onDemandBodyDiagnosticsAreIdenticalWithOneAndFourThreads() throws Exception {
         Path root = temporaryDirectory.resolve("on-demand-body");
         Path entry = Files.createDirectories(root.resolve("entry"));

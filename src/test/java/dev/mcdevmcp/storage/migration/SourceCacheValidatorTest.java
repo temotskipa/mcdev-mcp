@@ -5,6 +5,8 @@ import dev.mcdevmcp.analysis.decompile.MinecraftRemapper;
 import dev.mcdevmcp.support.Cancellation;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import javax.tools.ToolProvider;
 import java.io.IOException;
@@ -66,6 +68,30 @@ final class SourceCacheValidatorTest {
             assertTrue(validation.diagnostics().stream().anyMatch(message -> message.contains(file)), file);
         }
         assertEquals(121, validation.parsedUnits().size());
+    }
+
+    @Test
+    void acceptsSyntaxADecompilerLeavesInsideABody() throws Exception {
+        Path sources = sources(Map.of("sample/Encoder.java", "package sample; public class Encoder { void before() {} void run(Object value, int index) { switch (index) { case 0: return; default: break; } } void after() {} }"));
+        Path jar = compile(sources, "-g:source");
+        Files.writeString(sources.resolve("sample/Encoder.java"), "package sample; public class Encoder { void before() {} void run(Object value, int index) { switch (SwitchBootstraps.typeSwitch<\"typeSwitch\",String,Integer>(value, index)) { case 0: return; default: break; } } void after() {} }");
+
+        SourceValidation validation = new SourceCacheValidator().validate(sources, jar, Cancellation.none());
+
+        assertEquals(SourceValidationStatus.VALID, validation.status(), validation.diagnostics().toString());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"package sample; public class Encoder { void run(<VAR_NAMELESS_ENCLOSURE>) { } }", "package sample; public class Encoder { void run() { int value = 1;", "package sample; public class Encoder { void run() { } } void stray() { } }"})
+    void rejectsSyntaxThatDamagesADeclarationOrEndsTheUnitEarly(String damaged) throws Exception {
+        Path sources = sources(Map.of("sample/Encoder.java", "package sample; public class Encoder { void run() { } }"));
+        Path jar = compile(sources, "-g:source");
+        Files.writeString(sources.resolve("sample/Encoder.java"), damaged);
+
+        SourceValidation validation = new SourceCacheValidator().validate(sources, jar, Cancellation.none());
+
+        assertEquals(SourceValidationStatus.INVALID, validation.status());
+        assertTrue(validation.diagnostics().stream().anyMatch(message -> message.contains("Encoder.java")), validation.diagnostics().toString());
     }
 
     @Test

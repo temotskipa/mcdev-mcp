@@ -384,7 +384,7 @@ final class AnalysisPipelineIntegrationTest {
         PlatformPaths paths = new PlatformPaths(temporaryDirectory.resolve("legacy-cache"));
         Path source = paths.sourceRoot(version).resolve(binaryName.replace('.', '/') + ".java");
         Files.createDirectories(source.getParent());
-        String malformed = "package net.minecraft.client.gui.font; public class PlayerGlyphProvider { void value() { java.util.Objects.requireNonNull(<VAR_NAMELESS_ENCLOSURE>); } }";
+        String malformed = "package net.minecraft.client.gui.font; public class PlayerGlyphProvider { void value(<VAR_NAMELESS_ENCLOSURE>) { } }";
         Files.writeString(source, malformed);
         Path marker = paths.sourceRoot(version).resolve("user-cache-marker.txt");
         Files.writeString(marker, "original user content");

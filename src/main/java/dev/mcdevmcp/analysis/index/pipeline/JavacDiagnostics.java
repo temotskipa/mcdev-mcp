@@ -1,6 +1,9 @@
 package dev.mcdevmcp.analysis.index.pipeline;
 
+import com.sun.source.tree.CompilationUnitTree;
+import com.sun.source.util.SourcePositions;
 import dev.mcdevmcp.analysis.index.IndexBuildException;
+import dev.mcdevmcp.support.ExecutableBodies;
 
 import javax.tools.Diagnostic;
 import javax.tools.JavaFileObject;
@@ -14,14 +17,25 @@ final class JavacDiagnostics {
     private JavacDiagnostics() {
     }
 
-    static List<IndexDiagnostic> classifyDiagnostics(List<Diagnostic<? extends JavaFileObject>> diagnostics, SourceCorpus corpus, Map<URI, List<OffsetRange>> executableBodies, Set<URI> ownedSources) throws IndexBuildException {
+    static Map<URI, ExecutableBodies> executableBodies(Collection<? extends CompilationUnitTree> units, SourcePositions positions) {
+        Map<URI, ExecutableBodies> bodies = new HashMap<>();
+        for (CompilationUnitTree unit : units) {
+            bodies.put(unit.getSourceFile().toUri(), ExecutableBodies.of(unit, positions));
+        }
+        return bodies;
+    }
+
+    private static ExecutableBodies bodiesOf(Diagnostic<? extends JavaFileObject> diagnostic, Map<URI, ExecutableBodies> executableBodies) {
+        return diagnostic.getSource() == null ? ExecutableBodies.none() : executableBodies.getOrDefault(diagnostic.getSource().toUri(), ExecutableBodies.none());
+    }
+
+    static List<IndexDiagnostic> classifyDiagnostics(List<Diagnostic<? extends JavaFileObject>> diagnostics, SourceCorpus corpus, Map<URI, ExecutableBodies> executableBodies, Set<URI> ownedSources) throws IndexBuildException {
         List<IndexDiagnostic> retained = new ArrayList<>();
         List<IndexDiagnostic> fatal = new ArrayList<>();
         for (Diagnostic<? extends JavaFileObject> diagnostic : diagnostics) {
             IndexDiagnostic converted = diagnostic(diagnostic, corpus);
             if (diagnostic.getKind() == Diagnostic.Kind.ERROR) {
-                List<OffsetRange> ranges = diagnostic.getSource() == null ? List.of() : executableBodies.getOrDefault(diagnostic.getSource().toUri(), List.of());
-                boolean insideBody = diagnostic.getStartPosition() >= 0 && ranges.stream().anyMatch(range -> range.contains(diagnostic.getStartPosition(), diagnostic.getEndPosition()));
+                boolean insideBody = bodiesOf(diagnostic, executableBodies).contain(diagnostic);
                 if (!insideBody && !RECOVERABLE_DECLARATION_ERRORS.contains(diagnostic.getCode())) {
                     fatal.add(converted);
                     continue;
@@ -39,8 +53,13 @@ final class JavacDiagnostics {
         return List.copyOf(retained);
     }
 
-    static void failOnSyntaxErrors(List<Diagnostic<? extends JavaFileObject>> diagnostics, SourceCorpus corpus) throws IndexBuildException {
-        List<IndexDiagnostic> errors = diagnostics.stream().filter(diagnostic -> diagnostic.getKind() == Diagnostic.Kind.ERROR).map(diagnostic -> diagnostic(diagnostic, corpus)).sorted(IndexDiagnostic.ORDERING).toList();
+    /**
+     * Fails on a syntax error that damages a declaration. One confined to an executable body is
+     * what a decompiler leaves where it could not express the code as Java; the declarations
+     * around it are intact, so it is retained with the other diagnostics instead.
+     */
+    static void failOnSyntaxErrors(List<Diagnostic<? extends JavaFileObject>> diagnostics, SourceCorpus corpus, Map<URI, ExecutableBodies> executableBodies) throws IndexBuildException {
+        List<IndexDiagnostic> errors = diagnostics.stream().filter(diagnostic -> diagnostic.getKind() == Diagnostic.Kind.ERROR && bodiesOf(diagnostic, executableBodies).escapedBy(diagnostic)).map(diagnostic -> diagnostic(diagnostic, corpus)).sorted(IndexDiagnostic.ORDERING).toList();
         if (!errors.isEmpty()) {
             throw new IndexBuildException("Fatal Javac syntax diagnostic: " + errors.getFirst().display());
         }

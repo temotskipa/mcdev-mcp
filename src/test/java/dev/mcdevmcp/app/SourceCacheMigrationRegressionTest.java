@@ -41,7 +41,7 @@ final class SourceCacheMigrationRegressionTest {
     private static final MinecraftVersion VERSION = new MinecraftVersion("26.1");
     private static final String SOURCE = "package sample; public class Example { public String value() { return \"generated\"; } }";
     private static final Duration PATIENCE = Duration.ofMinutes(2);
-    private static final String MALFORMED = "package sample; public class Example { void value() { java.util.Objects.requireNonNull(<VAR_NAMELESS_ENCLOSURE>); } }";
+    private static final String MALFORMED = "package sample; public class Example { void value(<VAR_NAMELESS_ENCLOSURE>) { } }";
 
     @TempDir
     Path temporaryDirectory;
