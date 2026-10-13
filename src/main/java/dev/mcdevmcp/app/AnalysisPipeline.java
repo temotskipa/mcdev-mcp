@@ -9,6 +9,7 @@ import dev.mcdevmcp.storage.PlatformPaths;
 import dev.mcdevmcp.storage.migration.*;
 import dev.mcdevmcp.storage.model.MinecraftVersion;
 import dev.mcdevmcp.storage.model.SourceNamespace;
+import dev.mcdevmcp.storage.symbols.IndexCleaner;
 import dev.mcdevmcp.support.AppEnvironment;
 import dev.mcdevmcp.support.AppVersion;
 import dev.mcdevmcp.support.Cancellation;
@@ -310,7 +311,9 @@ public final class AnalysisPipeline implements AnalysisOperations {
             List<SourceRoot> sourceRoots = List.of(new SourceRoot(SourceNamespace.MINECRAFT, Optional.empty(), source));
             Path database = boundary.require(paths.symbolIndex(version));
             SourceTreeInventory.capture(database.getParent(), boundary, cancellation);
-            return indexer.build(new IndexRequest(version, sourceRoots, remapped, classpath, database, threads, progress, cancellation));
+            IndexSummary summary = indexer.build(new IndexRequest(version, sourceRoots, remapped, classpath, database, threads, progress, cancellation));
+            new IndexCleaner(paths).deleteSupersededDatabase(version);
+            return summary;
         } catch (Exception exception) {
             preserveInterruption(exception);
             throw new IllegalStateException(failureMessage("Unable to rebuild index for " + version.value(), exception), exception);

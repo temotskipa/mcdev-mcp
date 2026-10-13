@@ -7,9 +7,11 @@ import reactor.util.annotation.NonNull;
 import java.io.IOException;
 import java.nio.file.*;
 import java.nio.file.attribute.BasicFileAttributes;
+import java.util.List;
 import java.util.Objects;
 
 public final class IndexCleaner {
+    private static final List<String> SUPERSEDED_DATABASE_FILES = List.of("symbols.mv.db", "symbols.mv.db.bak", "symbols.mv.db.lock", "symbols.trace.db");
     private final PlatformPaths paths;
     private final IndexFileOperations files;
 
@@ -62,11 +64,31 @@ public final class IndexCleaner {
         });
     }
 
-    public void cleanIndex(MinecraftVersion version) throws IOException {
+    private Path containedIndexRoot(MinecraftVersion version) throws IOException {
         Path root = paths.indexRoot(version).toAbsolutePath().normalize();
         if (!root.startsWith(paths.cacheRoot().toAbsolutePath().normalize())) {
             throw new IOException("Refusing to clean index outside cache root: " + root);
         }
+        return root;
+    }
+
+    /**
+     * Deletes the database that earlier 3.0.0 development builds wrote beside the index. That
+     * format was never released, so nothing reads it once the index has been rebuilt.
+     */
+    public void deleteSupersededDatabase(MinecraftVersion version) throws IOException {
+        Path root = containedIndexRoot(version);
+        rejectSymbolicLink(root, "version index root");
+        for (String name : SUPERSEDED_DATABASE_FILES) {
+            Path file = root.resolve(name);
+            if (Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS)) {
+                deleteContained(root, file);
+            }
+        }
+    }
+
+    public void cleanIndex(MinecraftVersion version) throws IOException {
+        Path root = containedIndexRoot(version);
         if (!Files.exists(root, LinkOption.NOFOLLOW_LINKS)) {
             return;
         }

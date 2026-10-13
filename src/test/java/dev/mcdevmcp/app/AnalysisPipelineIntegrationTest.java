@@ -235,11 +235,14 @@ final class AnalysisPipelineIntegrationTest {
             Files.delete(prepared.obfuscatedJar());
             Files.deleteIfExists(paths.versionCache(version).resolve("jars/client.txt"));
             Files.deleteIfExists(paths.versionCache(version).resolve("jars/client.tiny"));
+            Path supersededDatabase = paths.indexRoot(version).resolve("symbols.mv.db");
+            Files.writeString(supersededDatabase, "database from an earlier development build");
 
             IndexSummary index = pipeline.rebuildIndex(version, (stage, percent, _) -> progress.add(stage + ":" + percent), Cancellation.none());
             CallgraphSummary callgraph = pipeline.rebuildCallgraph(version, (stage, percent, _) -> progress.add(stage + ":" + percent), Cancellation.none());
 
             assertTrue(index.types() >= 1);
+            assertFalse(Files.exists(supersededDatabase));
             assertEquals(1, callgraph.classes());
             assertTrue(callgraph.edges() >= 1);
             assertEquals(VersionState.READY, new VersionStateRepository(paths).state(version));

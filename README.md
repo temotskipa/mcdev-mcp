@@ -93,7 +93,8 @@ server reports those versions as needing a rebuild and does not silently
 reinterpret them. Run `clean --index -v <version>` followed by `init` or
 `rebuild`; the cached sources can be retained. A clean Java rebuild replaces
 the legacy index. The `symbols.mv.db` database written by earlier 3.0.0
-development builds is treated the same way.
+development builds is reported the same way, and `rebuild` deletes it once the
+new index is in place.
 
 ## Environment
 

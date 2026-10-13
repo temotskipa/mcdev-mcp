@@ -42,6 +42,32 @@ class IndexCleanerTest {
     }
 
     @Test
+    void deletesTheSupersededDatabaseAndNothingElse() throws Exception {
+        var paths = new PlatformPaths(temporaryDirectory);
+        Path root = paths.indexRoot(VERSION);
+        createIndex(paths.symbolIndex(VERSION));
+        for (String name : List.of("symbols.mv.db", "symbols.mv.db.bak", "symbols.mv.db.lock", "symbols.trace.db")) {
+            Files.writeString(root.resolve(name), "database from an earlier development build");
+        }
+        Files.writeString(root.resolve("manifest.json"), "index from the Node release");
+
+        new IndexCleaner(paths).deleteSupersededDatabase(VERSION);
+
+        try (var remaining = Files.list(root)) {
+            assertEquals(List.of("manifest.json", "symbols.jsonl"), remaining.map(path -> path.getFileName().toString()).sorted().toList());
+        }
+    }
+
+    @Test
+    void leavesAVersionWithoutAnIndexRootAlone() throws Exception {
+        var paths = new PlatformPaths(temporaryDirectory);
+
+        new IndexCleaner(paths).deleteSupersededDatabase(VERSION);
+
+        assertFalse(Files.exists(paths.indexRoot(VERSION)));
+    }
+
+    @Test
     void excludesReadersWhileDeletionIsInProgress() throws Exception {
         var paths = new PlatformPaths(temporaryDirectory);
         Path database = paths.symbolIndex(VERSION);
