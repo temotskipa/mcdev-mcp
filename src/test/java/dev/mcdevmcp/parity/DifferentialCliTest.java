@@ -379,7 +379,7 @@ final class DifferentialCliTest {
         assertTrue(javaPaths.contains("cache/1.21.11"), javaPaths::toString);
         assertTrue(javaPaths.contains("cache/1.21.11/jars/1.21.11_unobfuscated.jar"), javaPaths::toString);
         assertTrue(javaPaths.contains("index/1.21.11/symbols.jsonl"), javaPaths::toString);
-        assertTrue(javaPaths.contains("index/1.21.11/symbols.trace.db"), javaPaths::toString);
+        assertTrue(javaPaths.contains("index/1.21.11/symbols.mv.db"), javaPaths::toString);
         assertTrue(javaPaths.contains("cache/1.21.11/indexes/callgraph/current.json"), javaPaths::toString);
         assertTrue(javaPaths.contains("cache/1.21.11/indexes/callgraph/generations/fixture/callers.jsonl"), javaPaths::toString);
         assertFalse(javaPaths.contains("index/1.21.11/manifest.json"), javaPaths::toString);
