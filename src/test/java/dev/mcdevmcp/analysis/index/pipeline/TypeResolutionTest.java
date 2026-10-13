@@ -75,7 +75,7 @@ class TypeResolutionTest {
     }
 
     @Test
-    void preservesParameterizedAndRawOwnersOfGenericNonStaticMemberTypes() throws Exception {
+    void namesTheOwnerOfANonStaticMemberTypeOnlyWhenItIsParameterized() throws Exception {
         Path sources = Files.createDirectories(temporaryDirectory.resolve("owners/owner"));
         Files.writeString(sources.resolve("Outer.java"), """
                                                          package owner;
@@ -83,11 +83,18 @@ class TypeResolutionTest {
                                                              public class Inner<U> {}
                                                          }
                                                          """, StandardCharsets.UTF_8);
+        Files.writeString(sources.resolve("Plain.java"), """
+                                                         package owner;
+                                                         public class Plain {
+                                                             public class Inner {}
+                                                         }
+                                                         """, StandardCharsets.UTF_8);
         Files.writeString(sources.resolve("Use.java"), """
                                                        package owner;
                                                        public class Use {
                                                            Outer<String>.Inner<Integer> field;
                                                            Outer.Inner rawOwner;
+                                                           Plain.Inner plainOwner;
                                                            java.util.List<? extends Outer<String>.Inner<Integer>[]> wildcardArray;
                                                            Outer<String>.Inner<Integer> convert(Outer<String>.Inner<? super Long> value) { return null; }
                                                        }
@@ -99,7 +106,8 @@ class TypeResolutionTest {
         List<String> dump = IndexerTestSupport.dump(database);
 
         assertTrue(dump.stream().anyMatch(row -> row.startsWith("fields|") && row.contains("|field|owner.Outer<java.lang.String>::owner.Outer$Inner<java.lang.Integer>|")), dump.toString());
-        assertTrue(dump.stream().anyMatch(row -> row.startsWith("fields|") && row.contains("|rawOwner|owner.Outer::owner.Outer$Inner|")), dump.toString());
+        assertTrue(dump.stream().anyMatch(row -> row.startsWith("fields|") && row.contains("|rawOwner|owner.Outer$Inner|")), dump.toString());
+        assertTrue(dump.stream().anyMatch(row -> row.startsWith("fields|") && row.contains("|plainOwner|owner.Plain$Inner|")), dump.toString());
         assertTrue(dump.stream().anyMatch(row -> row.startsWith("fields|") && row.contains("|wildcardArray|java.util.List<? extends owner.Outer<java.lang.String>::owner.Outer$Inner<java.lang.Integer>[]>|")), dump.toString());
         assertTrue(dump.stream().anyMatch(row -> row.startsWith("methods|") && row.contains("|convert|") && row.contains("|owner.Outer<java.lang.String>::owner.Outer$Inner<java.lang.Integer>|")), dump.toString());
         assertTrue(dump.stream().anyMatch(row -> row.startsWith("parameters|") && row.contains("|value|owner.Outer<java.lang.String>::owner.Outer$Inner<? super java.lang.Long>|")), dump.toString());

@@ -110,10 +110,18 @@ value class TypeResolver {
         String binaryName = binaryName(type);
         String current = type.getTypeArguments().isEmpty() ? binaryName : binaryName + "<" + join(type.getTypeArguments(), ", ") + ">";
         TypeMirror enclosing = type.getEnclosingType();
-        if (enclosing.getKind() == TypeKind.NONE || type.asElement().getModifiers().contains(Modifier.STATIC)) {
+        if (type.asElement().getModifiers().contains(Modifier.STATIC) || !hasTypeArguments(enclosing)) {
             return current;
         }
         return encode(enclosing) + "::" + current;
+    }
+
+    /**
+     * Whether an enclosing type, or one that encloses it in turn, is given type arguments. Only
+     * then does it say more about an inner class than the binary name of that class already does.
+     */
+    private static boolean hasTypeArguments(TypeMirror enclosing) {
+        return enclosing instanceof DeclaredType declared && (!declared.getTypeArguments().isEmpty() || hasTypeArguments(declared.getEnclosingType()));
     }
 
     private String encodeWildcard(WildcardType type) throws IndexBuildException {
