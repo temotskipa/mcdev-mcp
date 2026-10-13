@@ -48,13 +48,10 @@ decompilation.
 ## Commands
 
 ```powershell
-java -jar mcdev-mcp-3.0.0.jar init -v 1.21.11
-java -jar mcdev-mcp-3.0.0.jar clean --cache -v 1.21.11
-java -jar mcdev-mcp-3.0.0.jar status -v 1.21.11
+java --enable-preview -jar mcdev-mcp-3.0.0.jar init -v 1.21.11
+java --enable-preview -jar mcdev-mcp-3.0.0.jar clean --cache -v 1.21.11
+java --enable-preview -jar mcdev-mcp-3.0.0.jar status -v 1.21.11
 ```
 
 `rebuild` operates on already prepared sources; use `init` when decompiled
 sources or remapped inputs are absent.
-
-The obsolete DecompilerMC fork proposal is retained only as design history in
-[`fork.md`](fork.md).

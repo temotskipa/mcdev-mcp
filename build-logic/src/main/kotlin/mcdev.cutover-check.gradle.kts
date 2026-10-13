@@ -84,7 +84,7 @@ fun registerCutoverScan(
             val mustInspectContents =
                 (lowercasePath.endsWith(".json") && normalizedPath != "contracts/node-oracle.json" && !isPackagingLockfile && !normalizedPath.startsWith(
                     "src/test/resources/contracts/"
-                ) && !normalizedPath.startsWith("src/test/resources/oracle/") && !normalizedPath.startsWith("docs/superpowers/")) || normalizedPath == "build.gradle.kts" || normalizedPath == "settings.gradle.kts" || normalizedPath.endsWith(
+                ) && !normalizedPath.startsWith("src/test/resources/oracle/")) || normalizedPath == "build.gradle.kts" || normalizedPath == "settings.gradle.kts" || normalizedPath.endsWith(
                     ".gradle"
                 ) || normalizedPath.endsWith(".gradle.kts") || normalizedPath.endsWith(".toml") || normalizedPath.endsWith(
                     ".properties"
