@@ -34,7 +34,8 @@ abstract class Sha256FileTask : DefaultTask() {
                 digest.update(buffer, 0, read)
             }
         }
-        val text = "${HexFormat.of().formatHex(digest.digest())}  ${input.fileName}${System.lineSeparator()}"
+        // `sha256sum --check` takes a carriage return for part of the file name, so the line ends the same everywhere.
+        val text = "${HexFormat.of().formatHex(digest.digest())}  ${input.fileName}\n"
         val output = checksumFile.get().asFile.toPath()
         Files.createDirectories(output.parent)
         Files.writeString(output, text, StandardCharsets.US_ASCII)
