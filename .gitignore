@@ -16,7 +16,6 @@ node_modules
 .vscode/
 .idea/
 .codex/
-# Includes differential-oracle clones and parity execution evidence.
 .superpowers/
 *.swp
 *.swo

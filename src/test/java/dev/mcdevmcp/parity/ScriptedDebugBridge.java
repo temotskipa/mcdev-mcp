@@ -251,10 +251,6 @@ final class ScriptedDebugBridge implements AutoCloseable {
         }
     }
 
-    void shutdown() {
-        close();
-    }
-
     private void acceptLoop() {
         while (!closed.get()) {
             try {

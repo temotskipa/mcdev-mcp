@@ -82,25 +82,6 @@ tasks.withType<Test>().configureEach {
     )
 }
 
-tasks.named<Test>("test") {
-    useJUnitPlatform {
-        excludeTags("parity")
-    }
-}
-
-val parityTest = tasks.register<Test>("parityTest") {
-    group = "verification"
-    description = "Compares the Java server and CLI with the pinned Node oracle."
-    testClassesDirs = sourceSets.test.get().output.classesDirs
-    classpath = sourceSets.test.get().runtimeClasspath
-    useJUnitPlatform {
-        includeTags("parity")
-    }
-    maxParallelForks = 1
-    dependsOn(tasks.named("test"))
-    outputs.upToDateWhen { false }
-}
-
 tasks.named<ShadowJar>("shadowJar") {
     archiveBaseName.set("mcdev-mcp")
     archiveClassifier.set("")

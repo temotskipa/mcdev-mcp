@@ -160,10 +160,10 @@ publishing job receives release write permission.
 
 ## Compatibility Evidence
 
-The frozen 2.2.1 Node release is a read-only differential oracle, identified by
-`contracts/node-oracle.json`. Tests clone it into ignored `.superpowers`
-scratch, build it there, and verify that the source checkout remains unchanged.
-It is never restored into the Java branch.
+The 2.2.1 Node release, at the commit recorded in `contracts/node-oracle.json`,
+is the reference the Java server was ported from. No test runs it: the CLI and
+the MCP surface are held in place by the recorded fixtures under
+`src/test/resources/contracts`.
 
 DebugBridge protocol fixtures are captured from the 2.0.0 baseline. Envelope
 and endpoint compatibility is tested locally; live Minecraft behavior remains

@@ -1,6 +1,5 @@
 package dev.mcdevmcp.parity;
 
-import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
@@ -17,7 +16,6 @@ import java.util.concurrent.locks.LockSupport;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-@Tag("parity")
 @Timeout(10)
 class ScriptedDebugBridgeTest {
     private static boolean awaitClosed(ScriptedDebugBridge bridge) throws InterruptedException {

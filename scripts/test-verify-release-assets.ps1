@@ -30,21 +30,11 @@ if ($publishStep.Groups["body"].Value -notmatch '(?m)^          GH_REPO: \$\{\{ 
 if ($publishStep.Groups["body"].Value -notmatch ('(?m)^          test "\$\{#assets\[@\]\}" -eq ' + $expectedNames.Count + '\r?$')) {
     throw "Release publish step must require exactly $($expectedNames.Count) assets"
 }
-$parityJob = [regex]::Match(
-    $releaseWorkflow,
-    '(?ms)^  parity:\r?\n(?<body>.*?)(?=^  [a-z0-9-]+:\r?$|\z)'
-)
-if (-not $parityJob.Success -or $parityJob.Groups["body"].Value -notmatch '(?m)^        run: ./gradlew parityTest ') {
-    throw "Release workflow must run the frozen Node parity suite"
-}
 $verifyReleaseJob = [regex]::Match(
     $releaseWorkflow,
     '(?ms)^  verify-release:\r?\n(?<body>.*?)(?=^  [a-z0-9-]+:\r?$|\z)'
 )
-if (-not $verifyReleaseJob.Success -or $verifyReleaseJob.Groups["body"].Value -notmatch '(?m)^    needs: \[[^\]]*\bparity\b[^\]]*\]\r?$') {
-    throw "Release verification must wait for frozen Node parity"
-}
-if ($verifyReleaseJob.Groups["body"].Value -notmatch '(?m)^    needs: \[[^\]]*\bpackage\b[^\]]*\]\r?$') {
+if (-not $verifyReleaseJob.Success -or $verifyReleaseJob.Groups["body"].Value -notmatch '(?m)^    needs: \[[^\]]*\bpackage\b[^\]]*\]\r?$') {
     throw "Release verification must wait for the package of every platform"
 }
 

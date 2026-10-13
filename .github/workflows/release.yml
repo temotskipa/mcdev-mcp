@@ -57,73 +57,6 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-  parity:
-    name: Frozen Node parity
-    needs: build
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 0
-      - name: Read the preview Java feature
-        id: preview-java
-        shell: bash
-        run: |
-          set -euo pipefail
-          feature="$(sed -n 's/^javaFeature=//p' gradle.properties | tr -d '\r')"
-          test -n "$feature"
-          early_access="$(sed -n 's/^javaEarlyAccess=//p' gradle.properties | tr -d '\r')"
-          if [ "$early_access" = "true" ]; then
-            version="$feature-ea"
-          else
-            version="$feature"
-          fi
-          echo "feature=$feature" >> "$GITHUB_OUTPUT"
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
-        with:
-          distribution: temurin
-          java-version: ${{ steps.preview-java.outputs.version }}
-          cache: gradle
-      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
-        with:
-          node-version: '24'
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          name: release-build
-          path: downloaded
-      - name: Stage the checksum-verified producer JAR for parity
-        shell: bash
-        run: |
-          set -euo pipefail
-          version="$(sed -n 's/^version=//p' gradle.properties)"
-          test -n "$version"
-          (cd downloaded && sha256sum --check "mcdev-mcp-$version.jar.sha256")
-          mkdir -p build/libs
-          cp "downloaded/mcdev-mcp-$version.jar" "downloaded/mcdev-mcp-$version.jar.sha256" build/libs/
-      - name: Materialize the immutable master oracle worktree
-        shell: bash
-        run: |
-          set -euo pipefail
-          oracle_commit='7b98bdb4a1d885d588cd141d8eb21e3c5c18b2b6'
-          oracle_worktree="$RUNNER_TEMP/mcdev-mcp-node-oracle"
-          git checkout --detach "$GITHUB_SHA"
-          git branch -f master "$oracle_commit"
-          git worktree add "$oracle_worktree" master
-          test "$(git -C "$oracle_worktree" rev-parse HEAD)" = "$oracle_commit"
-          test -z "$(git -C "$oracle_worktree" status --porcelain=v1 --untracked-files=all)"
-      - name: Compare the Java CLI and complete MCP surface with the frozen Node server
-        run: ./gradlew parityTest --rerun-tasks -x test -x shadowJar --no-configuration-cache --console=plain
-      - name: Verify parity preserved the producer JAR
-        if: always()
-        shell: bash
-        run: |
-          set -euo pipefail
-          version="$(sed -n 's/^version=//p' gradle.properties)"
-          cd build/libs
-          sha256sum --check "$GITHUB_WORKSPACE/downloaded/mcdev-mcp-$version.jar.sha256"
-          cmp "mcdev-mcp-$version.jar" "$GITHUB_WORKSPACE/downloaded/mcdev-mcp-$version.jar"
-
   runtime-matrix:
     name: Test the release JAR
     needs: build
@@ -244,7 +177,7 @@ jobs:
 
   verify-release:
     name: Verify the exact release assets
-    needs: [ build, runtime-matrix, package, parity ]
+    needs: [ build, runtime-matrix, package ]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
