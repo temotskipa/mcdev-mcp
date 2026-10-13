@@ -465,7 +465,7 @@ final class AnalysisPipelineIntegrationTest {
                     SymbolRepository repository = new SymbolRepository(paths.symbolIndex(version));
                     var owner = repository.classByName(binaryName);
                     assertNotNull(owner);
-                    assertNull(repository.methodNamed(owner.id(), "oldOnly"));
+                    assertEquals(List.of(), repository.methodsNamed(owner.id(), "oldOnly"));
                     assertFalse(Files.readString(source).contains("oldOnly"));
                 } finally {
                     releaseOldRebuild.countDown();

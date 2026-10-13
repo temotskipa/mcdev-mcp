@@ -50,7 +50,7 @@ class JavacSourceParserTest {
     }
 
     @Test
-    void indexesEveryTopLevelDeclarationAndOnlySourceDeclaredDirectMembers() throws Exception {
+    void indexesEveryTopLevelAndMemberDeclarationAndOnlySourceDeclaredDirectMembers() throws Exception {
         Path sources = IndexerTestSupport.copyFixture("main", temporaryDirectory.resolve("sources"));
         Path jar = IndexerTestSupport.fixtureCatalog(temporaryDirectory.resolve("remapped.jar"));
         Path dependency = IndexerTestSupport.fixtureDependency(temporaryDirectory.resolve("dependency.jar"));
@@ -60,7 +60,7 @@ class JavacSourceParserTest {
         IndexSummary summary = new SourceIndexer().build(request);
         List<String> dump = IndexerTestSupport.dump(database);
 
-        assertEquals(8, summary.types());
+        assertEquals(9, summary.types());
         assertTrue(dump.stream().anyMatch(row -> row.contains("|index.fixture.FeatureSet|FeatureSet|class|java.util.ArrayList|")));
         assertTrue(dump.stream().anyMatch(row -> row.startsWith("type_interfaces|") && row.endsWith("|java.lang.Runnable")));
         assertTrue(dump.stream().anyMatch(row -> row.contains("|index.fixture.Child|Child|class|index.fixture.FeatureSet|")));
@@ -69,9 +69,15 @@ class JavacSourceParserTest {
         assertTrue(dump.stream().anyMatch(row -> row.contains("|index.fixture.Pair|Pair|record|")));
         assertTrue(dump.stream().anyMatch(row -> row.contains("|index.fixture.Marker|Marker|annotation|")));
         assertTrue(dump.stream().anyMatch(row -> row.contains("|index.fixture.Shade|Shade|enum|")));
-        assertFalse(dump.stream().anyMatch(row -> row.startsWith("types|") && row.split("\\|", -1)[5].equals("index.fixture.FeatureSet$Nested")));
-        assertFalse(dump.stream().anyMatch(row -> row.contains("|hidden|")));
-        assertFalse(dump.stream().anyMatch(row -> row.contains("|hiddenMethod|")));
+        assertTrue(dump.stream().anyMatch(row -> row.contains("|index.fixture.FeatureSet$Nested|Nested|class|java.lang.Object|")));
+        assertFalse(dump.stream().anyMatch(row -> row.startsWith("types|") && row.contains("Local")), "local classes are not members");
+        assertFalse(dump.stream().anyMatch(row -> row.contains("|ignored|")));
+        long featureSetId = typeId(dump, "index.fixture.FeatureSet");
+        long nestedId = typeId(dump, "index.fixture.FeatureSet$Nested");
+        assertTrue(dump.stream().anyMatch(row -> memberOf(row, "fields", nestedId) && row.contains("|hidden|int|")));
+        assertTrue(dump.stream().anyMatch(row -> memberOf(row, "methods", nestedId) && row.contains("|hiddenMethod|()V|void|")));
+        assertFalse(dump.stream().anyMatch(row -> memberOf(row, "fields", featureSetId) && row.contains("|hidden|")), "a member type's fields belong to it alone");
+        assertFalse(dump.stream().anyMatch(row -> memberOf(row, "methods", featureSetId) && row.contains("|hiddenMethod|")));
         assertTrue(dump.stream().anyMatch(row -> row.contains("|values|java.util.List<? super T[]>|")));
         assertTrue(dump.stream().anyMatch(row -> row.contains("|external|dependency.External|")));
         assertTrue(dump.stream().anyMatch(row -> row.contains("|FIRST|int|public,static,final|")));
@@ -249,8 +255,10 @@ class JavacSourceParserTest {
         IndexSummary summary = new SourceIndexer().build(IndexerTestSupport.request(sources.getParent(), jar, database, 1));
         List<String> dump = IndexerTestSupport.dump(database);
 
-        assertEquals(1, summary.types());
+        assertEquals(4, summary.types());
         assertEquals(List.of("nested/RealmsPdpScreen.java"), summary.evidence().typedCompilationUnits());
+        assertTrue(dump.stream().anyMatch(row -> row.contains("|nested.RealmsPdpScreen$PdpHeaderEntry$Subtitle|Subtitle|class|java.lang.Object|nested/RealmsPdpScreen.java|")), dump.toString());
+        assertTrue(dump.stream().anyMatch(row -> row.contains("|nested.RealmsPdpScreen$Nullable|Nullable|annotation|")), dump.toString());
         assertTrue(dump.stream().anyMatch(row -> row.contains("|nested.RealmsPdpScreen|RealmsPdpScreen|class|java.lang.Object|nested/RealmsPdpScreen.java|")), dump.toString());
         String indexedMethod = dump.stream().filter(row -> row.contains("|inadmissible|(Lnested/RealmsPdpScreen$PdpHeaderEntry$Subtitle;)V|void||false|")).findFirst().orElseThrow(() -> new AssertionError(dump));
         String methodId = indexedMethod.split("\\|", -1)[1];

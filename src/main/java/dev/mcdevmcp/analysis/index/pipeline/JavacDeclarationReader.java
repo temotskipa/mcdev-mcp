@@ -26,7 +26,7 @@ final class JavacDeclarationReader {
         String binaryName = resolver.binaryName(element);
         ElementKind kind = element.getKind();
         if (!Set.of(ElementKind.CLASS, ElementKind.INTERFACE, ElementKind.ENUM, ElementKind.RECORD, ElementKind.ANNOTATION_TYPE).contains(kind)) {
-            throw new IndexBuildException("Unsupported top-level declaration kind " + kind + " for " + binaryName);
+            throw new IndexBuildException("Unsupported declaration kind " + kind + " for " + binaryName);
         }
         Optional<ClassDesc> superclass;
         List<ClassDesc> interfaces;

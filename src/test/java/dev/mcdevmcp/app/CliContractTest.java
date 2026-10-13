@@ -209,6 +209,21 @@ final class CliContractTest {
     }
 
     @Test
+    void statusMarksAnIndexFromAnotherFormatAsAbsentAndNamesTheRemedy() throws Exception {
+        PlatformPaths paths = new PlatformPaths(temporaryDirectory.resolve("stale-status"));
+        MinecraftVersion version = new MinecraftVersion("1.21.11");
+        Files.createDirectories(paths.sourceRoot(version));
+        Files.createDirectories(paths.indexRoot(version));
+        Files.writeString(paths.symbolIndex(version), "{\"format\":1}\n");
+
+        CliResult all = execute(new RecordingOperations(temporaryDirectory), paths, "status");
+        CliResult one = execute(new RecordingOperations(temporaryDirectory), paths, "status", "-v", version.value());
+
+        assertEquals(lines("Cached Minecraft versions:", "", "  1.21.11:", "    Decompiled: ✓", "    Indexed: ✗ (needs rebuild: run 'mcdev-mcp rebuild -v 1.21.11')", "    Callgraph: ✗", "", "Total: 1 version(s) cached"), all.stdout());
+        assertEquals(lines("", "Minecraft 1.21.11:", "  Decompiled: ✓", "  Indexed: ✗ (needs rebuild: run 'mcdev-mcp rebuild -v 1.21.11')", "  Callgraph: ✗"), one.stdout());
+    }
+
+    @Test
     void statusReportsCorruptCallgraphForOneVersion() throws Exception {
         PlatformPaths paths = new PlatformPaths(temporaryDirectory.resolve("corrupt-status"));
         MinecraftVersion version = new MinecraftVersion("1.21.11");

@@ -84,7 +84,10 @@ Run `java --enable-preview -jar mcdev-mcp-3.0.0.jar --help` for the complete CLI
 ## Storage Migration
 
 The Java source index is one JSONL file that is rebuilt atomically and held in
-memory while the server answers queries. Callgraph data is a
+memory while the server answers queries. It holds every top-level type and
+every member type declared inside one; a member type answers to its binary
+name (`Outer$Inner`) and to the dotted name it has in source (`Outer.Inner`).
+Local and anonymous classes are not indexed. Callgraph data is a
 generation-addressed JSONL bundle. Both are local derived data, not portable
 user documents.
 
@@ -94,7 +97,9 @@ reinterpret them. Run `clean --index -v <version>` followed by `init` or
 `rebuild`; the cached sources can be retained. A clean Java rebuild replaces
 the legacy index. The `symbols.mv.db` database written by earlier 3.0.0
 development builds is reported the same way, and `rebuild` deletes it once the
-new index is in place.
+new index is in place. So is an index in an older JSONL format, such as one
+built before member types were indexed: `status` marks it as needing a rebuild
+and `rebuild -v <version>` replaces it from the cached sources.
 
 ## Environment
 

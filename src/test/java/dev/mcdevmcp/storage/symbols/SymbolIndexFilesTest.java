@@ -82,11 +82,11 @@ class SymbolIndexFilesTest {
     void rejectsAnUnsupportedFormat() throws Exception {
         Path file = written();
         String content = Files.readString(file, StandardCharsets.UTF_8);
-        assertTrue(content.startsWith("{\"format\":1,"));
-        Files.writeString(file, content.replaceFirst("\\{\"format\":1,", "{\"format\":2,"), StandardCharsets.UTF_8);
+        assertTrue(content.startsWith("{\"format\":2,"));
+        Files.writeString(file, content.replaceFirst("\\{\"format\":2,", "{\"format\":1,"), StandardCharsets.UTF_8);
 
         IOException failure = assertThrows(IOException.class, () -> SymbolIndexFiles.readHeader(file));
-        assertTrue(failure.getMessage().contains("Unsupported symbol index format 2"));
+        assertTrue(failure.getMessage().contains("Unsupported symbol index format 1"));
     }
 
     @Test

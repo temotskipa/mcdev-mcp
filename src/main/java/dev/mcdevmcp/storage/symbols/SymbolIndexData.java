@@ -7,7 +7,10 @@ import java.util.Objects;
  * The complete persisted symbol index: one header and five row sections.
  */
 public value record SymbolIndexData(Header header, List<PackageRow> packages, List<TypeRow> types, List<FieldRow> fields, List<MethodRow> methods, List<ParameterRow> parameters) {
-    public static final int FORMAT = 1;
+    /**
+     * Format 2 holds member types as well as top-level ones; a format 1 index has to be rebuilt.
+     */
+    public static final int FORMAT = 2;
 
     public SymbolIndexData {
         Objects.requireNonNull(header, "header");

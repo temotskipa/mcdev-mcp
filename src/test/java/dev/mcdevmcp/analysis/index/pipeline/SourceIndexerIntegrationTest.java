@@ -65,7 +65,7 @@ class SourceIndexerIntegrationTest {
         new SourceIndexer().build(IndexerTestSupport.request(roots, jar, List.of(), database, 2));
         List<String> dump = IndexerTestSupport.dump(database);
 
-        assertTrue(dump.stream().anyMatch(row -> row.startsWith("metadata|true|1|1.21.5|")));
+        assertTrue(dump.stream().anyMatch(row -> row.startsWith("metadata|true|2|1.21.5|")));
         assertTrue(dump.stream().anyMatch(row -> row.startsWith("packages|") && row.contains("|minecraft|null|shared")));
         assertTrue(dump.stream().anyMatch(row -> row.startsWith("packages|") && row.contains("|fabric|0.120.0|shared")));
         assertTrue(dump.stream().anyMatch(row -> row.startsWith("types|") && row.contains("|minecraft|null|shared.MinecraftType|")));

@@ -27,6 +27,12 @@ class SymbolIndexTest {
         return SymbolIndexData.of("1.21.5", "client", "0".repeat(64), "2026-07-16T00:00:00Z", packages, types, fields, methods, parameters);
     }
 
+    private static SymbolIndexData nestedData() {
+        List<SymbolIndexData.PackageRow> packages = List.of(SymbolIndexFixture.minecraftPackage(1, "alpha"));
+        List<SymbolIndexData.TypeRow> types = List.of(SymbolIndexFixture.minecraftType(1, 1, "alpha.Outer", "Outer", "class", null, List.of(), "alpha/Outer.java", 1, 9), SymbolIndexFixture.minecraftType(2, 1, "alpha.Outer$Inner", "Inner", "class", null, List.of(), "alpha/Outer.java", 2, 8), SymbolIndexFixture.minecraftType(3, 1, "alpha.Outer$Inner$Deep", "Deep", "record", null, List.of(), "alpha/Outer.java", 3, 4), SymbolIndexFixture.minecraftType(4, 1, "alpha.Dollar$Sign", "Dollar$Sign", "class", null, List.of(), "alpha/Dollar$Sign.java", 1, 1), SymbolIndexFixture.minecraftType(5, 1, "alpha.Dollar", "Dollar", "class", null, List.of(), "alpha/Dollar.java", 1, 1));
+        return SymbolIndexData.of("1.21.5", "client", "0".repeat(64), "2026-07-16T00:00:00Z", packages, types, List.of(), List.of(), List.of());
+    }
+
     private static List<Long> ids(List<ClassSymbol> symbols) {
         return symbols.stream().map(ClassSymbol::id).toList();
     }
@@ -70,12 +76,41 @@ class SymbolIndexTest {
     }
 
     @Test
-    void prefersAnExactMethodNameOverACaseInsensitiveOne() {
-        assertEquals(2, INDEX.methodNamed(4, "run").id());
-        assertEquals(1, INDEX.methodNamed(4, "Run").id());
-        assertEquals(1, INDEX.methodNamed(4, "RUN").id());
-        assertNull(INDEX.methodNamed(4, "missing"));
-        assertNull(INDEX.methodNamed(99, "run"));
+    void prefersExactMethodNamesOverCaseInsensitiveOnes() {
+        assertEquals(List.of(2L), INDEX.methodsNamed(4, "run").stream().map(MethodSymbol::id).toList());
+        assertEquals(List.of(1L), INDEX.methodsNamed(4, "Run").stream().map(MethodSymbol::id).toList());
+        assertEquals(List.of(1L), INDEX.methodsNamed(4, "RUN").stream().map(MethodSymbol::id).toList());
+        assertEquals(List.of(), INDEX.methodsNamed(4, "missing"));
+        assertEquals(List.of(), INDEX.methodsNamed(99, "run"));
+    }
+
+    @Test
+    void resolvesMemberTypesByBinaryNameAndBySourceName() {
+        SymbolIndex index = SymbolIndex.of(nestedData());
+
+        assertEquals(2, index.classByName("alpha.Outer$Inner").id());
+        assertEquals(2, index.classByName("alpha.Outer.Inner").id());
+        assertEquals(3, index.classByName("alpha.Outer.Inner.Deep").id());
+        assertNull(index.classByName("alpha.Outer.Inner$Deep"));
+        assertEquals(4, index.classByName("alpha.Dollar$Sign").id());
+        assertNull(index.classByName("alpha.Dollar.Sign"));
+        assertEquals(List.of(2L), ids(index.memberTypes("alpha.Outer")));
+        assertEquals(List.of(3L), ids(index.memberTypes("alpha.Outer$Inner")));
+        assertEquals(List.of(), ids(index.memberTypes("alpha.Dollar")));
+        assertEquals(1, index.enclosingType(index.classByName("alpha.Outer$Inner")).orElseThrow().id());
+        assertTrue(index.enclosingType(index.classByName("alpha.Outer")).isEmpty());
+        assertTrue(index.enclosingType(index.classByName("alpha.Dollar$Sign")).isEmpty(), "a dollar sign in a top-level name is not nesting");
+    }
+
+    @Test
+    void suggestsTypesByTheLastSegmentOfAName() {
+        SymbolIndex index = SymbolIndex.of(nestedData());
+
+        assertEquals(List.of(2L), ids(index.classesNamedLike("Inner", 10)));
+        assertEquals(List.of(2L), ids(index.classesNamedLike("wrong.pkg.INNER", 10)));
+        assertEquals(List.of(3L), ids(index.classesNamedLike("alpha.Outer$Deep", 10)));
+        assertEquals(List.of(), ids(index.classesNamedLike("alpha.Outer.", 10)));
+        assertEquals(List.of(), ids(index.classesNamedLike("Inner", 0)));
     }
 
     @Test

@@ -9,11 +9,14 @@ import dev.mcdevmcp.storage.model.ClassSymbol;
 import dev.mcdevmcp.storage.model.MethodSymbol;
 
 import java.nio.file.NoSuchFileException;
+import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.stream.Collectors;
+import java.util.List;
 
 final class McGetMethodTool {
     static final ToolDeclaration<GetMethodArguments> DECLARATION = ToolDeclaration.of("mc_get_method", GetMethodArguments.class);
+
+    private static final String CONSTRUCTOR_NAME = "<init>";
 
     private McGetMethodTool() {
     }
@@ -26,7 +29,7 @@ final class McGetMethodTool {
                 SymbolRepository repository = support.repository(lease);
                 ClassSymbol type = repository.classByName(className);
                 if (type == null) {
-                    return missing(className, methodName);
+                    return ToolResult.text(missingText(className, methodName) + StaticToolSupport.similarClasses(repository, className));
                 }
                 String source;
                 try {
@@ -37,25 +40,36 @@ final class McGetMethodTool {
                 if (source.isEmpty()) {
                     return missing(className, methodName);
                 }
-                MethodSymbol method = repository.methodNamed(type.id(), methodName);
-                if (method == null) {
+                List<MethodSymbol> overloads = repository.methodsNamed(type.id(), methodName);
+                if (overloads.isEmpty() && methodName.equals(type.simpleName())) {
+                    overloads = repository.methodsNamed(type.id(), CONSTRUCTOR_NAME);
+                }
+                if (overloads.isEmpty()) {
                     return missing(className, methodName);
                 }
-                String parameters = repository.parameters(method.id()).stream().map(parameter -> parameter.type() + " " + parameter.name()).collect(Collectors.joining(", "));
-                String header = header(type, className, method, parameters);
                 String[] lines = source.split("\\n", -1);
-                int firstLine = Math.max(0, method.startLine() - 3);
-                int lastLine = Math.min(lines.length, method.endLine() + 3);
-                return ToolResult.text(header + String.join("\n", Arrays.copyOfRange(lines, firstLine, lastLine)));
+                List<String> rendered = new ArrayList<>();
+                for (MethodSymbol method : overloads) {
+                    String header = header(type, method, StaticToolSupport.parameters(repository.parameters(method.id())));
+                    int firstLine = Math.max(0, method.startLine() - 3);
+                    int lastLine = Math.min(lines.length, method.endLine() + 3);
+                    rendered.add(header + String.join("\n", Arrays.copyOfRange(lines, firstLine, lastLine)));
+                }
+                String overloadNote = overloads.size() == 1 ? "" : "// " + overloads.size() + " methods of " + type.binaryName() + " are named " + overloads.getFirst().name() + "\n\n";
+                return ToolResult.text(overloadNote + String.join("\n\n", rendered));
             }
         }));
     }
 
-    private static String header(ClassSymbol type, String className, MethodSymbol method, String parameters) {
-        return "// Method: " + className + "#" + method.name() + "\n" + "// Signature: " + StaticToolSupport.returnType(method.returnType().orElse(null)) + " " + method.name() + "(" + parameters + ")\n" + "// Modifiers: " + StaticToolSupport.modifiers(method.modifiers()).stripTrailing() + "\n" + "// Lines: " + method.startLine() + "-" + method.endLine() + "\n\n" + type.superclassBinaryName().map(value -> "// Class extends: " + value + "\n\n").orElse("");
+    private static String header(ClassSymbol type, MethodSymbol method, String parameters) {
+        return "// Method: " + type.binaryName() + "#" + method.name() + "\n" + "// Signature: " + StaticToolSupport.signature(type, method, parameters) + "\n" + "// Modifiers: " + StaticToolSupport.modifiers(method.modifiers()).stripTrailing() + "\n" + "// Lines: " + method.startLine() + "-" + method.endLine() + "\n\n" + type.superclassBinaryName().map(value -> "// Class extends: " + value + "\n\n").orElse("");
     }
 
     private static ContentToolResult<Void> missing(String className, String methodName) {
-        return ToolResult.text("Method \"" + methodName + "\" not found in class " + className);
+        return ToolResult.text(missingText(className, methodName));
+    }
+
+    private static String missingText(String className, String methodName) {
+        return "Method \"" + methodName + "\" not found in class " + className;
     }
 }

@@ -10,6 +10,7 @@ import dev.mcdevmcp.storage.callgraph.CallgraphRepository;
 import dev.mcdevmcp.storage.migration.CachePathBoundary;
 import dev.mcdevmcp.storage.migration.VersionOperationLease;
 import dev.mcdevmcp.storage.model.MinecraftVersion;
+import dev.mcdevmcp.storage.model.VersionState;
 import dev.mcdevmcp.support.AppVersion;
 
 import java.io.IOException;
@@ -44,7 +45,7 @@ final class McVersionTool {
             if (!Files.isDirectory(lease.boundary().require(lease.resolvedPaths().sourceRoot(version)))) {
                 return ToolResult.text("Version " + version.value() + " not initialized.\n\n" + "STOP and ask the USER to run this command in their terminal:\n" + "  " + AppVersion.commandLine() + " init -v " + version.value() + "\n\n" + "This will download, decompile, and index Minecraft " + version.value() + " sources.");
             }
-            if (!support.indexed(version, lease)) {
+            if (support.state(version, lease) != VersionState.READY) {
                 return ToolResult.text("Version " + version.value() + " not indexed.\n\n" + "STOP and ask the USER to run this command in their terminal:\n" + "  " + AppVersion.commandLine() + " init -v " + version.value() + "\n\n" + "This will index Minecraft " + version.value() + " sources.");
             }
             support.activate(version);
@@ -69,7 +70,11 @@ final class McVersionTool {
                     continue;
                 }
                 String decompiled = PathWalker.isDecompiled(lease.resolvedPaths().sourceRoot(version), boundary) ? "decompiled" : "not decompiled";
-                String indexed = support.indexed(version, lease) ? "indexed" : "not indexed";
+                String indexed = switch (support.state(version, lease)) {
+                    case READY -> "indexed";
+                    case NEEDS_REBUILD -> "index needs rebuild";
+                    case SOURCE_ONLY, ABSENT -> "not indexed";
+                };
                 CallgraphRepository.PublicationStatus status = CallgraphRepository.publicationStatus(boundary.require(lease.resolvedPaths().callgraphBundle(version)));
                 String callgraph = switch (status) {
                     case PUBLISHED -> "callgraph";

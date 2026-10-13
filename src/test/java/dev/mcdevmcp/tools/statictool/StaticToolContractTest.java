@@ -41,6 +41,9 @@ import static org.junit.jupiter.api.Assertions.*;
 class StaticToolContractTest {
     private static final MinecraftVersion VERSION = new MinecraftVersion("1.21.5");
     private static final Map<String, String> PREVIEW_LAUNCH_GUIDANCE = Map.of("version_set_unknown", "Version 9.9.9 not initialized.\n\nSTOP and ask the USER to run this command in their terminal:\n  java -jar mcdev-mcp-3.0.0.jar init -v 9.9.9\n\nThis will download, decompile, and index Minecraft 9.9.9 sources.", "version_set_unindexed", "Version 1.21.4 not indexed.\n\nSTOP and ask the USER to run this command in their terminal:\n  java -jar mcdev-mcp-3.0.0.jar init -v 1.21.4\n\nThis will index Minecraft 1.21.4 sources.", "search_explicit_missing", "Version 9.9.9 not initialized. STOP and ask the USER to run this command in their terminal:\n  java -jar mcdev-mcp-3.0.0.jar init -v 9.9.9\n\nThis will download, decompile, and index Minecraft 9.9.9 sources (including callgraph).");
+    private static final Set<String> CONSTRUCTOR_SIGNATURE_LABELS = Set.of("constructor_search", "constructor_class_summary", "constructor_class_methods", "constructor_get_method");
+    private static final String NODE_CONSTRUCTOR_SIGNATURE = "undefined ConstructorOnly(";
+    private static final Map<String, String> SIMILAR_CLASS_HINTS = Map.of("class_missing", "Classes with that simple name: alpha.Alpha");
     private static final Set<String> SCHEMA_INVALID_LABELS = Set.of("version_missing_action", "version_unknown_action", "search_missing_query", "search_malformed_query_number", "search_invalid_enum_wire", "search_fractional_limit", "search_subunit_fractional_limit", "search_max_plus_point_one_limit", "search_nonpositive_limit", "search_nonfinite_string_wire", "class_missing_class_name", "class_wrong_class_name_type", "class_invalid_enum_wire", "method_missing_class_name", "method_missing_method_name", "packages_invalid_enum_wire", "packages_wrong_namespace_type", "packages_fractional_truncation", "packages_subunit_fractional_limit", "packages_max_plus_point_one_limit", "classes_missing_package_path", "classes_subunit_fractional_limit", "classes_max_plus_point_one_limit", "hierarchy_missing_class_name", "hierarchy_missing_direction", "hierarchy_root_missing_direction", "hierarchy_root_sideways_direction", "hierarchy_subunit_fractional_limit", "hierarchy_max_plus_point_one_limit", "hierarchy_invalid_enum_wire", "classes_wrong_package_path_type");
     private final List<ExecutorService> catalogExecutors = new ArrayList<>();
     @TempDir
@@ -156,6 +159,26 @@ class StaticToolContractTest {
         return approved.replace("java -jar mcdev-mcp-3.0.0.jar", "java --enable-preview -jar mcdev-mcp-3.0.0.jar");
     }
 
+    /**
+     * Node printed the return type a constructor does not have as "undefined"; the reviewed responses
+     * show the constructor as Java declares it.
+     */
+    private static String constructorCorpusText(String label, String frozenText) {
+        if (!CONSTRUCTOR_SIGNATURE_LABELS.contains(label)) {
+            return frozenText;
+        }
+        assertTrue(frozenText.contains(NODE_CONSTRUCTOR_SIGNATURE), "Unreviewed frozen constructor rendering: " + label);
+        return frozenText.replace(NODE_CONSTRUCTOR_SIGNATURE, "ConstructorOnly(");
+    }
+
+    /**
+     * Node stopped at "not found"; the reviewed responses go on to name the classes that share the simple name.
+     */
+    private static String similarClassCorpusText(String label, String frozenText) {
+        String hint = SIMILAR_CLASS_HINTS.get(label);
+        return hint == null ? frozenText : frozenText + "\n" + hint;
+    }
+
     private static Map<String, Object> requestParams(Map<String, Object> request) {
         return McpJsonDefaults.getMapper().convertValue(McpJsonDefaults.getMapper().convertValue(request.get("request"), new TypeRef<Map<String, Object>>() {
         }).get("params"), new TypeRef<>() {
@@ -186,7 +209,9 @@ class StaticToolContractTest {
         assertEquals("Method \"missing\" not found in class alpha.Alpha", text(catalog, "mc_get_method", Map.of("className", "alpha.Alpha", "methodName", "missing")));
         assertTrue(text(catalog, "mc_get_method", Map.of("className", "alpha.Alpha", "methodName", "NEEDLE")).startsWith("// Method: alpha.Alpha#needle\n"));
         assertTrue(text(catalog, "mc_get_class", Map.of("className", "alpha.Alpha", "view", "full")).endsWith("public void Needle() { }\n}\n"));
-        assertEquals("Class not found: Alpha", text(catalog, "mc_get_class", Map.of("className", "Alpha")));
+        assertEquals("Class not found: Alpha\nClasses with that simple name: alpha.Alpha", text(catalog, "mc_get_class", Map.of("className", "Alpha")));
+        assertEquals("Class not found: alpha.Absent", text(catalog, "mc_get_class", Map.of("className", "alpha.Absent")));
+        assertEquals("Method \"needle\" not found in class wrong.ALPHA\nClasses with that simple name: alpha.Alpha", text(catalog, "mc_get_method", Map.of("className", "wrong.ALPHA", "methodName", "needle")));
         String executableJar = AppVersion.executableJarName();
         assertEquals("Version 9.9.9 not initialized.\n\nSTOP and ask the USER to run this command in their terminal:\n  java --enable-preview -jar " + executableJar + " init -v 9.9.9\n\nThis will download, decompile, and index Minecraft 9.9.9 sources.", text(catalog, "mc_version", Map.of("action", "set", "version", "9.9.9")));
         assertEquals("Version 9.9.9 not initialized. STOP and ask the USER to run this command in their terminal:\n  java --enable-preview -jar " + executableJar + " init -v 9.9.9\n\nThis will download, decompile, and index Minecraft 9.9.9 sources (including callgraph).", text(catalog, "mc_search", Map.of("query", "needle", "version", "9.9.9")));
@@ -413,7 +438,7 @@ class StaticToolContractTest {
     }
 
     /**
-     * Frozen responses remain unchanged; only three exact launcher-guidance responses adapt to the preview launch policy. The reviewed 31 schema-invalid requests remain explicit pre-mapper exclusions.
+     * Frozen responses remain unchanged; only three exact launcher-guidance responses adapt to the preview launch policy, four show a constructor without Node's "undefined" return type, and one names the classes that share a simple name that was not found. The reviewed 31 schema-invalid requests remain explicit pre-mapper exclusions.
      */
     @Test
     void replaysSchemaValidFrozenNodeJsonlCorpusExactly() throws Exception {
@@ -444,6 +469,8 @@ class StaticToolContractTest {
         assertEquals(SCHEMA_INVALID_LABELS, observedSchemaInvalidLabels, "The reviewed schema-invalid exclusion set must match the frozen corpus");
         assertTrue(corpusLabels.containsAll(SCHEMA_INVALID_LABELS), "Every schema-invalid exclusion must remain represented in the frozen corpus");
         assertTrue(corpusLabels.containsAll(PREVIEW_LAUNCH_GUIDANCE.keySet()), "Every reviewed preview-guidance case must remain represented in the frozen corpus");
+        assertTrue(corpusLabels.containsAll(CONSTRUCTOR_SIGNATURE_LABELS), "Every reviewed constructor case must remain represented in the frozen corpus");
+        assertTrue(corpusLabels.containsAll(SIMILAR_CLASS_HINTS.keySet()), "Every reviewed similar-class case must remain represented in the frozen corpus");
         for (int index = 0; index < requests.size(); index++) {
             Map<String, Object> request = requests.get(index);
             String label = (String) request.get("label");
@@ -461,7 +488,7 @@ class StaticToolContractTest {
             }), Cancellation.none()).toCompletableFuture().join();
             List<Map<String, Object>> content = McpJsonDefaults.getMapper().convertValue(result.get("content"), new TypeRef<>() {
             });
-            String expectedText = previewLaunchCorpusText(label, assertInstanceOf(String.class, content.getFirst().get("text")));
+            String expectedText = similarClassCorpusText(label, constructorCorpusText(label, previewLaunchCorpusText(label, assertInstanceOf(String.class, content.getFirst().get("text")))));
             assertEquals(expectedText, contentText(actual), "corpus line " + index + " " + request.get("label"));
             assertEquals(Boolean.TRUE.equals(result.get("isError")), actual.isError(), "corpus line " + index + " " + request.get("label"));
         }

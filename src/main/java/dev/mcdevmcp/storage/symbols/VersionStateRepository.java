@@ -48,7 +48,7 @@ public final class VersionStateRepository {
         if (isReady(database)) {
             return VersionState.READY;
         }
-        if (hasLegacyIndex(version, lease)) {
+        if (Files.isRegularFile(database) || hasLegacyIndex(version, lease)) {
             return VersionState.NEEDS_REBUILD;
         }
         if (Files.isDirectory(lease.boundary().require(resolvedPaths.sourceRoot(version)))) {

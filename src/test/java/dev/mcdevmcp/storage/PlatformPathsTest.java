@@ -80,6 +80,7 @@ class PlatformPathsTest {
         Files.createDirectories(paths.symbolIndex(VERSION).getParent());
         Files.writeString(paths.symbolIndex(VERSION), "not-a-database");
         assertFalse(states.isReady(VERSION));
+        assertTrue(states.needsRebuild(VERSION), "an index this release cannot read has to be rebuilt");
         Files.delete(paths.symbolIndex(VERSION));
         Files.writeString(paths.indexRoot(VERSION).resolve("manifest.json"), "{}");
         assertTrue(states.needsRebuild(VERSION));

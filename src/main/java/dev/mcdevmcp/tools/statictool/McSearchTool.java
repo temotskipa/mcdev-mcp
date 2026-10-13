@@ -50,8 +50,7 @@ final class McSearchTool {
             return "[field] " + owner.binaryName() + "#" + field.name() + ": " + StaticToolSupport.modifiers(field.modifiers()) + field.type() + " " + field.name();
         }
         var method = hit.method().orElseThrow();
-        String parameters = hit.parameters().stream().map(parameter -> parameter.type() + " " + parameter.name()).collect(Collectors.joining(", "));
-        return "[method] " + owner.binaryName() + "#" + method.name() + ": " + StaticToolSupport.modifiers(method.modifiers()) + StaticToolSupport.returnType(method.returnType().orElse(null)) + " " + method.name() + "(" + parameters + ") (line " + method.startLine() + ")";
+        return "[method] " + owner.binaryName() + "#" + method.name() + ": " + StaticToolSupport.modifiers(method.modifiers()) + StaticToolSupport.signature(owner, method, StaticToolSupport.parameters(hit.parameters())) + " (line " + method.startLine() + ")";
     }
 
     private static String renderClass(SearchHit hit, ClassSymbol owner) {

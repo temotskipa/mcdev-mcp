@@ -15,18 +15,22 @@ public value class SymbolIndex {
     private final List<String> lowerPackageNames;
     private final List<String> lowerSimpleNames;
     private final Map<String, ClassSymbol> byBinaryName;
+    private final Map<String, ClassSymbol> bySourceName;
+    private final Map<String, List<ClassSymbol>> memberTypes;
     private final Map<Long, List<FieldSymbol>> fields;
     private final Map<Long, List<MethodSymbol>> methods;
     private final Map<Long, List<ParameterSymbol>> parameters;
     private final Map<String, List<ClassSymbol>> subclasses;
     private final Map<String, List<ClassSymbol>> implementors;
 
-    private SymbolIndex(List<SymbolIndexData.PackageRow> packages, List<ClassSymbol> types, List<String> lowerPackageNames, List<String> lowerSimpleNames, Map<String, ClassSymbol> byBinaryName, Map<Long, List<FieldSymbol>> fields, Map<Long, List<MethodSymbol>> methods, Map<Long, List<ParameterSymbol>> parameters, Map<String, List<ClassSymbol>> subclasses, Map<String, List<ClassSymbol>> implementors) {
+    private SymbolIndex(List<SymbolIndexData.PackageRow> packages, List<ClassSymbol> types, List<String> lowerPackageNames, List<String> lowerSimpleNames, Map<String, ClassSymbol> byBinaryName, Map<String, ClassSymbol> bySourceName, Map<String, List<ClassSymbol>> memberTypes, Map<Long, List<FieldSymbol>> fields, Map<Long, List<MethodSymbol>> methods, Map<Long, List<ParameterSymbol>> parameters, Map<String, List<ClassSymbol>> subclasses, Map<String, List<ClassSymbol>> implementors) {
         this.packages = packages;
         this.types = types;
         this.lowerPackageNames = lowerPackageNames;
         this.lowerSimpleNames = lowerSimpleNames;
         this.byBinaryName = byBinaryName;
+        this.bySourceName = bySourceName;
+        this.memberTypes = memberTypes;
         this.fields = fields;
         this.methods = methods;
         this.parameters = parameters;
@@ -69,6 +73,16 @@ public value class SymbolIndex {
         for (SymbolIndexData.TypeRow row : data.types().stream().sorted(Comparator.comparingLong(SymbolIndexData.TypeRow::id)).toList()) {
             byBinaryName.putIfAbsent(row.binaryName(), byId.get(row.id()));
         }
+        Map<String, ClassSymbol> bySourceName = new HashMap<>();
+        Map<String, List<ClassSymbol>> memberTypes = new HashMap<>();
+        for (ClassSymbol symbol : types) {
+            String enclosing = enclosingBinaryName(symbol, byBinaryName);
+            if (enclosing != null && byBinaryName.get(symbol.binaryName()).id() == symbol.id()) {
+                memberTypes.computeIfAbsent(enclosing, _ -> new ArrayList<>()).add(symbol);
+                bySourceName.putIfAbsent(sourceName(symbol, byBinaryName), symbol);
+            }
+        }
+        memberTypes.replaceAll((_, values) -> List.copyOf(values));
         Map<Long, List<FieldSymbol>> fields = new HashMap<>();
         for (SymbolIndexData.FieldRow row : data.fields().stream().sorted(Comparator.comparingInt(SymbolIndexData.FieldRow::ordinal).thenComparingLong(SymbolIndexData.FieldRow::id)).toList()) {
             fields.computeIfAbsent(row.typeId(), _ -> new ArrayList<>()).add(new FieldSymbol(row.id(), row.typeId(), row.ordinal(), row.name(), row.type(), modifiers(row.modifiers()), row.startOffset(), row.endOffset(), row.startLine(), row.endLine()));
@@ -86,7 +100,24 @@ public value class SymbolIndex {
         parameters.replaceAll((_, values) -> List.copyOf(values));
         subclasses.replaceAll((_, values) -> List.copyOf(values));
         implementors.replaceAll((_, values) -> List.copyOf(values));
-        return new SymbolIndex(orderedPackages, List.copyOf(types), List.copyOf(lowerPackageNames), List.copyOf(lowerSimpleNames), byBinaryName, fields, methods, parameters, subclasses, implementors);
+        return new SymbolIndex(orderedPackages, List.copyOf(types), List.copyOf(lowerPackageNames), List.copyOf(lowerSimpleNames), byBinaryName, bySourceName, memberTypes, fields, methods, parameters, subclasses, implementors);
+    }
+
+    /**
+     * A member type's binary name is its enclosing type's binary name, {@code $} and its own simple name.
+     */
+    private static String enclosingBinaryName(ClassSymbol symbol, Map<String, ClassSymbol> byBinaryName) {
+        String suffix = "$" + symbol.simpleName();
+        if (!symbol.binaryName().endsWith(suffix)) {
+            return null;
+        }
+        String enclosing = symbol.binaryName().substring(0, symbol.binaryName().length() - suffix.length());
+        return byBinaryName.containsKey(enclosing) ? enclosing : null;
+    }
+
+    private static String sourceName(ClassSymbol symbol, Map<String, ClassSymbol> byBinaryName) {
+        String enclosing = enclosingBinaryName(symbol, byBinaryName);
+        return enclosing == null ? symbol.binaryName() : sourceName(byBinaryName.get(enclosing), byBinaryName) + "." + symbol.simpleName();
     }
 
     private static int rank(String namespace) {
@@ -125,8 +156,38 @@ public value class SymbolIndex {
         return new PackageListing(first(names, limit), names.size());
     }
 
-    public ClassSymbol classByName(String binaryName) {
-        return byBinaryName.get(binaryName);
+    /**
+     * Finds a type by its binary name, or a member type by the dotted name it has in source.
+     */
+    public ClassSymbol classByName(String name) {
+        ClassSymbol exact = byBinaryName.get(name);
+        return exact != null ? exact : bySourceName.get(name);
+    }
+
+    public Optional<ClassSymbol> enclosingType(ClassSymbol symbol) {
+        return Optional.ofNullable(enclosingBinaryName(symbol, byBinaryName)).map(byBinaryName::get);
+    }
+
+    /**
+     * The types declared directly inside the named type, in declaration order.
+     */
+    public List<ClassSymbol> memberTypes(String binaryName) {
+        return memberTypes.getOrDefault(binaryName, List.of());
+    }
+
+    /**
+     * Types whose simple name is the last segment of the given name, compared without regard to case.
+     */
+    public List<ClassSymbol> classesNamedLike(String name, int limit) {
+        int separator = Math.max(name.lastIndexOf('.'), name.lastIndexOf('$'));
+        String simpleName = name.substring(separator + 1).toLowerCase(Locale.ROOT);
+        List<ClassSymbol> values = new ArrayList<>();
+        for (int index = 0; index < types.size() && values.size() < limit; index++) {
+            if (!simpleName.isEmpty() && lowerSimpleNames.get(index).equals(simpleName)) {
+                values.add(types.get(index));
+            }
+        }
+        return List.copyOf(values);
     }
 
     public List<FieldSymbol> fields(long typeId) {
@@ -137,18 +198,14 @@ public value class SymbolIndex {
         return methods.getOrDefault(typeId, List.of());
     }
 
-    public MethodSymbol methodNamed(long typeId, String name) {
-        String lowerName = name.toLowerCase(Locale.ROOT);
-        MethodSymbol caseInsensitive = null;
-        for (MethodSymbol method : methods(typeId)) {
-            if (method.name().equals(name)) {
-                return method;
-            }
-            if (caseInsensitive == null && method.name().toLowerCase(Locale.ROOT).equals(lowerName)) {
-                caseInsensitive = method;
-            }
-        }
-        return caseInsensitive;
+    /**
+     * Every overload with exactly this name; when there is none, every overload of the first method
+     * whose name differs from it only in case.
+     */
+    public List<MethodSymbol> methodsNamed(long typeId, String name) {
+        List<MethodSymbol> declared = methods(typeId);
+        String exactName = declared.stream().map(MethodSymbol::name).filter(name::equals).findFirst().or(() -> declared.stream().map(MethodSymbol::name).filter(name::equalsIgnoreCase).findFirst()).orElse(null);
+        return exactName == null ? List.of() : declared.stream().filter(method -> method.name().equals(exactName)).toList();
     }
 
     public List<ParameterSymbol> parameters(long methodId) {

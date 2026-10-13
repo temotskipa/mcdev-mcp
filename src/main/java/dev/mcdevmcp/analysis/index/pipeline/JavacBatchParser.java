@@ -47,18 +47,7 @@ final class JavacBatchParser {
                     for (CompilationUnitTree unit : units) {
                         for (Tree declaration : unit.getTypeDecls()) {
                             if (declaration instanceof ClassTree type) {
-                                declaredMembers.put(type, List.copyOf(type.getMembers()));
-                                JavacDeclarationReader.captureRange(unit, type, parsedPositions, declaredRanges);
-                                for (Tree member : type.getMembers()) {
-                                    JavacDeclarationReader.captureRange(unit, member, parsedPositions, declaredRanges);
-                                    if (member instanceof MethodTree method) {
-                                        List<? extends VariableTree> parameters = List.copyOf(method.getParameters());
-                                        declaredMethodParameters.put(method, parameters);
-                                        for (VariableTree parameter : parameters) {
-                                            JavacDeclarationReader.captureRange(unit, parameter, parsedPositions, declaredRanges);
-                                        }
-                                    }
-                                }
+                                captureDeclarations(unit, type, parsedPositions, declaredMembers, declaredMethodParameters, declaredRanges);
                             }
                         }
                     }
@@ -71,7 +60,7 @@ final class JavacBatchParser {
                         DecodedSource source = corpus.require(unit.getSourceFile().toUri());
                         for (Tree declaration : unit.getTypeDecls()) {
                             if (declaration instanceof ClassTree type) {
-                                parsedTypes.add(JavacDeclarationReader.parseType(unit, type, declaredMembers.getOrDefault(type, List.of()), declaredMethodParameters, declaredRanges, source, catalog, trees, resolver));
+                                parseDeclarations(unit, type, declaredMembers, declaredMethodParameters, declaredRanges, source, catalog, trees, resolver, parsedTypes);
                             }
                         }
                     }
@@ -88,6 +77,39 @@ final class JavacBatchParser {
             }
         } catch (IOException exception) {
             throw new IndexBuildException("Unable to configure isolated Javac worker", exception);
+        }
+    }
+
+    /**
+     * Records what a type declares, and what its member classes declare in turn, before
+     * attribution adds members of its own to the trees.
+     */
+    private static void captureDeclarations(CompilationUnitTree unit, ClassTree type, SourcePositions positions, Map<ClassTree, List<? extends Tree>> declaredMembers, Map<MethodTree, List<? extends VariableTree>> declaredMethodParameters, Map<Tree, SourceRange> declaredRanges) throws IndexBuildException {
+        declaredMembers.put(type, List.copyOf(type.getMembers()));
+        JavacDeclarationReader.captureRange(unit, type, positions, declaredRanges);
+        for (Tree member : type.getMembers()) {
+            if (member instanceof ClassTree memberClass) {
+                captureDeclarations(unit, memberClass, positions, declaredMembers, declaredMethodParameters, declaredRanges);
+                continue;
+            }
+            JavacDeclarationReader.captureRange(unit, member, positions, declaredRanges);
+            if (member instanceof MethodTree method) {
+                List<? extends VariableTree> parameters = List.copyOf(method.getParameters());
+                declaredMethodParameters.put(method, parameters);
+                for (VariableTree parameter : parameters) {
+                    JavacDeclarationReader.captureRange(unit, parameter, positions, declaredRanges);
+                }
+            }
+        }
+    }
+
+    private static void parseDeclarations(CompilationUnitTree unit, ClassTree type, Map<ClassTree, List<? extends Tree>> declaredMembers, Map<MethodTree, List<? extends VariableTree>> declaredMethodParameters, Map<Tree, SourceRange> declaredRanges, DecodedSource source, ClassFileTypeCatalog catalog, Trees trees, TypeResolver resolver, List<ParsedType> parsedTypes) throws IndexBuildException {
+        List<? extends Tree> members = declaredMembers.getOrDefault(type, List.of());
+        parsedTypes.add(JavacDeclarationReader.parseType(unit, type, members, declaredMethodParameters, declaredRanges, source, catalog, trees, resolver));
+        for (Tree member : members) {
+            if (member instanceof ClassTree memberClass) {
+                parseDeclarations(unit, memberClass, declaredMembers, declaredMethodParameters, declaredRanges, source, catalog, trees, resolver, parsedTypes);
+            }
         }
     }
 

@@ -18,7 +18,6 @@ import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Locale;
 import java.util.Objects;
 import java.util.concurrent.Callable;
 
@@ -39,6 +38,13 @@ public final class StatusCommand implements Callable<Integer> {
 
     private static String mark(boolean value) {
         return value ? "✓" : "✗";
+    }
+
+    /**
+     * An index this release cannot read is not an index the tools can use, so it is marked absent with its remedy.
+     */
+    private static String indexMark(VersionState state, MinecraftVersion version) {
+        return state == VersionState.NEEDS_REBUILD ? mark(false) + " (needs rebuild: run 'mcdev-mcp rebuild -v " + version.value() + "')" : mark(state == VersionState.READY);
     }
 
     @Override
@@ -83,18 +89,12 @@ public final class StatusCommand implements Callable<Integer> {
     private void printVersion(VersionStateRepository states, MinecraftVersion value) throws IOException {
         try (var lease = VersionOperationLease.read(boundary, value)) {
             VersionState state = states.state(value, lease);
-            String graph = graphStatus(value);
-            if (state == VersionState.NEEDS_REBUILD) {
-                spec.commandLine().getOut().printf("%s: %s, callgraph %s%n", value.value(), state.name().toLowerCase(Locale.ROOT).replace('_', '-'), graph);
-                return;
-            }
-
             boolean decompiled = Files.isDirectory(boundary.require(lease.resolvedPaths().sourceRoot(value)));
             boolean indexed = state == VersionState.READY;
-            boolean hasCallgraph = graph.equals("present");
+            boolean hasCallgraph = graphStatus(value).equals("present");
             spec.commandLine().getOut().printf("%nMinecraft %s:%n", value.value());
             spec.commandLine().getOut().printf("  Decompiled: %s%n", mark(decompiled));
-            spec.commandLine().getOut().printf("  Indexed: %s%n", mark(indexed));
+            spec.commandLine().getOut().printf("  Indexed: %s%n", indexMark(state, value));
             spec.commandLine().getOut().printf("  Callgraph: %s%n", mark(hasCallgraph));
             if (!decompiled && !indexed) {
                 spec.commandLine().getOut().printf("%n  Run 'mcdev-mcp init -v %s' to initialize.%n", value.value());
@@ -107,7 +107,7 @@ public final class StatusCommand implements Callable<Integer> {
             VersionState state = states.state(value, lease);
             spec.commandLine().getOut().printf("  %s:%n", value.value());
             spec.commandLine().getOut().printf("    Decompiled: %s%n", mark(hasSourceDirectory(value)));
-            spec.commandLine().getOut().printf("    Indexed: %s%n", mark(state == VersionState.READY || state == VersionState.NEEDS_REBUILD));
+            spec.commandLine().getOut().printf("    Indexed: %s%n", indexMark(state, value));
             spec.commandLine().getOut().printf("    Callgraph: %s%n", mark(graphStatus(value).equals("present")));
             spec.commandLine().getOut().println();
         }

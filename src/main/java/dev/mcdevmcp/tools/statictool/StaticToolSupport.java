@@ -8,6 +8,8 @@ import dev.mcdevmcp.storage.symbols.SymbolRepository;
 import dev.mcdevmcp.storage.symbols.VersionStateRepository;
 import dev.mcdevmcp.storage.migration.VersionOperationLease;
 import dev.mcdevmcp.storage.model.ClassSymbol;
+import dev.mcdevmcp.storage.model.MethodSymbol;
+import dev.mcdevmcp.storage.model.ParameterSymbol;
 import dev.mcdevmcp.storage.model.MinecraftVersion;
 import dev.mcdevmcp.storage.model.SourceNamespace;
 import dev.mcdevmcp.storage.model.VersionState;
@@ -24,6 +26,8 @@ import java.util.*;
 import java.util.stream.Collectors;
 
 final class StaticToolSupport {
+    private static final int SIMILAR_CLASS_LIMIT = 10;
+
     private final PlatformPaths paths;
     private final VersionStateRepository states;
     private final Runnable beforeSourceRead;
@@ -44,8 +48,24 @@ final class StaticToolSupport {
         return values.stream().sorted(Comparator.comparing(Enum::ordinal)).map(value -> value.name().toLowerCase(Locale.ROOT)).collect(Collectors.joining(" ", "", values.isEmpty() ? "" : " "));
     }
 
-    static String returnType(String value) {
-        return value == null ? "undefined" : value;
+    /**
+     * A method as it is declared: a constructor has no return type and carries the name of its class.
+     */
+    static String signature(ClassSymbol owner, MethodSymbol method, String parameters) {
+        String name = method.constructor() ? owner.simpleName() : method.returnType().orElse("void") + " " + method.name();
+        return name + "(" + parameters + ")";
+    }
+
+    static String parameters(List<ParameterSymbol> parameters) {
+        return parameters.stream().map(parameter -> parameter.type() + " " + parameter.name()).collect(Collectors.joining(", "));
+    }
+
+    /**
+     * A line naming the indexed classes that share the simple name of a class that was not found, or nothing.
+     */
+    static String similarClasses(SymbolRepository repository, String className) throws IOException {
+        List<ClassSymbol> similar = repository.classesNamedLike(className, SIMILAR_CLASS_LIMIT);
+        return similar.isEmpty() ? "" : "\nClasses with that simple name: " + similar.stream().map(ClassSymbol::binaryName).collect(Collectors.joining(", "));
     }
 
     ContentToolResult<Void> execute(String toolName, StaticToolOperation operation) {
@@ -82,7 +102,7 @@ final class StaticToolSupport {
             if (!Files.isDirectory(lease.boundary().require(lease.resolvedPaths().sourceRoot(explicit)))) {
                 throw new ExpectedVersionException("Version " + explicit.value() + " not initialized. STOP and ask the USER to run this command in their terminal:\n" + "  " + AppVersion.commandLine() + " init -v " + explicit.value() + "\n\n" + "This will download, decompile, and index Minecraft " + explicit.value() + " sources (including callgraph).");
             }
-            if (!indexed(explicit, lease)) {
+            if (state(explicit, lease) != VersionState.READY) {
                 throw new ExpectedVersionException("Version " + explicit.value() + " not indexed. STOP and ask the USER to run this command in their terminal:\n" + "  " + AppVersion.commandLine() + " init -v " + explicit.value() + "\n\n" + "This will index Minecraft " + explicit.value() + " sources (including callgraph).");
             }
         }
@@ -122,8 +142,8 @@ final class StaticToolSupport {
         return new CallgraphRepository(lease.boundary().require(lease.resolvedPaths().callgraphBundle(lease.version())), lease.version());
     }
 
-    boolean indexed(MinecraftVersion version, VersionOperationLease lease) throws IOException {
-        return states.state(version, lease) == VersionState.READY;
+    VersionState state(MinecraftVersion version, VersionOperationLease lease) throws IOException {
+        return states.state(version, lease);
     }
 
     PlatformPaths paths() {

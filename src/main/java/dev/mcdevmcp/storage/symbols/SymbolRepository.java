@@ -6,6 +6,7 @@ import java.io.IOException;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 
 /**
  * Deterministic, read-only access to a published symbol index; every call sees the file as currently published.
@@ -34,8 +35,20 @@ public final class SymbolRepository {
         return index().packages(namespace, limitPlusOne);
     }
 
-    public ClassSymbol classByName(String binaryName) throws IOException {
-        return index().classByName(binaryName);
+    public ClassSymbol classByName(String name) throws IOException {
+        return index().classByName(name);
+    }
+
+    public Optional<ClassSymbol> enclosingType(ClassSymbol symbol) throws IOException {
+        return index().enclosingType(symbol);
+    }
+
+    public List<ClassSymbol> memberTypes(String binaryName) throws IOException {
+        return index().memberTypes(binaryName);
+    }
+
+    public List<ClassSymbol> classesNamedLike(String name, int limit) throws IOException {
+        return index().classesNamedLike(name, limit);
     }
 
     public List<FieldSymbol> fields(long typeId) throws IOException {
@@ -46,8 +59,8 @@ public final class SymbolRepository {
         return index().methods(typeId);
     }
 
-    public MethodSymbol methodNamed(long typeId, String name) throws IOException {
-        return index().methodNamed(typeId, name);
+    public List<MethodSymbol> methodsNamed(long typeId, String name) throws IOException {
+        return index().methodsNamed(typeId, name);
     }
 
     public List<ParameterSymbol> parameters(long methodId) throws IOException {
