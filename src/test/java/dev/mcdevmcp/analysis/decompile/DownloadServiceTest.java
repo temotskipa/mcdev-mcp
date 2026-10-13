@@ -258,7 +258,7 @@ final class DownloadServiceTest {
             Path cancellationTarget = temporaryDirectory.resolve("cancel.txt");
             Files.write(cancellationTarget, old);
             AtomicBoolean cancel = new AtomicBoolean();
-            IOException cancellationFailure = assertThrows(IOException.class, () -> service.download(artifact(server, "/large", large, ArtifactKind.MAPPING), cancellationTarget, (_, _, message) -> cancel.compareAndSet(false, message.startsWith("Downloaded ")), cancel::get));
+            IOException cancellationFailure = assertThrows(IOException.class, () -> service.download(artifact(server, "/large", large, ArtifactKind.MAPPING), cancellationTarget, (_, _, message) -> cancel.compareAndSet(false, message.startsWith("Downloading ")), cancel::get));
             assertTrue(cancellationFailure.getMessage().contains(AppVersion.executableJarName()));
             assertTrue(Thread.interrupted(), "cancellation must preserve the interrupt signal");
             assertArrayEquals(old, Files.readAllBytes(cancellationTarget));

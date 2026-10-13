@@ -28,6 +28,7 @@ import java.util.*;
 public value class DownloadService {
     private static final int MAXIMUM_REDIRECTS = 5;
     private static final int BUFFER_BYTES = 64 * 1024;
+    private static final long PROGRESS_INTERVAL_NANOS = Duration.ofSeconds(2).toNanos();
     private static final int MAXIMUM_ERROR_URI_CHARACTERS = 512;
     private static final long MAXIMUM_ARTIFACT_BYTES = 1024L * 1024L * 1024L;
     private final HttpClient client;
@@ -232,7 +233,7 @@ public value class DownloadService {
                 MessageDigest digest = sha1();
                 byte[] buffer = new byte[BUFFER_BYTES];
                 long written = 0;
-                int lastReportedPercent = -1;
+                long lastReport = System.nanoTime();
                 while (true) {
                     checkCancelled(cancellation);
                     int read = input.read(buffer);
@@ -250,11 +251,11 @@ public value class DownloadService {
                     }
                     digest.update(buffer, 0, read);
                     written += read;
-                    int percent = artifact.byteLength() == 0 ? 0 : (int) Math.min(99, written * 100 / artifact.byteLength());
-                    int reportPercent = percent / 5 * 5;
-                    if (reportPercent != lastReportedPercent) {
-                        lastReportedPercent = reportPercent;
-                        progress.report("download", percent, "Downloaded " + written + " bytes");
+                    long now = System.nanoTime();
+                    if (now - lastReport >= PROGRESS_INTERVAL_NANOS) {
+                        lastReport = now;
+                        int percent = artifact.byteLength() == 0 ? 0 : (int) Math.min(99, written * 100 / artifact.byteLength());
+                        progress.report("download", percent, "Downloaded " + written + " of " + artifact.byteLength() + " bytes");
                     }
                 }
                 output.force(true);
