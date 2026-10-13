@@ -11,7 +11,7 @@ import java.util.Optional;
 /**
  * The typed, inert-to-construct runtime dependencies shared by runtime bindings.
  */
-public final class RuntimeContext {
+public value class RuntimeContext {
     private final RuntimeToolSupport runtime;
     private final SessionControlSupport sessionControl;
     private final MediaToolSupport media;

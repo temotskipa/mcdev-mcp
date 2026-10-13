@@ -20,7 +20,7 @@ import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.IntStream;
 
-final class RuntimeToolSupport {
+value class RuntimeToolSupport {
     static final BridgePayload EMPTY_PAYLOAD = new EmptyBridgePayload();
 
     private static final int DEFAULT_PORT = 9876;
