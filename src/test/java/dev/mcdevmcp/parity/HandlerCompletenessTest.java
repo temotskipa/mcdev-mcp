@@ -21,6 +21,7 @@ import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.nio.file.Path;
 import java.util.*;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -254,9 +255,7 @@ class HandlerCompletenessTest {
         }
 
         @Override
-        @NonNull
-        @SuppressWarnings("NullableProblems")
-        public Type[] getActualTypeArguments() {
+        public Type @NonNull [] getActualTypeArguments() {
             return arguments.clone();
         }
 
@@ -309,36 +308,16 @@ class HandlerCompletenessTest {
     }
 
     private static final class GenericOwner<T> {
-        private final class Inner<U> {
-            @SuppressWarnings("unused")
-            private T ownerValue;
-            @SuppressWarnings("unused")
-            private U innerValue;
+        private abstract class Inner<U> implements Function<T, U> {
         }
     }
 
     private record GenericOwnerCarrier<T>(GenericOwner<T>.Inner<String> value) {
     }
 
-    @SuppressWarnings("unused")
-    private static final class GenericInputs {
-        private GenericInput<String> permitted;
-        private GenericNested<String> nestedPermitted;
-        private GenericList<String> list;
-        private GenericList<Collection<String>> collection;
-        private GenericInput<Object> object;
-        private GenericInput<BigDecimal> bigDecimal;
-        private GenericInput<BigInteger> bigInteger;
-        private GenericInput<Number> number;
-        private GenericInput<Map<String, String>> map;
-        private GenericNested<Map<String, String>> nestedMap;
-        private GenericList<Map<String, String>> listOfMaps;
-        private ArrayBox<String> arrayBox;
-        private ArrayBox<Object> arrayObject;
-        private ArrayBox<Map<String, String>> arrayMap;
-        private GenericOwnerCarrier<Map<String, String>> ownerMap;
-        private GenericStable stableRecursive;
-        private GenericExpanding<String> expandingRecursive;
-        private GenericExpanding<Map<String, String>> expandingForbidden;
+    /**
+     * One component per input shape under test; only their declared types matter.
+     */
+    private record GenericInputs(GenericInput<String> permitted, GenericNested<String> nestedPermitted, GenericList<String> list, GenericList<Collection<String>> collection, GenericInput<Object> object, GenericInput<BigDecimal> bigDecimal, GenericInput<BigInteger> bigInteger, GenericInput<Number> number, GenericInput<Map<String, String>> map, GenericNested<Map<String, String>> nestedMap, GenericList<Map<String, String>> listOfMaps, ArrayBox<String> arrayBox, ArrayBox<Object> arrayObject, ArrayBox<Map<String, String>> arrayMap, GenericOwnerCarrier<Map<String, String>> ownerMap, GenericStable stableRecursive, GenericExpanding<String> expandingRecursive, GenericExpanding<Map<String, String>> expandingForbidden) {
     }
 }

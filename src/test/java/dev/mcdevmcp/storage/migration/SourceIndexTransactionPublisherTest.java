@@ -22,17 +22,13 @@ class SourceIndexTransactionPublisherTest {
     @TempDir
     Path temporary;
 
-    @SuppressWarnings("resource") // Explicit finally cleanup verifies subprocess termination.
     private static int runProcess(SourcePublicationFixture fixture, String event) throws Exception {
-        Process process = new ProcessBuilder(System.getProperty("mcdevMcpJava"), "--enable-preview", "-cp", System.getProperty("java.class.path"), SourcePublicationProcessMain.class.getName(), fixture.paths().cacheRoot().toString(), fixture.transaction().toString(), event).redirectErrorStream(true).redirectOutput(fixture.transaction().resolve("process-" + event + ".log").toFile()).start();
-        try {
-            assertTrue(process.waitFor(30, TimeUnit.SECONDS), "Migration process did not terminate: " + event);
-            return process.exitValue();
-        } finally {
-            if (process.isAlive()) {
+        try (Process process = new ProcessBuilder(System.getProperty("mcdevMcpJava"), "--enable-preview", "-cp", System.getProperty("java.class.path"), SourcePublicationProcessMain.class.getName(), fixture.paths().cacheRoot().toString(), fixture.transaction().toString(), event).redirectErrorStream(true).redirectOutput(fixture.transaction().resolve("process-" + event + ".log").toFile()).start()) {
+            if (!process.waitFor(30, TimeUnit.SECONDS)) {
                 process.destroyForcibly();
-                assertTrue(process.waitFor(5, TimeUnit.SECONDS));
+                fail("Migration process did not terminate: " + event);
             }
+            return process.exitValue();
         }
     }
 
@@ -201,13 +197,13 @@ class SourceIndexTransactionPublisherTest {
         });
         try (var lease = VersionOperationLease.write(fixture.paths(), fixture.version())) {
             SourceIndexSnapshot before = publisher.captureBefore(fixture.paths(), fixture.version(), lease, Cancellation.none());
+            boolean interruptionRestored;
             try {
                 assertThrows(IOException.class, () -> publish(publisher, fixture, lease, before, Cancellation.none()));
-                assertTrue(Thread.currentThread().isInterrupted());
             } finally {
-                //noinspection ResultOfMethodCallIgnored
-                Thread.interrupted();
+                interruptionRestored = Thread.interrupted();
             }
+            assertTrue(interruptionRestored);
             assertEquals(before, publisher.captureBefore(fixture.paths(), fixture.version(), lease, Cancellation.none()));
         }
     }

@@ -1,6 +1,5 @@
 package dev.mcdevmcp.mcp.transport;
 
-import dev.mcdevmcp.mcp.ServerDefinition;
 import dev.mcdevmcp.mcp.resource.ResourceCatalog;
 import dev.mcdevmcp.mcp.tool.*;
 import dev.mcdevmcp.mcp.tool.api.*;
@@ -25,15 +24,8 @@ import static org.junit.jupiter.api.Assertions.*;
 class McpSdkAdapterTest {
     private static final McpJsonMapper MAPPER = McpJsonDefaults.getMapper();
 
-    private static ServerDefinition serverDefinition() {
-        var bindings = CompleteToolBindings.including(MAPPER, Map.of());
-        var tools = ToolCatalog.load(new AppEnvironment(Map.of()), bindings, MAPPER);
-        return new ServerDefinition("test", "1", "test", tools, ResourceCatalog.withMapper(MAPPER));
-    }
-
-    @SuppressWarnings("unchecked")
-    private static <A> ToolInput<A> declaredInput() {
-        return (ToolInput<A>) ToolDeclarations.all().stream().filter(declaration -> declaration.name().equals("mc_snapshot")).findFirst().orElseThrow().input();
+    private static ToolInput<?> declaredInput() {
+        return ToolDeclarations.all().stream().filter(declaration -> declaration.name().equals("mc_snapshot")).findFirst().orElseThrow().input();
     }
 
     @Test
@@ -148,8 +140,7 @@ class McpSdkAdapterTest {
         Map<String, Object> schema = Map.of("type", "string");
         var output = ToolOutput.of(String.class, JsonValueSchema.of(schema));
         var called = new AtomicReference<Boolean>();
-        ToolInput<Object> input = declaredInput();
-        var binding = ToolBinding.output(input, output, (_, _) -> {
+        var binding = ToolBinding.output(declaredInput(), output, (_, _) -> {
             called.set(true);
             return ToolHandlers.completed(ToolResult.text("ok"));
         });

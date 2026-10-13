@@ -37,15 +37,13 @@ class McpStructuredOutputIntegrationTest {
     };
 
     private static <O> ServerDefinition definition(ToolOutput<O> output, ToolResult<O> result) {
-        ToolInput<Object> input = declaredInput();
-        ToolBinding<Object> binding = ToolBinding.output(input, output, (_, _) -> ToolHandlers.completed(result));
+        ToolBinding<?> binding = ToolBinding.output(declaredInput(), output, (_, _) -> ToolHandlers.completed(result));
         ToolCatalog catalog = ToolCatalog.load(new AppEnvironment(Map.of()), CompleteToolBindings.including(MAPPER, Map.of("mc_snapshot", binding)), MAPPER);
         return new ServerDefinition("test", "1", "test", catalog, new ResourceCatalog());
     }
 
-    @SuppressWarnings("unchecked")
-    private static <A> ToolInput<A> declaredInput() {
-        return (ToolInput<A>) ToolDeclarations.all().stream().filter(declaration -> declaration.name().equals("mc_snapshot")).findFirst().orElseThrow().input();
+    private static ToolInput<?> declaredInput() {
+        return ToolDeclarations.all().stream().filter(declaration -> declaration.name().equals("mc_snapshot")).findFirst().orElseThrow().input();
     }
 
     private static Map<String, Object> call(ServerDefinition definition) throws Exception {

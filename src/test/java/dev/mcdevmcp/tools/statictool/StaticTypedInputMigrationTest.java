@@ -40,13 +40,12 @@ class StaticTypedInputMigrationTest {
         return assertInstanceOf(McpSchema.TextContent.class, result.content().getFirst()).text();
     }
 
-    @SuppressWarnings("unchecked")
-    private static <A> ToolInput<A> typed(String name, Class<A> type) {
+    private static ToolInput<?> typed(String name, Class<?> type) {
         ToolBinding<?> binding = StaticToolModule.handlers(new PlatformPaths(Path.of("build", "static-typed-input-test"))).get(name);
         assertNotNull(binding);
         ToolInput<?> input = binding.input();
         assertEquals(type, input.type().rawClass());
-        return (ToolInput<A>) input;
+        return input;
     }
 
     private static Expectation expectation(String name, Class<?> argumentType, String toolClassName, Map<String, String> propertyTypes, List<String> requiredProperties, Map<String, Object> arguments) {
@@ -147,10 +146,10 @@ class StaticTypedInputMigrationTest {
 
     @Test
     void listClassesKeepsPackagePathOnTheWireAndPackageNameInJava() {
-        ToolInput<ListClassesArguments> input = typed("mc_list_classes", ListClassesArguments.class);
+        ToolInput<?> input = typed("mc_list_classes", ListClassesArguments.class);
         var mapper = new CountingMcpJsonMapper(McpJsonDefaults.getMapper());
 
-        ListClassesArguments decoded = input.decode(mapper, Map.of("packagePath", "alpha"));
+        ListClassesArguments decoded = (ListClassesArguments) input.decode(mapper, Map.of("packagePath", "alpha"));
 
         assertEquals("alpha", decoded.packageName());
         assertEquals(1, mapper.convertValueCalls());
@@ -204,21 +203,20 @@ class StaticTypedInputMigrationTest {
 
     @Test
     void decodesRealJsonIntegerFormsOnceAndDispatchesOnlyRepresentableValues() throws Exception {
-        ToolInput<SearchArguments> input = typed("mc_search", SearchArguments.class);
+        ToolInput<?> input = typed("mc_search", SearchArguments.class);
         for (String json : List.of("{\"query\":\"needle\",\"limit\":3.0}", "{\"query\":\"needle\",\"limit\":1e3}", "{\"query\":\"needle\",\"limit\":2147483647}")) {
             Map<String, Object> arguments = McpJsonDefaults.getMapper().readValue(json, new TypeRef<>() {
             });
             var mapper = new CountingMcpJsonMapper(McpJsonDefaults.getMapper());
-            var dispatched = new AtomicReference<SearchArguments>();
-            ToolBinding<SearchArguments> binding = ToolBinding.content(input, (decoded, _) -> {
+            var dispatched = new AtomicReference<>();
+            ToolBinding<?> binding = ToolBinding.content(input, (decoded, _) -> {
                 dispatched.set(decoded);
                 return ToolHandlers.completed(ToolResult.text("ok"));
             });
 
             binding.invoke(mapper, arguments, ToolCancellation.none()).toCompletableFuture().join();
 
-            assertNotNull(dispatched.get(), json);
-            assertEquals(json.contains("1e3") ? 1000 : json.contains("2147483647") ? Integer.MAX_VALUE : 3, dispatched.get().limit(), json);
+            assertEquals(json.contains("1e3") ? 1000 : json.contains("2147483647") ? Integer.MAX_VALUE : 3, assertInstanceOf(SearchArguments.class, dispatched.get(), json).limit(), json);
             assertEquals(1, mapper.convertValueCalls(), json);
         }
 
@@ -226,7 +224,7 @@ class StaticTypedInputMigrationTest {
         });
         var overflowMapper = new CountingMcpJsonMapper(McpJsonDefaults.getMapper());
         var overflowDispatches = new AtomicInteger();
-        ToolBinding<SearchArguments> overflowBinding = ToolBinding.content(input, (_, _) -> {
+        ToolBinding<?> overflowBinding = ToolBinding.content(input, (_, _) -> {
             overflowDispatches.incrementAndGet();
             return ToolHandlers.completed(ToolResult.text("unexpected"));
         });
@@ -238,7 +236,7 @@ class StaticTypedInputMigrationTest {
         });
         var belowMapper = new CountingMcpJsonMapper(McpJsonDefaults.getMapper());
         var belowDispatches = new AtomicInteger();
-        ToolBinding<SearchArguments> belowBinding = ToolBinding.content(input, (_, _) -> {
+        ToolBinding<?> belowBinding = ToolBinding.content(input, (_, _) -> {
             belowDispatches.incrementAndGet();
             return ToolHandlers.completed(ToolResult.text("unexpected"));
         });
@@ -249,13 +247,13 @@ class StaticTypedInputMigrationTest {
 
     @Test
     void rejectsAllInvalidLimitValuesBeforeMappingAndDispatch() {
-        ToolInput<SearchArguments> input = typed("mc_search", SearchArguments.class);
+        ToolInput<?> input = typed("mc_search", SearchArguments.class);
         for (Object value : Arrays.asList(null, BigDecimal.valueOf(3.9), 0, -1, "3", Double.NaN, Double.POSITIVE_INFINITY, Double.NEGATIVE_INFINITY)) {
             Map<String, Object> arguments = new LinkedHashMap<>(Map.of("query", "needle"));
             arguments.put("limit", value);
             var mapper = new CountingMcpJsonMapper(McpJsonDefaults.getMapper());
             var dispatches = new AtomicInteger();
-            ToolBinding<SearchArguments> binding = ToolBinding.content(input, (_, _) -> {
+            ToolBinding<?> binding = ToolBinding.content(input, (_, _) -> {
                 dispatches.incrementAndGet();
                 return ToolHandlers.completed(ToolResult.text("unexpected"));
             });
@@ -285,9 +283,9 @@ class StaticTypedInputMigrationTest {
 
     @Test
     void mapsAnEmptyMinecraftVersionToAbsentAndRejectsWhitespace() {
-        ToolInput<SearchArguments> input = typed("mc_search", SearchArguments.class);
+        ToolInput<?> input = typed("mc_search", SearchArguments.class);
         var mapper = new CountingMcpJsonMapper(McpJsonDefaults.getMapper());
-        SearchArguments arguments = input.decode(mapper, Map.of("query", "needle", "version", ""));
+        SearchArguments arguments = (SearchArguments) input.decode(mapper, Map.of("query", "needle", "version", ""));
         assertNull(arguments.version());
         assertEquals(1, mapper.convertValueCalls());
 
@@ -319,7 +317,7 @@ class StaticTypedInputMigrationTest {
 
     @Test
     void rejectsMissingRequiredStaticArgumentsAtTheSchemaBoundary() {
-        ToolInput<GetMethodArguments> input = typed("mc_get_method", GetMethodArguments.class);
+        ToolInput<?> input = typed("mc_get_method", GetMethodArguments.class);
         assertThrows(IllegalArgumentException.class, () -> input.decode(McpJsonDefaults.getMapper(), Map.of("className", "alpha.Alpha")));
         assertThrows(IllegalArgumentException.class, () -> input.decode(McpJsonDefaults.getMapper(), Map.of("methodName", "needle")));
     }

@@ -98,20 +98,21 @@ final class McpProcessFixtureMain {
         awaitParentEof();
     }
 
-    // The child must outlive this method so the parent exit stays observable.
-    @SuppressWarnings("resource")
+    // This process is killed while it sleeps, so the child it holds is never closed and stays to be found.
     private static void materializerTree(Path childPidFile) throws IOException, InterruptedException {
-        Process child = spawnSleeper();
-        Files.writeString(childPidFile, Long.toString(child.pid()), StandardCharsets.UTF_8);
-        Thread.sleep(Duration.ofDays(1));
+        try (Process child = spawnSleeper()) {
+            Files.writeString(childPidFile, Long.toString(child.pid()), StandardCharsets.UTF_8);
+            Thread.sleep(Duration.ofDays(1));
+        }
     }
 
-    // The inherited child must still be running when this process returns.
-    @SuppressWarnings("resource")
+    // The root exits while it still holds its child: closing the child would wait for it to end.
     private static void materializerTreeRootExits(Path childPidFile) throws IOException, InterruptedException {
-        Process child = spawnInheritedSleeper();
-        Files.writeString(childPidFile, Long.toString(child.pid()), StandardCharsets.UTF_8);
-        Thread.sleep(Duration.ofMillis(250));
+        try (Process child = spawnInheritedSleeper()) {
+            Files.writeString(childPidFile, Long.toString(child.pid()), StandardCharsets.UTF_8);
+            Thread.sleep(Duration.ofMillis(250));
+            System.exit(0);
+        }
     }
 
     private static void clientTreeRootExits(Path childPidFile) throws IOException, InterruptedException {

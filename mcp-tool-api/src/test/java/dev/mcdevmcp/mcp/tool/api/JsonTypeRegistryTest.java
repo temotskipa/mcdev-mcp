@@ -4,16 +4,20 @@ import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonValue;
 import io.modelcontextprotocol.json.McpJsonDefaults;
 import io.modelcontextprotocol.json.TypeRef;
+import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
 import java.lang.reflect.ParameterizedType;
+import java.lang.reflect.Proxy;
 import java.lang.reflect.Type;
 import java.math.BigDecimal;
 import java.net.URI;
 import java.nio.file.Path;
 import java.time.*;
 import java.util.*;
+import java.util.function.Function;
+import java.util.function.Supplier;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -28,6 +32,21 @@ value class JsonTypeRegistryTest {
     private static TypeRef<Object> malformedTypeRef(Class<?> rawType, Type ownerType, Type... arguments) {
         ParameterizedType parameterizedType = new TestParameterizedType(rawType, ownerType, arguments);
         return typeRef(parameterizedType);
+    }
+
+    /**
+     * A list type whose arguments are missing altogether. That breaks the contract of the
+     * interface, which no class written here may do, so a proxy stands in for the offending
+     * implementation.
+     */
+    private static ParameterizedType listWithoutArguments() {
+        return (ParameterizedType) Proxy.newProxyInstance(ParameterizedType.class.getClassLoader(), new Class<?>[]{ParameterizedType.class}, (proxy, method, arguments) -> switch (method.getName()) {
+            case "getRawType" -> List.class;
+            case "hashCode" -> System.identityHashCode(proxy);
+            case "equals" -> proxy == arguments[0];
+            case "toString", "getTypeName" -> "java.util.List without arguments";
+            default -> null;
+        });
     }
 
     private static TypeRef<Object> cyclicTypeRef() {
@@ -140,7 +159,7 @@ value class JsonTypeRegistryTest {
         assertRejected("top-level-wrong-owner", malformedTypeRef(List.class, String.class, String.class), objectSchema);
         assertRejected("top-level-non-generic", malformedTypeRef(String.class, null), objectSchema);
         assertRejected("static-non-generic", malformedTypeRef(GenericOuter.StaticNonGeneric.class, GenericOuter.class), objectSchema);
-        assertRejected("null-arguments", malformedTypeRef(List.class, null, (Type[]) null), objectSchema);
+        assertRejected("null-arguments", typeRef(listWithoutArguments()), objectSchema);
         assertRejected("primitive-argument", malformedTypeRef(List.class, null, int.class), objectSchema);
         assertRejected("void-argument", malformedTypeRef(List.class, null, void.class), objectSchema);
         assertRejected("structural-cycle", cyclicTypeRef(), objectSchema);
@@ -155,7 +174,7 @@ value class JsonTypeRegistryTest {
         assertThrows(IllegalArgumentException.class, () -> JsonTypeRegistry.of(List.of(first, duplicateId)));
         assertThrows(IllegalArgumentException.class, () -> JsonTypeRegistry.of(List.of(first, duplicateType)));
 
-        @SuppressWarnings({"rawtypes", "unchecked"}) JsonLogicalType<?> raw = JsonLogicalType.of("raw", (Class) List.class, JsonValueSchema.of(Map.of("type", "array", "items", Map.of("type", "string"))), STRING_SCHEMA);
+        JsonLogicalType<?> raw = JsonLogicalType.of("raw", List.class, JsonValueSchema.of(Map.of("type", "array", "items", Map.of("type", "string"))), STRING_SCHEMA);
         assertThrows(IllegalArgumentException.class, () -> JsonTypeRegistry.of(List.of(raw)));
         assertThrows(IllegalArgumentException.class, () -> JsonTypeRegistry.of(List.of(JsonLogicalType.of("wildcard", new TypeRef<List<?>>() {
         }, STRING_SCHEMA, STRING_SCHEMA))));
@@ -275,19 +294,18 @@ value class JsonTypeRegistryTest {
     private record StandardInput(Duration duration, UUID uuid, Instant instant, LocalDate date) {
     }
 
-    @SuppressWarnings("NullableProblems")
     private record TestParameterizedType(Class<?> rawType, Type ownerType, Type[] arguments) implements ParameterizedType {
         private TestParameterizedType {
-            arguments = arguments == null ? null : arguments.clone();
+            arguments = arguments.clone();
         }
 
         @Override
-        public Type[] getActualTypeArguments() {
-            return arguments == null ? null : arguments.clone();
+        public Type @NonNull [] getActualTypeArguments() {
+            return arguments.clone();
         }
 
         @Override
-        public Type getRawType() {
+        public @NonNull Type getRawType() {
             return rawType;
         }
 
@@ -297,15 +315,14 @@ value class JsonTypeRegistryTest {
         }
     }
 
-    @SuppressWarnings("NullableProblems")
     private static final class CyclicParameterizedType implements ParameterizedType {
         @Override
-        public Type[] getActualTypeArguments() {
+        public Type @NonNull [] getActualTypeArguments() {
             return new Type[]{this};
         }
 
         @Override
-        public Type getRawType() {
+        public @NonNull Type getRawType() {
             return List.class;
         }
 
@@ -315,7 +332,6 @@ value class JsonTypeRegistryTest {
         }
     }
 
-    @SuppressWarnings("NullableProblems")
     private static final class EqualParameterizedType implements ParameterizedType {
         private Type argument;
 
@@ -324,12 +340,12 @@ value class JsonTypeRegistryTest {
         }
 
         @Override
-        public Type[] getActualTypeArguments() {
+        public Type @NonNull [] getActualTypeArguments() {
             return new Type[]{argument};
         }
 
         @Override
-        public Type getRawType() {
+        public @NonNull Type getRawType() {
             return List.class;
         }
 
@@ -349,22 +365,23 @@ value class JsonTypeRegistryTest {
         }
     }
 
-    @SuppressWarnings({"InnerClassMayBeStatic", "unused"})
     private static class GenericOuter<T> {
         private static class StaticNonGeneric {
         }
 
-        @SuppressWarnings({"InnerClassMayBeStatic", "unused"})
-        private class InnerNonGeneric {
+        private abstract class InnerNonGeneric implements Supplier<T> {
         }
 
-        private class Inner<U> {
+        private abstract class Inner<U> implements Function<T, U> {
         }
     }
 
-    @SuppressWarnings({"InnerClassMayBeStatic", "unused"})
     private static class PlainOuter {
         private class PlainInner {
+            @Override
+            public String toString() {
+                return "inner of " + PlainOuter.this;
+            }
         }
     }
 }

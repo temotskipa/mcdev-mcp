@@ -87,8 +87,6 @@ class SourceTreeInventoryTest {
     }
 
     @Test
-    @SuppressWarnings("resource")
-        // Explicit finally cleanup verifies subprocess termination.
     void refusesActualDirectoryLinkAndPreservesDestination() throws Exception {
         Path destination = Files.createDirectory(temporary.resolve("destination"));
         Path sentinel = Files.writeString(destination.resolve("sentinel.txt"), "destination bytes");
@@ -96,15 +94,12 @@ class SourceTreeInventoryTest {
         Path link = tree.resolve("link");
         try {
             if (System.getProperty("os.name").toLowerCase(Locale.ROOT).startsWith("windows")) {
-                Process process = new ProcessBuilder("cmd.exe", "/d", "/c", "mklink", "/J", link.toString(), destination.toString()).redirectErrorStream(true).start();
-                try {
-                    assertTrue(process.waitFor(10, TimeUnit.SECONDS), "Junction fixture creation timed out");
-                    assertEquals(0, process.exitValue(), new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8));
-                } finally {
-                    if (process.isAlive()) {
+                try (Process process = new ProcessBuilder("cmd.exe", "/d", "/c", "mklink", "/J", link.toString(), destination.toString()).redirectErrorStream(true).start()) {
+                    if (!process.waitFor(10, TimeUnit.SECONDS)) {
                         process.destroyForcibly();
-                        assertTrue(process.waitFor(5, TimeUnit.SECONDS));
+                        fail("Junction fixture creation timed out");
                     }
+                    assertEquals(0, process.exitValue(), new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8));
                 }
             }
             else {

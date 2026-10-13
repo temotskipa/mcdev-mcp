@@ -2,9 +2,15 @@ package dev.mcdevmcp.mcp.tool.api;
 
 import com.fasterxml.jackson.annotation.*;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
+import javax.tools.ToolProvider;
 import java.math.BigDecimal;
 import java.math.BigInteger;
+import java.net.URL;
+import java.net.URLClassLoader;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -38,6 +44,22 @@ value class RecordInputSchemaFactoryTest {
         assertThrows(UnsupportedOperationException.class, () -> enumValues.add(null));
     }
 
+    /**
+     * A record with a raw collection component is something these sources may not contain, so the
+     * one the factory has to reject is compiled for the occasion.
+     */
+    @Test
+    void rejectsARawCollectionComponent(@TempDir Path directory) throws Exception {
+        Path source = Files.writeString(directory.resolve("RawListComponentInput.java"), "public record RawListComponentInput(java.util.List values) {}");
+        assertEquals(0, ToolProvider.getSystemJavaCompiler().run(null, null, null, "-d", directory.toString(), source.toString()));
+
+        try (var loader = new URLClassLoader(new URL[]{directory.toUri().toURL()})) {
+            Class<?> input = loader.loadClass("RawListComponentInput");
+            var failure = assertThrows(IllegalArgumentException.class, () -> RecordInputSchemaFactory.standard().generate(JsonType.of(input)));
+            assertEquals("Raw collection input components are unsupported: java.util.List", failure.getMessage());
+        }
+    }
+
     @Test
     void rejectsAmbiguousAndUnsupportedInputTypesAndMetadata() {
         InputSchemaFactory factory = RecordInputSchemaFactory.standard();
@@ -45,7 +67,6 @@ value class RecordInputSchemaFactoryTest {
         assertThrows(IllegalArgumentException.class, () -> factory.generate(JsonType.of(String.class)));
         assertThrows(IllegalArgumentException.class, () -> factory.generate(JsonType.of(ObjectComponentInput.class)));
         assertThrows(IllegalArgumentException.class, () -> factory.generate(JsonType.of(MapComponentInput.class)));
-        assertThrows(IllegalArgumentException.class, () -> factory.generate(JsonType.of(RawListComponentInput.class)));
         assertThrows(IllegalArgumentException.class, () -> factory.generate(JsonType.of(WildcardListComponentInput.class)));
         Map<String, Object> nestedListSchema = new LinkedHashMap<>();
         nestedListSchema.put("type", "object");
@@ -135,10 +156,6 @@ value class RecordInputSchemaFactoryTest {
     }
 
     private record MapComponentInput(Map<String, String> values) {
-    }
-
-    @SuppressWarnings("rawtypes")
-    private record RawListComponentInput(List values) {
     }
 
     private record WildcardListComponentInput(List<?> values) {

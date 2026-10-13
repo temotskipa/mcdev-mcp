@@ -434,41 +434,41 @@ final class AnalysisPipelineIntegrationTest {
             CountDownLatch parsedOldSources = new CountDownLatch(1);
             CountDownLatch releaseOldRebuild = new CountDownLatch(1);
             CountDownLatch refreshMetadataStarted = new CountDownLatch(1);
-            @SuppressWarnings("resource") // The finally block explicitly bounds worker cleanup.
-            var executor = Executors.newFixedThreadPool(2);
-            try {
-                var rebuilding = executor.submit(() -> pipeline.rebuildIndex(version, (stage, percent, _) -> {
-                    if (stage.equals("index") && percent == 75) {
-                        parsedOldSources.countDown();
-                        try {
-                            if (!releaseOldRebuild.await(10, TimeUnit.SECONDS)) {
-                                throw new IllegalStateException("Rebuild fixture release timed out");
+            try (var executor = Executors.newFixedThreadPool(2)) {
+                try {
+                    var rebuilding = executor.submit(() -> pipeline.rebuildIndex(version, (stage, percent, _) -> {
+                        if (stage.equals("index") && percent == 75) {
+                            parsedOldSources.countDown();
+                            try {
+                                if (!releaseOldRebuild.await(10, TimeUnit.SECONDS)) {
+                                    throw new IllegalStateException("Rebuild fixture release timed out");
+                                }
+                            } catch (InterruptedException interruption) {
+                                Thread.currentThread().interrupt();
+                                throw new IllegalStateException(interruption);
                             }
-                        } catch (InterruptedException interruption) {
-                            Thread.currentThread().interrupt();
-                            throw new IllegalStateException(interruption);
                         }
-                    }
-                }, Cancellation.none()));
-                assertTrue(parsedOldSources.await(10, TimeUnit.SECONDS));
-                var refreshing = executor.submit(() -> pipeline.initialize(version, SourceRefreshPolicy.EXPLICIT_REFRESH, (stage, _, _) -> {
-                    if (stage.equals("metadata")) refreshMetadataStarted.countDown();
-                }, Cancellation.none()));
-                assertFalse(refreshMetadataStarted.await(150, TimeUnit.MILLISECONDS));
-                assertFalse(refreshing.isDone());
-                releaseOldRebuild.countDown();
-                rebuilding.get(10, TimeUnit.SECONDS);
-                InitializationResult refreshed = refreshing.get(20, TimeUnit.SECONDS);
-                assertTrue(Files.readString(refreshed.retainedMigration().orElseThrow().resolve("old/client").resolve(paths.sourceRoot(version).relativize(source))).contains("oldOnly"));
-                SymbolRepository repository = new SymbolRepository(paths.symbolIndex(version));
-                var owner = repository.classByName(binaryName);
-                assertNotNull(owner);
-                assertNull(repository.methodNamed(owner.id(), "oldOnly"));
-                assertFalse(Files.readString(source).contains("oldOnly"));
-            } finally {
-                releaseOldRebuild.countDown();
-                executor.shutdownNow();
-                assertTrue(executor.awaitTermination(10, TimeUnit.SECONDS));
+                    }, Cancellation.none()));
+                    assertTrue(parsedOldSources.await(10, TimeUnit.SECONDS));
+                    var refreshing = executor.submit(() -> pipeline.initialize(version, SourceRefreshPolicy.EXPLICIT_REFRESH, (stage, _, _) -> {
+                        if (stage.equals("metadata")) refreshMetadataStarted.countDown();
+                    }, Cancellation.none()));
+                    assertFalse(refreshMetadataStarted.await(150, TimeUnit.MILLISECONDS));
+                    assertFalse(refreshing.isDone());
+                    releaseOldRebuild.countDown();
+                    rebuilding.get(10, TimeUnit.SECONDS);
+                    InitializationResult refreshed = refreshing.get(20, TimeUnit.SECONDS);
+                    assertTrue(Files.readString(refreshed.retainedMigration().orElseThrow().resolve("old/client").resolve(paths.sourceRoot(version).relativize(source))).contains("oldOnly"));
+                    SymbolRepository repository = new SymbolRepository(paths.symbolIndex(version));
+                    var owner = repository.classByName(binaryName);
+                    assertNotNull(owner);
+                    assertNull(repository.methodNamed(owner.id(), "oldOnly"));
+                    assertFalse(Files.readString(source).contains("oldOnly"));
+                } finally {
+                    releaseOldRebuild.countDown();
+                    executor.shutdownNow();
+                    assertTrue(executor.awaitTermination(10, TimeUnit.SECONDS));
+                }
             }
             server.stop(0);
             assertEquals(1, pipeline.rebuildIndex(version, (_, _, _) -> {

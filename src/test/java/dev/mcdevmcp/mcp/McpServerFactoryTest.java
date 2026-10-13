@@ -108,9 +108,8 @@ class McpServerFactoryTest {
         return Thread.getAllStackTraces().keySet().stream().filter(thread -> thread.getName().equals("mcdev-session-poll")).count();
     }
 
-    @SuppressWarnings("unchecked")
-    private static <A> ToolInput<A> declaredInput() {
-        return (ToolInput<A>) ToolDeclarations.all().stream().filter(declaration -> declaration.name().equals("mc_snapshot")).findFirst().orElseThrow().input();
+    private static ToolInput<?> declaredInput() {
+        return ToolDeclarations.all().stream().filter(declaration -> declaration.name().equals("mc_snapshot")).findFirst().orElseThrow().input();
     }
 
     @Test
@@ -118,8 +117,7 @@ class McpServerFactoryTest {
         var started = new CountDownLatch(1);
         var interrupted = new CountDownLatch(1);
         var virtualThread = new AtomicReference<Thread>();
-        ToolInput<Object> input = declaredInput();
-        var binding = ToolBinding.blocking(input, (_, _) -> {
+        var binding = ToolBinding.blocking(declaredInput(), (_, _) -> {
             virtualThread.set(Thread.currentThread());
             started.countDown();
             try {
@@ -142,28 +140,32 @@ class McpServerFactoryTest {
     }
 
     @Test
-    @SuppressWarnings("try")
     void stdioServerOwnsTheRuntimeAndFactoryStartsOnlyOnce() {
         var runtimeCloses = new AtomicInteger();
         try (var factory = new McpServerFactory(new AppEnvironment(Map.of()), completeBindings(null), ResourceCatalog.withMapper(MAPPER), MAPPER, runtimeCloses::incrementAndGet);
-             var server = factory.startStdio(new ByteArrayInputStream(new byte[0]), new ByteArrayOutputStream());
              var executor = Executors.newVirtualThreadPerTaskExecutor()) {
-            server.close();
-            server.close();
-            assertThrows(IllegalStateException.class, () -> factory.loadServerDefinition(executor));
-            assertThrows(IllegalStateException.class, () -> factory.startStdio(new ByteArrayInputStream(new byte[0]), new ByteArrayOutputStream()));
+            var server = factory.startStdio(new ByteArrayInputStream(new byte[0]), new ByteArrayOutputStream());
+            // Leaving the inner block closes the server; leaving the outer one closes it again.
+            try (server) {
+                try (server) {
+                    assertEquals(0, runtimeCloses.get());
+                }
+                assertThrows(IllegalStateException.class, () -> factory.loadServerDefinition(executor));
+                assertThrows(IllegalStateException.class, () -> factory.startStdio(new ByteArrayInputStream(new byte[0]), new ByteArrayOutputStream()));
+            }
         }
         assertEquals(1, runtimeCloses.get());
     }
 
     @Test
-    @SuppressWarnings("try")
     void factoryCloseIsIdempotentAndRejectsFurtherUse() {
         var closes = new AtomicInteger();
-        try (var factory = new McpServerFactory(new AppEnvironment(Map.of()), completeBindings(null), ResourceCatalog.withMapper(MAPPER), MAPPER, closes::incrementAndGet);
-             var executor = Executors.newVirtualThreadPerTaskExecutor()) {
-            factory.close();
-            factory.close();
+        var factory = new McpServerFactory(new AppEnvironment(Map.of()), completeBindings(null), ResourceCatalog.withMapper(MAPPER), MAPPER, closes::incrementAndGet);
+        // Leaving the inner block closes the factory; leaving the outer one closes it again.
+        try (factory; var executor = Executors.newVirtualThreadPerTaskExecutor()) {
+            try (factory) {
+                assertEquals(0, closes.get());
+            }
             assertThrows(IllegalStateException.class, () -> factory.loadServerDefinition(executor));
             assertThrows(IllegalStateException.class, () -> factory.startStdio(new ByteArrayInputStream(new byte[0]), new ByteArrayOutputStream()));
         }

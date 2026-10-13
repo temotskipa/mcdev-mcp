@@ -45,9 +45,9 @@ class RuntimeTypedInputMigrationTest {
         return Stream.concat(MIGRATED_BINDINGS.stream(), SESSION_BINDINGS.stream()).toList();
     }
 
-    private static <A> void assertQuerySchema(ToolBinding<?> binding, Class<A> type, Map<String, Object> properties) {
+    private static void assertQuerySchema(ToolBinding<?> binding, Class<?> type, Map<String, Object> properties) {
         assertNotNull(binding);
-        ToolInput<A> input = typedInput(binding, type);
+        ToolInput<?> input = typedInput(binding, type);
         assertEquals(Map.of("type", "object", "properties", properties, "additionalProperties", false), input.schema().value());
     }
 
@@ -57,12 +57,11 @@ class RuntimeTypedInputMigrationTest {
         return arguments;
     }
 
-    @SuppressWarnings("unchecked")
-    private static <A> ToolInput<A> typedInput(ToolBinding<?> binding, Class<A> type) {
+    private static ToolInput<?> typedInput(ToolBinding<?> binding, Class<?> type) {
         assertNotNull(binding);
         ToolInput<?> input = binding.input();
         assertEquals(type, input.type().rawClass());
-        return (ToolInput<A>) input;
+        return input;
     }
 
     private static Map<String, Object> itemIdArguments(Object itemId) {
@@ -300,26 +299,26 @@ class RuntimeTypedInputMigrationTest {
         })) {
             Map<String, ToolBinding<?>> bindings = RuntimeToolModule.handlers(harness.session(), MAPPER, ENVIRONMENT);
 
-            ToolInput<ConnectArguments> connectInput = typedInput(bindings.get("mc_connect"), ConnectArguments.class);
+            ToolInput<?> connectInput = typedInput(bindings.get("mc_connect"), ConnectArguments.class);
             Map<String, Object> connectSchema = connectInput.schema().value();
             Map<?, ?> connectProperties = assertInstanceOf(Map.class, connectSchema.get("properties"));
             assertEquals(Map.of("type", "integer", "description", "WebSocket port. Default: scan 9876-9886", "minimum", BigDecimal.ONE, "maximum", new BigDecimal("65535")), connectProperties.get("port"));
             assertEquals(Map.of("type", "boolean", "description", "Disconnect and clear state before connecting (for switching instances)", "default", false), connectProperties.get("reset"));
             assertEquals(false, connectSchema.get("additionalProperties"));
-            ConnectArguments connectDefaults = connectInput.decode(MAPPER, Map.of());
+            ConnectArguments connectDefaults = (ConnectArguments) connectInput.decode(MAPPER, Map.of());
             assertNull(connectDefaults.port());
             assertFalse(connectDefaults.reset());
 
-            ToolInput<ExecuteArguments> executeInput = typedInput(bindings.get("mc_execute"), ExecuteArguments.class);
+            ToolInput<?> executeInput = typedInput(bindings.get("mc_execute"), ExecuteArguments.class);
             Map<String, Object> executeSchema = executeInput.schema().value();
             Map<?, ?> executeProperties = assertInstanceOf(Map.class, executeSchema.get("properties"));
             assertEquals(Map.of("type", "string", "description", "Groovy code to execute"), executeProperties.get("code"));
             assertEquals(Map.of("type", "number", "description", "Optional per-call execution deadline in seconds. Range 1-300, default 10 (10s). Use a longer value for bulk reflection or heavy file I/O.", "minimum", BigDecimal.ONE, "maximum", new BigDecimal("300"), "default", new BigDecimal("10")), executeProperties.get("timeoutSeconds"));
             assertEquals(List.of("code"), executeSchema.get("required"));
             assertEquals(false, executeSchema.get("additionalProperties"));
-            ExecuteArguments executeDefaults = executeInput.decode(MAPPER, Map.of("code", "return 1"));
+            ExecuteArguments executeDefaults = (ExecuteArguments) executeInput.decode(MAPPER, Map.of("code", "return 1"));
             assertEquals(Duration.ofSeconds(10), executeDefaults.timeoutSeconds());
-            ExecuteArguments fractional = executeInput.decode(MAPPER, Map.of("code", "return 1", "timeoutSeconds", new BigDecimal("1.25")));
+            ExecuteArguments fractional = (ExecuteArguments) executeInput.decode(MAPPER, Map.of("code", "return 1", "timeoutSeconds", new BigDecimal("1.25")));
             assertEquals(Duration.ofMillis(1250), fractional.timeoutSeconds());
         }
     }
@@ -336,7 +335,7 @@ class RuntimeTypedInputMigrationTest {
         try (var harness = new BridgeTestHarness(MAPPER, ENVIRONMENT, (_, _) -> {
             throw new AssertionError("No bridge call should occur in this test");
         })) {
-            ToolInput<ScreenshotArguments> input = typedInput(RuntimeToolModule.handlers(harness.session(), MAPPER, ENVIRONMENT).get("mc_screenshot"), ScreenshotArguments.class);
+            ToolInput<?> input = typedInput(RuntimeToolModule.handlers(harness.session(), MAPPER, ENVIRONMENT).get("mc_screenshot"), ScreenshotArguments.class);
             Map<String, Object> schema = input.schema().value();
             Map<?, ?> properties = assertInstanceOf(Map.class, schema.get("properties"));
             assertEquals(Map.of("type", "integer", "description", "Integer downscale factor. 1 = full window resolution. 2 = half each axis (default).", "minimum", BigDecimal.ONE, "default", new BigInteger("2")), properties.get("downscale"));
@@ -345,7 +344,7 @@ class RuntimeTypedInputMigrationTest {
             assertEquals(false, schema.get("additionalProperties"));
 
             var mapper = new CountingMcpJsonMapper(MAPPER);
-            ScreenshotArguments defaults = input.decode(mapper, Map.of());
+            ScreenshotArguments defaults = (ScreenshotArguments) input.decode(mapper, Map.of());
             assertEquals(2, defaults.downscale());
             assertEquals(0.75, defaults.quality());
             assertEquals(1, mapper.convertValueCalls());
@@ -439,14 +438,14 @@ class RuntimeTypedInputMigrationTest {
         try (var harness = new BridgeTestHarness(MAPPER, ENVIRONMENT, (_, _) -> {
             throw new AssertionError("No bridge call should occur in this test");
         })) {
-            ToolInput<ItemTextureArguments> itemInput = typedInput(RuntimeToolModule.handlers(harness.session(), MAPPER, ENVIRONMENT).get("mc_get_item_texture"), ItemTextureArguments.class);
+            ToolInput<?> itemInput = typedInput(RuntimeToolModule.handlers(harness.session(), MAPPER, ENVIRONMENT).get("mc_get_item_texture"), ItemTextureArguments.class);
             Map<String, Object> itemSchema = itemInput.schema().value();
             assertEquals(false, itemSchema.get("additionalProperties"));
             assertEquals(List.of("slot"), itemSchema.get("required"));
             Map<?, ?> itemProperties = assertInstanceOf(Map.class, itemSchema.get("properties"));
             assertEquals(Map.of("type", "integer", "minimum", BigDecimal.ZERO, "maximum", new BigDecimal("40"), "description", "Inventory slot index (0-35 main inventory, 36 feet, 37 legs, 38 chest, 39 head, 40 offhand)."), itemProperties.get("slot"));
 
-            ToolInput<ItemTextureByIdArguments> itemByIdInput = typedInput(RuntimeToolModule.handlers(harness.session(), MAPPER, ENVIRONMENT).get("mc_get_item_texture_by_id"), ItemTextureByIdArguments.class);
+            ToolInput<?> itemByIdInput = typedInput(RuntimeToolModule.handlers(harness.session(), MAPPER, ENVIRONMENT).get("mc_get_item_texture_by_id"), ItemTextureByIdArguments.class);
             Map<String, Object> itemByIdSchema = itemByIdInput.schema().value();
             assertEquals(false, itemByIdSchema.get("additionalProperties"));
             assertEquals(List.of("itemId"), itemByIdSchema.get("required"));
@@ -716,9 +715,9 @@ class RuntimeTypedInputMigrationTest {
         try (var harness = new BridgeTestHarness(MAPPER, ENVIRONMENT, (_, _) -> {
             throw new AssertionError("No bridge call should occur in this test");
         })) {
-            ToolInput<ItemTextureByIdArguments> input = typedInput(RuntimeToolModule.handlers(harness.session(), MAPPER, ENVIRONMENT).get("mc_get_item_texture_by_id"), ItemTextureByIdArguments.class);
+            ToolInput<?> input = typedInput(RuntimeToolModule.handlers(harness.session(), MAPPER, ENVIRONMENT).get("mc_get_item_texture_by_id"), ItemTextureByIdArguments.class);
 
-            ItemTextureByIdArguments arguments = input.decode(MAPPER, Map.of("itemId", "diamond"));
+            ItemTextureByIdArguments arguments = (ItemTextureByIdArguments) input.decode(MAPPER, Map.of("itemId", "diamond"));
 
             assertEquals("minecraft:diamond", arguments.itemId().value());
         }

@@ -252,14 +252,10 @@ class SessionControlSupportTest {
     }
 
     @Test
-    @SuppressWarnings("resource")
     void cancellingPidProbeDestroysAndClosesTheProcessOnce() throws Exception {
         ProbeProcess process = new ProbeProcess("4242\n");
         {
-            SessionControlSupport.ListeningPidResolver resolver = SessionControlSupport.listeningPidResolver(_ -> {
-                process.started.countDown();
-                return process;
-            });
+            SessionControlSupport.ListeningPidResolver resolver = SessionControlSupport.listeningPidResolver(announcing(process));
             var pid = BlockingCalls.start(() -> resolver.resolve(9876));
 
             assertTrue(process.started.await(1, TimeUnit.SECONDS));
@@ -273,14 +269,10 @@ class SessionControlSupportTest {
     }
 
     @Test
-    @SuppressWarnings("resource")
     void cancellationReportsPromptlyButTheCallerStopsOnlyAfterProcessCloseFinishes() throws Exception {
         ProbeProcess process = ProbeProcess.blocking();
         {
-            SessionControlSupport.ListeningPidResolver resolver = SessionControlSupport.listeningPidResolver(_ -> {
-                process.started.countDown();
-                return process;
-            });
+            SessionControlSupport.ListeningPidResolver resolver = SessionControlSupport.listeningPidResolver(announcing(process));
             var pid = BlockingCalls.start(() -> resolver.resolve(9876));
 
             assertTrue(process.started.await(1, TimeUnit.SECONDS));
@@ -323,13 +315,13 @@ class SessionControlSupportTest {
     }
 
     @Test
-    @SuppressWarnings("resource")
     void lateReturningStarterIsDestroyedAfterCancellation() throws Exception {
         ProbeProcess process = new ProbeProcess("4242\n");
         CountDownLatch starterEntered = new CountDownLatch(1);
         CountDownLatch starterCaughtInterrupt = new CountDownLatch(1);
         CountDownLatch releaseStarter = new CountDownLatch(1);
-        var resolver = SessionControlSupport.listeningPidResolver(_ -> {
+        var handover = starting(process);
+        var resolver = SessionControlSupport.listeningPidResolver(command -> {
             starterEntered.countDown();
             try {
                 releaseStarter.await();
@@ -350,7 +342,7 @@ class SessionControlSupportTest {
                 }
                 Thread.currentThread().interrupt();
             }
-            return process;
+            return handover.start(command);
         });
 
         var pid = BlockingCalls.start(() -> resolver.resolve(9876));
@@ -365,10 +357,9 @@ class SessionControlSupportTest {
     }
 
     @Test
-    @SuppressWarnings("resource")
     void pidProbeHonorsItsRealFourSecondDeadlineAndDrainsBothPipes() throws Exception {
         TimeoutProcess process = new TimeoutProcess();
-        SessionControlSupport.ListeningPidResolver resolver = SessionControlSupport.listeningPidResolver(_ -> process);
+        SessionControlSupport.ListeningPidResolver resolver = SessionControlSupport.listeningPidResolver(starting(process));
         long started = System.nanoTime();
         Long pid = resolver.resolve(9876);
         long elapsed = System.nanoTime() - started;
@@ -546,6 +537,21 @@ class SessionControlSupportTest {
         }
     }
 
+    /**
+     * A starter for a process the test goes on observing. The resolver owns whatever its starter
+     * returns and is the one to close it.
+     */
+    private static SessionControlSupport.ProcessStarter starting(Process process) {
+        return _ -> process;
+    }
+
+    private static SessionControlSupport.ProcessStarter announcing(ProbeProcess process) {
+        return _ -> {
+            process.started.countDown();
+            return process;
+        };
+    }
+
     private static final class ProbeProcess extends Process {
         private final CompletableFuture<Process> exited = new CompletableFuture<>();
         private final AtomicBoolean stdoutConsumed = new AtomicBoolean();
@@ -623,17 +629,20 @@ class SessionControlSupportTest {
         }
 
         @Override
-        @SuppressWarnings("resource")
         public void destroy() {
-            destroyForcibly();
+            terminate();
         }
 
         @Override
         public Process destroyForcibly() {
+            terminate();
+            return this;
+        }
+
+        private void terminate() {
             destroyed.set(true);
             destroyedLatch.countDown();
             exited.complete(this);
-            return this;
         }
 
         @Override
@@ -719,16 +728,19 @@ class SessionControlSupportTest {
         }
 
         @Override
-        @SuppressWarnings("resource")
         public void destroy() {
-            destroyForcibly();
+            terminate();
         }
 
         @Override
         public Process destroyForcibly() {
+            terminate();
+            return this;
+        }
+
+        private void terminate() {
             destroyed.countDown();
             finished.countDown();
-            return this;
         }
 
         @Override
