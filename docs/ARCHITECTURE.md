@@ -34,7 +34,7 @@ Production code lives below `dev.mcdevmcp`:
 | `analysis.decompile` | Minecraft download, Tiny Remapper, and Vineflower.             |
 | `storage`            | Platform paths, the symbol index, JSONL bundles, and cleanup.  |
 | `bridge`             | Nonblocking DebugBridge envelopes, validation, and sessions.   |
-| `packaging`          | Deterministic MCPB metadata and packed-artifact smoke tests.   |
+| `packaging`          | Deterministic MCPB metadata for each packaged platform.        |
 | `support`            | Environment, JSON, logging, cancellation, and version helpers. |
 
 The Gradle build has three projects with one-way dependencies:
@@ -123,13 +123,7 @@ code does not introduce a second JSON engine.
 The root `manifest.json` is deterministic Java-generated catalog metadata. It
 contains no server command or Node runtime selector.
 
-MCPB is the sole packaging exception. `packaging/mcpb/` owns a minimal
-`bootstrap.cjs`, package metadata, and its packaging dependency. The launcher
-requires Java 28 and starts the bundled JAR with `--enable-preview`. All npm commands
-in `scripts/build-mcpb.ps1` run with that directory as their working directory;
-nothing there is part of direct JAR execution.
-
-The `appImage` task wraps that JAR in a jpackage application image with a
+The `appImage` task wraps the release JAR in a jpackage application image with a
 runtime linked from the JDK modules the JAR uses, so an installation needs no
 JDK and no command-line flags. Three details exist only because the server runs
 with preview features over standard streams:
@@ -145,11 +139,24 @@ with preview features over standard streams:
   the JAR. The trainer serves one scripted session in-process, ends the
   recording and publishes the cache atomically.
 
-The release workflow builds the JAR once on Java 28, records its hash, and
-runs that exact artifact on Java 28. The MCPB is packed around the same bytes. A
-read-only verification job admits exactly three publishable assets: JAR,
-checksum, and MCPB. Only the final publishing job receives release write
-permission.
+The `mcpbBundle` task packs that image as an MCPB bundle. The bundle's manifest
+is the one generated for the operating system it is built on: a `binary` server
+whose command is the image's launcher, declared compatible with that system
+alone. No script sits between the client and the server, so the server itself
+treats a setting the client left as an unresolved `${user_config.*}` placeholder
+as absent. The packer is the only packaging exception to the absence of Node:
+`packaging/mcpb/` pins it, the task installs it there, and it runs only to pack
+and unpack. The task requires every file of the image to come back from the
+unpacked bundle unchanged, because the packer leaves out files it takes for
+development leftovers.
+
+The release workflow builds the JAR and the manifests once on Java 28, records
+the JAR's hash, and runs that exact artifact on Java 28. A job per platform
+wraps the same bytes in an application image and an MCPB bundle and starts both
+as a client would. A read-only verification job admits exactly eight
+publishable assets: the JAR, its checksum, and the image and bundle of each of
+the three platforms listed in `scripts/release-platforms.psd1`. Only the final
+publishing job receives release write permission.
 
 ## Compatibility Evidence
 

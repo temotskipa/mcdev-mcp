@@ -16,7 +16,6 @@ fun registerCutoverScan(
     group = "verification"
     description = descriptionText
     val repositoryRoot = project.layout.projectDirectory.asFile
-    val allowedScriptFiles = setOf("packaging/mcpb/bootstrap.cjs")
     val allowedPackageMetadata = setOf(
         "packaging/mcpb/package.json", "packaging/mcpb/package-lock.json"
     )
@@ -72,9 +71,9 @@ fun registerCutoverScan(
             val normalizedPath = path.replace('\\', '/')
             val lowercasePath = normalizedPath.lowercase()
             val fileName = lowercasePath.substringAfterLast('/')
-            if (lowercasePath.endsWith(".ts") || lowercasePath.endsWith(".tsx") || ((lowercasePath.endsWith(".js") || lowercasePath.endsWith(
+            if (lowercasePath.endsWith(".ts") || lowercasePath.endsWith(".tsx") || lowercasePath.endsWith(".js") || lowercasePath.endsWith(
                     ".mjs"
-                ) || lowercasePath.endsWith(".cjs")) && normalizedPath !in allowedScriptFiles) || ((fileName == "package.json" || fileName == "package-lock.json") && normalizedPath !in allowedPackageMetadata) || fileName in forbiddenMetadataFiles || lowercasePath.startsWith(
+                ) || lowercasePath.endsWith(".cjs") || ((fileName == "package.json" || fileName == "package-lock.json") && normalizedPath !in allowedPackageMetadata) || fileName in forbiddenMetadataFiles || lowercasePath.startsWith(
                     "java-worker/"
                 )
             ) {
@@ -98,7 +97,6 @@ fun registerCutoverScan(
                 if (syntheticContents != null || Files.isRegularFile(file)) {
                     val contents = syntheticContents ?: Files.readString(file)
                     val forbiddenNodeMetadata = if (lowercasePath.endsWith(".json")) {
-                        val isPackagingMetadata = normalizedPath.startsWith("packaging/mcpb/")
                         val parsedJson = runCatching { JsonSlurper().parseText(contents) }.getOrElse { cause ->
                                 violations += "invalid inspected JSON metadata: $normalizedPath (${cause.message})"
                                 null
@@ -128,8 +126,6 @@ fun registerCutoverScan(
                             }
                         }
                         fun normalizedMetadataKey(key: String) = key.lowercase().replace("_", "").replace("-", "")
-
-                        fun normalizedEntrypoint(value: String) = value.trim().replace('\\', '/').removePrefix("./")
 
                         fun hasNodeOptionsMetadata(root: Any): Boolean {
                             val environmentKeys = setOf("env", "environment")
@@ -170,28 +166,12 @@ fun registerCutoverScan(
                             return false
                         }
 
-                        val allowedEntrypoints = setOf(
-                            "bootstrap.cjs", "packaging/mcpb/bootstrap.cjs"
-                        )
                         val javascriptEntrypoint = Regex(
                             """(?i)\b[^\s"';|&()]*\.(?:js|mjs|cjs|ts|tsx)\b"""
                         )
 
-                        fun hasForbiddenJavaScriptEntrypoint(value: String) =
-                            javascriptEntrypoint.findAll(value).any { match ->
-                                !isPackagingMetadata || normalizedEntrypoint(match.value) !in allowedEntrypoints
-                            }
-
-                        fun hasForbiddenEntrypointTarget(value: String) = if (isPackagingMetadata) {
-                            normalizedEntrypoint(value) !in allowedEntrypoints
-                        } else {
-                            hasForbiddenJavaScriptEntrypoint(value)
-                        }
-
                         fun normalizedExecutableName(value: String) =
                             value.trim().replace('\\', '/').substringAfterLast('/').lowercase().removeSuffix(".exe")
-
-                        fun isNodeCommand(value: String) = normalizedExecutableName(value) == "node"
 
                         fun parseCommandSegments(value: String): List<List<String>>? {
                             val segments = mutableListOf<List<String>>()
@@ -373,15 +353,7 @@ fun registerCutoverScan(
                                         word
                                     )
                                 }
-                            if (hasNodeOptions || words.any(nodeOptionsToken::containsMatchIn)) {
-                                return true
-                            }
-                            val executable = words[executableIndex]
-                            val arguments = words.drop(executableIndex + 1)
-                            if (isNodeCommand(executable)) {
-                                return !isPackagingMetadata || arguments.size != 1 || normalizedEntrypoint(arguments.single()) !in allowedEntrypoints
-                            }
-                            return words.drop(executableIndex).any { word ->
+                            return hasNodeOptions || words.any(nodeOptionsToken::containsMatchIn) || words.drop(executableIndex).any { word ->
                                 nodeToken.containsMatchIn(word) || javascriptEntrypoint.containsMatchIn(word)
                             }
                         }
@@ -391,13 +363,6 @@ fun registerCutoverScan(
                                 ?: return nodeToken.containsMatchIn(value) || nodeOptionsToken.containsMatchIn(value) || javascriptEntrypoint.containsMatchIn(
                                     value
                                 )
-                            if (isPackagingMetadata && segments.size != 1 && segments.flatten().any { word ->
-                                    nodeToken.containsMatchIn(word) || nodeOptionsToken.containsMatchIn(word) || javascriptEntrypoint.containsMatchIn(
-                                        word
-                                    )
-                                }) {
-                                return true
-                            }
                             for (segment in segments) {
                                 if (hasForbiddenCommandWords(segment)) {
                                     return true
@@ -491,9 +456,9 @@ fun registerCutoverScan(
                             val normalizedKey = normalizedMetadataKey(key)
                             val isEntrypoint = normalizedKey in entrypointKeys
                             val isCommand = normalizedKey == "command"
-                            isEntrypoint && hasForbiddenEntrypointTarget(value) || isCommand && (!isPackagingMetadata || !isNodeCommand(
+                            isEntrypoint && javascriptEntrypoint.containsMatchIn(value) || isCommand && hasForbiddenNodeCommandText(
                                 value
-                            )) && hasForbiddenNodeCommandText(value)
+                            )
                         }
                         val nestedJavaScriptMetadata = mutableListOf<Boolean>()
                         val nestedEntrypointKeys = setOf("bin", "exports", "browser")
@@ -508,11 +473,11 @@ fun registerCutoverScan(
                                 is Map<*, *> -> jsonValue.forEach { (key, nestedValue) ->
                                     val normalizedKey = (key as? String)?.let(::normalizedMetadataKey)
                                     if (nestedValue is String && (parentKey in nestedMetadataKeys || normalizedKey == "command")) {
-                                        nestedJavaScriptMetadata += parentKey in nestedEntrypointKeys && hasForbiddenEntrypointTarget(
+                                        nestedJavaScriptMetadata += parentKey in nestedEntrypointKeys && javascriptEntrypoint.containsMatchIn(
                                             nestedValue
-                                        ) || (parentKey == "scripts" || normalizedKey == "command") && (!isPackagingMetadata || normalizedKey != "command" || !isNodeCommand(
+                                        ) || (parentKey == "scripts" || normalizedKey == "command") && hasForbiddenNodeCommandText(
                                             nestedValue
-                                        )) && hasForbiddenNodeCommandText(nestedValue)
+                                        )
                                     }
                                     if (nestedValue != null) {
                                         pendingMetadataValues.add(nestedValue to (normalizedKey?.takeIf { it in nestedMetadataKeys }
@@ -527,15 +492,9 @@ fun registerCutoverScan(
                                 }
                             }
                         }
-                        if (isPackagingMetadata) {
-                            javascriptMetadata || nestedJavaScriptMetadata.any { it } || parsedJson != null && hasNodeOptionsMetadata(
-                                parsedJson
-                            ) || parsedJson != null && hasForbiddenStructuredNodeInvocation(parsedJson)
-                        } else {
-                            nodeRuntime || javascriptMetadata || nestedJavaScriptMetadata.any { it } || parsedJson != null && hasForbiddenStructuredNodeInvocation(
-                                parsedJson
-                            )
-                        }
+                        nodeRuntime || javascriptMetadata || nestedJavaScriptMetadata.any { it } || parsedJson != null && (hasNodeOptionsMetadata(
+                            parsedJson
+                        ) || hasForbiddenStructuredNodeInvocation(parsedJson))
                     } else {
                         false
                     }
@@ -646,7 +605,14 @@ val cutoverBypassFixtures = linkedMapOf(
     "packaging/mcpb/unclosed-quote.json" to "{\"command\":\"sh -c 'node bootstrap.cjs\"}",
     "packaging/mcpb/pipeline.json" to "{\"command\":\"echo ok | node bootstrap.cjs\"}",
     "packaging/mcpb/semicolon.json" to "{\"command\":\"echo ok; node bootstrap.cjs\"}",
-    "packaging/mcpb/direct-script.json" to "{\"command\":\"./bootstrap.cjs\"}"
+    "packaging/mcpb/direct-script.json" to "{\"command\":\"./bootstrap.cjs\"}",
+    "packaging/mcpb/bootstrap.cjs" to "retired launcher",
+    "packaging/mcpb/retired-launcher-structured.json" to "{\"command\":\"node\",\"args\":[\"bootstrap.cjs\"]}",
+    "packaging/mcpb/retired-launcher-relative.json" to "{\"command\":[\"node\",\"./bootstrap.cjs\"]}",
+    "packaging/mcpb/retired-launcher-executable.json" to "{\"server\":{\"executable\":\"node\",\"args\":[\"bootstrap.cjs\"]}}",
+    "packaging/mcpb/retired-launcher-env-wrapper.json" to "{\"command\":\"env -- node bootstrap.cjs\"}",
+    "packaging/mcpb/retired-launcher-exec-wrapper.json" to "{\"command\":\"exec -- node ./bootstrap.cjs\"}",
+    "packaging/mcpb/retired-launcher-assignment-wrapper.json" to "{\"command\":\"MCPB=1 node bootstrap.cjs\"}"
 ).apply {
     retiredEnvironmentFixtures.forEachIndexed { index, value ->
         put("src/main/java/cutover/RetiredEnvironment$index.java", value)
@@ -654,15 +620,12 @@ val cutoverBypassFixtures = linkedMapOf(
     retiredLibraryFixtures.forEachIndexed { index, value ->
         put("src/main/java/cutover/RetiredLibrary$index.java", value)
     }
-    put("packaging/mcpb/bootstrap.cjs", "permitted launcher")
-    put("packaging/mcpb/package.json", "{\"command\":\"no" + "de bootstrap.cjs\"}")
+    put("packaging/mcpb/package.json", "{\"devDependencies\":{\"@anthropic-ai/mcpb\":\"2.1.2\"}}")
     put("packaging/mcpb/package-lock.json", "{\"lockfileVersion\":3}")
-    put("packaging/mcpb/allowed-structured.json", "{\"command\":\"node\",\"args\":[\"bootstrap.cjs\"]}")
-    put("packaging/mcpb/allowed-relative.json", "{\"command\":[\"node\",\"./bootstrap.cjs\"]}")
-    put("packaging/mcpb/allowed-executable.json", "{\"server\":{\"executable\":\"node\",\"args\":[\"bootstrap.cjs\"]}}")
-    put("packaging/mcpb/allowed-env-wrapper.json", "{\"command\":\"env -- node bootstrap.cjs\"}")
-    put("packaging/mcpb/allowed-exec-wrapper.json", "{\"command\":\"exec -- node ./bootstrap.cjs\"}")
-    put("packaging/mcpb/allowed-assignment-wrapper.json", "{\"command\":\"MCPB=1 node bootstrap.cjs\"}")
+    put(
+        "packaging/mcpb/binary-server.json",
+        $$"{\"server\":{\"type\":\"binary\",\"entry_point\":\"mcdev-mcp/mcdev-mcp.exe\",\"mcp_config\":{\"command\":\"${__dirname}/mcdev-mcp/mcdev-mcp.exe\",\"args\":[\"serve\"]}}}"
+    )
     put("contracts/node-oracle.json", "{\"runtime\":\"no" + "de\"}")
     put("src/test/resources/contracts/cutover/frozen.json", "{\"runtime\":\"no" + "de\"}")
     put("src/test/resources/oracle/cutover/frozen.json", "{\"runtime\":\"no" + "de\"}")
@@ -672,15 +635,9 @@ val cutoverBypassFixtures = linkedMapOf(
     )
 }
 val allowedCutoverFixtures = setOf(
-    "packaging/mcpb/bootstrap.cjs",
     "packaging/mcpb/package.json",
     "packaging/mcpb/package-lock.json",
-    "packaging/mcpb/allowed-structured.json",
-    "packaging/mcpb/allowed-relative.json",
-    "packaging/mcpb/allowed-executable.json",
-    "packaging/mcpb/allowed-env-wrapper.json",
-    "packaging/mcpb/allowed-exec-wrapper.json",
-    "packaging/mcpb/allowed-assignment-wrapper.json",
+    "packaging/mcpb/binary-server.json",
     "contracts/node-oracle.json",
     "src/test/resources/contracts/cutover/frozen.json",
     "src/test/resources/oracle/cutover/frozen.json",

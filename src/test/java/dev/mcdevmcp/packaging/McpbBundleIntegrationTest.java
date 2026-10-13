@@ -2,28 +2,25 @@ package dev.mcdevmcp.packaging;
 
 import org.junit.jupiter.api.Test;
 
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Set;
 import java.util.jar.JarFile;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 class McpbBundleIntegrationTest {
     @Test
-    void packagingAssetsContainOnlyTheMinimalLauncherAndPinnedBuildDependency() throws Exception {
-        Path root = Path.of("").toAbsolutePath();
-        Path launcher = root.resolve("packaging/mcpb/bootstrap.cjs");
-        Path packageJson = root.resolve("packaging/mcpb/package.json");
-        Path lock = root.resolve("packaging/mcpb/package-lock.json");
+    void packagingAssetsAreTheManifestTemplateAndThePinnedPackerOnly() throws Exception {
+        Path packaging = Path.of("packaging/mcpb");
 
-        String launcherText = Files.readString(launcher, StandardCharsets.UTF_8);
-        assertTrue(launcherText.contains("node:child_process"));
-        assertTrue(launcherText.contains("mcdev-mcp.jar"));
-        assertFalse(launcherText.contains("tools/list"));
-        assertFalse(launcherText.contains("JSON-RPC"));
-        assertTrue(Files.readString(packageJson).contains("\"@anthropic-ai/mcpb\": \"2.1.2\""));
-        assertTrue(Files.readString(lock).contains("\"@anthropic-ai/mcpb\": \"2.1.2\""));
+        try (Stream<Path> files = Files.list(packaging)) {
+            assertEquals(Set.of("manifest.template.json", "package.json", "package-lock.json"), files.map(file -> file.getFileName().toString()).filter(name -> !name.equals("node_modules")).collect(Collectors.toSet()));
+        }
+        assertTrue(Files.readString(packaging.resolve("package.json")).contains("\"@anthropic-ai/mcpb\": \"2.1.2\""));
+        assertTrue(Files.readString(packaging.resolve("package-lock.json")).contains("\"@anthropic-ai/mcpb\": \"2.1.2\""));
     }
 
     @Test

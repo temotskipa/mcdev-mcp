@@ -7,27 +7,36 @@ DebugBridge mod.
 
 ## Requirements
 
-- The self-contained application image needs nothing installed: it carries
-  its own Java runtime and a native launcher.
+- The MCPB bundle and the self-contained application image need nothing
+  installed: they carry their own Java runtime and a native launcher.
 - The plain JAR needs a Java 28 JDK, launched with `--enable-preview`. Java 28
   is an early-access build until its general availability in March 2027.
 - No Maven, Gradle, npm, or IDE subscription is required to run a release.
 
 Preview bytecode is specific to Java 28; other JDK feature versions
-cannot run this release. The application image and the MCPB launcher enable
-preview automatically; direct JAR launches must include the flag.
+cannot run this release. The application image, which the MCPB bundle is
+built around, enables preview itself; direct JAR launches must include the
+flag.
 
 ## Install
 
 Download one of these assets from the matching GitHub Release:
 
+- `mcdev-mcp-<version>-<platform>.mcpb` for clients that install MCPB bundles.
+- `mcdev-mcp-<version>-<platform>.zip`, the self-contained application image,
+  for any other MCP client.
 - `mcdev-mcp-<version>.jar` and its `.sha256` file for direct Java use.
-- `mcdev-mcp-<version>.mcpb` for clients that install MCPB bundles.
+
+`<platform>` is `windows-x64`, `linux-x64` or `macos-aarch64`. An MCPB manifest
+can name an operating system but not a processor, so a client accepts a bundle
+on any machine running that system; it only starts on the processor in its
+name.
 
 The JAR is the complete application. It contains the MCP server, CLI, Javac
 indexer, Class-File callgraph scanner, file-backed index storage, Vineflower, and Tiny
-Remapper. The MCPB contains that exact release JAR plus a small packaging-only
-launcher.
+Remapper. The application image is that exact release JAR with a Java runtime
+and a native launcher, and the MCPB is that image with a manifest that starts
+the launcher.
 
 The npm package `mcdev-mcp` 2.2.1 is the final Node release. Java releases are
 installed from GitHub Releases or as MCPB bundles. Deprecating the old npm
@@ -99,9 +108,6 @@ Supported runtime settings:
 | `MCDEV_MCP_DEBUG_LOG`   | Write protocol-safe diagnostics to `on`, `off`, or a chosen path.        |
 | `MCDEV_INDEX_THREADS`   | Bound Javac indexing parallelism to a positive integer.                  |
 
-`MCDEV_MCP_SKIP_SMOKE=1` is only a local MCPB build-script escape hatch. It is
-not read by the server.
-
 Backend selectors, parser selectors, worker commands and arguments, worker
 count/batch/heap/retry/path/marker/fallback controls, the remapper heap switch,
 and argument-capture hooks from the retired implementation are unsupported.
@@ -123,16 +129,18 @@ The checked-in Gradle wrapper requires a Java 28 development kit:
 .\gradlew.bat clean check shadowJar --console=plain
 ```
 
-### Self-contained application image
+### Self-contained application image and MCPB bundle
 
 ```powershell
-.\gradlew.bat appImageZip appImageSmoke --console=plain
+.\gradlew.bat appImageZip appImageSmoke mcpbBundle mcpbBundleSmoke --console=plain
 ```
 
 This links a trimmed Java runtime, wraps it and the release JAR in a jpackage
-application image, and writes `build/distributions/mcdev-mcp-<version>-<platform>.zip`.
-The image is built for the platform it is built on. Unpack it anywhere writable
-and point an MCP client at the launcher; no `java` command or flag is involved:
+application image, and writes `build/distributions/mcdev-mcp-<version>-<platform>.zip`
+and, packed with the pinned official packer, which needs Node.js and npm,
+`build/distributions/mcdev-mcp-<version>-<platform>.mcpb`. Both are built for
+the platform they are built on. Unpack the image anywhere writable and point an
+MCP client at the launcher; no `java` command or flag is involved:
 
 ```json
 {
@@ -148,8 +156,8 @@ and point an MCP client at the launcher; no `java` command or flag is involved:
 The launcher is `mcdev-mcp/bin/mcdev-mcp` on Linux and
 `mcdev-mcp.app/Contents/MacOS/mcdev-mcp` on macOS. The first `serve` session
 records a startup cache next to the JAR in the background; later sessions start
-from it and answer about three times sooner. CI builds and exercises the image
-on Linux, Windows and macOS; the release workflow does not publish it yet.
+from it and answer about three times sooner. CI and the release workflow build
+and exercise the image and the bundle on Linux, Windows and macOS.
 
 See [Architecture](docs/ARCHITECTURE.md), [multi-version storage](docs/MULTIVER.md),
 and [Vineflower integration](docs/VF.md) for implementation details.

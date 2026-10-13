@@ -13,13 +13,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class RequiredRuntimeContractTest {
     @Test
-    void gradleFeatureAndLauncherMatchTheRuntimeConstant() throws IOException {
+    void gradleFeatureMatchesTheRuntimeConstant() throws IOException {
         String feature = Files.readAllLines(Path.of("gradle.properties")).stream().filter(line -> line.startsWith("javaFeature=")).map(line -> line.substring("javaFeature=".length()).trim()).findFirst().orElseThrow();
         assertEquals(Integer.toString(RequiredRuntime.FEATURE), feature);
-
-        String launcher = Files.readString(Path.of("packaging/mcpb/bootstrap.cjs"));
-        assertTrue(launcher.contains("const requiredJavaFeature = " + RequiredRuntime.FEATURE + ";"));
-        assertTrue(launcher.contains("Java ${requiredJavaFeature} with preview enabled is required"));
     }
 
     @Test

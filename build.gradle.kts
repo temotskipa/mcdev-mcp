@@ -2,6 +2,7 @@ import com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar
 import dev.mcdevmcp.buildlogic.AppImageTask
 import dev.mcdevmcp.buildlogic.DependencyPolicyCheck
 import dev.mcdevmcp.buildlogic.McpSdkSnapshotCheck
+import dev.mcdevmcp.buildlogic.McpbBundleTask
 import dev.mcdevmcp.buildlogic.PackagingTools
 import dev.mcdevmcp.buildlogic.RuntimeImageTask
 import dev.mcdevmcp.buildlogic.Sha256FileTask
@@ -127,36 +128,27 @@ tasks.jar {
     archiveClassifier.set("plain")
 }
 
+val generatedMcpbManifests = PackagingTools.operatingSystems.associateWith { system ->
+    layout.buildDirectory.file("mcpb/manifest-$system.json")
+}
+
 val generateMcpbManifest = tasks.register<JavaExec>("generateMcpbManifest") {
     group = "distribution"
-    description = "Generates the Java-owned MCPB catalog and packer manifest."
+    description = "Generates the Java-owned MCPB catalog and the packer manifest of each operating system."
     dependsOn(tasks.named("classes"))
     classpath = sourceSets.main.get().runtimeClasspath
     mainClass.set("dev.mcdevmcp.packaging.McpbManifestGenerator")
     args(
         layout.projectDirectory.file("packaging/mcpb/manifest.template.json").asFile.absolutePath,
         layout.projectDirectory.file("manifest.json").asFile.absolutePath,
-        layout.buildDirectory.file("mcpb/manifest.json").get().asFile.absolutePath,
+        layout.buildDirectory.dir("mcpb").get().asFile.absolutePath,
         applicationVersion
     )
     inputs.file(layout.projectDirectory.file("packaging/mcpb/manifest.template.json"))
     inputs.file(layout.projectDirectory.file("src/main/resources/mcp/tools.json"))
     inputs.property("version", applicationVersion)
     outputs.file(layout.projectDirectory.file("manifest.json"))
-    outputs.file(layout.buildDirectory.file("mcpb/manifest.json"))
-}
-
-val mcpbBundleDirectory = providers.gradleProperty("mcpbBundleDirectory")
-
-tasks.register<JavaExec>("mcpbBundleSmoke") {
-    group = "verification"
-    description = "Runs initialize/tools-list against an extracted MCPB bundle."
-    dependsOn(tasks.named("classes"))
-    classpath = sourceSets.main.get().runtimeClasspath
-    mainClass.set("dev.mcdevmcp.packaging.McpbBundleSmokeMain")
-    argumentProviders.add(CommandLineArgumentProvider {
-        listOf(mcpbBundleDirectory.get())
-    })
+    outputs.files(generatedMcpbManifests.values)
 }
 
 tasks.named("assemble") {
@@ -166,7 +158,6 @@ tasks.named("assemble") {
 val shadedJarOutput = layout.buildDirectory.file("libs/mcdev-mcp-$applicationVersion.jar")
 val releaseJar = layout.buildDirectory.file("distributions/mcdev-mcp-$applicationVersion.jar")
 val jarChecksum = layout.buildDirectory.file("distributions/mcdev-mcp-$applicationVersion.jar.sha256")
-val generatedMcpbManifest = layout.buildDirectory.file("mcpb/manifest.json")
 
 val stageReleaseJar = tasks.register<Copy>("stageReleaseJar") {
     group = "distribution"
@@ -186,8 +177,8 @@ val generateJarChecksum = tasks.register<Sha256FileTask>("generateJarChecksum") 
 
 val runtimeTestBundle = tasks.register<Zip>("runtimeTestBundle") {
     group = "distribution"
-    description = "Packages the preview-built JAR, checksum, manifest, and compiled runtime smoke harness."
-    dependsOn(tasks.named(runtimeTest.classesTaskName), generateJarChecksum, generateMcpbManifest)
+    description = "Packages the preview-built JAR, checksum, and compiled runtime smoke harness."
+    dependsOn(tasks.named(runtimeTest.classesTaskName), generateJarChecksum)
     archiveBaseName.set("mcdev-mcp-runtime-test")
     archiveVersion.set(applicationVersion)
     isPreserveFileTimestamps = false
@@ -198,7 +189,6 @@ val runtimeTestBundle = tasks.register<Zip>("runtimeTestBundle") {
     isReproducibleFileOrder = true
     from(releaseJar) { into("server") }
     from(jarChecksum) { into("server") }
-    from(generatedMcpbManifest) { into("server") }
     from(runtimeTest.output) { into("harness") }
     duplicatesStrategy = DuplicatesStrategy.FAIL
 }
@@ -210,9 +200,7 @@ tasks.register<Sync>("releaseArtifactBundle") {
     into(layout.buildDirectory.dir("artifacts/release"))
     from(releaseJar)
     from(jarChecksum)
-    from(generatedMcpbManifest) {
-        rename { "manifest.json" }
-    }
+    from(generatedMcpbManifests.values)
     from(runtimeTestBundle)
     duplicatesStrategy = DuplicatesStrategy.FAIL
 }
@@ -226,6 +214,8 @@ val packagingJdkHome = javaToolchains.launcherFor {
     languageVersion.set(JavaLanguageVersion.of(providers.gradleProperty("javaFeature").get().toInt()))
 }.map { launcher -> launcher.metadata.installationPath.asFile.absolutePath }
 val bundleVersion = applicationVersion
+// CI packages the JAR and manifests that were built and tested once instead of producing its own per platform.
+val prebuiltRelease = providers.gradleProperty("prebuiltRelease").orNull?.let { directory -> layout.projectDirectory.dir(directory) }
 
 val runtimeImage = tasks.register<RuntimeImageTask>("runtimeImage") {
     group = "distribution"
@@ -240,10 +230,8 @@ val appImage = tasks.register<AppImageTask>("appImage") {
     description = "Builds the self-contained application image: a native launcher, the runtime and the exact release JAR."
     jdkHome.set(packagingJdkHome)
     runtimeImage.set(tasks.named<RuntimeImageTask>("runtimeImage").flatMap { task -> task.image })
-    // CI wraps the JAR that was built and tested once instead of building another one per platform.
-    val prebuilt = providers.gradleProperty("prebuiltReleaseJar")
-    if (prebuilt.isPresent) {
-        mainJar.set(layout.projectDirectory.file(prebuilt))
+    if (prebuiltRelease != null) {
+        mainJar.set(prebuiltRelease.file("mcdev-mcp-$bundleVersion.jar"))
     } else {
         dependsOn(stageReleaseJar)
         mainJar.set(releaseJar)
@@ -286,6 +274,46 @@ tasks.register<JavaExec>("appImageSmoke") {
     val version = bundleVersion
     argumentProviders.add(CommandLineArgumentProvider {
         listOf(image.get().asFile.absolutePath, version, work.get().asFile.absolutePath)
+    })
+}
+
+val mcpbPackaging = layout.projectDirectory.dir("packaging/mcpb")
+
+val installMcpbPacker = tasks.register<Exec>("installMcpbPacker") {
+    group = "distribution"
+    description = "Installs the pinned MCPB packer."
+    workingDir = mcpbPackaging.asFile
+    commandLine(PackagingTools.npm, "ci", "--ignore-scripts")
+    inputs.files(mcpbPackaging.file("package.json"), mcpbPackaging.file("package-lock.json"))
+    outputs.dir(mcpbPackaging.dir("node_modules"))
+}
+
+val mcpbBundle = tasks.register<McpbBundleTask>("mcpbBundle") {
+    group = "distribution"
+    description = "Packs the application image built for this platform as an MCPB bundle."
+    dependsOn(installMcpbPacker)
+    image.set(appImage.flatMap { task -> task.destination })
+    if (prebuiltRelease != null) {
+        manifest.set(prebuiltRelease.file("manifest-${PackagingTools.operatingSystem}.json"))
+    } else {
+        dependsOn(generateMcpbManifest)
+        manifest.set(generatedMcpbManifests.getValue(PackagingTools.operatingSystem))
+    }
+    packer.set(mcpbPackaging.file("node_modules/@anthropic-ai/mcpb/dist/cli/cli.js"))
+    bundle.set(layout.buildDirectory.file("distributions/mcdev-mcp-$bundleVersion-${PackagingTools.platform}.mcpb"))
+    unpacked.set(layout.buildDirectory.dir("packaging/mcpb"))
+}
+
+tasks.register<JavaExec>("mcpbBundleSmoke") {
+    group = "verification"
+    description = "Starts the unpacked MCPB bundle as its manifest tells a client to, before and after it records its startup cache."
+    dependsOn(tasks.named(runtimeTest.classesTaskName), mcpbBundle)
+    classpath = runtimeTest.runtimeClasspath
+    mainClass.set("dev.mcdevmcp.packaging.McpbBundleSmokeMain")
+    val unpacked = mcpbBundle.flatMap { task -> task.unpacked }
+    val work = layout.buildDirectory.dir("packaging/mcpb-smoke")
+    argumentProviders.add(CommandLineArgumentProvider {
+        listOf(unpacked.get().asFile.absolutePath, work.get().asFile.absolutePath)
     })
 }
 

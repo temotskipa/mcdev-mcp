@@ -182,8 +182,8 @@ jobs:
             dev.mcdevmcp.packaging.RuntimeArtifactSmokeMain \
             "runtime/server/${jars[0]#./}"
 
-  app-image:
-    name: Application image on ${{ matrix.os }}
+  package:
+    name: Application image and MCPB on ${{ matrix.os }}
     needs: build
     runs-on: ${{ matrix.os }}
     strategy:
@@ -212,19 +212,19 @@ jobs:
           distribution: temurin
           java-version: ${{ steps.preview-java.outputs.version }}
           cache: gradle
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: packaging/mcpb/package-lock.json
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: release-build
           path: downloaded
-      - name: Wrap the build-once JAR in an application image
+      - name: Wrap the build-once JAR in an application image and an MCPB bundle
         shell: bash
-        run: |
-          set -euo pipefail
-          shopt -s nullglob
-          jars=(downloaded/mcdev-mcp-[0-9]*.jar)
-          test "${#jars[@]}" -eq 1
-          ./gradlew appImageZip "-PprebuiltReleaseJar=${jars[0]}" --no-configuration-cache --console=plain
-      - name: Exercise the launcher before and after it records its startup cache
+        run: ./gradlew appImageZip mcpbBundle -PprebuiltRelease=downloaded --no-configuration-cache --console=plain
+      - name: Exercise the image and the unpacked bundle before and after each records its startup cache
         shell: bash
         run: |
           set -euo pipefail
@@ -239,64 +239,47 @@ jobs:
           version="$(sed -n 's/^version=//p' gradle.properties | tr -d '\r')"
           separator=":"
           if [ "$RUNNER_OS" = "Windows" ]; then separator=";"; fi
-          java --enable-preview \
-            -cp "runtime/harness${separator}${jars[0]}" \
-            dev.mcdevmcp.packaging.AppImageSmokeMain \
+          classpath="runtime/harness${separator}${jars[0]}"
+          java --enable-preview -cp "$classpath" dev.mcdevmcp.packaging.AppImageSmokeMain \
             build/packaging/image "$version" build/packaging/smoke
+          java --enable-preview -cp "$classpath" dev.mcdevmcp.packaging.McpbBundleSmokeMain \
+            build/packaging/mcpb build/packaging/mcpb-smoke
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: app-image-${{ matrix.os }}
-          path: build/distributions/mcdev-mcp-*-*.zip
+          name: package-${{ matrix.os }}
+          path: |
+            build/distributions/mcdev-mcp-*-*.zip
+            build/distributions/mcdev-mcp-*-*.mcpb
           if-no-files-found: error
           retention-days: 7
 
-  mcpb:
-    name: Pack the exact release JAR as MCPB
-    needs: build
-    runs-on: windows-latest
+  verify-assets:
+    name: Verify the complete set of release assets
+    needs: [ build, package ]
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Read the preview Java feature
-        id: preview-java
-        shell: bash
-        run: |
-          set -euo pipefail
-          feature="$(sed -n 's/^javaFeature=//p' gradle.properties | tr -d '\r')"
-          test -n "$feature"
-          early_access="$(sed -n 's/^javaEarlyAccess=//p' gradle.properties | tr -d '\r')"
-          if [ "$early_access" = "true" ]; then
-            version="$feature-ea"
-          else
-            version="$feature"
-          fi
-          echo "feature=$feature" >> "$GITHUB_OUTPUT"
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
-        with:
-          distribution: temurin
-          java-version: ${{ steps.preview-java.outputs.version }}
-      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
-        with:
-          node-version: '24'
-          cache: npm
-          cache-dependency-path: packaging/mcpb/package-lock.json
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: release-build
-          path: downloaded
-      - name: Pack, extract, and smoke the downloaded bytes
+          path: downloaded/release
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: package-*
+          path: downloaded/packages
+          merge-multiple: true
+      - name: Materialize only the publishable assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(sed -n 's/^version=//p' gradle.properties | tr -d '\r')"
+          test -n "$version"
+          mkdir release-assets
+          cp "downloaded/release/mcdev-mcp-$version.jar" release-assets/
+          cp "downloaded/release/mcdev-mcp-$version.jar.sha256" release-assets/
+          cp downloaded/packages/* release-assets/
+      - name: Verify release provenance
         shell: pwsh
         run: |
-          $jar = @(Get-ChildItem downloaded\mcdev-mcp-*.jar)
-          $checksum = @(Get-ChildItem downloaded\mcdev-mcp-*.jar.sha256)
-          if ($jar.Count -ne 1 -or $checksum.Count -ne 1) { throw "Expected one JAR and checksum" }
-          .\scripts\build-mcpb.ps1 -SkipBuild -Jar $jar[0].FullName -Checksum $checksum[0].FullName -Manifest downloaded\manifest.json
-          Copy-Item $jar[0].FullName build\distributions\$($jar[0].Name)
-          Copy-Item $checksum[0].FullName build\distributions\$($checksum[0].Name)
           $version = (Get-Content gradle.properties | Where-Object { $_ -like 'version=*' }).Substring(8)
-          .\scripts\verify-release-assets.ps1 -DryRun -Version $version -Directory build\distributions
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: mcpb
-          path: build/distributions/*.mcpb
-          if-no-files-found: error
+          ./scripts/verify-release-assets.ps1 -DryRun -Version $version -Directory release-assets

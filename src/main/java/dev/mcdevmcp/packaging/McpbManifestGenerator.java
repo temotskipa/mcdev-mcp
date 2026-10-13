@@ -15,34 +15,37 @@ import java.nio.file.Path;
 import java.util.*;
 
 /**
- * Generates the Java-owned MCPB catalog manifest and the packer-only staging manifest.
+ * Generates the Java-owned MCPB catalog manifest and, for each operating system a bundle is built
+ * for, the manifest the packer receives.
  */
 public final class McpbManifestGenerator {
-    private static final String STAGING_ENTRY_POINT = "bootstrap.cjs";
+    private static final String BUNDLE_DIRECTORY = "${__dirname}/";
 
     private McpbManifestGenerator() {
     }
 
     static void main(String[] arguments) {
         if (arguments.length != 4) {
-            throw new IllegalArgumentException("Usage: McpbManifestGenerator <template> <root-manifest> <staging-manifest> <version>");
+            throw new IllegalArgumentException("Usage: McpbManifestGenerator <template> <root-manifest> <staging-directory> <version>");
         }
         generate(Path.of(arguments[0]), Path.of(arguments[1]), Path.of(arguments[2]), arguments[3]);
     }
 
-    public static void generate(Path template, Path rootManifest, Path stagingManifest) {
-        generate(template, rootManifest, stagingManifest, AppVersion.current());
+    public static void generate(Path template, Path rootManifest, Path stagingDirectory) {
+        generate(template, rootManifest, stagingDirectory, AppVersion.current());
     }
 
-    public static void generate(Path template, Path rootManifest, Path stagingManifest, String version) {
+    public static void generate(Path template, Path rootManifest, Path stagingDirectory, String version) {
         Objects.requireNonNull(template, "template");
         Objects.requireNonNull(rootManifest, "rootManifest");
-        Objects.requireNonNull(stagingManifest, "stagingManifest");
+        Objects.requireNonNull(stagingDirectory, "stagingDirectory");
         McpJsonMapper mapper = McpJsonDefaults.getMapper();
         try (var composition = McpServerFactory.declarativeComposition(new AppEnvironment(Map.of()), mapper)) {
             Map<String, Object> root = generatedRootManifest(readTemplate(mapper, template), version, composition.definitions());
             write(mapper, rootManifest, root);
-            write(mapper, stagingManifest, stagingManifest(root));
+            for (McpbPlatform platform : McpbPlatform.values()) {
+                write(mapper, stagingDirectory.resolve(platform.manifestFileName()), stagingManifest(root, platform));
+            }
         }
     }
 
@@ -56,11 +59,13 @@ public final class McpbManifestGenerator {
         return Collections.unmodifiableMap(manifest);
     }
 
-    static Map<String, Object> stagingManifest(Map<String, Object> rootManifest) {
+    static Map<String, Object> stagingManifest(Map<String, Object> rootManifest, McpbPlatform platform) {
         Objects.requireNonNull(rootManifest, "rootManifest");
+        Objects.requireNonNull(platform, "platform");
         var staging = new LinkedHashMap<>(rootManifest);
         staging.computeIfPresent("tools", (_, tools) -> stagingTools(tools));
-        staging.put("server", stagingServer());
+        staging.put("server", stagingServer(platform));
+        staging.put("compatibility", Map.of("platforms", List.of(platform.manifestName())));
         return Collections.unmodifiableMap(staging);
     }
 
@@ -106,7 +111,11 @@ public final class McpbManifestGenerator {
         return List.copyOf(result);
     }
 
-    private static Map<String, Object> stagingServer() {
+    /**
+     * The client starts the image's own launcher, so the bundle needs no runtime on the user's
+     * machine and nothing between the client and the server.
+     */
+    private static Map<String, Object> stagingServer(McpbPlatform platform) {
         var environment = new LinkedHashMap<String, Object>();
         environment.put("MCDEV_SESSION_LOG_DIR", "${user_config.script_logs}");
         environment.put("MCDEV_RUN_COMMAND", "${user_config.run_command}");
@@ -115,13 +124,13 @@ public final class McpbManifestGenerator {
         environment.put("DEBUGBRIDGE_PORT", "${user_config.debugbridge_port}");
 
         Map<String, Object> configuration = new LinkedHashMap<>();
-        configuration.put("command", "node");
-        configuration.put("args", List.of(STAGING_ENTRY_POINT));
+        configuration.put("command", BUNDLE_DIRECTORY + platform.launcher());
+        configuration.put("args", List.of("serve"));
         configuration.put("env", Collections.unmodifiableMap(environment));
 
         Map<String, Object> server = new LinkedHashMap<>();
-        server.put("type", "node");
-        server.put("entry_point", STAGING_ENTRY_POINT);
+        server.put("type", "binary");
+        server.put("entry_point", platform.launcher());
         server.put("mcp_config", Collections.unmodifiableMap(configuration));
         return Collections.unmodifiableMap(server);
     }

@@ -2,7 +2,7 @@
   "manifest_version": "0.3",
   "name": "mcdev-mcp",
   "display_name": "Minecraft Development MCP",
-  "description": "Minecraft development tools backed by the mcdev-mcp server. Requires a Java 28 JDK, an early-access build until Java 28 is released; the launcher enables Java 28 preview features.",
+  "description": "Minecraft development tools backed by the mcdev-mcp server. The bundle carries its own Java runtime, so nothing else has to be installed.",
   "author": {
     "name": "mcdev-mcp contributors"
   },
