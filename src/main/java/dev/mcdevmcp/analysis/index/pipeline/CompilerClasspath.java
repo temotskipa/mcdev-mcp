@@ -5,12 +5,12 @@ import dev.mcdevmcp.analysis.index.IndexRequest;
 import dev.mcdevmcp.support.Cancellation;
 
 import java.io.IOException;
-import java.lang.classfile.AnnotationValue;
-import java.lang.classfile.ClassFile;
-import java.lang.classfile.ClassModel;
+import java.lang.annotation.ElementType;
+import java.lang.classfile.*;
 import java.lang.classfile.attribute.AnnotationDefaultAttribute;
 import java.lang.classfile.attribute.InnerClassInfo;
 import java.lang.classfile.attribute.InnerClassesAttribute;
+import java.lang.classfile.attribute.RuntimeVisibleAnnotationsAttribute;
 import java.lang.constant.ClassDesc;
 import java.lang.constant.ConstantDescs;
 import java.lang.constant.MethodTypeDesc;
@@ -30,13 +30,15 @@ value record CompilerClasspath(List<CompilerClassFile> classes) {
 
     static CompilerClasspath read(IndexRequest request) throws IOException, InterruptedException {
         Map<String, CompilerClassFile> classes = new LinkedHashMap<>();
+        ReferencedAnnotations referenced = new ReferencedAnnotations();
         List<Path> entries = new ArrayList<>(request.classpath().size() + 1);
         entries.add(request.remappedJar());
         entries.addAll(request.classpath());
         for (Path entry : entries) {
-            readJar(entry, request.cancellation(), classes);
+            readJar(entry, request.cancellation(), classes, referenced);
         }
         registerBuiltinAnnotations(classes);
+        referenced.registerMissing(classes);
         return new CompilerClasspath(classes);
     }
 
@@ -82,7 +84,7 @@ value record CompilerClasspath(List<CompilerClassFile> classes) {
         }
     }
 
-    private static void readJar(Path jar, Cancellation cancellation, Map<String, CompilerClassFile> classes) throws IOException, InterruptedException {
+    private static void readJar(Path jar, Cancellation cancellation, Map<String, CompilerClassFile> classes, ReferencedAnnotations referenced) throws IOException, InterruptedException {
         ClassFile classFile = ClassFile.of();
         try (ZipFile zip = new ZipFile(jar.toFile())) {
             List<? extends ZipEntry> entries = zip.stream().filter(entry -> !entry.isDirectory() && entry.getName().endsWith(".class") && !entry.getName().startsWith("META-INF/")).sorted(Comparator.comparing(ZipEntry::getName)).toList();
@@ -104,9 +106,152 @@ value record CompilerClasspath(List<CompilerClassFile> classes) {
                 String binaryName = ClassDescriptors.binaryName(model.thisClass().asSymbol());
                 String packageName = binaryName.contains(".") ? binaryName.substring(0, binaryName.lastIndexOf('.')) : "";
                 classes.putIfAbsent(binaryName, new CompilerClassFile(binaryName, packageName, bytes));
+                try {
+                    referenced.collect(model);
+                } catch (IllegalArgumentException _) {
+                    // A malformed annotation attribute only costs the stubs it would have named.
+                }
             }
         } catch (IllegalArgumentException exception) {
             throw new IOException("Unable to read compiler classpath entry " + jar, exception);
+        }
+    }
+
+    // Annotation types that class files use but no classpath entry defines, such as compile-only
+    // annotations a new Minecraft version starts to use. Javac rejects a source that names a type it
+    // cannot find, so each one gets a stub that declares the elements its uses give it.
+    private static final class ReferencedAnnotations {
+        private static final int ANNOTATION_FLAGS = AccessFlag.PUBLIC.mask() | AccessFlag.INTERFACE.mask() | AccessFlag.ANNOTATION.mask() | AccessFlag.ABSTRACT.mask();
+        private static final int CONTAINER_FLAGS = AccessFlag.PUBLIC.mask() | AccessFlag.INTERFACE.mask() | AccessFlag.ABSTRACT.mask();
+        private static final int ELEMENT_FLAGS = AccessFlag.PUBLIC.mask() | AccessFlag.ABSTRACT.mask();
+
+        private final Map<String, Map<String, AnnotationValue>> elements = new TreeMap<>();
+        private final Set<String> typeUse = new HashSet<>();
+
+        private static AnnotationValue moreSpecific(AnnotationValue known, AnnotationValue next) {
+            // An empty array does not say what its elements are; any other value says what its element is.
+            return known instanceof AnnotationValue.OfArray array && array.values().isEmpty() ? next : known;
+        }
+
+        private static ClassDesc type(AnnotationValue value) {
+            return switch (value) {
+                case AnnotationValue.OfString _ -> ConstantDescs.CD_String;
+                case AnnotationValue.OfInt _ -> ConstantDescs.CD_int;
+                case AnnotationValue.OfLong _ -> ConstantDescs.CD_long;
+                case AnnotationValue.OfBoolean _ -> ConstantDescs.CD_boolean;
+                case AnnotationValue.OfByte _ -> ConstantDescs.CD_byte;
+                case AnnotationValue.OfChar _ -> ConstantDescs.CD_char;
+                case AnnotationValue.OfShort _ -> ConstantDescs.CD_short;
+                case AnnotationValue.OfFloat _ -> ConstantDescs.CD_float;
+                case AnnotationValue.OfDouble _ -> ConstantDescs.CD_double;
+                case AnnotationValue.OfClass _ -> ConstantDescs.CD_Class;
+                case AnnotationValue.OfEnum enumValue -> enumValue.classSymbol();
+                case AnnotationValue.OfAnnotation nested -> nested.annotation().classSymbol();
+                case AnnotationValue.OfArray array -> (array.values().isEmpty() ? ConstantDescs.CD_String : type(array.values().getFirst())).arrayType();
+            };
+        }
+
+        private static String outer(String binaryName) {
+            int separator = binaryName.lastIndexOf('$');
+            return separator < 0 ? null : binaryName.substring(0, separator);
+        }
+
+        private static InnerClassInfo memberInfo(String binaryName, int flags) {
+            String outer = outer(binaryName);
+            return InnerClassInfo.of(ClassDesc.of(binaryName), Optional.of(ClassDesc.of(outer)), Optional.of(binaryName.substring(outer.length() + 1)), flags | AccessFlag.STATIC.mask());
+        }
+
+        void collect(ClassModel model) {
+            collectAttributes(model);
+            for (FieldModel field : model.fields()) {
+                collectAttributes(field);
+            }
+            for (MethodModel method : model.methods()) {
+                collectAttributes(method);
+                method.findAttribute(Attributes.runtimeVisibleParameterAnnotations()).ifPresent(attribute -> attribute.parameterAnnotations().forEach(annotations -> annotations.forEach(annotation -> add(annotation, false))));
+                method.findAttribute(Attributes.runtimeInvisibleParameterAnnotations()).ifPresent(attribute -> attribute.parameterAnnotations().forEach(annotations -> annotations.forEach(annotation -> add(annotation, false))));
+                method.code().ifPresent(this::collectAttributes);
+            }
+            model.findAttribute(Attributes.record()).ifPresent(record -> record.components().forEach(this::collectAttributes));
+        }
+
+        private void collectAttributes(AttributedElement element) {
+            element.findAttribute(Attributes.runtimeVisibleAnnotations()).ifPresent(attribute -> attribute.annotations().forEach(annotation -> add(annotation, false)));
+            element.findAttribute(Attributes.runtimeInvisibleAnnotations()).ifPresent(attribute -> attribute.annotations().forEach(annotation -> add(annotation, false)));
+            element.findAttribute(Attributes.runtimeVisibleTypeAnnotations()).ifPresent(attribute -> attribute.annotations().forEach(annotation -> add(annotation.annotation(), true)));
+            element.findAttribute(Attributes.runtimeInvisibleTypeAnnotations()).ifPresent(attribute -> attribute.annotations().forEach(annotation -> add(annotation.annotation(), true)));
+        }
+
+        private void add(Annotation annotation, boolean asTypeUse) {
+            String binaryName = ClassDescriptors.binaryName(annotation.classSymbol());
+            Map<String, AnnotationValue> known = elements.computeIfAbsent(binaryName, _ -> new TreeMap<>());
+            if (asTypeUse) {
+                typeUse.add(binaryName);
+            }
+            for (AnnotationElement element : annotation.elements()) {
+                known.merge(element.name().stringValue(), element.value(), ReferencedAnnotations::moreSpecific);
+                addNested(element.value());
+            }
+        }
+
+        private void addNested(AnnotationValue value) {
+            switch (value) {
+                case AnnotationValue.OfAnnotation nested -> add(nested.annotation(), false);
+                case AnnotationValue.OfArray array -> array.values().forEach(this::addNested);
+                default -> {
+                }
+            }
+        }
+
+        void registerMissing(Map<String, CompilerClassFile> classes) {
+            Set<String> annotations = new TreeSet<>();
+            Set<String> containers = new TreeSet<>();
+            for (String binaryName : elements.keySet()) {
+                if (classes.containsKey(binaryName)) {
+                    continue;
+                }
+                annotations.add(binaryName);
+                // Javac finds a nested type through its enclosing type, so a missing enclosing type
+                // becomes an empty interface that lists it.
+                for (String outer = outer(binaryName); outer != null && !classes.containsKey(outer); outer = outer(outer)) {
+                    containers.add(outer);
+                }
+            }
+            containers.removeAll(annotations);
+            Set<String> stubs = new TreeSet<>(annotations);
+            stubs.addAll(containers);
+            ClassFile classFile = ClassFile.of();
+            for (String binaryName : stubs) {
+                boolean annotation = annotations.contains(binaryName);
+                List<InnerClassInfo> innerClasses = new ArrayList<>();
+                for (String outer = binaryName; outer(outer) != null; outer = outer(outer)) {
+                    innerClasses.add(memberInfo(outer, annotations.contains(outer) ? ANNOTATION_FLAGS : CONTAINER_FLAGS));
+                }
+                for (String member : stubs) {
+                    if (binaryName.equals(outer(member))) {
+                        innerClasses.add(memberInfo(member, annotations.contains(member) ? ANNOTATION_FLAGS : CONTAINER_FLAGS));
+                    }
+                }
+                byte[] bytes = classFile.build(ClassDesc.of(binaryName), clb -> {
+                    clb.withFlags(annotation ? ANNOTATION_FLAGS : CONTAINER_FLAGS);
+                    if (!innerClasses.isEmpty()) {
+                        clb.with(InnerClassesAttribute.of(innerClasses));
+                    }
+                    if (!annotation) {
+                        return;
+                    }
+                    clb.withInterfaceSymbols(ClassDesc.of("java.lang.annotation.Annotation"));
+                    if (typeUse.contains(binaryName)) {
+                        // Applicable wherever the class files put it, type uses included.
+                        ClassDesc elementType = ClassDesc.of("java.lang.annotation.ElementType");
+                        List<AnnotationValue> targets = Arrays.stream(ElementType.values()).<AnnotationValue>map(target -> AnnotationValue.ofEnum(elementType, target.name())).toList();
+                        clb.with(RuntimeVisibleAnnotationsAttribute.of(Annotation.of(ClassDesc.of("java.lang.annotation.Target"), AnnotationElement.of("value", AnnotationValue.ofArray(targets)))));
+                    }
+                    elements.get(binaryName).forEach((name, value) -> clb.withMethod(name, MethodTypeDesc.of(type(value)), ELEMENT_FLAGS, mb -> mb.with(AnnotationDefaultAttribute.of(value))));
+                });
+                String packageName = binaryName.contains(".") ? binaryName.substring(0, binaryName.lastIndexOf('.')) : "";
+                classes.put(binaryName, new CompilerClassFile(binaryName, packageName, bytes));
+            }
         }
     }
 }
