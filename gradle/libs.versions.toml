@@ -1,8 +1,8 @@
 [versions]
-mcpSdk = "2.1.0-SNAPSHOT"
-# Transitive dependencies of the MCP SDK. The snapshot declares older releases;
-# mcdev.mcp-sdk-modules raises them to these and mcpSdkSnapshotCheck verifies the result.
-jackson3 = "3.2.3"
+mcpSdk = "2.1.0"
+# Transitive dependencies of the MCP SDK. The SDK declares older releases;
+# mcdev.mcp-sdk-modules raises them to these and mcpSdkDependencyCheck verifies the result.
+jackson3 = "3.2.4"
 jsonSchemaValidator = "3.0.8"
 jacksonAnnotations = "2.22"
 picocli = "4.7.7"

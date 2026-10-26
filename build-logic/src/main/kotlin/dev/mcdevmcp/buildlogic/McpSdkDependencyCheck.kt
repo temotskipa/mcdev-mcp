@@ -5,7 +5,7 @@ import org.gradle.api.provider.MapProperty
 import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.TaskAction
 
-abstract class McpSdkSnapshotCheck : DefaultTask() {
+abstract class McpSdkDependencyCheck : DefaultTask() {
     @get:Input
     abstract val resolvedModules: MapProperty<String, String>
 
@@ -33,7 +33,7 @@ abstract class McpSdkSnapshotCheck : DefaultTask() {
 
         check(mismatches.isEmpty() && gsonModules.isEmpty()) {
             buildString {
-                appendLine("MCP SDK snapshot dependency verification failed.")
+                appendLine("MCP SDK dependency verification failed.")
                 mismatches.forEach(::appendLine)
                 gsonModules.forEach { (module, version) ->
                     appendLine("Unexpected ${gsonModuleName.replaceFirstChar { it.uppercase() }} module: $module:$version")

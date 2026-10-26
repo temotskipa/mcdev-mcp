@@ -7,7 +7,7 @@ val jacksonBom = "tools.jackson:jackson-bom:${catalog.findVersion("jackson3").ge
 val jsonSchemaValidator =
     "com.networknt:json-schema-validator:${catalog.findVersion("jsonSchemaValidator").get().requiredVersion}"
 
-// The SDK snapshot declares a Jackson release with open security advisories and the schema
+// The SDK declares a Jackson release with open security advisories and the schema
 // validator built against it. Every source set resolves the releases the catalog names instead.
 pluginManager.withPlugin("java") {
     extensions.getByType<SourceSetContainer>().configureEach {
@@ -20,7 +20,7 @@ extraJavaModuleInfo {
     failOnMissingModuleInfo.set(false)
     failOnAutomaticModules.set(false)
 
-    // The snapshot already publishes these module names. The generated descriptors
+    // The SDK already publishes these module names. The generated descriptors
     // exist so the jars require the modules their bytecode uses.
     module("io.modelcontextprotocol.sdk:mcp-core", "io.modelcontextprotocol.sdk.mcp.core") {
         exportAllPackages()

@@ -1,7 +1,7 @@
 import com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar
 import dev.mcdevmcp.buildlogic.AppImageTask
 import dev.mcdevmcp.buildlogic.DependencyPolicyCheck
-import dev.mcdevmcp.buildlogic.McpSdkSnapshotCheck
+import dev.mcdevmcp.buildlogic.McpSdkDependencyCheck
 import dev.mcdevmcp.buildlogic.McpbBundleTask
 import dev.mcdevmcp.buildlogic.PackagingTools
 import dev.mcdevmcp.buildlogic.RuntimeImageTask
@@ -336,9 +336,9 @@ val runtimeModuleVersions = configurations.named("runtimeClasspath").map { confi
         .associate { module -> "${module.group}:${module.name}" to module.version }
 }
 
-val mcpSdkSnapshotCheck = tasks.register<McpSdkSnapshotCheck>("mcpSdkSnapshotCheck") {
+val mcpSdkDependencyCheck = tasks.register<McpSdkDependencyCheck>("mcpSdkDependencyCheck") {
     group = "verification"
-    description = "Verifies the reviewed MCP SDK snapshot runtime dependencies."
+    description = "Verifies the reviewed MCP SDK runtime dependencies."
     resolvedModules.set(runtimeModuleVersions)
     expectedVersions.set(
         mapOf(
@@ -370,6 +370,6 @@ val dependencyPolicyCheck = tasks.register<DependencyPolicyCheck>("dependencyPol
 tasks.named("check") {
     dependsOn(":mcp-tool-api:check")
     dependsOn(dependencyPolicyCheck)
-    dependsOn(mcpSdkSnapshotCheck)
+    dependsOn(mcpSdkDependencyCheck)
     dependsOn(tasks.named("releaseVerifierTest"))
 }
