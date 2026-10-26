@@ -115,8 +115,8 @@ class StartupCacheTest {
         assertFalse(Files.exists(StartupCache.recording(cache)));
         assertTrue(StartupCache.current(cache, StartupCache.identity(jar.toString())));
 
-        // AOTMode=on makes the JVM refuse to start unless it can use the cache.
-        var accepted = new ProcessBuilder(java.toString(), "--enable-preview", "-XX:AOTMode=on", StartupCache.USE_OPTION + cache, "-cp", jar.toString(), Main.class.getName(), "--version").redirectErrorStream(true).redirectOutput(temporaryDirectory.resolve("accepted.log").toFile());
+        // AOTMode=required makes the JVM refuse to start unless it can use the cache.
+        var accepted = new ProcessBuilder(java.toString(), "--enable-preview", "-XX:AOTMode=required",StartupCache.USE_OPTION + cache, "-cp", jar.toString(), Main.class.getName(), "--version").redirectErrorStream(true).redirectOutput(temporaryDirectory.resolve("accepted.log").toFile());
         accepted.environment().remove("JAVA_TOOL_OPTIONS");
         try (Process process = accepted.start()) {
             assertTrue(process.waitFor(60, TimeUnit.SECONDS), "the cached launch did not finish");
